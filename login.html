@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>JESHA – Inicio de Sesión</title>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500&display=swap" rel="stylesheet"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --navy:   #1a2f5e;
+      --red:    #8b1a1a;
+      --gold:   #c9960c;
+      --light:  #f4f6f9;
+      --gray:   #e2e5ea;
+      --text:   #1e1e2e;
+      --muted:  #7a8099;
+    }
+
+    body {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #d8dce6;
+      font-family: 'Barlow', sans-serif;
+    }
+
+    .card {
+      display: flex;
+      width: 860px;
+      min-height: 520px;
+      border-radius: 18px;
+      overflow: hidden;
+      box-shadow: 0 24px 60px rgba(0,0,0,.22);
+      background: #fff;
+    }
+
+    /* ── LEFT PANEL ── */
+    .left {
+      flex: 1;
+      padding: 48px 52px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .logo-wrap {
+      display: flex;
+      justify-content: center;
+      margin-bottom: 36px;
+    }
+
+    /* 
+      Reemplaza el src con la ruta real de tu logo.
+      Tamaño sugerido: ancho máximo 220px para que no aplaste el layout.
+    */
+    .logo-wrap img {
+      max-width: 220px;
+      height: auto;
+    }
+
+    h1 {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 1.6rem;
+      font-weight: 700;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--text);
+      text-align: center;
+      margin-bottom: 28px;
+    }
+
+    .field {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: var(--gray);
+      border-radius: 8px;
+      padding: 0 16px;
+      margin-bottom: 14px;
+      border: 2px solid transparent;
+      transition: border-color .2s;
+    }
+
+    .field:focus-within {
+      border-color: var(--navy);
+      background: #fff;
+    }
+
+    .field svg {
+      flex-shrink: 0;
+      color: var(--muted);
+    }
+
+    .field input {
+      flex: 1;
+      border: none;
+      background: transparent;
+      padding: 14px 0;
+      font-size: .95rem;
+      font-family: 'Barlow', sans-serif;
+      color: var(--text);
+      outline: none;
+    }
+
+    .field input::placeholder { color: var(--muted); }
+
+    .btn-login {
+      width: 100%;
+      padding: 15px;
+      margin-top: 10px;
+      background: var(--navy);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 1.1rem;
+      font-weight: 700;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: background .2s, transform .1s;
+    }
+
+    .btn-login:hover  { background: #243d7a; }
+    .btn-login:active { transform: scale(.98); }
+
+    /* ── RIGHT PANEL ── */
+    .right {
+      width: 320px;
+      position: relative;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+
+    /*
+      Reemplaza el src con la ruta real de tu imagen del panel derecho
+      (el fondo azul con el hombre de caricatura).
+      La imagen se estira para cubrir todo el panel – ajusta object-position
+      si necesitas centrar al personaje de otra manera.
+    */
+    .right img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: center top;
+      display: block;
+    }
+
+    /* Fallback de color mientras cargan las imágenes */
+    .right { background: var(--navy); }
+  </style>
+</head>
+<body>
+
+<div class="card">
+
+  <!-- PANEL IZQUIERDO -->
+  <div class="left">
+    <div class="logo-wrap">
+      <!-- ✅ REEMPLAZA: src="assets/logo-jesha.png" con la ruta de tu logo -->
+      <img src="Imagenes/logo-jesha.png" alt="Ferretería e Iluminación JESHA" />
+    </div>
+
+    <h1>Inicio de Sesión</h1>
+
+    <div class="field">
+      <!-- Ícono usuario -->
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+           stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+        <circle cx="12" cy="7" r="4"/>
+      </svg>
+      <input type="text" placeholder="Usuario" autocomplete="username" />
+    </div>
+
+    <div class="field">
+      <!-- Ícono candado -->
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+           stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+        <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+      </svg>
+      <input type="password" placeholder="Contraseña" autocomplete="current-password" />
+    </div>
+
+    <button class="btn-login">Ingresar</button>
+  </div>
+
+  <!-- PANEL DERECHO -->
+  <div class="right">
+    <!-- ✅ REEMPLAZA: src="assets/panel-derecho.png" con la ruta de tu imagen -->
+    <img src="Imagenes/panel-derecho.png" alt="" role="presentation" />
+  </div>
+
+</div>
+
+</body>
+</html>
