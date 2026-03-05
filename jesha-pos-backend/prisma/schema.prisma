@@ -1,0 +1,608 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+// ═══════════════════════════════════════════════
+//  JESHA POS — Schema Prisma Completo
+//  Base de datos: PostgreSQL 18
+//  Generado para conectar con frontend existente:
+//  login.html / index.html (dashboard) / newUser.html
+// ═══════════════════════════════════════════════
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ══════════════════════════════
+//  ENUMS
+// ══════════════════════════════
+
+enum Rol {
+  SUPERADMIN
+  ADMIN_SUCURSAL
+  EMPLEADO
+  PRECIOS
+}
+
+enum EstadoVenta {
+  COMPLETADA
+  CANCELADA
+}
+
+enum MetodoPago {
+  EFECTIVO
+  DEBITO
+  CREDITO
+  TRANSFERENCIA
+}
+
+enum EstadoCotizacion {
+  PENDIENTE
+  CONVERTIDA
+  VENCIDA
+  CANCELADA
+}
+
+enum EstadoPedido {
+  BORRADOR
+  PENDIENTE
+  ACTIVO
+  BLOQUEADO
+  EJECUTADO
+  CANCELADO
+}
+
+enum EstadoOrdenCompra {
+  ENVIADO
+  RECIBIDO_PARCIAL
+  RECIBIDO
+  CANCELADO
+}
+
+enum EstadoFactura {
+  DISPONIBLE
+  FACTURADA
+  VENCIDA
+  CANCELADA
+}
+
+enum TipoMovimientoInventario {
+  ENTRADA_COMPRA
+  SALIDA_VENTA
+  AJUSTE_POSITIVO
+  AJUSTE_NEGATIVO
+  DEVOLUCION_ENTRADA
+  DEVOLUCION_SALIDA
+}
+
+enum TipoMovimientoCaja {
+  APERTURA
+  VENTA
+  DEVOLUCION
+  AJUSTE
+  CIERRE
+}
+
+enum TipoPromocion {
+  BUEN_FIN
+  HOT_SALE
+  MANUAL
+}
+
+enum AlcancePromocion {
+  PRODUCTO
+  CATEGORIA
+  SUCURSAL
+}
+
+enum EstadoAlerta {
+  PENDIENTE
+  VISTA
+  RESUELTA
+}
+
+// ══════════════════════════════
+//  SUCURSAL
+// ══════════════════════════════
+
+model Sucursal {
+  id           Int      @id @default(autoincrement())
+  nombre       String
+  direccion    String?
+  telefono     String?
+  codigoPostal String   // requerido para CFDI lugar_expedicion
+  activa       Boolean  @default(true)
+  creadaEn     DateTime @default(now())
+
+  usuarios      Usuario[]
+  inventarios   InventarioSucursal[]
+  ventas        Venta[]
+  cotizaciones  Cotizacion[]
+  pedidos       Pedido[]
+  ordenesCompra OrdenCompra[]
+  turnosCaja    TurnoCaja[]
+  promociones   Promocion[]
+  alertasStock  AlertaStock[]
+  auditorias    Auditoria[]
+}
+
+// ══════════════════════════════
+//  USUARIO
+//  Conecta con: login.html, newUser.html, dashboard.js
+// ══════════════════════════════
+
+model Usuario {
+  id           Int      @id @default(autoincrement())
+  nombre       String
+  username     String   @unique
+  passwordHash String               // bcrypt — NUNCA texto plano
+  rol          Rol
+  activo       Boolean  @default(true)
+  creadoEn     DateTime @default(now())
+
+  sucursalId   Int?
+  sucursal     Sucursal? @relation(fields: [sucursalId], references: [id])
+
+  // SUPERADMIN tiene sucursalId = null (acceso global)
+  // EMPLEADO siempre tiene sucursalId asignado
+
+  ventas       Venta[]
+  cotizaciones Cotizacion[]
+  turnosCaja   TurnoCaja[]
+  pedidos      Pedido[]
+  auditorias   Auditoria[]
+}
+
+// ══════════════════════════════
+//  CLIENTE
+// ══════════════════════════════
+
+model Cliente {
+  id                 Int      @id @default(autoincrement())
+  nombre             String
+  rfc                String?
+  telefono           String?
+  email              String?
+  codigoPostalFiscal String?
+  regimenFiscal      String?
+  tipo               String   @default("REGULAR") // REGULAR | FRECUENTE
+  notas              String?
+  creadoEn           DateTime @default(now())
+
+  ventas       Venta[]
+  cotizaciones Cotizacion[]
+  pedidos      Pedido[]
+  facturas     FacturaCfdi[]
+}
+
+// ══════════════════════════════
+//  CATEGORIA
+// ══════════════════════════════
+
+model Categoria {
+  id          Int    @id @default(autoincrement())
+  nombre      String @unique
+  descripcion String?
+
+  productos   Producto[]
+  promociones Promocion[]
+}
+
+// ══════════════════════════════
+//  PROVEEDOR
+// ══════════════════════════════
+
+model Proveedor {
+  id            Int      @id @default(autoincrement())
+  nombreOficial String
+  alias         String?
+  telefono      String?
+  celular       String?
+  email         String?
+  activo        Boolean  @default(true)
+  creadoEn      DateTime @default(now())
+
+  productos     ProveedorProducto[]
+  ordenesCompra OrdenCompra[]
+}
+
+// Precio costo por proveedor por producto
+model ProveedorProducto {
+  id              Int     @id @default(autoincrement())
+  proveedorId     Int
+  productoId      Int
+  codigoProveedor String?
+  precioCosto     Decimal @db.Decimal(10, 2)
+  activo          Boolean @default(true)
+
+  proveedor Proveedor @relation(fields: [proveedorId], references: [id])
+  producto  Producto  @relation(fields: [productoId], references: [id])
+
+  @@unique([proveedorId, productoId])
+}
+
+// ══════════════════════════════
+//  PRODUCTO
+//  index.html muestra: nombre, stock, precio
+// ══════════════════════════════
+
+model Producto {
+  id            Int      @id @default(autoincrement())
+  nombre        String
+  codigoBarras  String?  @unique
+  descripcion   String?
+  imagenUrl     String?
+  precioBase    Decimal  @db.Decimal(10, 2) // BLINDADO — no modificar desde POS
+  costo         Decimal? @db.Decimal(10, 2)
+  activo        Boolean  @default(true)
+  creadoEn      DateTime @default(now())
+  actualizadoEn DateTime @updatedAt
+
+  categoriaId Int
+  categoria   Categoria @relation(fields: [categoriaId], references: [id])
+
+  inventarios          InventarioSucursal[]
+  detallesVenta        DetalleVenta[]
+  detallesCotizacion   DetalleCotizacion[]
+  detallesOrdenCompra  DetalleOrdenCompra[]
+  detallesPedido       DetallePedido[]
+  proveedores          ProveedorProducto[]
+  promociones          Promocion[]          @relation("PromocionProducto")
+  movimientosInventario MovimientoInventario[]
+}
+
+// ══════════════════════════════
+//  INVENTARIO POR SUCURSAL
+//  index.html kpi-card "Productos": stockActual
+//  index.html kpi-card "Stock Bajo": alertasStock
+// ══════════════════════════════
+
+model InventarioSucursal {
+  id                Int      @id @default(autoincrement())
+  productoId        Int
+  sucursalId        Int
+  stockActual       Int      @default(0)
+  stockMinimoAlerta Int      @default(5)  // genera AlertaStock si baja de aquí
+  stockMaximo       Int?
+  actualizadoEn     DateTime @updatedAt
+
+  producto Producto @relation(fields: [productoId], references: [id])
+  sucursal Sucursal @relation(fields: [sucursalId], references: [id])
+
+  @@unique([productoId, sucursalId])
+}
+
+// Historial completo de cada cambio en inventario
+model MovimientoInventario {
+  id           Int                      @id @default(autoincrement())
+  productoId   Int
+  sucursalId   Int
+  tipo         TipoMovimientoInventario
+  cantidad     Int
+  stockAntes   Int
+  stockDespues Int
+  referencia   String? // "VTA-0042" | "OC-0010" | "DEV-0003"
+  notas        String?
+  creadoEn     DateTime @default(now())
+
+  producto Producto @relation(fields: [productoId], references: [id])
+}
+
+// ══════════════════════════════
+//  ALERTA DE STOCK BAJO
+//  index.html kpi-card "Stock Bajo" cuenta estas
+// ══════════════════════════════
+
+model AlertaStock {
+  id          Int          @id @default(autoincrement())
+  productoId  Int
+  sucursalId  Int
+  stockActual Int
+  stockMinimo Int
+  estado      EstadoAlerta @default(PENDIENTE)
+  creadaEn    DateTime     @default(now())
+  vistaEn     DateTime?
+
+  sucursal Sucursal @relation(fields: [sucursalId], references: [id])
+
+  // Evita duplicados: un producto solo tiene UNA alerta PENDIENTE por sucursal
+  @@unique([productoId, sucursalId, estado])
+}
+
+// ══════════════════════════════
+//  TURNO DE CAJA
+// ══════════════════════════════
+
+model TurnoCaja {
+  id                   Int       @id @default(autoincrement())
+  sucursalId           Int
+  usuarioId            Int
+  montoInicial         Decimal   @db.Decimal(10, 2)
+  montoFinalDeclarado  Decimal?  @db.Decimal(10, 2)
+  montoCalculado       Decimal?  @db.Decimal(10, 2) // suma desde MovimientoCaja
+  diferencia           Decimal?  @db.Decimal(10, 2)
+  abierto              Boolean   @default(true)
+  abiertaEn            DateTime  @default(now())
+  cerradaEn            DateTime?
+
+  sucursal    Sucursal         @relation(fields: [sucursalId], references: [id])
+  usuario     Usuario          @relation(fields: [usuarioId], references: [id])
+  ventas      Venta[]
+  movimientos MovimientoCaja[]
+}
+
+model MovimientoCaja {
+  id         Int                @id @default(autoincrement())
+  turnoId    Int
+  tipo       TipoMovimientoCaja
+  monto      Decimal            @db.Decimal(10, 2)
+  metodoPago MetodoPago?
+  referencia String?
+  notas      String?
+  creadoEn   DateTime           @default(now())
+
+  turno TurnoCaja @relation(fields: [turnoId], references: [id])
+}
+
+// ══════════════════════════════
+//  VENTA
+//  index.html kpi-cards "Ventas Hoy" y "Total Ventas"
+//  index.html panel "Ventas Recientes"
+// ══════════════════════════════
+
+model Venta {
+  id            Int         @id @default(autoincrement())
+  folio         String      @unique // "VTA-0042"
+  sucursalId    Int
+  usuarioId     Int
+  clienteId     Int?        // null = venta pública sin cliente
+  turnoId       Int?
+  metodoPago    MetodoPago
+  subtotal      Decimal     @db.Decimal(10, 2)
+  descuento     Decimal     @default(0) @db.Decimal(10, 2)
+  total         Decimal     @db.Decimal(10, 2)
+  estado        EstadoVenta @default(COMPLETADA)
+
+  // Autofacturación QR — ventana 72 horas
+  tokenQr       String        @unique @default(uuid())
+  facturaEstado EstadoFactura @default(DISPONIBLE)
+  facturaLimite DateTime      // = creadaEn + 72h, calculado al insertar
+
+  notas    String?
+  creadaEn DateTime @default(now())
+
+  sucursal    Sucursal       @relation(fields: [sucursalId], references: [id])
+  usuario     Usuario        @relation(fields: [usuarioId], references: [id])
+  cliente     Cliente?       @relation(fields: [clienteId], references: [id])
+  turno       TurnoCaja?     @relation(fields: [turnoId], references: [id])
+  detalles    DetalleVenta[]
+  devoluciones Devolucion[]
+  factura     FacturaCfdi?
+}
+
+model DetalleVenta {
+  id             Int     @id @default(autoincrement())
+  ventaId        Int
+  productoId     Int
+  cantidad       Int
+  precioUnitario Decimal @db.Decimal(10, 2) // snapshot al momento de vender
+  descuento      Decimal @default(0) @db.Decimal(10, 2)
+  subtotal       Decimal @db.Decimal(10, 2)
+  promocionId    Int?    // qué promo aplicó
+
+  venta     Venta      @relation(fields: [ventaId], references: [id])
+  producto  Producto   @relation(fields: [productoId], references: [id])
+  promocion Promocion? @relation(fields: [promocionId], references: [id])
+}
+
+// ══════════════════════════════
+//  DEVOLUCIÓN
+// ══════════════════════════════
+
+model Devolucion {
+  id                  Int      @id @default(autoincrement())
+  ventaId             Int
+  sucursalId          Int
+  usuarioId           Int
+  motivo              String
+  reintegraInventario Boolean  @default(true) // false = producto dañado
+  tipoReembolso       String   // "EFECTIVO" | "NOTA_CREDITO"
+  montoReembolso      Decimal  @db.Decimal(10, 2)
+  notas               String?
+  creadaEn            DateTime @default(now())
+
+  venta    Venta               @relation(fields: [ventaId], references: [id])
+  detalles DetalleDevolucion[]
+}
+
+model DetalleDevolucion {
+  id             Int     @id @default(autoincrement())
+  devolucionId   Int
+  productoId     Int
+  cantidad       Int
+  precioUnitario Decimal @db.Decimal(10, 2)
+
+  devolucion Devolucion @relation(fields: [devolucionId], references: [id])
+}
+
+// ══════════════════════════════
+//  COTIZACIÓN
+// ══════════════════════════════
+
+model Cotizacion {
+  id         Int              @id @default(autoincrement())
+  folio      String           @unique // "COT-0021"
+  sucursalId Int
+  usuarioId  Int
+  clienteId  Int?
+  total      Decimal          @db.Decimal(10, 2)
+  estado     EstadoCotizacion @default(PENDIENTE)
+  venceEn    DateTime?
+  notas      String?
+  creadaEn   DateTime         @default(now())
+
+  sucursal Sucursal           @relation(fields: [sucursalId], references: [id])
+  usuario  Usuario            @relation(fields: [usuarioId], references: [id])
+  cliente  Cliente?           @relation(fields: [clienteId], references: [id])
+  detalles DetalleCotizacion[]
+}
+
+model DetalleCotizacion {
+  id             Int     @id @default(autoincrement())
+  cotizacionId   Int
+  productoId     Int
+  cantidad       Int
+  precioUnitario Decimal @db.Decimal(10, 2)
+  subtotal       Decimal @db.Decimal(10, 2)
+
+  cotizacion Cotizacion @relation(fields: [cotizacionId], references: [id])
+  producto   Producto   @relation(fields: [productoId], references: [id])
+}
+
+// ══════════════════════════════
+//  PEDIDO GRANDE (BITÁCORA)
+//  index.html panel "Bitácora"
+// ══════════════════════════════
+
+model Pedido {
+  id             Int          @id @default(autoincrement())
+  folio          String       @unique // "PED-0008"
+  sucursalId     Int
+  usuarioId      Int
+  clienteId      Int?
+  estado         EstadoPedido @default(BORRADOR)
+  totalEstimado  Decimal      @db.Decimal(10, 2)
+  motivoBloqueo  String?
+  notas          String?
+  creadoEn       DateTime     @default(now())
+  actualizadoEn  DateTime     @updatedAt
+
+  sucursal Sucursal       @relation(fields: [sucursalId], references: [id])
+  usuario  Usuario        @relation(fields: [usuarioId], references: [id])
+  cliente  Cliente?       @relation(fields: [clienteId], references: [id])
+  detalles DetallePedido[]
+}
+
+model DetallePedido {
+  id             Int     @id @default(autoincrement())
+  pedidoId       Int
+  productoId     Int
+  cantidad       Int
+  precioAcordado Decimal @db.Decimal(10, 2)
+  subtotal       Decimal @db.Decimal(10, 2)
+
+  pedido   Pedido   @relation(fields: [pedidoId], references: [id])
+  producto Producto @relation(fields: [productoId], references: [id])
+}
+
+// ══════════════════════════════
+//  ORDEN DE COMPRA (PROVEEDOR)
+// ══════════════════════════════
+
+model OrdenCompra {
+  id            Int               @id @default(autoincrement())
+  folio         String            @unique // "OC-0010"
+  sucursalId    Int
+  proveedorId   Int
+  estado        EstadoOrdenCompra @default(ENVIADO)
+  totalEstimado Decimal           @db.Decimal(10, 2)
+  notas         String?
+  creadaEn      DateTime          @default(now())
+  recibidaEn    DateTime?
+
+  sucursal  Sucursal             @relation(fields: [sucursalId], references: [id])
+  proveedor Proveedor            @relation(fields: [proveedorId], references: [id])
+  detalles  DetalleOrdenCompra[]
+}
+
+model DetalleOrdenCompra {
+  id               Int     @id @default(autoincrement())
+  ordenCompraId    Int
+  productoId       Int
+  cantidadPedida   Int
+  cantidadRecibida Int     @default(0) // sube al confirmar recepción física
+  precioCosto      Decimal @db.Decimal(10, 2)
+  subtotal         Decimal @db.Decimal(10, 2)
+
+  ordenCompra OrdenCompra @relation(fields: [ordenCompraId], references: [id])
+  producto    Producto    @relation(fields: [productoId], references: [id])
+}
+
+// ══════════════════════════════
+//  PROMOCIÓN
+// ══════════════════════════════
+
+model Promocion {
+  id          Int              @id @default(autoincrement())
+  nombre      String
+  tipo        TipoPromocion
+  alcance     AlcancePromocion
+  descuento   Decimal          @db.Decimal(5, 2)
+  activa      Boolean          @default(true)
+  fechaInicio DateTime
+  fechaFin    DateTime
+  sucursalId  Int
+  categoriaId Int?
+  notas       String?
+  creadaEn    DateTime         @default(now())
+
+  sucursal      Sucursal       @relation(fields: [sucursalId], references: [id])
+  categoria     Categoria?     @relation(fields: [categoriaId], references: [id])
+  productos     Producto[]     @relation("PromocionProducto")
+  detallesVenta DetalleVenta[]
+}
+
+// ══════════════════════════════
+//  FACTURA CFDI 4.0
+// ══════════════════════════════
+
+model FacturaCfdi {
+  id              Int           @id @default(autoincrement())
+  ventaId         Int           @unique // una factura máximo por venta
+  clienteId       Int
+  rfcReceptor     String
+  nombreReceptor  String
+  cpReceptor      String
+  regimenFiscal   String
+  usoCfdi         String
+  lugarExpedicion String        // CP de la sucursal
+  subtotal        Decimal       @db.Decimal(10, 2)
+  iva             Decimal       @db.Decimal(10, 2)
+  total           Decimal       @db.Decimal(10, 2)
+  folioFiscal     String?       // UUID del SAT — llega del PAC
+  xmlUrl          String?
+  pdfUrl          String?
+  estado          EstadoFactura @default(FACTURADA)
+  timbradaEn      DateTime?
+  creadaEn        DateTime      @default(now())
+
+  venta   Venta   @relation(fields: [ventaId], references: [id])
+  cliente Cliente @relation(fields: [clienteId], references: [id])
+}
+
+// ══════════════════════════════
+//  AUDITORÍA
+//  Registra TODA acción importante del sistema
+// ══════════════════════════════
+
+model Auditoria {
+  id           Int      @id @default(autoincrement())
+  usuarioId    Int?
+  sucursalId   Int?
+  accion       String   // "CREAR_VENTA" | "CANCELAR_VENTA" | "EDITAR_PRODUCTO"
+  modulo       String   // "ventas" | "inventario" | "caja" | "usuarios"
+  referencia   String?  // "VTA-0042"
+  valorAntes   Json?    // snapshot antes del cambio
+  valorDespues Json?    // snapshot después del cambio
+  ip           String?
+  creadoEn     DateTime @default(now())
+
+  usuario  Usuario?  @relation(fields: [usuarioId], references: [id])
+  sucursal Sucursal? @relation(fields: [sucursalId], references: [id])
+}
