@@ -1,0 +1,4572 @@
+This file is a merged representation of a subset of the codebase, containing specifically included files, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of a subset of the repository's contents that is considered the most important context.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Only files matching these patterns are included: src/**/*, prisma/**/*, *.js, package.json
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+package.json
+prisma/migrations/20260304191540_init/migration.sql
+prisma/migrations/20260305_ampliar_cliente_opcion_b/migration.sql
+prisma/migrations/20260306193419_agregar_departamentos_y_campos_productos/migration.sql
+prisma/migrations/migration_lock.toml
+prisma/schema.prisma
+prisma/schema.prisma.backup
+prisma/seed.js
+seed.js
+src/app.js
+src/middlewares/auth.middleware.js
+src/modules/auth/auth.controller.js
+src/modules/auth/auth.routes.js
+src/modules/clientes/clientes.controller.js
+src/modules/clientes/clientes.routes.js
+src/modules/clientes/clientes.service.js
+src/modules/productos/productos.controller.js
+src/modules/productos/productos.routes.js
+src/modules/productos/productos.service.js
+src/modules/usuarios/usuarios.controller.js
+src/modules/usuarios/usuarios.routes.js
+src/prisma.client.js
+src/server.js
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path="package.json">
+{
+  "name": "jesha-pos-backend",
+  "version": "1.0.0",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "seed": "node prisma/seed.js",
+    "studio": "npx prisma studio",
+    "migrate": "npx prisma migrate dev"
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "^7.4.2",
+    "@prisma/client": "^7.4.2",
+    "bcrypt": "^5.1.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.18.2",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^2.1.1",
+    "pg": "^8.11.3",
+    "sharp": "^0.34.5"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0",
+    "prisma": "^7.4.2"
+  }
+}
+</file>
+
+<file path="prisma/migrations/20260304191540_init/migration.sql">
+-- CreateEnum
+CREATE TYPE "Rol" AS ENUM ('SUPERADMIN', 'ADMIN_SUCURSAL', 'EMPLEADO', 'PRECIOS');
+
+-- CreateEnum
+CREATE TYPE "EstadoVenta" AS ENUM ('COMPLETADA', 'CANCELADA');
+
+-- CreateEnum
+CREATE TYPE "MetodoPago" AS ENUM ('EFECTIVO', 'DEBITO', 'CREDITO', 'TRANSFERENCIA');
+
+-- CreateEnum
+CREATE TYPE "EstadoCotizacion" AS ENUM ('PENDIENTE', 'CONVERTIDA', 'VENCIDA', 'CANCELADA');
+
+-- CreateEnum
+CREATE TYPE "EstadoPedido" AS ENUM ('BORRADOR', 'PENDIENTE', 'ACTIVO', 'BLOQUEADO', 'EJECUTADO', 'CANCELADO');
+
+-- CreateEnum
+CREATE TYPE "EstadoOrdenCompra" AS ENUM ('ENVIADO', 'RECIBIDO_PARCIAL', 'RECIBIDO', 'CANCELADO');
+
+-- CreateEnum
+CREATE TYPE "EstadoFactura" AS ENUM ('DISPONIBLE', 'FACTURADA', 'VENCIDA', 'CANCELADA');
+
+-- CreateEnum
+CREATE TYPE "TipoMovimientoInventario" AS ENUM ('ENTRADA_COMPRA', 'SALIDA_VENTA', 'AJUSTE_POSITIVO', 'AJUSTE_NEGATIVO', 'DEVOLUCION_ENTRADA', 'DEVOLUCION_SALIDA');
+
+-- CreateEnum
+CREATE TYPE "TipoMovimientoCaja" AS ENUM ('APERTURA', 'VENTA', 'DEVOLUCION', 'AJUSTE', 'CIERRE');
+
+-- CreateEnum
+CREATE TYPE "TipoPromocion" AS ENUM ('BUEN_FIN', 'HOT_SALE', 'MANUAL');
+
+-- CreateEnum
+CREATE TYPE "AlcancePromocion" AS ENUM ('PRODUCTO', 'CATEGORIA', 'SUCURSAL');
+
+-- CreateEnum
+CREATE TYPE "EstadoAlerta" AS ENUM ('PENDIENTE', 'VISTA', 'RESUELTA');
+
+-- CreateTable
+CREATE TABLE "Sucursal" (
+    "id" SERIAL NOT NULL,
+    "nombre" TEXT NOT NULL,
+    "direccion" TEXT,
+    "telefono" TEXT,
+    "codigoPostal" TEXT NOT NULL,
+    "activa" BOOLEAN NOT NULL DEFAULT true,
+    "creadaEn" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "Sucursal_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "Usuario" (
+    "id" SERIAL NOT NULL,
+    "nombre" TEXT NOT NULL,
+    "username" TEXT NOT NULL,
+    "passwordHash" TEXT NOT NULL,
+    "rol" "Rol" NOT NULL,
+    "activo" BOOLEAN NOT NULL DEFAULT true,
+    "creadoEn" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "sucursalId" INTEGER,
+
+    CONSTRAINT "Usuario_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "Cliente" (
+    "id" SERIAL NOT NULL,
+    "nombre" TEXT NOT NULL,
+    "rfc" TEXT,
+    "telefono" TEXT,
+    "email" TEXT,
+    "codigoPostalFiscal" TEXT,
+    "regimenFiscal" TEXT,
+    "tipo" TEXT NOT NULL DEFAULT 'REGULAR',
+    "notas" TEXT,
+    "creadoEn" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "Cliente_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "Categoria" (
+    "id" SERIAL NOT NULL,
+    "nombre" TEXT NOT NULL,
+    "descripcion" TEXT,
+
+    CONSTRAINT "Categoria_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "Proveedor" (
+    "id" SERIAL NOT NULL,
+    "nombreOficial" TEXT NOT NULL,
+    "alias" TEXT,
+    "telefono" TEXT,
+    "celular" TEXT,
+    "email" TEXT,
+    "activo" BOOLEAN NOT NULL DEFAULT true,
+    "creadoEn" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "Proveedor_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "ProveedorProducto" (
+    "id" SERIAL NOT NULL,
+    "proveedorId" INTEGER NOT NULL,
+    "productoId" INTEGER NOT NULL,
+    "codigoProveedor" TEXT,
+    "precioCosto" DECIMAL(10,2) NOT NULL,
+    "activo" BOOLEAN NOT NULL DEFAULT true,
+
+    CONSTRAINT "ProveedorProducto_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "Producto" (
+    "id" SERIAL NOT NULL,
+    "nombre" TEXT NOT NULL,
+    "codigoBarras" TEXT,
+    "descripcion" TEXT,
+    "imagenUrl" TEXT,
+    "precioBase" DECIMAL(10,2) NOT NULL,
+    "costo" DECIMAL(10,2),
+    "activo" BOOLEAN NOT NULL DEFAULT true,
+    "creadoEn" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "actualizadoEn" TIMESTAMP(3) NOT NULL,
+    "categoriaId" INTEGER NOT NULL,
+
+    CONSTRAINT "Producto_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "InventarioSucursal" (
+    "id" SERIAL NOT NULL,
+    "productoId" INTEGER NOT NULL,
+    "sucursalId" INTEGER NOT NULL,
+    "stockActual" INTEGER NOT NULL DEFAULT 0,
+    "stockMinimoAlerta" INTEGER NOT NULL DEFAULT 5,
+    "stockMaximo" INTEGER,
+    "actualizadoEn" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "InventarioSucursal_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "MovimientoInventario" (
+    "id" SERIAL NOT NULL,
+    "productoId" INTEGER NOT NULL,
+    "sucursalId" INTEGER NOT NULL,
+    "tipo" "TipoMovimientoInventario" NOT NULL,
+    "cantidad" INTEGER NOT NULL,
+    "stockAntes" INTEGER NOT NULL,
+    "stockDespues" INTEGER NOT NULL,
+    "referencia" TEXT,
+    "notas" TEXT,
+    "creadoEn" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "MovimientoInventario_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "AlertaStock" (
+    "id" SERIAL NOT NULL,
+    "productoId" INTEGER NOT NULL,
+    "sucursalId" INTEGER NOT NULL,
+    "stockActual" INTEGER NOT NULL,
+    "stockMinimo" INTEGER NOT NULL,
+    "estado" "EstadoAlerta" NOT NULL DEFAULT 'PENDIENTE',
+    "creadaEn" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "vistaEn" TIMESTAMP(3),
+
+    CONSTRAINT "AlertaStock_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "TurnoCaja" (
+    "id" SERIAL NOT NULL,
+    "sucursalId" INTEGER NOT NULL,
+    "usuarioId" INTEGER NOT NULL,
+    "montoInicial" DECIMAL(10,2) NOT NULL,
+    "montoFinalDeclarado" DECIMAL(10,2),
+    "montoCalculado" DECIMAL(10,2),
+    "diferencia" DECIMAL(10,2),
+    "abierto" BOOLEAN NOT NULL DEFAULT true,
+    "abiertaEn" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "cerradaEn" TIMESTAMP(3),
+
+    CONSTRAINT "TurnoCaja_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "MovimientoCaja" (
+    "id" SERIAL NOT NULL,
+    "turnoId" INTEGER NOT NULL,
+    "tipo" "TipoMovimientoCaja" NOT NULL,
+    "monto" DECIMAL(10,2) NOT NULL,
+    "metodoPago" "MetodoPago",
+    "referencia" TEXT,
+    "notas" TEXT,
+    "creadoEn" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "MovimientoCaja_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "Venta" (
+    "id" SERIAL NOT NULL,
+    "folio" TEXT NOT NULL,
+    "sucursalId" INTEGER NOT NULL,
+    "usuarioId" INTEGER NOT NULL,
+    "clienteId" INTEGER,
+    "turnoId" INTEGER,
+    "metodoPago" "MetodoPago" NOT NULL,
+    "subtotal" DECIMAL(10,2) NOT NULL,
+    "descuento" DECIMAL(10,2) NOT NULL DEFAULT 0,
+    "total" DECIMAL(10,2) NOT NULL,
+    "estado" "EstadoVenta" NOT NULL DEFAULT 'COMPLETADA',
+    "tokenQr" TEXT NOT NULL,
+    "facturaEstado" "EstadoFactura" NOT NULL DEFAULT 'DISPONIBLE',
+    "facturaLimite" TIMESTAMP(3) NOT NULL,
+    "notas" TEXT,
+    "creadaEn" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "Venta_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "DetalleVenta" (
+    "id" SERIAL NOT NULL,
+    "ventaId" INTEGER NOT NULL,
+    "productoId" INTEGER NOT NULL,
+    "cantidad" INTEGER NOT NULL,
+    "precioUnitario" DECIMAL(10,2) NOT NULL,
+    "descuento" DECIMAL(10,2) NOT NULL DEFAULT 0,
+    "subtotal" DECIMAL(10,2) NOT NULL,
+    "promocionId" INTEGER,
+
+    CONSTRAINT "DetalleVenta_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "Devolucion" (
+    "id" SERIAL NOT NULL,
+    "ventaId" INTEGER NOT NULL,
+    "sucursalId" INTEGER NOT NULL,
+    "usuarioId" INTEGER NOT NULL,
+    "motivo" TEXT NOT NULL,
+    "reintegraInventario" BOOLEAN NOT NULL DEFAULT true,
+    "tipoReembolso" TEXT NOT NULL,
+    "montoReembolso" DECIMAL(10,2) NOT NULL,
+    "notas" TEXT,
+    "creadaEn" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "Devolucion_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "DetalleDevolucion" (
+    "id" SERIAL NOT NULL,
+    "devolucionId" INTEGER NOT NULL,
+    "productoId" INTEGER NOT NULL,
+    "cantidad" INTEGER NOT NULL,
+    "precioUnitario" DECIMAL(10,2) NOT NULL,
+
+    CONSTRAINT "DetalleDevolucion_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "Cotizacion" (
+    "id" SERIAL NOT NULL,
+    "folio" TEXT NOT NULL,
+    "sucursalId" INTEGER NOT NULL,
+    "usuarioId" INTEGER NOT NULL,
+    "clienteId" INTEGER,
+    "total" DECIMAL(10,2) NOT NULL,
+    "estado" "EstadoCotizacion" NOT NULL DEFAULT 'PENDIENTE',
+    "venceEn" TIMESTAMP(3),
+    "notas" TEXT,
+    "creadaEn" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "Cotizacion_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "DetalleCotizacion" (
+    "id" SERIAL NOT NULL,
+    "cotizacionId" INTEGER NOT NULL,
+    "productoId" INTEGER NOT NULL,
+    "cantidad" INTEGER NOT NULL,
+    "precioUnitario" DECIMAL(10,2) NOT NULL,
+    "subtotal" DECIMAL(10,2) NOT NULL,
+
+    CONSTRAINT "DetalleCotizacion_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "Pedido" (
+    "id" SERIAL NOT NULL,
+    "folio" TEXT NOT NULL,
+    "sucursalId" INTEGER NOT NULL,
+    "usuarioId" INTEGER NOT NULL,
+    "clienteId" INTEGER,
+    "estado" "EstadoPedido" NOT NULL DEFAULT 'BORRADOR',
+    "totalEstimado" DECIMAL(10,2) NOT NULL,
+    "motivoBloqueo" TEXT,
+    "notas" TEXT,
+    "creadoEn" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "actualizadoEn" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "Pedido_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "DetallePedido" (
+    "id" SERIAL NOT NULL,
+    "pedidoId" INTEGER NOT NULL,
+    "productoId" INTEGER NOT NULL,
+    "cantidad" INTEGER NOT NULL,
+    "precioAcordado" DECIMAL(10,2) NOT NULL,
+    "subtotal" DECIMAL(10,2) NOT NULL,
+
+    CONSTRAINT "DetallePedido_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "OrdenCompra" (
+    "id" SERIAL NOT NULL,
+    "folio" TEXT NOT NULL,
+    "sucursalId" INTEGER NOT NULL,
+    "proveedorId" INTEGER NOT NULL,
+    "estado" "EstadoOrdenCompra" NOT NULL DEFAULT 'ENVIADO',
+    "totalEstimado" DECIMAL(10,2) NOT NULL,
+    "notas" TEXT,
+    "creadaEn" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "recibidaEn" TIMESTAMP(3),
+
+    CONSTRAINT "OrdenCompra_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "DetalleOrdenCompra" (
+    "id" SERIAL NOT NULL,
+    "ordenCompraId" INTEGER NOT NULL,
+    "productoId" INTEGER NOT NULL,
+    "cantidadPedida" INTEGER NOT NULL,
+    "cantidadRecibida" INTEGER NOT NULL DEFAULT 0,
+    "precioCosto" DECIMAL(10,2) NOT NULL,
+    "subtotal" DECIMAL(10,2) NOT NULL,
+
+    CONSTRAINT "DetalleOrdenCompra_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "Promocion" (
+    "id" SERIAL NOT NULL,
+    "nombre" TEXT NOT NULL,
+    "tipo" "TipoPromocion" NOT NULL,
+    "alcance" "AlcancePromocion" NOT NULL,
+    "descuento" DECIMAL(5,2) NOT NULL,
+    "activa" BOOLEAN NOT NULL DEFAULT true,
+    "fechaInicio" TIMESTAMP(3) NOT NULL,
+    "fechaFin" TIMESTAMP(3) NOT NULL,
+    "sucursalId" INTEGER NOT NULL,
+    "categoriaId" INTEGER,
+    "notas" TEXT,
+    "creadaEn" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "Promocion_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "FacturaCfdi" (
+    "id" SERIAL NOT NULL,
+    "ventaId" INTEGER NOT NULL,
+    "clienteId" INTEGER NOT NULL,
+    "rfcReceptor" TEXT NOT NULL,
+    "nombreReceptor" TEXT NOT NULL,
+    "cpReceptor" TEXT NOT NULL,
+    "regimenFiscal" TEXT NOT NULL,
+    "usoCfdi" TEXT NOT NULL,
+    "lugarExpedicion" TEXT NOT NULL,
+    "subtotal" DECIMAL(10,2) NOT NULL,
+    "iva" DECIMAL(10,2) NOT NULL,
+    "total" DECIMAL(10,2) NOT NULL,
+    "folioFiscal" TEXT,
+    "xmlUrl" TEXT,
+    "pdfUrl" TEXT,
+    "estado" "EstadoFactura" NOT NULL DEFAULT 'FACTURADA',
+    "timbradaEn" TIMESTAMP(3),
+    "creadaEn" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "FacturaCfdi_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "Auditoria" (
+    "id" SERIAL NOT NULL,
+    "usuarioId" INTEGER,
+    "sucursalId" INTEGER,
+    "accion" TEXT NOT NULL,
+    "modulo" TEXT NOT NULL,
+    "referencia" TEXT,
+    "valorAntes" JSONB,
+    "valorDespues" JSONB,
+    "ip" TEXT,
+    "creadoEn" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "Auditoria_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "_PromocionProducto" (
+    "A" INTEGER NOT NULL,
+    "B" INTEGER NOT NULL,
+
+    CONSTRAINT "_PromocionProducto_AB_pkey" PRIMARY KEY ("A","B")
+);
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Usuario_username_key" ON "Usuario"("username");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Categoria_nombre_key" ON "Categoria"("nombre");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "ProveedorProducto_proveedorId_productoId_key" ON "ProveedorProducto"("proveedorId", "productoId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Producto_codigoBarras_key" ON "Producto"("codigoBarras");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "InventarioSucursal_productoId_sucursalId_key" ON "InventarioSucursal"("productoId", "sucursalId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "AlertaStock_productoId_sucursalId_estado_key" ON "AlertaStock"("productoId", "sucursalId", "estado");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Venta_folio_key" ON "Venta"("folio");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Venta_tokenQr_key" ON "Venta"("tokenQr");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Cotizacion_folio_key" ON "Cotizacion"("folio");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Pedido_folio_key" ON "Pedido"("folio");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "OrdenCompra_folio_key" ON "OrdenCompra"("folio");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "FacturaCfdi_ventaId_key" ON "FacturaCfdi"("ventaId");
+
+-- CreateIndex
+CREATE INDEX "_PromocionProducto_B_index" ON "_PromocionProducto"("B");
+
+-- AddForeignKey
+ALTER TABLE "Usuario" ADD CONSTRAINT "Usuario_sucursalId_fkey" FOREIGN KEY ("sucursalId") REFERENCES "Sucursal"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ProveedorProducto" ADD CONSTRAINT "ProveedorProducto_proveedorId_fkey" FOREIGN KEY ("proveedorId") REFERENCES "Proveedor"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ProveedorProducto" ADD CONSTRAINT "ProveedorProducto_productoId_fkey" FOREIGN KEY ("productoId") REFERENCES "Producto"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Producto" ADD CONSTRAINT "Producto_categoriaId_fkey" FOREIGN KEY ("categoriaId") REFERENCES "Categoria"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "InventarioSucursal" ADD CONSTRAINT "InventarioSucursal_productoId_fkey" FOREIGN KEY ("productoId") REFERENCES "Producto"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "InventarioSucursal" ADD CONSTRAINT "InventarioSucursal_sucursalId_fkey" FOREIGN KEY ("sucursalId") REFERENCES "Sucursal"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "MovimientoInventario" ADD CONSTRAINT "MovimientoInventario_productoId_fkey" FOREIGN KEY ("productoId") REFERENCES "Producto"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "AlertaStock" ADD CONSTRAINT "AlertaStock_sucursalId_fkey" FOREIGN KEY ("sucursalId") REFERENCES "Sucursal"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "TurnoCaja" ADD CONSTRAINT "TurnoCaja_sucursalId_fkey" FOREIGN KEY ("sucursalId") REFERENCES "Sucursal"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "TurnoCaja" ADD CONSTRAINT "TurnoCaja_usuarioId_fkey" FOREIGN KEY ("usuarioId") REFERENCES "Usuario"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "MovimientoCaja" ADD CONSTRAINT "MovimientoCaja_turnoId_fkey" FOREIGN KEY ("turnoId") REFERENCES "TurnoCaja"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Venta" ADD CONSTRAINT "Venta_sucursalId_fkey" FOREIGN KEY ("sucursalId") REFERENCES "Sucursal"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Venta" ADD CONSTRAINT "Venta_usuarioId_fkey" FOREIGN KEY ("usuarioId") REFERENCES "Usuario"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Venta" ADD CONSTRAINT "Venta_clienteId_fkey" FOREIGN KEY ("clienteId") REFERENCES "Cliente"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Venta" ADD CONSTRAINT "Venta_turnoId_fkey" FOREIGN KEY ("turnoId") REFERENCES "TurnoCaja"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "DetalleVenta" ADD CONSTRAINT "DetalleVenta_ventaId_fkey" FOREIGN KEY ("ventaId") REFERENCES "Venta"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "DetalleVenta" ADD CONSTRAINT "DetalleVenta_productoId_fkey" FOREIGN KEY ("productoId") REFERENCES "Producto"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "DetalleVenta" ADD CONSTRAINT "DetalleVenta_promocionId_fkey" FOREIGN KEY ("promocionId") REFERENCES "Promocion"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Devolucion" ADD CONSTRAINT "Devolucion_ventaId_fkey" FOREIGN KEY ("ventaId") REFERENCES "Venta"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "DetalleDevolucion" ADD CONSTRAINT "DetalleDevolucion_devolucionId_fkey" FOREIGN KEY ("devolucionId") REFERENCES "Devolucion"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Cotizacion" ADD CONSTRAINT "Cotizacion_sucursalId_fkey" FOREIGN KEY ("sucursalId") REFERENCES "Sucursal"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Cotizacion" ADD CONSTRAINT "Cotizacion_usuarioId_fkey" FOREIGN KEY ("usuarioId") REFERENCES "Usuario"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Cotizacion" ADD CONSTRAINT "Cotizacion_clienteId_fkey" FOREIGN KEY ("clienteId") REFERENCES "Cliente"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "DetalleCotizacion" ADD CONSTRAINT "DetalleCotizacion_cotizacionId_fkey" FOREIGN KEY ("cotizacionId") REFERENCES "Cotizacion"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "DetalleCotizacion" ADD CONSTRAINT "DetalleCotizacion_productoId_fkey" FOREIGN KEY ("productoId") REFERENCES "Producto"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Pedido" ADD CONSTRAINT "Pedido_sucursalId_fkey" FOREIGN KEY ("sucursalId") REFERENCES "Sucursal"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Pedido" ADD CONSTRAINT "Pedido_usuarioId_fkey" FOREIGN KEY ("usuarioId") REFERENCES "Usuario"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Pedido" ADD CONSTRAINT "Pedido_clienteId_fkey" FOREIGN KEY ("clienteId") REFERENCES "Cliente"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "DetallePedido" ADD CONSTRAINT "DetallePedido_pedidoId_fkey" FOREIGN KEY ("pedidoId") REFERENCES "Pedido"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "DetallePedido" ADD CONSTRAINT "DetallePedido_productoId_fkey" FOREIGN KEY ("productoId") REFERENCES "Producto"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "OrdenCompra" ADD CONSTRAINT "OrdenCompra_sucursalId_fkey" FOREIGN KEY ("sucursalId") REFERENCES "Sucursal"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "OrdenCompra" ADD CONSTRAINT "OrdenCompra_proveedorId_fkey" FOREIGN KEY ("proveedorId") REFERENCES "Proveedor"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "DetalleOrdenCompra" ADD CONSTRAINT "DetalleOrdenCompra_ordenCompraId_fkey" FOREIGN KEY ("ordenCompraId") REFERENCES "OrdenCompra"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "DetalleOrdenCompra" ADD CONSTRAINT "DetalleOrdenCompra_productoId_fkey" FOREIGN KEY ("productoId") REFERENCES "Producto"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Promocion" ADD CONSTRAINT "Promocion_sucursalId_fkey" FOREIGN KEY ("sucursalId") REFERENCES "Sucursal"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Promocion" ADD CONSTRAINT "Promocion_categoriaId_fkey" FOREIGN KEY ("categoriaId") REFERENCES "Categoria"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "FacturaCfdi" ADD CONSTRAINT "FacturaCfdi_ventaId_fkey" FOREIGN KEY ("ventaId") REFERENCES "Venta"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "FacturaCfdi" ADD CONSTRAINT "FacturaCfdi_clienteId_fkey" FOREIGN KEY ("clienteId") REFERENCES "Cliente"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Auditoria" ADD CONSTRAINT "Auditoria_usuarioId_fkey" FOREIGN KEY ("usuarioId") REFERENCES "Usuario"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Auditoria" ADD CONSTRAINT "Auditoria_sucursalId_fkey" FOREIGN KEY ("sucursalId") REFERENCES "Sucursal"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "_PromocionProducto" ADD CONSTRAINT "_PromocionProducto_A_fkey" FOREIGN KEY ("A") REFERENCES "Producto"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "_PromocionProducto" ADD CONSTRAINT "_PromocionProducto_B_fkey" FOREIGN KEY ("B") REFERENCES "Promocion"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+</file>
+
+<file path="prisma/migrations/20260305_ampliar_cliente_opcion_b/migration.sql">
+-- Migración: Ampliar Cliente a Opción B
+-- Añade campos SAT, crédito y auditoría
+-- Fecha: 2026-03-05
+
+-- 1. Agregar nuevos campos a tabla Cliente
+ALTER TABLE "Cliente" ADD COLUMN "razonSocial" TEXT;
+ALTER TABLE "Cliente" ADD COLUMN "usoCfdi" TEXT;
+ALTER TABLE "Cliente" ADD COLUMN "limiteCredito" DECIMAL(12,2) DEFAULT 0;
+ALTER TABLE "Cliente" ADD COLUMN "saldoCredito" DECIMAL(12,2) DEFAULT 0;
+ALTER TABLE "Cliente" ADD COLUMN "activo" BOOLEAN DEFAULT true;
+ALTER TABLE "Cliente" ADD COLUMN "actualizadoEn" TIMESTAMP(3) DEFAULT CURRENT_TIMESTAMP;
+
+-- 2. Hacer RFC único (opcional - descomentar si lo necesitas)
+-- ALTER TABLE "Cliente" ADD CONSTRAINT "Cliente_rfc_key" UNIQUE("rfc");
+
+-- 3. Hacer email único (opcional - descomentar si lo necesitas)
+-- ALTER TABLE "Cliente" ADD CONSTRAINT "Cliente_email_key" UNIQUE("email");
+
+-- 4. Cambiar tipo de REGULAR/FRECUENTE a GENERAL/REGISTRADO/FISCAL
+-- Primero actualizar valores existentes
+UPDATE "Cliente" 
+SET "tipo" = CASE 
+  WHEN "tipo" = 'REGULAR' THEN 'GENERAL'
+  WHEN "tipo" = 'FRECUENTE' THEN 'REGISTRADO'
+  ELSE 'GENERAL'
+END;
+
+-- 5. Crear tabla Abono para registrar pagos de crédito
+CREATE TABLE "Abono" (
+    "id" SERIAL NOT NULL PRIMARY KEY,
+    "clienteId" INTEGER NOT NULL,
+    "monto" DECIMAL(12,2) NOT NULL,
+    "metodoPago" VARCHAR(50) NOT NULL,
+    "referencia" TEXT,
+    "notas" TEXT,
+    "creadoEn" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "Abono_clienteId_fkey" FOREIGN KEY ("clienteId") REFERENCES "Cliente" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
+);
+
+-- 6. Crear índice para búsquedas rápidas en abonos
+CREATE INDEX "Abono_clienteId_idx" ON "Abono"("clienteId");
+CREATE INDEX "Abono_creadoEn_idx" ON "Abono"("creadoEn");
+
+-- 7. Crear índices adicionales en Cliente para búsquedas
+CREATE INDEX "Cliente_rfc_idx" ON "Cliente"("rfc");
+CREATE INDEX "Cliente_email_idx" ON "Cliente"("email");
+CREATE INDEX "Cliente_tipo_idx" ON "Cliente"("tipo");
+CREATE INDEX "Cliente_activo_idx" ON "Cliente"("activo");
+CREATE INDEX "Cliente_nombre_idx" ON "Cliente"("nombre");
+</file>
+
+<file path="prisma/migrations/20260306193419_agregar_departamentos_y_campos_productos/migration.sql">
+/*
+  Warnings:
+
+  - You are about to drop the column `activo` on the `Cliente` table. All the data in the column will be lost.
+  - You are about to drop the column `actualizadoEn` on the `Cliente` table. All the data in the column will be lost.
+  - You are about to drop the column `limiteCredito` on the `Cliente` table. All the data in the column will be lost.
+  - You are about to drop the column `razonSocial` on the `Cliente` table. All the data in the column will be lost.
+  - You are about to drop the column `saldoCredito` on the `Cliente` table. All the data in the column will be lost.
+  - You are about to drop the column `usoCfdi` on the `Cliente` table. All the data in the column will be lost.
+  - You are about to drop the `Abono` table. If the table is not empty, all the data it contains will be lost.
+  - A unique constraint covering the columns `[departamentoId,nombre]` on the table `Categoria` will be added. If there are existing duplicate values, this will fail.
+  - A unique constraint covering the columns `[rfc]` on the table `Cliente` will be added. If there are existing duplicate values, this will fail.
+  - A unique constraint covering the columns `[codigoInterno]` on the table `Producto` will be added. If there are existing duplicate values, this will fail.
+  - Added the required column `departamentoId` to the `Categoria` table without a default value. This is not possible if the table is not empty.
+  - Added the required column `codigoInterno` to the `Producto` table without a default value. This is not possible if the table is not empty.
+
+*/
+-- DropForeignKey
+ALTER TABLE "Abono" DROP CONSTRAINT "Abono_clienteId_fkey";
+
+-- DropForeignKey
+ALTER TABLE "DetalleCotizacion" DROP CONSTRAINT "DetalleCotizacion_cotizacionId_fkey";
+
+-- DropForeignKey
+ALTER TABLE "DetalleDevolucion" DROP CONSTRAINT "DetalleDevolucion_devolucionId_fkey";
+
+-- DropForeignKey
+ALTER TABLE "DetalleOrdenCompra" DROP CONSTRAINT "DetalleOrdenCompra_ordenCompraId_fkey";
+
+-- DropForeignKey
+ALTER TABLE "DetallePedido" DROP CONSTRAINT "DetallePedido_pedidoId_fkey";
+
+-- DropForeignKey
+ALTER TABLE "DetalleVenta" DROP CONSTRAINT "DetalleVenta_ventaId_fkey";
+
+-- DropForeignKey
+ALTER TABLE "Devolucion" DROP CONSTRAINT "Devolucion_ventaId_fkey";
+
+-- DropForeignKey
+ALTER TABLE "FacturaCfdi" DROP CONSTRAINT "FacturaCfdi_ventaId_fkey";
+
+-- DropForeignKey
+ALTER TABLE "InventarioSucursal" DROP CONSTRAINT "InventarioSucursal_productoId_fkey";
+
+-- DropForeignKey
+ALTER TABLE "MovimientoCaja" DROP CONSTRAINT "MovimientoCaja_turnoId_fkey";
+
+-- DropForeignKey
+ALTER TABLE "MovimientoInventario" DROP CONSTRAINT "MovimientoInventario_productoId_fkey";
+
+-- DropIndex
+DROP INDEX "Categoria_nombre_key";
+
+-- DropIndex
+DROP INDEX "Cliente_activo_idx";
+
+-- DropIndex
+DROP INDEX "Cliente_email_idx";
+
+-- DropIndex
+DROP INDEX "Cliente_nombre_idx";
+
+-- DropIndex
+DROP INDEX "Cliente_rfc_idx";
+
+-- DropIndex
+DROP INDEX "Cliente_tipo_idx";
+
+-- AlterTable
+ALTER TABLE "Categoria" ADD COLUMN     "creadoEn" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ADD COLUMN     "departamentoId" INTEGER NOT NULL;
+
+-- AlterTable
+ALTER TABLE "Cliente" DROP COLUMN "activo",
+DROP COLUMN "actualizadoEn",
+DROP COLUMN "limiteCredito",
+DROP COLUMN "razonSocial",
+DROP COLUMN "saldoCredito",
+DROP COLUMN "usoCfdi";
+
+-- AlterTable
+ALTER TABLE "MovimientoInventario" ADD COLUMN     "usuarioId" INTEGER;
+
+-- AlterTable
+ALTER TABLE "Producto" ADD COLUMN     "claveSat" TEXT,
+ADD COLUMN     "codigoInterno" TEXT NOT NULL,
+ADD COLUMN     "costoPromedio" DECIMAL(10,2),
+ADD COLUMN     "departamentoId" INTEGER,
+ADD COLUMN     "factorConversion" DECIMAL(10,4),
+ADD COLUMN     "imagenOriginal" TEXT,
+ADD COLUMN     "unidadCompra" TEXT,
+ADD COLUMN     "unidadSat" TEXT,
+ADD COLUMN     "unidadVenta" TEXT;
+
+-- DropTable
+DROP TABLE "Abono";
+
+-- CreateTable
+CREATE TABLE "Departamento" (
+    "id" SERIAL NOT NULL,
+    "nombre" TEXT NOT NULL,
+    "icono" TEXT,
+    "activo" BOOLEAN NOT NULL DEFAULT true,
+    "creadoEn" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "Departamento_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Departamento_nombre_key" ON "Departamento"("nombre");
+
+-- CreateIndex
+CREATE INDEX "Auditoria_usuarioId_idx" ON "Auditoria"("usuarioId");
+
+-- CreateIndex
+CREATE INDEX "Auditoria_modulo_idx" ON "Auditoria"("modulo");
+
+-- CreateIndex
+CREATE INDEX "Auditoria_accion_idx" ON "Auditoria"("accion");
+
+-- CreateIndex
+CREATE INDEX "Auditoria_creadoEn_idx" ON "Auditoria"("creadoEn");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Categoria_departamentoId_nombre_key" ON "Categoria"("departamentoId", "nombre");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Cliente_rfc_key" ON "Cliente"("rfc");
+
+-- CreateIndex
+CREATE INDEX "InventarioSucursal_sucursalId_idx" ON "InventarioSucursal"("sucursalId");
+
+-- CreateIndex
+CREATE INDEX "InventarioSucursal_stockActual_idx" ON "InventarioSucursal"("stockActual");
+
+-- CreateIndex
+CREATE INDEX "MovimientoInventario_productoId_idx" ON "MovimientoInventario"("productoId");
+
+-- CreateIndex
+CREATE INDEX "MovimientoInventario_sucursalId_idx" ON "MovimientoInventario"("sucursalId");
+
+-- CreateIndex
+CREATE INDEX "MovimientoInventario_usuarioId_idx" ON "MovimientoInventario"("usuarioId");
+
+-- CreateIndex
+CREATE INDEX "MovimientoInventario_tipo_idx" ON "MovimientoInventario"("tipo");
+
+-- CreateIndex
+CREATE INDEX "MovimientoInventario_creadoEn_idx" ON "MovimientoInventario"("creadoEn");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Producto_codigoInterno_key" ON "Producto"("codigoInterno");
+
+-- CreateIndex
+CREATE INDEX "Producto_nombre_idx" ON "Producto"("nombre");
+
+-- CreateIndex
+CREATE INDEX "Producto_codigoInterno_idx" ON "Producto"("codigoInterno");
+
+-- CreateIndex
+CREATE INDEX "Producto_codigoBarras_idx" ON "Producto"("codigoBarras");
+
+-- AddForeignKey
+ALTER TABLE "Categoria" ADD CONSTRAINT "Categoria_departamentoId_fkey" FOREIGN KEY ("departamentoId") REFERENCES "Departamento"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "InventarioSucursal" ADD CONSTRAINT "InventarioSucursal_productoId_fkey" FOREIGN KEY ("productoId") REFERENCES "Producto"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "MovimientoInventario" ADD CONSTRAINT "MovimientoInventario_productoId_fkey" FOREIGN KEY ("productoId") REFERENCES "Producto"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "MovimientoInventario" ADD CONSTRAINT "MovimientoInventario_usuarioId_fkey" FOREIGN KEY ("usuarioId") REFERENCES "Usuario"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "MovimientoCaja" ADD CONSTRAINT "MovimientoCaja_turnoId_fkey" FOREIGN KEY ("turnoId") REFERENCES "TurnoCaja"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "DetalleVenta" ADD CONSTRAINT "DetalleVenta_ventaId_fkey" FOREIGN KEY ("ventaId") REFERENCES "Venta"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Devolucion" ADD CONSTRAINT "Devolucion_ventaId_fkey" FOREIGN KEY ("ventaId") REFERENCES "Venta"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "DetalleDevolucion" ADD CONSTRAINT "DetalleDevolucion_devolucionId_fkey" FOREIGN KEY ("devolucionId") REFERENCES "Devolucion"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "DetalleCotizacion" ADD CONSTRAINT "DetalleCotizacion_cotizacionId_fkey" FOREIGN KEY ("cotizacionId") REFERENCES "Cotizacion"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "DetallePedido" ADD CONSTRAINT "DetallePedido_pedidoId_fkey" FOREIGN KEY ("pedidoId") REFERENCES "Pedido"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "DetalleOrdenCompra" ADD CONSTRAINT "DetalleOrdenCompra_ordenCompraId_fkey" FOREIGN KEY ("ordenCompraId") REFERENCES "OrdenCompra"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "FacturaCfdi" ADD CONSTRAINT "FacturaCfdi_ventaId_fkey" FOREIGN KEY ("ventaId") REFERENCES "Venta"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+</file>
+
+<file path="prisma/migrations/migration_lock.toml">
+# Please do not edit this file manually
+# It should be added in your version-control system (e.g., Git)
+provider = "postgresql"
+</file>
+
+<file path="prisma/schema.prisma">
+// ═══════════════════════════════════════════════════════════════════
+//  JESHA POS — Schema Prisma FINAL UNIFICADO
+//  Base de datos: PostgreSQL 18
+//  Fusión de Schema ACTUAL + Schema V2
+//  DEPARTAMENTOS: Herramientas, Plomería, Electricidad, Pintura, 
+//                Gas, Limpieza, Seguridad, Construcción, SERVICIOS
+//  ¡LISTA PARA IMPLEMENTAR!
+// ═══════════════════════════════════════════════════════════════════
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ═══════════════════════════════
+//  ENUMS
+// ═══════════════════════════════
+
+enum Rol {
+  SUPERADMIN
+  ADMIN_SUCURSAL
+  EMPLEADO
+  PRECIOS
+}
+
+enum EstadoVenta {
+  COMPLETADA
+  CANCELADA
+}
+
+enum MetodoPago {
+  EFECTIVO
+  DEBITO
+  CREDITO
+  TRANSFERENCIA
+}
+
+enum EstadoCotizacion {
+  PENDIENTE
+  CONVERTIDA
+  VENCIDA
+  CANCELADA
+}
+
+enum EstadoPedido {
+  BORRADOR
+  PENDIENTE
+  ACTIVO
+  BLOQUEADO
+  EJECUTADO
+  CANCELADO
+}
+
+enum EstadoOrdenCompra {
+  ENVIADO
+  RECIBIDO_PARCIAL
+  RECIBIDO
+  CANCELADO
+}
+
+enum EstadoFactura {
+  DISPONIBLE
+  FACTURADA
+  VENCIDA
+  CANCELADA
+}
+
+enum TipoMovimientoInventario {
+  ENTRADA_COMPRA
+  SALIDA_VENTA
+  AJUSTE_POSITIVO
+  AJUSTE_NEGATIVO
+  DEVOLUCION_ENTRADA
+  DEVOLUCION_SALIDA
+}
+
+enum TipoMovimientoCaja {
+  APERTURA
+  VENTA
+  DEVOLUCION
+  AJUSTE
+  CIERRE
+}
+
+enum TipoPromocion {
+  BUEN_FIN
+  HOT_SALE
+  MANUAL
+}
+
+enum AlcancePromocion {
+  PRODUCTO
+  CATEGORIA
+  SUCURSAL
+}
+
+enum EstadoAlerta {
+  PENDIENTE
+  VISTA
+  RESUELTA
+}
+
+// ═══════════════════════════════
+//  SUCURSAL
+// ═══════════════════════════════
+
+model Sucursal {
+  id           Int      @id @default(autoincrement())
+  nombre       String
+  direccion    String?
+  telefono     String?
+  codigoPostal String   // requerido para CFDI lugar_expedicion
+  activa       Boolean  @default(true)
+  creadaEn     DateTime @default(now())
+
+  usuarios      Usuario[]
+  inventarios   InventarioSucursal[]
+  ventas        Venta[]
+  cotizaciones  Cotizacion[]
+  pedidos       Pedido[]
+  ordenesCompra OrdenCompra[]
+  turnosCaja    TurnoCaja[]
+  promociones   Promocion[]
+  alertasStock  AlertaStock[]
+  auditorias    Auditoria[]
+}
+
+// ═══════════════════════════════
+//  USUARIO
+// ═══════════════════════════════
+
+model Usuario {
+  id           Int      @id @default(autoincrement())
+  nombre       String
+  username     String   @unique
+  passwordHash String
+  rol          Rol
+  activo       Boolean  @default(true)
+  creadoEn     DateTime @default(now())
+
+  sucursalId   Int?
+  sucursal     Sucursal? @relation(fields: [sucursalId], references: [id])
+
+  ventas         Venta[]
+  cotizaciones   Cotizacion[]
+  turnosCaja     TurnoCaja[]
+  pedidos        Pedido[]
+  movimientos    MovimientoInventario[]
+  auditorias     Auditoria[]
+}
+
+// ═══════════════════════════════
+//  CLIENTE
+// ═══════════════════════════════
+
+model Cliente {
+  id                 Int      @id @default(autoincrement())
+  nombre             String
+  rfc                String?  @unique
+  telefono           String?
+  email              String?
+  codigoPostalFiscal String?
+  regimenFiscal      String?
+  tipo               String   @default("REGULAR")
+  notas              String?
+  creadoEn           DateTime @default(now())
+
+  ventas       Venta[]
+  cotizaciones Cotizacion[]
+  pedidos      Pedido[]
+  facturas     FacturaCfdi[]
+}
+
+// ═══════════════════════════════
+//  DEPARTAMENTO (NUEVO)
+//  Nivel alto de categorización
+// ═══════════════════════════════
+
+model Departamento {
+  id        Int       @id @default(autoincrement())
+  nombre    String    @unique
+  icono     String?
+  activo    Boolean   @default(true)
+  creadoEn  DateTime  @default(now())
+
+  categorias Categoria[]
+}
+
+// ═══════════════════════════════
+//  CATEGORIA
+//  Modificado: Ahora con relación a Departamento
+// ═══════════════════════════════
+
+model Categoria {
+  id              Int    @id @default(autoincrement())
+  departamentoId  Int
+  nombre          String
+  descripcion     String?
+
+  creadoEn        DateTime @default(now())
+
+  departamento Departamento @relation(fields: [departamentoId], references: [id])
+  productos    Producto[]
+  promociones  Promocion[]
+
+  @@unique([departamentoId, nombre])
+}
+
+// ═══════════════════════════════
+//  PROVEEDOR
+// ═══════════════════════════════
+
+model Proveedor {
+  id            Int      @id @default(autoincrement())
+  nombreOficial String
+  alias         String?
+  telefono      String?
+  celular       String?
+  email         String?
+  activo        Boolean  @default(true)
+  creadoEn      DateTime @default(now())
+
+  productos     ProveedorProducto[]
+  ordenesCompra OrdenCompra[]
+}
+
+// ═══════════════════════════════
+//  PROVEEDOR-PRODUCTO
+//  Precio costo por proveedor por producto
+// ═══════════════════════════════
+
+model ProveedorProducto {
+  id              Int     @id @default(autoincrement())
+  proveedorId     Int
+  productoId      Int
+  codigoProveedor String?
+  precioCosto     Decimal @db.Decimal(10, 2)
+  activo          Boolean @default(true)
+
+  proveedor Proveedor @relation(fields: [proveedorId], references: [id])
+  producto  Producto  @relation(fields: [productoId], references: [id])
+
+  @@unique([proveedorId, productoId])
+}
+
+// ═══════════════════════════════
+//  PRODUCTO
+//  Modificado: Agrega codigoInterno, unidades SAT, costoPromedio
+// ═══════════════════════════════
+
+model Producto {
+  id              Int      @id @default(autoincrement())
+  
+  // Identificación
+  nombre          String
+  codigoInterno   String   @unique      // NUEVO: diferente a código de barras
+  codigoBarras    String?  @unique
+  descripcion     String?
+
+  // Imágenes
+  imagenUrl       String?
+  imagenOriginal  String?               // NUEVO: URL imagen original
+
+  // Precios y Costos
+  precioBase      Decimal  @db.Decimal(10, 2)     // BLINDADO
+  costo           Decimal? @db.Decimal(10, 2)     // Costo último
+  costoPromedio   Decimal? @db.Decimal(10, 2)     // NUEVO: Costo promedio ponderado
+
+  // Unidades de Medida (NUEVO)
+  unidadCompra    String?                         // ej: "caja"
+  unidadVenta     String?                         // ej: "pza"
+  factorConversion Decimal? @db.Decimal(10, 4)    // ej: 12
+
+  // Claves SAT (NUEVO)
+  claveSat        String?                         // 8 dígitos
+  unidadSat       String?                         // código SAT
+
+  // Relaciones
+  categoriaId     Int
+  departamentoId  Int?                            // NUEVO: opcional FK a departamento
+
+  // Estado
+  activo          Boolean  @default(true)
+  creadoEn        DateTime @default(now())
+  actualizadoEn   DateTime @updatedAt
+
+  categoria        Categoria          @relation(fields: [categoriaId], references: [id])
+  inventarios      InventarioSucursal[]
+  detallesVenta    DetalleVenta[]
+  detallesCotizacion DetalleCotizacion[]
+  detallesOrdenCompra DetalleOrdenCompra[]
+  detallesPedido   DetallePedido[]
+  proveedores      ProveedorProducto[]
+  promociones      Promocion[]        @relation("PromocionProducto")
+  movimientos      MovimientoInventario[]
+
+  @@index([nombre])
+  @@index([codigoInterno])
+  @@index([codigoBarras])
+}
+
+// ═══════════════════════════════
+//  INVENTARIO POR SUCURSAL
+// ═══════════════════════════════
+
+model InventarioSucursal {
+  id                Int      @id @default(autoincrement())
+  productoId        Int
+  sucursalId        Int
+  stockActual       Int      @default(0)
+  stockMinimoAlerta Int      @default(5)
+  stockMaximo       Int?
+  actualizadoEn     DateTime @updatedAt
+
+  producto Producto @relation(fields: [productoId], references: [id], onDelete: Cascade)
+  sucursal Sucursal @relation(fields: [sucursalId], references: [id])
+
+  @@unique([productoId, sucursalId])
+  @@index([sucursalId])
+  @@index([stockActual])
+}
+
+// ═══════════════════════════════
+//  MOVIMIENTO INVENTARIO
+//  Modificado: Agrega sucursalId, usuarioId e índices
+// ═══════════════════════════════
+
+model MovimientoInventario {
+  id           Int                      @id @default(autoincrement())
+  productoId   Int
+  sucursalId   Int                      // NUEVO
+  usuarioId    Int?                     // NUEVO: quién hizo el cambio
+  tipo         TipoMovimientoInventario
+  cantidad     Int
+  stockAntes   Int
+  stockDespues Int
+  referencia   String?
+  notas        String?
+  creadoEn     DateTime @default(now())
+
+  producto Producto @relation(fields: [productoId], references: [id], onDelete: Cascade)
+  usuario  Usuario? @relation(fields: [usuarioId], references: [id])
+
+  @@index([productoId])
+  @@index([sucursalId])
+  @@index([usuarioId])
+  @@index([tipo])
+  @@index([creadoEn])
+}
+
+// ═══════════════════════════════
+//  ALERTA DE STOCK BAJO
+// ═══════════════════════════════
+
+model AlertaStock {
+  id          Int          @id @default(autoincrement())
+  productoId  Int
+  sucursalId  Int
+  stockActual Int
+  stockMinimo Int
+  estado      EstadoAlerta @default(PENDIENTE)
+  creadaEn    DateTime     @default(now())
+  vistaEn     DateTime?
+
+  sucursal Sucursal @relation(fields: [sucursalId], references: [id])
+
+  @@unique([productoId, sucursalId, estado])
+}
+
+// ═══════════════════════════════
+//  TURNO DE CAJA
+// ═══════════════════════════════
+
+model TurnoCaja {
+  id                  Int       @id @default(autoincrement())
+  sucursalId          Int
+  usuarioId           Int
+  montoInicial        Decimal   @db.Decimal(10, 2)
+  montoFinalDeclarado Decimal?  @db.Decimal(10, 2)
+  montoCalculado      Decimal?  @db.Decimal(10, 2)
+  diferencia          Decimal?  @db.Decimal(10, 2)
+  abierto             Boolean   @default(true)
+  abiertaEn           DateTime  @default(now())
+  cerradaEn           DateTime?
+
+  sucursal    Sucursal         @relation(fields: [sucursalId], references: [id])
+  usuario     Usuario          @relation(fields: [usuarioId], references: [id])
+  ventas      Venta[]
+  movimientos MovimientoCaja[]
+}
+
+model MovimientoCaja {
+  id         Int                @id @default(autoincrement())
+  turnoId    Int
+  tipo       TipoMovimientoCaja
+  monto      Decimal            @db.Decimal(10, 2)
+  metodoPago MetodoPago?
+  referencia String?
+  notas      String?
+  creadoEn   DateTime           @default(now())
+
+  turno TurnoCaja @relation(fields: [turnoId], references: [id], onDelete: Cascade)
+}
+
+// ═══════════════════════════════
+//  VENTA
+// ═══════════════════════════════
+
+model Venta {
+  id            Int         @id @default(autoincrement())
+  folio         String      @unique
+  sucursalId    Int
+  usuarioId     Int
+  clienteId     Int?
+  turnoId       Int?
+  metodoPago    MetodoPago
+  subtotal      Decimal     @db.Decimal(10, 2)
+  descuento     Decimal     @default(0) @db.Decimal(10, 2)
+  total         Decimal     @db.Decimal(10, 2)
+  estado        EstadoVenta @default(COMPLETADA)
+
+  tokenQr       String        @unique @default(uuid())
+  facturaEstado EstadoFactura @default(DISPONIBLE)
+  facturaLimite DateTime
+
+  notas    String?
+  creadaEn DateTime @default(now())
+
+  sucursal     Sucursal       @relation(fields: [sucursalId], references: [id])
+  usuario      Usuario        @relation(fields: [usuarioId], references: [id])
+  cliente      Cliente?       @relation(fields: [clienteId], references: [id])
+  turno        TurnoCaja?     @relation(fields: [turnoId], references: [id])
+  detalles     DetalleVenta[]
+  devoluciones Devolucion[]
+  factura      FacturaCfdi?
+}
+
+model DetalleVenta {
+  id             Int     @id @default(autoincrement())
+  ventaId        Int
+  productoId     Int
+  cantidad       Int
+  precioUnitario Decimal @db.Decimal(10, 2)
+  descuento      Decimal @default(0) @db.Decimal(10, 2)
+  subtotal       Decimal @db.Decimal(10, 2)
+  promocionId    Int?
+
+  venta     Venta      @relation(fields: [ventaId], references: [id], onDelete: Cascade)
+  producto  Producto   @relation(fields: [productoId], references: [id])
+  promocion Promocion? @relation(fields: [promocionId], references: [id])
+}
+
+// ═══════════════════════════════
+//  DEVOLUCIÓN
+// ═══════════════════════════════
+
+model Devolucion {
+  id                  Int      @id @default(autoincrement())
+  ventaId             Int
+  sucursalId          Int
+  usuarioId           Int
+  motivo              String
+  reintegraInventario Boolean  @default(true)
+  tipoReembolso       String
+  montoReembolso      Decimal  @db.Decimal(10, 2)
+  notas               String?
+  creadaEn            DateTime @default(now())
+
+  venta    Venta               @relation(fields: [ventaId], references: [id], onDelete: Cascade)
+  detalles DetalleDevolucion[]
+}
+
+model DetalleDevolucion {
+  id             Int     @id @default(autoincrement())
+  devolucionId   Int
+  productoId     Int
+  cantidad       Int
+  precioUnitario Decimal @db.Decimal(10, 2)
+
+  devolucion Devolucion @relation(fields: [devolucionId], references: [id], onDelete: Cascade)
+}
+
+// ═══════════════════════════════
+//  COTIZACIÓN
+// ═══════════════════════════════
+
+model Cotizacion {
+  id         Int              @id @default(autoincrement())
+  folio      String           @unique
+  sucursalId Int
+  usuarioId  Int
+  clienteId  Int?
+  total      Decimal          @db.Decimal(10, 2)
+  estado     EstadoCotizacion @default(PENDIENTE)
+  venceEn    DateTime?
+  notas      String?
+  creadaEn   DateTime         @default(now())
+
+  sucursal Sucursal            @relation(fields: [sucursalId], references: [id])
+  usuario  Usuario             @relation(fields: [usuarioId], references: [id])
+  cliente  Cliente?            @relation(fields: [clienteId], references: [id])
+  detalles DetalleCotizacion[]
+}
+
+model DetalleCotizacion {
+  id             Int     @id @default(autoincrement())
+  cotizacionId   Int
+  productoId     Int
+  cantidad       Int
+  precioUnitario Decimal @db.Decimal(10, 2)
+  subtotal       Decimal @db.Decimal(10, 2)
+
+  cotizacion Cotizacion @relation(fields: [cotizacionId], references: [id], onDelete: Cascade)
+  producto   Producto   @relation(fields: [productoId], references: [id])
+}
+
+// ═══════════════════════════════
+//  PEDIDO (BITÁCORA)
+// ═══════════════════════════════
+
+model Pedido {
+  id             Int          @id @default(autoincrement())
+  folio          String       @unique
+  sucursalId     Int
+  usuarioId      Int
+  clienteId      Int?
+  estado         EstadoPedido @default(BORRADOR)
+  totalEstimado  Decimal      @db.Decimal(10, 2)
+  motivoBloqueo  String?
+  notas          String?
+  creadoEn       DateTime     @default(now())
+  actualizadoEn  DateTime     @updatedAt
+
+  sucursal Sucursal       @relation(fields: [sucursalId], references: [id])
+  usuario  Usuario        @relation(fields: [usuarioId], references: [id])
+  cliente  Cliente?       @relation(fields: [clienteId], references: [id])
+  detalles DetallePedido[]
+}
+
+model DetallePedido {
+  id             Int     @id @default(autoincrement())
+  pedidoId       Int
+  productoId     Int
+  cantidad       Int
+  precioAcordado Decimal @db.Decimal(10, 2)
+  subtotal       Decimal @db.Decimal(10, 2)
+
+  pedido   Pedido   @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+  producto Producto @relation(fields: [productoId], references: [id])
+}
+
+// ═══════════════════════════════
+//  ORDEN DE COMPRA
+// ═══════════════════════════════
+
+model OrdenCompra {
+  id            Int               @id @default(autoincrement())
+  folio         String            @unique
+  sucursalId    Int
+  proveedorId   Int
+  estado        EstadoOrdenCompra @default(ENVIADO)
+  totalEstimado Decimal           @db.Decimal(10, 2)
+  notas         String?
+  creadaEn      DateTime          @default(now())
+  recibidaEn    DateTime?
+
+  sucursal  Sucursal             @relation(fields: [sucursalId], references: [id])
+  proveedor Proveedor            @relation(fields: [proveedorId], references: [id])
+  detalles  DetalleOrdenCompra[]
+}
+
+model DetalleOrdenCompra {
+  id               Int     @id @default(autoincrement())
+  ordenCompraId    Int
+  productoId       Int
+  cantidadPedida   Int
+  cantidadRecibida Int     @default(0)
+  precioCosto      Decimal @db.Decimal(10, 2)
+  subtotal         Decimal @db.Decimal(10, 2)
+
+  ordenCompra OrdenCompra @relation(fields: [ordenCompraId], references: [id], onDelete: Cascade)
+  producto    Producto    @relation(fields: [productoId], references: [id])
+}
+
+// ═══════════════════════════════
+//  PROMOCIÓN
+// ═══════════════════════════════
+
+model Promocion {
+  id          Int              @id @default(autoincrement())
+  nombre      String
+  tipo        TipoPromocion
+  alcance     AlcancePromocion
+  descuento   Decimal          @db.Decimal(5, 2)
+  activa      Boolean          @default(true)
+  fechaInicio DateTime
+  fechaFin    DateTime
+  sucursalId  Int
+  categoriaId Int?
+  notas       String?
+  creadaEn    DateTime         @default(now())
+
+  sucursal      Sucursal       @relation(fields: [sucursalId], references: [id])
+  categoria     Categoria?     @relation(fields: [categoriaId], references: [id])
+  productos     Producto[]     @relation("PromocionProducto")
+  detallesVenta DetalleVenta[]
+}
+
+// ═══════════════════════════════
+//  FACTURA CFDI 4.0
+// ═══════════════════════════════
+
+model FacturaCfdi {
+  id              Int           @id @default(autoincrement())
+  ventaId         Int           @unique
+  clienteId       Int
+  rfcReceptor     String
+  nombreReceptor  String
+  cpReceptor      String
+  regimenFiscal   String
+  usoCfdi         String
+  lugarExpedicion String
+  subtotal        Decimal       @db.Decimal(10, 2)
+  iva             Decimal       @db.Decimal(10, 2)
+  total           Decimal       @db.Decimal(10, 2)
+  folioFiscal     String?
+  xmlUrl          String?
+  pdfUrl          String?
+  estado          EstadoFactura @default(FACTURADA)
+  timbradaEn      DateTime?
+  creadaEn        DateTime      @default(now())
+
+  venta   Venta   @relation(fields: [ventaId], references: [id], onDelete: Cascade)
+  cliente Cliente @relation(fields: [clienteId], references: [id])
+}
+
+// ═══════════════════════════════
+//  AUDITORÍA
+// ═══════════════════════════════
+
+model Auditoria {
+  id           Int      @id @default(autoincrement())
+  usuarioId    Int?
+  sucursalId   Int?
+  accion       String
+  modulo       String
+  referencia   String?
+  valorAntes   Json?
+  valorDespues Json?
+  ip           String?
+  creadoEn     DateTime @default(now())
+
+  usuario  Usuario?  @relation(fields: [usuarioId], references: [id])
+  sucursal Sucursal? @relation(fields: [sucursalId], references: [id])
+
+  @@index([usuarioId])
+  @@index([modulo])
+  @@index([accion])
+  @@index([creadoEn])
+}
+</file>
+
+<file path="prisma/schema.prisma.backup">
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+// ═══════════════════════════════════════════════
+//  JESHA POS — Schema Prisma Completo
+//  Base de datos: PostgreSQL 18
+//  Generado para conectar con frontend existente:
+//  login.html / index.html (dashboard) / newUser.html
+// ═══════════════════════════════════════════════
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ══════════════════════════════
+//  ENUMS
+// ══════════════════════════════
+
+enum Rol {
+  SUPERADMIN
+  ADMIN_SUCURSAL
+  EMPLEADO
+  PRECIOS
+}
+
+enum EstadoVenta {
+  COMPLETADA
+  CANCELADA
+}
+
+enum MetodoPago {
+  EFECTIVO
+  DEBITO
+  CREDITO
+  TRANSFERENCIA
+}
+
+enum EstadoCotizacion {
+  PENDIENTE
+  CONVERTIDA
+  VENCIDA
+  CANCELADA
+}
+
+enum EstadoPedido {
+  BORRADOR
+  PENDIENTE
+  ACTIVO
+  BLOQUEADO
+  EJECUTADO
+  CANCELADO
+}
+
+enum EstadoOrdenCompra {
+  ENVIADO
+  RECIBIDO_PARCIAL
+  RECIBIDO
+  CANCELADO
+}
+
+enum EstadoFactura {
+  DISPONIBLE
+  FACTURADA
+  VENCIDA
+  CANCELADA
+}
+
+enum TipoMovimientoInventario {
+  ENTRADA_COMPRA
+  SALIDA_VENTA
+  AJUSTE_POSITIVO
+  AJUSTE_NEGATIVO
+  DEVOLUCION_ENTRADA
+  DEVOLUCION_SALIDA
+}
+
+enum TipoMovimientoCaja {
+  APERTURA
+  VENTA
+  DEVOLUCION
+  AJUSTE
+  CIERRE
+}
+
+enum TipoPromocion {
+  BUEN_FIN
+  HOT_SALE
+  MANUAL
+}
+
+enum AlcancePromocion {
+  PRODUCTO
+  CATEGORIA
+  SUCURSAL
+}
+
+enum EstadoAlerta {
+  PENDIENTE
+  VISTA
+  RESUELTA
+}
+
+// ══════════════════════════════
+//  SUCURSAL
+// ══════════════════════════════
+
+model Sucursal {
+  id           Int      @id @default(autoincrement())
+  nombre       String
+  direccion    String?
+  telefono     String?
+  codigoPostal String   // requerido para CFDI lugar_expedicion
+  activa       Boolean  @default(true)
+  creadaEn     DateTime @default(now())
+
+  usuarios      Usuario[]
+  inventarios   InventarioSucursal[]
+  ventas        Venta[]
+  cotizaciones  Cotizacion[]
+  pedidos       Pedido[]
+  ordenesCompra OrdenCompra[]
+  turnosCaja    TurnoCaja[]
+  promociones   Promocion[]
+  alertasStock  AlertaStock[]
+  auditorias    Auditoria[]
+}
+
+// ══════════════════════════════
+//  USUARIO
+//  Conecta con: login.html, newUser.html, dashboard.js
+// ══════════════════════════════
+
+model Usuario {
+  id           Int      @id @default(autoincrement())
+  nombre       String
+  username     String   @unique
+  passwordHash String               // bcrypt — NUNCA texto plano
+  rol          Rol
+  activo       Boolean  @default(true)
+  creadoEn     DateTime @default(now())
+
+  sucursalId   Int?
+  sucursal     Sucursal? @relation(fields: [sucursalId], references: [id])
+
+  // SUPERADMIN tiene sucursalId = null (acceso global)
+  // EMPLEADO siempre tiene sucursalId asignado
+
+  ventas       Venta[]
+  cotizaciones Cotizacion[]
+  turnosCaja   TurnoCaja[]
+  pedidos      Pedido[]
+  auditorias   Auditoria[]
+}
+
+// ══════════════════════════════
+//  CLIENTE
+// ══════════════════════════════
+
+model Cliente {
+  id                 Int      @id @default(autoincrement())
+  nombre             String
+  rfc                String?
+  telefono           String?
+  email              String?
+  codigoPostalFiscal String?
+  regimenFiscal      String?
+  tipo               String   @default("REGULAR") // REGULAR | FRECUENTE
+  notas              String?
+  creadoEn           DateTime @default(now())
+
+  ventas       Venta[]
+  cotizaciones Cotizacion[]
+  pedidos      Pedido[]
+  facturas     FacturaCfdi[]
+}
+
+// ══════════════════════════════
+//  CATEGORIA
+// ══════════════════════════════
+
+model Categoria {
+  id          Int    @id @default(autoincrement())
+  nombre      String @unique
+  descripcion String?
+
+  productos   Producto[]
+  promociones Promocion[]
+}
+
+// ══════════════════════════════
+//  PROVEEDOR
+// ══════════════════════════════
+
+model Proveedor {
+  id            Int      @id @default(autoincrement())
+  nombreOficial String
+  alias         String?
+  telefono      String?
+  celular       String?
+  email         String?
+  activo        Boolean  @default(true)
+  creadoEn      DateTime @default(now())
+
+  productos     ProveedorProducto[]
+  ordenesCompra OrdenCompra[]
+}
+
+// Precio costo por proveedor por producto
+model ProveedorProducto {
+  id              Int     @id @default(autoincrement())
+  proveedorId     Int
+  productoId      Int
+  codigoProveedor String?
+  precioCosto     Decimal @db.Decimal(10, 2)
+  activo          Boolean @default(true)
+
+  proveedor Proveedor @relation(fields: [proveedorId], references: [id])
+  producto  Producto  @relation(fields: [productoId], references: [id])
+
+  @@unique([proveedorId, productoId])
+}
+
+// ══════════════════════════════
+//  PRODUCTO
+//  index.html muestra: nombre, stock, precio
+// ══════════════════════════════
+
+model Producto {
+  id            Int      @id @default(autoincrement())
+  nombre        String
+  codigoBarras  String?  @unique
+  descripcion   String?
+  imagenUrl     String?
+  precioBase    Decimal  @db.Decimal(10, 2) // BLINDADO — no modificar desde POS
+  costo         Decimal? @db.Decimal(10, 2)
+  activo        Boolean  @default(true)
+  creadoEn      DateTime @default(now())
+  actualizadoEn DateTime @updatedAt
+
+  categoriaId Int
+  categoria   Categoria @relation(fields: [categoriaId], references: [id])
+
+  inventarios          InventarioSucursal[]
+  detallesVenta        DetalleVenta[]
+  detallesCotizacion   DetalleCotizacion[]
+  detallesOrdenCompra  DetalleOrdenCompra[]
+  detallesPedido       DetallePedido[]
+  proveedores          ProveedorProducto[]
+  promociones          Promocion[]          @relation("PromocionProducto")
+  movimientosInventario MovimientoInventario[]
+}
+
+// ══════════════════════════════
+//  INVENTARIO POR SUCURSAL
+//  index.html kpi-card "Productos": stockActual
+//  index.html kpi-card "Stock Bajo": alertasStock
+// ══════════════════════════════
+
+model InventarioSucursal {
+  id                Int      @id @default(autoincrement())
+  productoId        Int
+  sucursalId        Int
+  stockActual       Int      @default(0)
+  stockMinimoAlerta Int      @default(5)  // genera AlertaStock si baja de aquí
+  stockMaximo       Int?
+  actualizadoEn     DateTime @updatedAt
+
+  producto Producto @relation(fields: [productoId], references: [id])
+  sucursal Sucursal @relation(fields: [sucursalId], references: [id])
+
+  @@unique([productoId, sucursalId])
+}
+
+// Historial completo de cada cambio en inventario
+model MovimientoInventario {
+  id           Int                      @id @default(autoincrement())
+  productoId   Int
+  sucursalId   Int
+  tipo         TipoMovimientoInventario
+  cantidad     Int
+  stockAntes   Int
+  stockDespues Int
+  referencia   String? // "VTA-0042" | "OC-0010" | "DEV-0003"
+  notas        String?
+  creadoEn     DateTime @default(now())
+
+  producto Producto @relation(fields: [productoId], references: [id])
+}
+
+// ══════════════════════════════
+//  ALERTA DE STOCK BAJO
+//  index.html kpi-card "Stock Bajo" cuenta estas
+// ══════════════════════════════
+
+model AlertaStock {
+  id          Int          @id @default(autoincrement())
+  productoId  Int
+  sucursalId  Int
+  stockActual Int
+  stockMinimo Int
+  estado      EstadoAlerta @default(PENDIENTE)
+  creadaEn    DateTime     @default(now())
+  vistaEn     DateTime?
+
+  sucursal Sucursal @relation(fields: [sucursalId], references: [id])
+
+  // Evita duplicados: un producto solo tiene UNA alerta PENDIENTE por sucursal
+  @@unique([productoId, sucursalId, estado])
+}
+
+// ══════════════════════════════
+//  TURNO DE CAJA
+// ══════════════════════════════
+
+model TurnoCaja {
+  id                   Int       @id @default(autoincrement())
+  sucursalId           Int
+  usuarioId            Int
+  montoInicial         Decimal   @db.Decimal(10, 2)
+  montoFinalDeclarado  Decimal?  @db.Decimal(10, 2)
+  montoCalculado       Decimal?  @db.Decimal(10, 2) // suma desde MovimientoCaja
+  diferencia           Decimal?  @db.Decimal(10, 2)
+  abierto              Boolean   @default(true)
+  abiertaEn            DateTime  @default(now())
+  cerradaEn            DateTime?
+
+  sucursal    Sucursal         @relation(fields: [sucursalId], references: [id])
+  usuario     Usuario          @relation(fields: [usuarioId], references: [id])
+  ventas      Venta[]
+  movimientos MovimientoCaja[]
+}
+
+model MovimientoCaja {
+  id         Int                @id @default(autoincrement())
+  turnoId    Int
+  tipo       TipoMovimientoCaja
+  monto      Decimal            @db.Decimal(10, 2)
+  metodoPago MetodoPago?
+  referencia String?
+  notas      String?
+  creadoEn   DateTime           @default(now())
+
+  turno TurnoCaja @relation(fields: [turnoId], references: [id])
+}
+
+// ══════════════════════════════
+//  VENTA
+//  index.html kpi-cards "Ventas Hoy" y "Total Ventas"
+//  index.html panel "Ventas Recientes"
+// ══════════════════════════════
+
+model Venta {
+  id            Int         @id @default(autoincrement())
+  folio         String      @unique // "VTA-0042"
+  sucursalId    Int
+  usuarioId     Int
+  clienteId     Int?        // null = venta pública sin cliente
+  turnoId       Int?
+  metodoPago    MetodoPago
+  subtotal      Decimal     @db.Decimal(10, 2)
+  descuento     Decimal     @default(0) @db.Decimal(10, 2)
+  total         Decimal     @db.Decimal(10, 2)
+  estado        EstadoVenta @default(COMPLETADA)
+
+  // Autofacturación QR — ventana 72 horas
+  tokenQr       String        @unique @default(uuid())
+  facturaEstado EstadoFactura @default(DISPONIBLE)
+  facturaLimite DateTime      // = creadaEn + 72h, calculado al insertar
+
+  notas    String?
+  creadaEn DateTime @default(now())
+
+  sucursal    Sucursal       @relation(fields: [sucursalId], references: [id])
+  usuario     Usuario        @relation(fields: [usuarioId], references: [id])
+  cliente     Cliente?       @relation(fields: [clienteId], references: [id])
+  turno       TurnoCaja?     @relation(fields: [turnoId], references: [id])
+  detalles    DetalleVenta[]
+  devoluciones Devolucion[]
+  factura     FacturaCfdi?
+}
+
+model DetalleVenta {
+  id             Int     @id @default(autoincrement())
+  ventaId        Int
+  productoId     Int
+  cantidad       Int
+  precioUnitario Decimal @db.Decimal(10, 2) // snapshot al momento de vender
+  descuento      Decimal @default(0) @db.Decimal(10, 2)
+  subtotal       Decimal @db.Decimal(10, 2)
+  promocionId    Int?    // qué promo aplicó
+
+  venta     Venta      @relation(fields: [ventaId], references: [id])
+  producto  Producto   @relation(fields: [productoId], references: [id])
+  promocion Promocion? @relation(fields: [promocionId], references: [id])
+}
+
+// ══════════════════════════════
+//  DEVOLUCIÓN
+// ══════════════════════════════
+
+model Devolucion {
+  id                  Int      @id @default(autoincrement())
+  ventaId             Int
+  sucursalId          Int
+  usuarioId           Int
+  motivo              String
+  reintegraInventario Boolean  @default(true) // false = producto dañado
+  tipoReembolso       String   // "EFECTIVO" | "NOTA_CREDITO"
+  montoReembolso      Decimal  @db.Decimal(10, 2)
+  notas               String?
+  creadaEn            DateTime @default(now())
+
+  venta    Venta               @relation(fields: [ventaId], references: [id])
+  detalles DetalleDevolucion[]
+}
+
+model DetalleDevolucion {
+  id             Int     @id @default(autoincrement())
+  devolucionId   Int
+  productoId     Int
+  cantidad       Int
+  precioUnitario Decimal @db.Decimal(10, 2)
+
+  devolucion Devolucion @relation(fields: [devolucionId], references: [id])
+}
+
+// ══════════════════════════════
+//  COTIZACIÓN
+// ══════════════════════════════
+
+model Cotizacion {
+  id         Int              @id @default(autoincrement())
+  folio      String           @unique // "COT-0021"
+  sucursalId Int
+  usuarioId  Int
+  clienteId  Int?
+  total      Decimal          @db.Decimal(10, 2)
+  estado     EstadoCotizacion @default(PENDIENTE)
+  venceEn    DateTime?
+  notas      String?
+  creadaEn   DateTime         @default(now())
+
+  sucursal Sucursal           @relation(fields: [sucursalId], references: [id])
+  usuario  Usuario            @relation(fields: [usuarioId], references: [id])
+  cliente  Cliente?           @relation(fields: [clienteId], references: [id])
+  detalles DetalleCotizacion[]
+}
+
+model DetalleCotizacion {
+  id             Int     @id @default(autoincrement())
+  cotizacionId   Int
+  productoId     Int
+  cantidad       Int
+  precioUnitario Decimal @db.Decimal(10, 2)
+  subtotal       Decimal @db.Decimal(10, 2)
+
+  cotizacion Cotizacion @relation(fields: [cotizacionId], references: [id])
+  producto   Producto   @relation(fields: [productoId], references: [id])
+}
+
+// ══════════════════════════════
+//  PEDIDO GRANDE (BITÁCORA)
+//  index.html panel "Bitácora"
+// ══════════════════════════════
+
+model Pedido {
+  id             Int          @id @default(autoincrement())
+  folio          String       @unique // "PED-0008"
+  sucursalId     Int
+  usuarioId      Int
+  clienteId      Int?
+  estado         EstadoPedido @default(BORRADOR)
+  totalEstimado  Decimal      @db.Decimal(10, 2)
+  motivoBloqueo  String?
+  notas          String?
+  creadoEn       DateTime     @default(now())
+  actualizadoEn  DateTime     @updatedAt
+
+  sucursal Sucursal       @relation(fields: [sucursalId], references: [id])
+  usuario  Usuario        @relation(fields: [usuarioId], references: [id])
+  cliente  Cliente?       @relation(fields: [clienteId], references: [id])
+  detalles DetallePedido[]
+}
+
+model DetallePedido {
+  id             Int     @id @default(autoincrement())
+  pedidoId       Int
+  productoId     Int
+  cantidad       Int
+  precioAcordado Decimal @db.Decimal(10, 2)
+  subtotal       Decimal @db.Decimal(10, 2)
+
+  pedido   Pedido   @relation(fields: [pedidoId], references: [id])
+  producto Producto @relation(fields: [productoId], references: [id])
+}
+
+// ══════════════════════════════
+//  ORDEN DE COMPRA (PROVEEDOR)
+// ══════════════════════════════
+
+model OrdenCompra {
+  id            Int               @id @default(autoincrement())
+  folio         String            @unique // "OC-0010"
+  sucursalId    Int
+  proveedorId   Int
+  estado        EstadoOrdenCompra @default(ENVIADO)
+  totalEstimado Decimal           @db.Decimal(10, 2)
+  notas         String?
+  creadaEn      DateTime          @default(now())
+  recibidaEn    DateTime?
+
+  sucursal  Sucursal             @relation(fields: [sucursalId], references: [id])
+  proveedor Proveedor            @relation(fields: [proveedorId], references: [id])
+  detalles  DetalleOrdenCompra[]
+}
+
+model DetalleOrdenCompra {
+  id               Int     @id @default(autoincrement())
+  ordenCompraId    Int
+  productoId       Int
+  cantidadPedida   Int
+  cantidadRecibida Int     @default(0) // sube al confirmar recepción física
+  precioCosto      Decimal @db.Decimal(10, 2)
+  subtotal         Decimal @db.Decimal(10, 2)
+
+  ordenCompra OrdenCompra @relation(fields: [ordenCompraId], references: [id])
+  producto    Producto    @relation(fields: [productoId], references: [id])
+}
+
+// ══════════════════════════════
+//  PROMOCIÓN
+// ══════════════════════════════
+
+model Promocion {
+  id          Int              @id @default(autoincrement())
+  nombre      String
+  tipo        TipoPromocion
+  alcance     AlcancePromocion
+  descuento   Decimal          @db.Decimal(5, 2)
+  activa      Boolean          @default(true)
+  fechaInicio DateTime
+  fechaFin    DateTime
+  sucursalId  Int
+  categoriaId Int?
+  notas       String?
+  creadaEn    DateTime         @default(now())
+
+  sucursal      Sucursal       @relation(fields: [sucursalId], references: [id])
+  categoria     Categoria?     @relation(fields: [categoriaId], references: [id])
+  productos     Producto[]     @relation("PromocionProducto")
+  detallesVenta DetalleVenta[]
+}
+
+// ══════════════════════════════
+//  FACTURA CFDI 4.0
+// ══════════════════════════════
+
+model FacturaCfdi {
+  id              Int           @id @default(autoincrement())
+  ventaId         Int           @unique // una factura máximo por venta
+  clienteId       Int
+  rfcReceptor     String
+  nombreReceptor  String
+  cpReceptor      String
+  regimenFiscal   String
+  usoCfdi         String
+  lugarExpedicion String        // CP de la sucursal
+  subtotal        Decimal       @db.Decimal(10, 2)
+  iva             Decimal       @db.Decimal(10, 2)
+  total           Decimal       @db.Decimal(10, 2)
+  folioFiscal     String?       // UUID del SAT — llega del PAC
+  xmlUrl          String?
+  pdfUrl          String?
+  estado          EstadoFactura @default(FACTURADA)
+  timbradaEn      DateTime?
+  creadaEn        DateTime      @default(now())
+
+  venta   Venta   @relation(fields: [ventaId], references: [id])
+  cliente Cliente @relation(fields: [clienteId], references: [id])
+}
+
+// ══════════════════════════════
+//  AUDITORÍA
+//  Registra TODA acción importante del sistema
+// ══════════════════════════════
+
+model Auditoria {
+  id           Int      @id @default(autoincrement())
+  usuarioId    Int?
+  sucursalId   Int?
+  accion       String   // "CREAR_VENTA" | "CANCELAR_VENTA" | "EDITAR_PRODUCTO"
+  modulo       String   // "ventas" | "inventario" | "caja" | "usuarios"
+  referencia   String?  // "VTA-0042"
+  valorAntes   Json?    // snapshot antes del cambio
+  valorDespues Json?    // snapshot después del cambio
+  ip           String?
+  creadoEn     DateTime @default(now())
+
+  usuario  Usuario?  @relation(fields: [usuarioId], references: [id])
+  sucursal Sucursal? @relation(fields: [sucursalId], references: [id])
+}
+</file>
+
+<file path="prisma/seed.js">
+require('dotenv').config()
+const bcrypt = require('bcrypt')
+const { PrismaClient } = require('@prisma/client')
+
+// ✅ CORREGIDO: Sin PrismaPg
+const prisma = new PrismaClient()
+
+async function main() {
+  console.log('🌱 Iniciando seed...\n')
+
+  // ═══════════════════════════════════════════════════════
+  // SUCURSALES
+  // ═══════════════════════════════════════════════════════
+
+  console.log('📍 Creando sucursales...')
+  const sucursal = await prisma.sucursal.upsert({
+    where: { id: 1 },
+    update: {},
+    create: {
+      nombre: 'Ferretería JESHA - Matriz',
+      direccion: 'Av. Principal 123, Zacatecas',
+      telefono: '492-922-1234',
+      codigoPostal: '98000',
+      activa: true
+    }
+  })
+  console.log(`✅ Sucursal: ${sucursal.nombre}\n`)
+
+  // ═══════════════════════════════════════════════════════
+  // USUARIOS
+  // ═══════════════════════════════════════════════════════
+
+  console.log('👥 Creando usuarios...')
+  const hash = await bcrypt.hash('Admin2024!', 12)
+
+  await prisma.usuario.upsert({
+    where: { username: 'superadmin' },
+    update: {},
+    create: {
+      nombre: 'Administrador JESHA',
+      username: 'superadmin',
+      passwordHash: hash,
+      rol: 'SUPERADMIN',
+      sucursalId: null,
+      activo: true
+    }
+  })
+
+  await prisma.usuario.upsert({
+    where: { username: 'admin' },
+    update: {},
+    create: {
+      nombre: 'Admin Sucursal',
+      username: 'admin',
+      passwordHash: hash,
+      rol: 'ADMIN_SUCURSAL',
+      sucursalId: sucursal.id,
+      activo: true
+    }
+  })
+
+  await prisma.usuario.upsert({
+    where: { username: 'empleado' },
+    update: {},
+    create: {
+      nombre: 'Empleado POS',
+      username: 'empleado',
+      passwordHash: hash,
+      rol: 'EMPLEADO',
+      sucursalId: sucursal.id,
+      activo: true
+    }
+  })
+
+  console.log('✅ Usuarios creados:')
+  console.log('  🔑 superadmin / Admin2024!')
+  console.log('  🔑 admin / Admin2024!')
+  console.log('  🔑 empleado / Admin2024!\n')
+
+  // ═══════════════════════════════════════════════════════
+  // DEPARTAMENTOS
+  // ═══════════════════════════════════════════════════════
+
+  console.log('🏢 Creando departamentos...')
+  const departamentos = await Promise.all([
+    prisma.departamento.upsert({
+      where: { nombre: 'Herramientas' },
+      update: {},
+      create: { nombre: 'Herramientas', icono: '🔧', activo: true }
+    }),
+    prisma.departamento.upsert({
+      where: { nombre: 'Plomería' },
+      update: {},
+      create: { nombre: 'Plomería', icono: '🚿', activo: true }
+    }),
+    prisma.departamento.upsert({
+      where: { nombre: 'Electricidad' },
+      update: {},
+      create: { nombre: 'Electricidad', icono: '⚡', activo: true }
+    }),
+    prisma.departamento.upsert({
+      where: { nombre: 'Pintura' },
+      update: {},
+      create: { nombre: 'Pintura', icono: '🎨', activo: true }
+    }),
+    prisma.departamento.upsert({
+      where: { nombre: 'Gas' },
+      update: {},
+      create: { nombre: 'Gas', icono: '🔥', activo: true }
+    }),
+    prisma.departamento.upsert({
+      where: { nombre: 'Limpieza' },
+      update: {},
+      create: { nombre: 'Limpieza', icono: '🧹', activo: true }
+    }),
+    prisma.departamento.upsert({
+      where: { nombre: 'Seguridad' },
+      update: {},
+      create: { nombre: 'Seguridad', icono: '🔒', activo: true }
+    }),
+    prisma.departamento.upsert({
+      where: { nombre: 'Construcción' },
+      update: {},
+      create: { nombre: 'Construcción', icono: '🏗️', activo: true }
+    }),
+    prisma.departamento.upsert({
+      where: { nombre: 'SERVICIOS' },
+      update: {},
+      create: { nombre: 'SERVICIOS', icono: '🛠️', activo: true }
+    })
+  ])
+
+  console.log(`✅ ${departamentos.length} departamentos creados\n`)
+
+  // ═══════════════════════════════════════════════════════
+  // CATEGORÍAS
+  // ═══════════════════════════════════════════════════════
+
+  console.log('📂 Creando categorías...')
+  
+  const categoriasData = [
+    { dept: 'Herramientas', cats: ['Martillos', 'Destornilladores', 'Llaves', 'Sierras'] },
+    { dept: 'Plomería', cats: ['Tuberías', 'Accesorios', 'Grifería', 'Mangueras'] },
+    { dept: 'Electricidad', cats: ['Cables', 'Focos', 'Contactos', 'Interruptores'] },
+    { dept: 'Pintura', cats: ['Pinturas', 'Brochas', 'Rodillos', 'Diluyentes'] },
+    { dept: 'Gas', cats: ['Cilindros', 'Reguladores', 'Conexiones', 'Válvulas'] },
+    { dept: 'Limpieza', cats: ['Desinfectantes', 'Detergentes', 'Escobas', 'Franelas'] },
+    { dept: 'Seguridad', cats: ['Cascos', 'Guantes', 'Gafas', 'Arneses'] },
+    { dept: 'Construcción', cats: ['Cemento', 'Arena', 'Ladrillos', 'Varilla'] },
+    { dept: 'SERVICIOS', cats: ['Instalación', 'Reparación', 'Asesoría'] }
+  ]
+
+  const categorias = []
+  for (const { dept, cats } of categoriasData) {
+    const departamento = departamentos.find(d => d.nombre === dept)
+    for (const cat of cats) {
+      const categoria = await prisma.categoria.upsert({
+        where: { 
+          departamentoId_nombre: { 
+            departamentoId: departamento.id, 
+            nombre: cat 
+          } 
+        },
+        update: {},
+        create: {
+          departamentoId: departamento.id,
+          nombre: cat,
+          descripcion: `Categoría de ${cat.toLowerCase()}`
+        }
+      })
+      categorias.push(categoria)
+    }
+  }
+
+  console.log(`✅ ${categorias.length} categorías creadas\n`)
+
+  // ═══════════════════════════════════════════════════════
+  // CLIENTES
+  // ═══════════════════════════════════════════════════════
+
+  console.log('👤 Creando clientes...')
+  
+  const clientes = await Promise.all([
+    prisma.cliente.upsert({
+      where: { rfc: 'GENERICO001' },
+      update: {},
+      create: {
+        nombre: 'Cliente General',
+        tipo: 'GENERAL',
+        rfc: 'GENERICO001',
+        telefono: '492-000-0001',
+        email: 'general@ejemplo.com',
+        activo: true
+      }
+    }),
+    prisma.cliente.upsert({
+      where: { rfc: 'REGIS20240001' },
+      update: {},
+      create: {
+        nombre: 'Empresa Registrada S.A.',
+        apodo: 'Empresa A',
+        tipo: 'REGISTRADO',
+        rfc: 'REGIS20240001',
+        telefono: '492-123-4567',
+        email: 'empresa@ejemplo.com',
+        limiteCredito: 50000,
+        activo: true
+      }
+    }),
+    prisma.cliente.upsert({
+      where: { rfc: 'FISCAL20240001' },
+      update: {},
+      create: {
+        nombre: 'Constructora XYZ S.A. de C.V.',
+        apodo: 'Constructora XYZ',
+        tipo: 'FISCAL',
+        rfc: 'FISCAL20240001',
+        razonSocial: 'Constructora XYZ Sociedad Anónima de Capital Variable',
+        telefono: '492-987-6543',
+        email: 'fiscal@ejemplo.com',
+        codigoPostalFiscal: '98000',
+        regimenFiscal: '601',
+        usoCfdi: 'G03',
+        limiteCredito: 100000,
+        activo: true
+      }
+    })
+  ])
+
+  console.log(`✅ ${clientes.length} clientes creados\n`)
+
+  // ═══════════════════════════════════════════════════════
+  // PROVEEDORES
+  // ═══════════════════════════════════════════════════════
+
+  console.log('🏭 Creando proveedores...')
+  
+  const proveedores = await Promise.all([
+    prisma.proveedor.upsert({
+      where: { nombreOficial: 'Herramientas del Centro' },
+      update: {},
+      create: {
+        nombreOficial: 'Herramientas del Centro',
+        alias: 'HDC',
+        telefono: '492-555-1111',
+        email: 'contacto@hdc.com',
+        activo: true
+      }
+    }),
+    prisma.proveedor.upsert({
+      where: { nombreOficial: 'Distribuidora Eléctrica Nacional' },
+      update: {},
+      create: {
+        nombreOficial: 'Distribuidora Eléctrica Nacional',
+        alias: 'DEN',
+        telefono: '492-555-2222',
+        email: 'ventas@den.com',
+        activo: true
+      }
+    }),
+    prisma.proveedor.upsert({
+      where: { nombreOficial: 'Pinturas y Acabados S.A.' },
+      update: {},
+      create: {
+        nombreOficial: 'Pinturas y Acabados S.A.',
+        alias: 'PYA',
+        telefono: '492-555-3333',
+        email: 'pedidos@pya.com',
+        activo: true
+      }
+    })
+  ])
+
+  console.log(`✅ ${proveedores.length} proveedores creados\n`)
+
+  // ═══════════════════════════════════════════════════════
+  // PRODUCTOS
+  // ═══════════════════════════════════════════════════════
+
+  console.log('📦 Creando productos...')
+  
+  const productos = [
+    { codigo: 'HER-001', nombre: 'Martillo de Uña 16oz', cat: 'Martillos', precio: 150, costo: 85 },
+    { codigo: 'HER-002', nombre: 'Martillo de Uña 20oz', cat: 'Martillos', precio: 180, costo: 100 },
+    { codigo: 'HER-003', nombre: 'Destornillador Plano #2', cat: 'Destornilladores', precio: 45, costo: 25 },
+    { codigo: 'HER-004', nombre: 'Destornillador Phillips #2', cat: 'Destornilladores', precio: 45, costo: 25 },
+    { codigo: 'PLO-001', nombre: 'Tubo PVC 1/2" x 3m', cat: 'Tuberías', precio: 120, costo: 60 },
+    { codigo: 'PLO-002', nombre: 'Tubo PVC 3/4" x 3m', cat: 'Tuberías', precio: 180, costo: 90 },
+    { codigo: 'ELE-001', nombre: 'Cable Eléctrico Calibre 12', cat: 'Cables', precio: 25, costo: 12 },
+    { codigo: 'ELE-002', nombre: 'Cable Eléctrico Calibre 10', cat: 'Cables', precio: 35, costo: 18 },
+    { codigo: 'ELE-003', nombre: 'Foco LED 9W Blanco Frío', cat: 'Focos', precio: 45, costo: 22 },
+    { codigo: 'ELE-004', nombre: 'Foco LED 15W Blanco Cálido', cat: 'Focos', precio: 55, costo: 27 },
+    { codigo: 'PIN-001', nombre: 'Pintura Vinílica Blanca 1L', cat: 'Pinturas', precio: 89, costo: 45 },
+    { codigo: 'PIN-002', nombre: 'Pintura Vinílica Blanca 5L', cat: 'Pinturas', precio: 380, costo: 190 },
+    { codigo: 'PIN-003', nombre: 'Brocha Plana 3"', cat: 'Brochas', precio: 35, costo: 17 },
+    { codigo: 'PIN-004', nombre: 'Rodillo 9"', cat: 'Rodillos', precio: 28, costo: 14 },
+    { codigo: 'GAS-001', nombre: 'Cilindro Gas LP 5kg', cat: 'Cilindros', precio: 250, costo: 120 },
+    { codigo: 'GAS-002', nombre: 'Regulador de Gas', cat: 'Reguladores', precio: 85, costo: 40 },
+    { codigo: 'LIM-001', nombre: 'Desinfectante Concentrado 1L', cat: 'Desinfectantes', precio: 45, costo: 22 },
+    { codigo: 'LIM-002', nombre: 'Detergente Líquido 2L', cat: 'Detergentes', precio: 35, costo: 17 },
+    { codigo: 'LIM-003', nombre: 'Escoba de Nylon', cat: 'Escobas', precio: 55, costo: 28 },
+    { codigo: 'SEG-001', nombre: 'Casco de Seguridad Amarillo', cat: 'Cascos', precio: 125, costo: 60 },
+    { codigo: 'SEG-002', nombre: 'Guantes de Trabajo (par)', cat: 'Guantes', precio: 35, costo: 17 }
+  ]
+
+  const productosCreados = []
+  for (const prod of productos) {
+    const categoria = categorias.find(c => c.nombre === prod.cat)
+    if (categoria) {
+      const producto = await prisma.producto.upsert({
+        where: { codigoInterno: prod.codigo },
+        update: {},
+        create: {
+          codigoInterno: prod.codigo,
+          nombre: prod.nombre,
+          descripcion: `Producto ${prod.nombre}`,
+          precioBase: prod.precio,
+          costo: prod.costo,
+          costoPromedio: prod.costo,
+          categoriaId: categoria.id,
+          unidadVenta: 'pza',
+          activo: true
+        }
+      })
+      productosCreados.push(producto)
+    }
+  }
+
+  console.log(`✅ ${productosCreados.length} productos creados\n`)
+
+  // ═══════════════════════════════════════════════════════
+  // INVENTARIO
+  // ═══════════════════════════════════════════════════════
+
+  console.log('📊 Creando inventario inicial...')
+  
+  for (const producto of productosCreados) {
+    await prisma.inventarioSucursal.upsert({
+      where: {
+        sucursalId_productoId: {
+          sucursalId: sucursal.id,
+          productoId: producto.id
+        }
+      },
+      update: {},
+      create: {
+        sucursalId: sucursal.id,
+        productoId: producto.id,
+        cantidadDisponible: Math.floor(Math.random() * 100) + 20,
+        cantidadReservada: 0,
+        cantidadCompromiso: 0,
+        stockMinimo: 5,
+        stockMaximo: 200
+      }
+    })
+  }
+
+  console.log(`✅ Inventario creado\n`)
+
+  // ═══════════════════════════════════════════════════════
+  // RESUMEN
+  // ═══════════════════════════════════════════════════════
+
+  console.log('═══════════════════════════════════════════════════════')
+  console.log('🎉 ¡SEED COMPLETADO!')
+  console.log('═══════════════════════════════════════════════════════\n')
+
+  console.log('📊 DATOS CREADOS:')
+  console.log(`  • Sucursales: 1`)
+  console.log(`  • Usuarios: 3`)
+  console.log(`  • Departamentos: ${departamentos.length}`)
+  console.log(`  • Categorías: ${categorias.length}`)
+  console.log(`  • Clientes: ${clientes.length}`)
+  console.log(`  • Proveedores: ${proveedores.length}`)
+  console.log(`  • Productos: ${productosCreados.length}`)
+  console.log(`  • Inventario: ${productosCreados.length} registros\n`)
+
+  console.log('🔑 CREDENCIALES:')
+  console.log('  superadmin / Admin2024!')
+  console.log('  admin / Admin2024!')
+  console.log('  empleado / Admin2024!\n')
+
+  console.log('✅ ¡Listo para usar! 💪')
+}
+
+main()
+  .catch(e => {
+    console.error('❌ Error:', e)
+    process.exit(1)
+  })
+  .finally(async () => {
+    await prisma.$disconnect()
+  })
+</file>
+
+<file path="seed.js">
+require('dotenv').config()
+const { PrismaClient } = require('@prisma/client')
+const bcrypt = require('bcrypt')
+
+const prisma = new PrismaClient()
+
+async function seed() {
+  try {
+    console.log('🌱 Iniciando seed de datos...\n')
+
+    // Verificar conexión
+    const ping = await prisma.usuario.count()
+    console.log(`✅ BD conectada (${ping} usuarios actuales)`)
+
+    // Crear usuarios de prueba
+    const usuarios = [
+      {
+        username: 'admin',
+        password: 'admin123',
+        nombre: 'Administrador General',
+        rol: 'SUPERADMIN',
+        sucursalId: null // SUPERADMIN no tiene sucursal
+      },
+      {
+        username: 'vendedor',
+        password: 'vendedor123',
+        nombre: 'Vendedor Demo',
+        rol: 'EMPLEADO',
+        sucursalId: null // se asignará a sucursal 1 si existe
+      }
+    ]
+
+    console.log('\n📝 Creando usuarios...\n')
+
+    for (const user of usuarios) {
+      try {
+        const hashedPassword = await bcrypt.hash(user.password, 10)
+
+        const newUser = await prisma.usuario.create({
+          data: {
+            username: user.username,
+            nombre: user.nombre,
+            passwordHash: hashedPassword,
+            rol: user.rol,
+            sucursalId: user.sucursalId,
+            activo: true
+          }
+        })
+
+        console.log(`✅ Usuario creado: @${user.username}`)
+        console.log(`   Nombre: ${user.nombre}`)
+        console.log(`   Rol: ${user.rol}\n`)
+
+      } catch (err) {
+        if (err.code === 'P2002') {
+          console.log(`⚠️  Usuario @${user.username} ya existe, saltando...\n`)
+        } else {
+          throw err
+        }
+      }
+    }
+
+    console.log('┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓')
+    console.log('┃  📊 USUARIOS DE PRUEBA CREADOS     ┃')
+    console.log('┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛')
+    console.log('\n👤 ADMINISTRADOR')
+    console.log('   Usuario: admin')
+    console.log('   Contraseña: admin123')
+    console.log('   Rol: SUPERADMIN (acceso total)')
+    console.log('\n👤 VENDEDOR')
+    console.log('   Usuario: vendedor')
+    console.log('   Contraseña: vendedor123')
+    console.log('   Rol: EMPLEADO (vendedor normal)')
+    console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n')
+
+    console.log('✨ Seed completado exitosamente')
+    console.log('🚀 Ya puedes iniciar sesión en login.html\n')
+
+  } catch (error) {
+    console.error('❌ Error en seed:', error.message)
+    console.error('\nPosibles causas:')
+    console.error('  1. BD no está conectada')
+    console.error('  2. Falta ejecutar: npx prisma migrate dev')
+    console.error('  3. Faltan dependencias: npm install')
+    process.exit(1)
+  } finally {
+    await prisma.$disconnect()
+  }
+}
+
+seed()
+</file>
+
+<file path="src/app.js">
+require('dotenv').config()
+const express = require('express')
+const cors = require('cors')
+const path = require('path')
+
+const app = express()
+
+// ═══════════════════════════════════════════════════════════════════
+// MIDDLEWARE
+// ═══════════════════════════════════════════════════════════════════
+
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}))
+app.use(express.json())
+
+// ═══════════════════════════════════════════════════════════════════
+// MIDDLEWARE DE AUTENTICACIÓN
+// ═══════════════════════════════════════════════════════════════════
+
+// ✅ NUEVO: Middleware que valida el token
+const requireAuth = (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization
+    
+    if (!authHeader) {
+      return res.status(401).json({ 
+        success: false, 
+        error: 'No token provided' 
+      })
+    }
+
+    const token = authHeader.replace('Bearer ', '')
+    
+    if (!token) {
+      return res.status(401).json({ 
+        success: false, 
+        error: 'Invalid token format' 
+      })
+    }
+
+    // ✅ Token válido, continuar
+    req.token = token
+    next()
+  } catch (error) {
+    console.error('❌ Error en autenticación:', error.message)
+    res.status(401).json({ 
+      success: false, 
+      error: error.message 
+    })
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// RUTAS PÚBLICAS (sin autenticación)
+// ═══════════════════════════════════════════════════════════════════
+
+app.use('/auth', require('./modules/auth/auth.routes'))
+
+// ═══════════════════════════════════════════════════════════════════
+// RUTAS PROTEGIDAS (con autenticación)
+// ═══════════════════════════════════════════════════════════════════
+
+// ✅ CORREGIDO: Agregar requireAuth a rutas protegidas
+app.use('/usuarios', requireAuth, require('./modules/usuarios/usuarios.routes'))
+app.use('/clientes', requireAuth, require('./modules/clientes/clientes.routes'))
+app.use('/productos', requireAuth, require('./modules/productos/productos.routes'))
+
+// ═══════════════════════════════════════════════════════════════════
+// RUTAS ESTÁTICAS
+// ═══════════════════════════════════════════════════════════════════
+
+app.use('/imagenes', express.static(path.join(__dirname, 'public/imagenes')))
+
+// ═══════════════════════════════════════════════════════════════════
+// HEALTH CHECK
+// ═══════════════════════════════════════════════════════════════════
+
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() })
+})
+
+// ═══════════════════════════════════════════════════════════════════
+// MANEJO DE ERRORES
+// ═══════════════════════════════════════════════════════════════════
+
+// 404
+app.use((req, res) => {
+  res.status(404).json({ error: `Ruta no encontrada: ${req.method} ${req.path}` })
+})
+
+// Error handler
+app.use((err, req, res, next) => {
+  console.error('❌ Error no controlado:', err)
+  res.status(500).json({ error: 'Error interno del servidor' })
+})
+
+// ═══════════════════════════════════════════════════════════════════
+// EXPORTAR
+// ═══════════════════════════════════════════════════════════════════
+
+module.exports = app
+</file>
+
+<file path="src/middlewares/auth.middleware.js">
+const jwt = require('jsonwebtoken')
+
+// ═══════════════════════════════════════════════════════════════════
+// REQUIREAUTH - Verificar que el usuario tiene token válido
+// ═══════════════════════════════════════════════════════════════════
+
+const requireAuth = (req, res, next) => {
+  const authHeader = req.headers.authorization
+
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Token requerido' })
+  }
+
+  const token = authHeader.split(' ')[1]
+
+  try {
+    const payload = jwt.verify(token, process.env.JWT_SECRET)
+    req.usuario = payload
+    req.usuarioId = payload.id
+    next()
+  } catch (err) {
+    return res.status(401).json({ error: 'Token inválido o expirado' })
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// REQUIREROLE - Verificar que el usuario tiene el rol permitido
+// ═══════════════════════════════════════════════════════════════════
+
+const requireRole = (roles) => {
+  const rolesPermitidos = Array.isArray(roles) ? roles : [roles]
+  return (req, res, next) => {
+    if (!rolesPermitidos.includes(req.usuario.rol)) {
+      return res.status(403).json({ error: 'Acceso denegado - rol insuficiente' })
+    }
+    next()
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// REQUIRESUCURSALACCESS - Verificar que el usuario accede solo su sucursal
+// ═══════════════════════════════════════════════════════════════════
+
+const requireSucursalAccess = (req, res, next) => {
+  if (req.usuario.rol === 'SUPERADMIN') return next()
+  const sucursalSolicitada = parseInt(req.params.sucursalId || req.body.sucursalId)
+  if (!sucursalSolicitada) return next()
+  if (req.usuario.sucursalId !== sucursalSolicitada) {
+    return res.status(403).json({ error: 'No tienes acceso a esta sucursal' })
+  }
+  next()
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// EXPORTAR TODOS LOS MIDDLEWARES
+// ═══════════════════════════════════════════════════════════════════
+
+module.exports = {
+  requireAuth,
+  requireRole,
+  requireSucursalAccess
+}
+</file>
+
+<file path="src/modules/auth/auth.controller.js">
+const bcrypt = require('bcrypt')
+const jwt = require('jsonwebtoken')
+const { PrismaClient } = require('@prisma/client')
+const { PrismaPg } = require('@prisma/adapter-pg')
+
+const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL })
+const prisma = new PrismaClient({ adapter })
+
+const login = async (req, res) => {
+  try {
+    const { username, password } = req.body
+
+    if (!username || !password) {
+      return res.status(400).json({ error: 'Usuario y contraseña requeridos' })
+    }
+
+    const usuario = await prisma.usuario.findFirst({
+where: { username: username.trim(), activo: true },      include: { sucursal: { select: { id: true, nombre: true } } }
+    })
+
+    if (!usuario) {
+      return res.status(401).json({ error: 'Credenciales inválidas' })
+    }
+
+    const passwordValida = await bcrypt.compare(password, usuario.passwordHash)
+    if (!passwordValida) {
+      return res.status(401).json({ error: 'Credenciales inválidas' })
+    }
+
+    const token = jwt.sign(
+      { id: usuario.id, username: usuario.username, nombre: usuario.nombre, rol: usuario.rol, sucursalId: usuario.sucursalId },
+      process.env.JWT_SECRET,
+      { expiresIn: '8h' }
+    )
+
+    await prisma.auditoria.create({
+      data: { usuarioId: usuario.id, sucursalId: usuario.sucursalId, accion: 'LOGIN', modulo: 'auth', ip: req.ip }
+    })
+
+    res.json({
+      token,
+      usuario: { id: usuario.id, nombre: usuario.nombre, username: usuario.username, rol: usuario.rol, sucursal: usuario.sucursal }
+    })
+
+  } catch (err) {
+    console.error('Error en login:', err)
+    res.status(500).json({ error: 'Error interno del servidor' })
+  }
+}
+
+const me = async (req, res) => {
+  try {
+    const usuario = await prisma.usuario.findUnique({
+      where: { id: req.usuario.id },
+      select: { id: true, nombre: true, username: true, rol: true, sucursalId: true, sucursal: { select: { id: true, nombre: true } } }
+    })
+    res.json({ usuario })
+  } catch (err) {
+    res.status(500).json({ error: 'Error interno del servidor' })
+  }
+}
+
+module.exports = { login, me }
+</file>
+
+<file path="src/modules/auth/auth.routes.js">
+const express = require('express')
+const router = express.Router()
+const { login, me } = require('./auth.controller')
+const { requireAuth } = require('../../middlewares/auth.middleware')
+
+router.post('/login', login)
+router.get('/me', requireAuth, me)
+
+module.exports = router
+</file>
+
+<file path="src/modules/clientes/clientes.controller.js">
+const { PrismaClient } = require('@prisma/client')
+const { PrismaPg } = require('@prisma/adapter-pg')
+
+const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL })
+const prisma = new PrismaClient({ adapter })
+
+async function registrarAudit(solicitante, accion, referencia, ip) {
+  try {
+    const data = {
+      usuario: { connect: { id: solicitante.id } },
+      accion,
+      modulo: 'clientes',
+      referencia,
+      ip
+    }
+    if (solicitante.sucursalId) {
+      data.sucursal = { connect: { id: solicitante.sucursalId } }
+    }
+    await prisma.auditoria.create({ data })
+  } catch (e) {
+    console.error('Audit error:', e.message)
+  }
+}
+
+// GET /clientes
+const listar = async (req, res) => {
+  try {
+    const { tipo, activo, buscar } = req.query
+    const where = {}
+
+    if (tipo) where.tipo = tipo
+    if (activo !== undefined) where.activo = activo === 'true'
+    if (buscar) {
+      where.OR = [
+        { nombre: { contains: buscar, mode: 'insensitive' } },
+        { rfc: { contains: buscar, mode: 'insensitive' } },
+        { telefono: { contains: buscar, mode: 'insensitive' } }
+      ]
+    }
+
+    const clientes = await prisma.cliente.findMany({
+      where,
+      select: {
+        id: true,
+        nombre: true,
+        rfc: true,
+        telefono: true,
+        email: true,
+        tipo: true,
+        limiteCredito: true,
+        saldoCredito: true,
+        activo: true,
+        creadoEn: true
+      },
+      orderBy: { creadoEn: 'desc' }
+    })
+
+    res.json(clientes)
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Error al obtener clientes' })
+  }
+}
+
+// POST /clientes
+const crear = async (req, res) => {
+  try {
+    const { nombre, tipo, telefono, email, rfc, razonSocial, codigoPostalFiscal, regimenFiscal, usoCfdi, limiteCredito, notas } = req.body
+    const solicitante = req.usuario
+
+    if (!nombre || !tipo) {
+      return res.status(400).json({ error: 'Nombre y tipo son requeridos' })
+    }
+
+    if (tipo === 'FISCAL' && !razonSocial) {
+      return res.status(400).json({ error: 'Razón social es requerida para clientes FISCAL' })
+    }
+
+    // Validar que RFC sea único si se proporciona
+    if (rfc) {
+      const existe = await prisma.cliente.findUnique({ where: { rfc } })
+      if (existe) {
+        return res.status(409).json({ error: 'El RFC ya está registrado' })
+      }
+    }
+
+    // Validar que email sea único si se proporciona
+    if (email) {
+      const existe = await prisma.cliente.findUnique({ where: { email } })
+      if (existe) {
+        return res.status(409).json({ error: 'El email ya está registrado' })
+      }
+    }
+
+    const cliente = await prisma.cliente.create({
+      data: {
+        nombre,
+        tipo,
+        telefono: telefono || null,
+        email: email || null,
+        rfc: rfc || null,
+        razonSocial: razonSocial || null,
+        codigoPostalFiscal: codigoPostalFiscal || null,
+        regimenFiscal: regimenFiscal || null,
+        usoCfdi: usoCfdi || null,
+        limiteCredito: limiteCredito || 0,
+        saldoCredito: 0,
+        activo: true,
+        notas: notas || null
+      }
+    })
+
+    await registrarAudit(solicitante, 'CREAR_CLIENTE', `Creó cliente ${cliente.nombre} tipo ${tipo}`, req.ip)
+
+    res.status(201).json(cliente)
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Error al crear cliente' })
+  }
+}
+
+// PUT /clientes/:id
+const editar = async (req, res) => {
+  try {
+    const { id } = req.params
+    const { nombre, tipo, telefono, email, rfc, razonSocial, codigoPostalFiscal, regimenFiscal, usoCfdi, limiteCredito, notas } = req.body
+    const solicitante = req.usuario
+
+    const cliente = await prisma.cliente.findUnique({ where: { id: parseInt(id) } })
+    if (!cliente) {
+      return res.status(404).json({ error: 'Cliente no encontrado' })
+    }
+
+    // Validar RFC único (si cambió)
+    if (rfc && rfc !== cliente.rfc) {
+      const existe = await prisma.cliente.findUnique({ where: { rfc } })
+      if (existe) {
+        return res.status(409).json({ error: 'El RFC ya está registrado' })
+      }
+    }
+
+    // Validar email único (si cambió)
+    if (email && email !== cliente.email) {
+      const existe = await prisma.cliente.findUnique({ where: { email } })
+      if (existe) {
+        return res.status(409).json({ error: 'El email ya está registrado' })
+      }
+    }
+
+    const data = {
+      nombre: nombre || cliente.nombre,
+      tipo: tipo || cliente.tipo,
+      telefono: telefono !== undefined ? telefono : cliente.telefono,
+      email: email !== undefined ? email : cliente.email,
+      rfc: rfc !== undefined ? rfc : cliente.rfc,
+      razonSocial: razonSocial !== undefined ? razonSocial : cliente.razonSocial,
+      codigoPostalFiscal: codigoPostalFiscal !== undefined ? codigoPostalFiscal : cliente.codigoPostalFiscal,
+      regimenFiscal: regimenFiscal !== undefined ? regimenFiscal : cliente.regimenFiscal,
+      usoCfdi: usoCfdi !== undefined ? usoCfdi : cliente.usoCfdi,
+      limiteCredito: limiteCredito !== undefined ? limiteCredito : cliente.limiteCredito,
+      notas: notas !== undefined ? notas : cliente.notas
+    }
+
+    const clienteActualizado = await prisma.cliente.update({
+      where: { id: parseInt(id) },
+      data
+    })
+
+    await registrarAudit(solicitante, 'EDITAR_CLIENTE', `Editó cliente ${cliente.nombre}`, req.ip)
+
+    res.json(clienteActualizado)
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Error al editar cliente' })
+  }
+}
+
+// PATCH /clientes/:id/estado
+const cambiarEstado = async (req, res) => {
+  try {
+    const { id } = req.params
+    const { activo } = req.body
+    const solicitante = req.usuario
+
+    const cliente = await prisma.cliente.findUnique({ where: { id: parseInt(id) } })
+    if (!cliente) {
+      return res.status(404).json({ error: 'Cliente no encontrado' })
+    }
+
+    const clienteActualizado = await prisma.cliente.update({
+      where: { id: parseInt(id) },
+      data: { activo }
+    })
+
+    const accion = activo ? 'ACTIVAR_CLIENTE' : 'DESACTIVAR_CLIENTE'
+    const detalle = `${activo ? 'Activó' : 'Desactivó'} al cliente ${cliente.nombre}`
+
+    await registrarAudit(solicitante, accion, detalle, req.ip)
+
+    res.json(clienteActualizado)
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Error al cambiar estado' })
+  }
+}
+
+// GET /clientes/:id/ventas
+const obtenerVentas = async (req, res) => {
+  try {
+    const { id } = req.params
+
+    const ventas = await prisma.venta.findMany({
+      where: { clienteId: parseInt(id) },
+      select: {
+        id: true,
+        folio: true,
+        total: true,
+        metodoPago: true,
+        creadaEn: true
+      },
+      orderBy: { creadaEn: 'desc' },
+      take: 50
+    })
+
+    res.json(ventas)
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Error al obtener ventas' })
+  }
+}
+
+// GET /clientes/:id/abonos
+const obtenerAbonos = async (req, res) => {
+  try {
+    const { id } = req.params
+
+    const abonos = await prisma.abono.findMany({
+      where: { clienteId: parseInt(id) },
+      select: {
+        id: true,
+        monto: true,
+        metodoPago: true,
+        referencia: true,
+        creadoEn: true
+      },
+      orderBy: { creadoEn: 'desc' },
+      take: 50
+    })
+
+    res.json(abonos)
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Error al obtener abonos' })
+  }
+}
+
+module.exports = { listar, crear, editar, cambiarEstado, obtenerVentas, obtenerAbonos }
+</file>
+
+<file path="src/modules/clientes/clientes.routes.js">
+const router = require('express').Router()
+const { listar, crear, editar, cambiarEstado, obtenerVentas, obtenerAbonos } = require('./clientes.controller')
+const { requireAuth } = require('../../middlewares/auth.middleware')
+
+// GET /clientes - Listar clientes
+router.get('/', requireAuth, listar)
+
+// POST /clientes - Crear cliente
+router.post('/', requireAuth, crear)
+
+// PUT /clientes/:id - Editar cliente
+router.put('/:id', requireAuth, editar)
+
+// PATCH /clientes/:id/estado - Cambiar estado (activo/inactivo)
+router.patch('/:id/estado', requireAuth, cambiarEstado)
+
+// GET /clientes/:id/ventas - Obtener ventas del cliente
+router.get('/:id/ventas', requireAuth, obtenerVentas)
+
+// GET /clientes/:id/abonos - Obtener abonos del cliente
+router.get('/:id/abonos', requireAuth, obtenerAbonos)
+
+module.exports = router
+</file>
+
+<file path="src/modules/clientes/clientes.service.js">
+const { PrismaClient } = require('@prisma/client')
+const { PrismaPg } = require('@prisma/adapter-pg')
+
+const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL })
+const prisma = new PrismaClient({ adapter })
+
+// Registrar auditoría
+async function registrarAudit(usuarioId, sucursalId, accion, modulo, referencia, ip) {
+  try {
+    const data = {
+      accion,
+      modulo,
+      referencia,
+      ip
+    }
+    if (usuarioId) data.usuarioId = usuarioId
+    if (sucursalId) data.sucursalId = sucursalId
+
+    await prisma.auditoria.create({ data })
+  } catch (e) {
+    console.error('❌ Error en auditoría:', e.message)
+  }
+}
+
+// Listar clientes con filtros
+async function listarClientes(filtros = {}) {
+  const { tipo, activo, buscar } = filtros
+  const where = {}
+
+  if (tipo) where.tipo = tipo
+  if (activo !== undefined) where.activo = activo === 'true' || activo === true
+
+  if (buscar) {
+    where.OR = [
+      { nombre: { contains: buscar, mode: 'insensitive' } },
+      { rfc: { contains: buscar, mode: 'insensitive' } },
+      { telefono: { contains: buscar, mode: 'insensitive' } },
+      { email: { contains: buscar, mode: 'insensitive' } }
+    ]
+  }
+
+  return await prisma.cliente.findMany({
+    where,
+    select: {
+      id: true,
+      nombre: true,
+      apodo: true,
+      rfc: true,
+      telefono: true,
+      email: true,
+      tipo: true,
+      limiteCredito: true,
+      saldoCredito: true,
+      razonSocial: true,
+      codigoPostalFiscal: true,
+      regimenFiscal: true,
+      usoCfdi: true,
+      activo: true,
+      notas: true,
+      creadoEn: true,
+      actualizadoEn: true
+    },
+    orderBy: { creadoEn: 'desc' }
+  })
+}
+
+// Obtener cliente por ID
+async function obtenerClientePorId(id) {
+  return await prisma.cliente.findUnique({
+    where: { id: parseInt(id) },
+    select: {
+      id: true,
+      nombre: true,
+      apodo: true,
+      rfc: true,
+      telefono: true,
+      email: true,
+      tipo: true,
+      limiteCredito: true,
+      saldoCredito: true,
+      razonSocial: true,
+      codigoPostalFiscal: true,
+      regimenFiscal: true,
+      usoCfdi: true,
+      activo: true,
+      notas: true,
+      creadoEn: true,
+      actualizadoEn: true
+    }
+  })
+}
+
+// Crear cliente
+async function crearCliente(datos, usuarioId, sucursalId, ip) {
+  const { nombre, apodo, tipo, telefono, email, rfc, razonSocial, codigoPostalFiscal, regimenFiscal, usoCfdi, limiteCredito, notas } = datos
+
+  // Validaciones
+  if (!nombre || !tipo) {
+    throw new Error('Nombre y tipo son requeridos')
+  }
+
+  if (tipo === 'FISCAL' && !razonSocial) {
+    throw new Error('Razón social es requerida para clientes FISCAL')
+  }
+
+  // Validar RFC único
+  if (rfc) {
+    const existe = await prisma.cliente.findUnique({ where: { rfc } })
+    if (existe) throw new Error('El RFC ya está registrado')
+  }
+
+  // Validar email único
+  if (email) {
+    const existe = await prisma.cliente.findUnique({ where: { email } })
+    if (existe) throw new Error('El email ya está registrado')
+  }
+
+  const cliente = await prisma.cliente.create({
+    data: {
+      nombre,
+      apodo: apodo || null,
+      tipo,
+      telefono: telefono || null,
+      email: email || null,
+      rfc: rfc || null,
+      razonSocial: razonSocial || null,
+      codigoPostalFiscal: codigoPostalFiscal || null,
+      regimenFiscal: regimenFiscal || null,
+      usoCfdi: usoCfdi || null,
+      limiteCredito: parseFloat(limiteCredito) || 0,
+      saldoCredito: 0,
+      activo: true,
+      notas: notas || null
+    }
+  })
+
+  await registrarAudit(usuarioId, sucursalId, 'CREAR_CLIENTE', 'clientes', `Cliente ${nombre}`, ip)
+
+  return cliente
+}
+
+// Editar cliente
+async function editarCliente(id, datos, usuarioId, sucursalId, ip) {
+  const { nombre, apodo, tipo, telefono, email, rfc, razonSocial, codigoPostalFiscal, regimenFiscal, usoCfdi, limiteCredito, notas } = datos
+
+  const cliente = await obtenerClientePorId(id)
+  if (!cliente) throw new Error('Cliente no encontrado')
+
+  // Validar RFC único (si cambió)
+  if (rfc && rfc !== cliente.rfc) {
+    const existe = await prisma.cliente.findUnique({ where: { rfc } })
+    if (existe) throw new Error('El RFC ya está registrado')
+  }
+
+  // Validar email único (si cambió)
+  if (email && email !== cliente.email) {
+    const existe = await prisma.cliente.findUnique({ where: { email } })
+    if (existe) throw new Error('El email ya está registrado')
+  }
+
+  const clienteActualizado = await prisma.cliente.update({
+    where: { id: parseInt(id) },
+    data: {
+      nombre: nombre !== undefined ? nombre : cliente.nombre,
+      apodo: apodo !== undefined ? apodo : cliente.apodo,
+      tipo: tipo !== undefined ? tipo : cliente.tipo,
+      telefono: telefono !== undefined ? telefono : cliente.telefono,
+      email: email !== undefined ? email : cliente.email,
+      rfc: rfc !== undefined ? rfc : cliente.rfc,
+      razonSocial: razonSocial !== undefined ? razonSocial : cliente.razonSocial,
+      codigoPostalFiscal: codigoPostalFiscal !== undefined ? codigoPostalFiscal : cliente.codigoPostalFiscal,
+      regimenFiscal: regimenFiscal !== undefined ? regimenFiscal : cliente.regimenFiscal,
+      usoCfdi: usoCfdi !== undefined ? usoCfdi : cliente.usoCfdi,
+      limiteCredito: limiteCredito !== undefined ? parseFloat(limiteCredito) : cliente.limiteCredito,
+      notas: notas !== undefined ? notas : cliente.notas
+    }
+  })
+
+  await registrarAudit(usuarioId, sucursalId, 'EDITAR_CLIENTE', 'clientes', `Cliente ${nombre || cliente.nombre}`, ip)
+
+  return clienteActualizado
+}
+
+// Cambiar estado
+async function cambiarEstadoCliente(id, activo, usuarioId, sucursalId, ip) {
+  const cliente = await obtenerClientePorId(id)
+  if (!cliente) throw new Error('Cliente no encontrado')
+
+  const clienteActualizado = await prisma.cliente.update({
+    where: { id: parseInt(id) },
+    data: { activo }
+  })
+
+  const accion = activo ? 'ACTIVAR_CLIENTE' : 'DESACTIVAR_CLIENTE'
+  await registrarAudit(usuarioId, sucursalId, accion, 'clientes', `Cliente ${cliente.nombre}`, ip)
+
+  return clienteActualizado
+}
+
+// Obtener ventas del cliente
+async function obtenerVentasCliente(clienteId) {
+  return await prisma.venta.findMany({
+    where: { clienteId: parseInt(clienteId) },
+    select: {
+      id: true,
+      folio: true,
+      total: true,
+      metodoPago: true,
+      creadaEn: true
+    },
+    orderBy: { creadaEn: 'desc' },
+    take: 50
+  })
+}
+
+// Obtener abonos del cliente
+async function obtenerAbonosCliente(clienteId) {
+  return await prisma.abono.findMany({
+    where: { clienteId: parseInt(clienteId) },
+    select: {
+      id: true,
+      monto: true,
+      metodoPago: true,
+      referencia: true,
+      creadoEn: true
+    },
+    orderBy: { creadoEn: 'desc' },
+    take: 50
+  })
+}
+
+module.exports = {
+  registrarAudit,
+  listarClientes,
+  obtenerClientePorId,
+  crearCliente,
+  editarCliente,
+  cambiarEstadoCliente,
+  obtenerVentasCliente,
+  obtenerAbonosCliente
+}
+</file>
+
+<file path="src/modules/productos/productos.controller.js">
+// ═══════════════════════════════════════════════════════════════════
+// PRODUCTOS.CONTROLLER.JS — Controlador de productos
+// CORREGIDO: Lazy loading de Prisma (carga bajo demanda, cuando se necesita)
+// ═══════════════════════════════════════════════════════════════════
+
+let prisma = null
+
+// ✅ CARGA LAZY: Instancia Prisma solo cuando se necesita (primera vez)
+function getPrisma() {
+  if (!prisma) {
+    const { PrismaClient } = require('@prisma/client')
+    prisma = new PrismaClient()
+  }
+  return prisma
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// DEPARTAMENTOS
+// ═══════════════════════════════════════════════════════════════════
+
+async function listarDepartamentos(req, res) {
+  try {
+    const p = getPrisma()
+    const departamentos = await p.departamento.findMany({
+      where: { activo: true },
+      orderBy: { nombre: 'asc' }
+    })
+    
+    console.log(`✅ Departamentos: ${departamentos.length}`)
+    
+    res.json({ 
+      success: true, 
+      data: departamentos 
+    })
+  } catch (error) {
+    console.error('❌ Error listando departamentos:', error.message)
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    })
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// CATEGORÍAS
+// ═══════════════════════════════════════════════════════════════════
+
+async function listarCategorias(req, res) {
+  try {
+    const p = getPrisma()
+    const categorias = await p.categoria.findMany({
+      include: {
+        departamento: true
+      },
+      orderBy: { nombre: 'asc' }
+    })
+    
+    console.log(`✅ Categorías: ${categorias.length}`)
+    
+    res.json({ 
+      success: true, 
+      data: categorias 
+    })
+  } catch (error) {
+    console.error('❌ Error listando categorías:', error.message)
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    })
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// PRODUCTOS - LISTAR
+// ═══════════════════════════════════════════════════════════════════
+
+async function listar(req, res) {
+  try {
+    const p = getPrisma()
+    const productos = await p.producto.findMany({
+      where: { activo: true },
+      include: {
+        categoria: {
+          include: { departamento: true }
+        },
+        inventarios: {
+          where: { sucursalId: 1 },
+          take: 1
+        }
+      },
+      orderBy: { nombre: 'asc' }
+    })
+
+    const productosConInventario = productos.map(p => ({
+      ...p,
+      inventario: p.inventarios && p.inventarios.length > 0 
+        ? p.inventarios[0] 
+        : null
+    }))
+
+    console.log(`✅ Productos: ${productosConInventario.length}`)
+
+    res.json({ 
+      success: true, 
+      data: productosConInventario 
+    })
+  } catch (error) {
+    console.error('❌ Error listando productos:', error.message)
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    })
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// PRODUCTOS - OBTENER UNO
+// ═══════════════════════════════════════════════════════════════════
+
+async function obtener(req, res) {
+  try {
+    const p = getPrisma()
+    const { id } = req.params
+    const producto = await p.producto.findUnique({
+      where: { id: parseInt(id) },
+      include: {
+        categoria: {
+          include: { departamento: true }
+        },
+        inventarios: {
+          where: { sucursalId: 1 },
+          take: 1
+        }
+      }
+    })
+
+    if (!producto) {
+      return res.status(404).json({ 
+        success: false,
+        error: 'Producto no encontrado' 
+      })
+    }
+
+    const productoConInventario = {
+      ...producto,
+      inventario: producto.inventarios && producto.inventarios.length > 0 
+        ? producto.inventarios[0] 
+        : null
+    }
+
+    res.json({ 
+      success: true, 
+      data: productoConInventario 
+    })
+  } catch (error) {
+    console.error('❌ Error obteniendo producto:', error.message)
+    res.status(500).json({ 
+      success: false,
+      error: error.message 
+    })
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// PRODUCTOS - CREAR
+// ═══════════════════════════════════════════════════════════════════
+
+async function crear(req, res) {
+  try {
+    const p = getPrisma()
+    const {
+      nombre,
+      codigoInterno,
+      codigoBarras,
+      descripcion,
+      costo,
+      precioBase,
+      categoriaId,
+      unidadCompra,
+      unidadVenta,
+      factorConversion,
+      claveSat,
+      unidadSat
+    } = req.body
+
+    if (!nombre || !codigoInterno || !categoriaId || !precioBase) {
+      return res.status(400).json({
+        success: false,
+        error: 'Faltan campos requeridos: nombre, codigoInterno, categoriaId, precioBase'
+      })
+    }
+
+    const existente = await p.producto.findUnique({
+      where: { codigoInterno }
+    })
+
+    if (existente) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'El código interno ya existe' 
+      })
+    }
+
+    const producto = await p.producto.create({
+      data: {
+        nombre,
+        codigoInterno,
+        codigoBarras: codigoBarras || null,
+        descripcion: descripcion || null,
+        costo: costo ? parseFloat(costo) : null,
+        costoPromedio: costo ? parseFloat(costo) : null,
+        precioBase: parseFloat(precioBase),
+        categoriaId: parseInt(categoriaId),
+        unidadCompra: unidadCompra || null,
+        unidadVenta: unidadVenta || null,
+        factorConversion: factorConversion ? parseFloat(factorConversion) : null,
+        claveSat: claveSat || null,
+        unidadSat: unidadSat || null,
+        activo: true
+      },
+      include: {
+        categoria: {
+          include: { departamento: true }
+        },
+        inventarios: {
+          where: { sucursalId: 1 },
+          take: 1
+        }
+      }
+    })
+
+    const productoConInventario = {
+      ...producto,
+      inventario: producto.inventarios && producto.inventarios.length > 0 
+        ? producto.inventarios[0] 
+        : null
+    }
+
+    console.log(`✅ Producto creado: ${nombre}`)
+
+    res.status(201).json({ 
+      success: true, 
+      data: productoConInventario 
+    })
+  } catch (error) {
+    console.error('❌ Error creando producto:', error.message)
+    res.status(400).json({ 
+      success: false,
+      error: error.message 
+    })
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// PRODUCTOS - EDITAR
+// ═══════════════════════════════════════════════════════════════════
+
+async function editar(req, res) {
+  try {
+    const p = getPrisma()
+    const { id } = req.params
+    const {
+      nombre,
+      codigoInterno,
+      codigoBarras,
+      descripcion,
+      costo,
+      precioBase,
+      categoriaId,
+      unidadCompra,
+      unidadVenta,
+      factorConversion,
+      claveSat,
+      unidadSat
+    } = req.body
+
+    if (!nombre || !codigoInterno || !categoriaId || !precioBase) {
+      return res.status(400).json({
+        success: false,
+        error: 'Faltan campos requeridos: nombre, codigoInterno, categoriaId, precioBase'
+      })
+    }
+
+    const productoExistente = await p.producto.findUnique({
+      where: { id: parseInt(id) }
+    })
+
+    if (!productoExistente) {
+      return res.status(404).json({ 
+        success: false,
+        error: 'Producto no encontrado' 
+      })
+    }
+
+    if (codigoInterno !== productoExistente.codigoInterno) {
+      const codigoUsado = await p.producto.findUnique({
+        where: { codigoInterno }
+      })
+      if (codigoUsado) {
+        return res.status(400).json({ 
+          success: false,
+          error: 'El código interno ya existe' 
+        })
+      }
+    }
+
+    const producto = await p.producto.update({
+      where: { id: parseInt(id) },
+      data: {
+        nombre,
+        codigoInterno,
+        codigoBarras: codigoBarras || null,
+        descripcion: descripcion || null,
+        costo: costo ? parseFloat(costo) : null,
+        precioBase: parseFloat(precioBase),
+        categoriaId: parseInt(categoriaId),
+        unidadCompra: unidadCompra || null,
+        unidadVenta: unidadVenta || null,
+        factorConversion: factorConversion ? parseFloat(factorConversion) : null,
+        claveSat: claveSat || null,
+        unidadSat: unidadSat || null
+      },
+      include: {
+        categoria: {
+          include: { departamento: true }
+        },
+        inventarios: {
+          where: { sucursalId: 1 },
+          take: 1
+        }
+      }
+    })
+
+    const productoConInventario = {
+      ...producto,
+      inventario: producto.inventarios && producto.inventarios.length > 0 
+        ? producto.inventarios[0] 
+        : null
+    }
+
+    console.log(`✅ Producto actualizado: ${nombre}`)
+
+    res.json({ 
+      success: true, 
+      data: productoConInventario 
+    })
+  } catch (error) {
+    console.error('❌ Error editando producto:', error.message)
+    res.status(400).json({ 
+      success: false,
+      error: error.message 
+    })
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// PRODUCTOS - CAMBIAR ESTADO
+// ═══════════════════════════════════════════════════════════════════
+
+async function cambiarEstado(req, res) {
+  try {
+    const p = getPrisma()
+    const { id } = req.params
+    const { activo } = req.body
+
+    if (typeof activo !== 'boolean') {
+      return res.status(400).json({ 
+        success: false,
+        error: 'El campo activo debe ser booleano' 
+      })
+    }
+
+    const producto = await p.producto.update({
+      where: { id: parseInt(id) },
+      data: { activo }
+    })
+
+    console.log(`✅ Estado actualizado: ${producto.nombre}`)
+
+    res.json({ 
+      success: true, 
+      data: producto 
+    })
+  } catch (error) {
+    console.error('❌ Error cambiando estado:', error.message)
+    res.status(400).json({ 
+      success: false,
+      error: error.message 
+    })
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// PRODUCTOS - ACTUALIZAR IMAGEN
+// ═══════════════════════════════════════════════════════════════════
+
+async function actualizarImagen(id, urlImagen) {
+  try {
+    const p = getPrisma()
+    const producto = await p.producto.update({
+      where: { id: parseInt(id) },
+      data: { imagenUrl: urlImagen },
+      include: {
+        categoria: {
+          include: { departamento: true }
+        },
+        inventarios: {
+          where: { sucursalId: 1 },
+          take: 1
+        }
+      }
+    })
+
+    const productoConInventario = {
+      ...producto,
+      inventario: producto.inventarios && producto.inventarios.length > 0 
+        ? producto.inventarios[0] 
+        : null
+    }
+
+    console.log(`✅ Imagen actualizada: ${producto.nombre}`)
+
+    return productoConInventario
+  } catch (error) {
+    console.error('❌ Error actualizando imagen:', error.message)
+    throw error
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// EXPORTAR FUNCIONES
+// ═══════════════════════════════════════════════════════════════════
+
+module.exports = {
+  listarDepartamentos,
+  listarCategorias,
+  listar,
+  obtener,
+  crear,
+  editar,
+  cambiarEstado,
+  actualizarImagen
+}
+</file>
+
+<file path="src/modules/productos/productos.routes.js">
+const express = require('express')
+const router = express.Router()
+const multer = require('multer')
+const path = require('path')
+const fs = require('fs')
+const sharp = require('sharp')
+
+// ═══════════════════════════════════════════════════════════════════
+// MIDDLEWARE REQUIREAUTH - Definido directamente aquí
+// ═══════════════════════════════════════════════════════════════════
+
+const jwt = require('jsonwebtoken')
+
+const requireAuth = (req, res, next) => {
+  const authHeader = req.headers.authorization
+
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Token requerido' })
+  }
+
+  const token = authHeader.split(' ')[1]
+
+  try {
+    const payload = jwt.verify(token, process.env.JWT_SECRET)
+    req.usuario = payload
+    req.usuarioId = payload.id
+    next()
+  } catch (err) {
+    return res.status(401).json({ error: 'Token inválido o expirado' })
+  }
+}
+
+const productosController = require('./productos.controller')
+
+// ═══════════════════════════════════════════════════════════════════
+// CONFIGURACIÓN MULTER (para subida de imágenes)
+// ═══════════════════════════════════════════════════════════════════
+
+const storage = multer.memoryStorage()
+const upload = multer({
+  storage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB max
+  fileFilter: (req, file, cb) => {
+    const tipos = ['image/jpeg', 'image/png', 'image/webp']
+    if (tipos.includes(file.mimetype)) {
+      cb(null, true)
+    } else {
+      cb(new Error('Solo JPEG, PNG o WebP permitidos'))
+    }
+  }
+})
+
+// ═══════════════════════════════════════════════════════════════════
+// ENDPOINTS: DEPARTAMENTOS Y CATEGORÍAS
+// ═══════════════════════════════════════════════════════════════════
+
+// GET /productos/departamentos
+router.get('/departamentos', requireAuth, productosController.listarDepartamentos)
+
+// GET /productos/categorias
+router.get('/categorias', requireAuth, productosController.listarCategorias)
+
+// ═══════════════════════════════════════════════════════════════════
+// ENDPOINTS: PRODUCTOS (CRUD)
+// ═══════════════════════════════════════════════════════════════════
+
+// GET /productos (listar todos)
+router.get('/', requireAuth, productosController.listar)
+
+// GET /productos/:id (obtener uno)
+router.get('/:id', requireAuth, productosController.obtener)
+
+// POST /productos (crear)
+router.post('/', requireAuth, productosController.crear)
+
+// PUT /productos/:id (editar)
+router.put('/:id', requireAuth, productosController.editar)
+
+// PATCH /productos/:id/estado (cambiar estado)
+router.patch('/:id/estado', requireAuth, productosController.cambiarEstado)
+
+// ═══════════════════════════════════════════════════════════════════
+// ENDPOINT: SUBIR IMAGEN
+// ═══════════════════════════════════════════════════════════════════
+
+// POST /productos/:id/imagen
+router.post('/:id/imagen', requireAuth, upload.single('imagen'), async (req, res) => {
+  try {
+    const { id } = req.params
+    
+    if (!req.file) {
+      return res.status(400).json({ error: 'Imagen requerida' })
+    }
+
+    // Crear directorio si no existe
+    const dirProductos = path.join(__dirname, '../../public/imagenes/productos')
+    if (!fs.existsSync(dirProductos)) {
+      fs.mkdirSync(dirProductos, { recursive: true })
+    }
+
+    // Nombre único para imagen
+    const nombreImagen = `${id}-${Date.now()}.webp`
+    const rutaImagen = path.join(dirProductos, nombreImagen)
+
+    // Comprimir con sharp
+    await sharp(req.file.buffer)
+      .resize(800, 800, { fit: 'contain', background: { r: 255, g: 255, b: 255 } })
+      .webp({ quality: 80 })
+      .toFile(rutaImagen)
+
+    // URL pública
+    const urlImagen = `/imagenes/productos/${nombreImagen}`
+
+    // Usar controller para actualizar
+    const producto = await productosController.actualizarImagen(id, urlImagen)
+
+    res.json({
+      mensaje: 'Imagen subida exitosamente',
+      imagenUrl: urlImagen,
+      producto
+    })
+
+  } catch (err) {
+    console.error('❌ Error subiendo imagen:', err)
+    res.status(400).json({ error: err.message })
+  }
+})
+
+// ═══════════════════════════════════════════════════════════════════
+// EXPORTAR ROUTER
+// ═══════════════════════════════════════════════════════════════════
+
+module.exports = router
+</file>
+
+<file path="src/modules/productos/productos.service.js">
+const { PrismaClient } = require('@prisma/client')
+
+// Crear instancia única de Prisma
+const prisma = new PrismaClient()
+
+// ═══════════════════════════════════════════════════════════════════
+// AUDITORÍA
+// ═══════════════════════════════════════════════════════════════════
+
+async function registrarAudit(usuarioId, sucursalId, accion, referencia, ip) {
+  try {
+    const data = {
+      accion,
+      modulo: 'productos',
+      referencia,
+      ip
+    }
+    if (usuarioId) data.usuarioId = usuarioId
+    if (sucursalId) data.sucursalId = sucursalId
+
+    await prisma.auditoria.create({ data })
+  } catch (e) {
+    console.error('❌ Error en auditoría:', e.message)
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// PRODUCTOS - LISTAR
+// ═══════════════════════════════════════════════════════════════════
+
+async function listar(filtros = {}) {
+  const { categoria, activo, buscar } = filtros
+  const where = {}
+
+  if (categoria) where.categoriaId = parseInt(categoria)
+  if (activo !== undefined) where.activo = activo === 'true' || activo === true
+
+  if (buscar) {
+    where.OR = [
+      { nombre: { contains: buscar, mode: 'insensitive' } },
+      { codigoBarras: { contains: buscar, mode: 'insensitive' } },
+      { descripcion: { contains: buscar, mode: 'insensitive' } }
+    ]
+  }
+
+  return await prisma.producto.findMany({
+    where,
+    select: {
+      id: true,
+      nombre: true,
+      codigoBarras: true,
+      descripcion: true,
+      precioBase: true,
+      costo: true,
+      categoria: { select: { id: true, nombre: true } },
+      activo: true,
+      creadoEn: true,
+      actualizadoEn: true
+    },
+    orderBy: { creadoEn: 'desc' }
+  })
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// PRODUCTOS - OBTENER POR ID
+// ═══════════════════════════════════════════════════════════════════
+
+async function obtenerPorId(id) {
+  return await prisma.producto.findUnique({
+    where: { id: parseInt(id) },
+    select: {
+      id: true,
+      nombre: true,
+      codigoBarras: true,
+      descripcion: true,
+      precioBase: true,
+      costo: true,
+      imagenUrl: true,
+      categoria: { select: { id: true, nombre: true } },
+      activo: true,
+      creadoEn: true,
+      actualizadoEn: true
+    }
+  })
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// PRODUCTOS - CREAR
+// ═══════════════════════════════════════════════════════════════════
+
+async function crear(datos, usuarioId, sucursalId, ip) {
+  const { nombre, codigoBarras, descripcion, precioBase, costo, categoriaId } = datos
+
+  // Validaciones
+  if (!nombre || !precioBase || !categoriaId) {
+    throw new Error('Nombre, precio y categoría son requeridos')
+  }
+
+  if (precioBase <= 0) {
+    throw new Error('El precio debe ser mayor a 0')
+  }
+
+  // Validar que la categoría exista
+  const categoria = await prisma.categoria.findUnique({
+    where: { id: parseInt(categoriaId) }
+  })
+  if (!categoria) throw new Error('Categoría no encontrada')
+
+  // Validar código de barras único (si se proporciona)
+  if (codigoBarras) {
+    const existe = await prisma.producto.findUnique({
+      where: { codigoBarras }
+    })
+    if (existe) throw new Error('El código de barras ya está registrado')
+  }
+
+  const producto = await prisma.producto.create({
+    data: {
+      nombre,
+      codigoBarras: codigoBarras || null,
+      descripcion: descripcion || null,
+      precioBase: parseFloat(precioBase),
+      costo: costo ? parseFloat(costo) : null,
+      categoriaId: parseInt(categoriaId),
+      activo: true
+    },
+    select: {
+      id: true,
+      nombre: true,
+      codigoBarras: true,
+      descripcion: true,
+      precioBase: true,
+      costo: true,
+      categoria: { select: { id: true, nombre: true } },
+      activo: true,
+      creadoEn: true
+    }
+  })
+
+  await registrarAudit(usuarioId, sucursalId, 'CREAR_PRODUCTO', `Producto ${nombre}`, ip)
+
+  return producto
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// PRODUCTOS - EDITAR
+// ═══════════════════════════════════════════════════════════════════
+
+async function editar(id, datos, usuarioId, sucursalId, ip) {
+  const { nombre, codigoBarras, descripcion, precioBase, costo, categoriaId } = datos
+
+  const producto = await obtenerPorId(id)
+  if (!producto) throw new Error('Producto no encontrado')
+
+  // Validar código de barras único (si cambió)
+  if (codigoBarras && codigoBarras !== producto.codigoBarras) {
+    const existe = await prisma.producto.findUnique({
+      where: { codigoBarras }
+    })
+    if (existe) throw new Error('El código de barras ya está registrado')
+  }
+
+  // Validar categoría si cambió
+  if (categoriaId) {
+    const categoria = await prisma.categoria.findUnique({
+      where: { id: parseInt(categoriaId) }
+    })
+    if (!categoria) throw new Error('Categoría no encontrada')
+  }
+
+  const productoActualizado = await prisma.producto.update({
+    where: { id: parseInt(id) },
+    data: {
+      nombre: nombre !== undefined ? nombre : producto.nombre,
+      codigoBarras: codigoBarras !== undefined ? codigoBarras : producto.codigoBarras,
+      descripcion: descripcion !== undefined ? descripcion : producto.descripcion,
+      precioBase: precioBase !== undefined ? parseFloat(precioBase) : producto.precioBase,
+      costo: costo !== undefined ? parseFloat(costo) : producto.costo,
+      categoriaId: categoriaId !== undefined ? parseInt(categoriaId) : producto.categoria.id
+    },
+    select: {
+      id: true,
+      nombre: true,
+      codigoBarras: true,
+      descripcion: true,
+      precioBase: true,
+      costo: true,
+      categoria: { select: { id: true, nombre: true } },
+      activo: true,
+      creadoEn: true,
+      actualizadoEn: true
+    }
+  })
+
+  await registrarAudit(usuarioId, sucursalId, 'EDITAR_PRODUCTO', `Producto ${nombre || producto.nombre}`, ip)
+
+  return productoActualizado
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// PRODUCTOS - CAMBIAR ESTADO
+// ═══════════════════════════════════════════════════════════════════
+
+async function cambiarEstado(id, activo, usuarioId, sucursalId, ip) {
+  const producto = await obtenerPorId(id)
+  if (!producto) throw new Error('Producto no encontrado')
+
+  const productoActualizado = await prisma.producto.update({
+    where: { id: parseInt(id) },
+    data: { activo }
+  })
+
+  const accion = activo ? 'ACTIVAR_PRODUCTO' : 'DESACTIVAR_PRODUCTO'
+  await registrarAudit(usuarioId, sucursalId, accion, `Producto ${producto.nombre}`, ip)
+
+  return productoActualizado
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// EXPORTAR
+// ═══════════════════════════════════════════════════════════════════
+
+module.exports = {
+  registrarAudit,
+  listar,
+  obtenerPorId,
+  crear,
+  editar,
+  cambiarEstado
+}
+</file>
+
+<file path="src/modules/usuarios/usuarios.controller.js">
+const { PrismaClient } = require('@prisma/client')
+const { PrismaPg } = require('@prisma/adapter-pg')
+const bcrypt = require('bcrypt')
+
+const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL })
+const prisma = new PrismaClient({ adapter })
+
+async function registrarAudit(solicitante, accion, referencia, ip) {
+  try {
+    const data = {
+      usuario: { connect: { id: solicitante.id } },
+      accion,
+      modulo: 'usuarios',
+      referencia,
+      ip
+    }
+    if (solicitante.sucursalId) {
+      data.sucursal = { connect: { id: solicitante.sucursalId } }
+    }
+    await prisma.auditoria.create({ data })
+  } catch (e) {
+    console.error('Audit error:', e.message)
+  }
+}
+
+// GET /usuarios
+const listar = async (req, res) => {
+  try {
+    const { rol, sucursalId, buscar } = req.query
+    const solicitante = req.usuario
+    const where = {}
+
+    if (solicitante.rol === 'ADMIN_SUCURSAL') {
+      where.sucursalId = solicitante.sucursalId
+      where.rol = { not: 'SUPERADMIN' }
+    }
+
+    if (rol) where.rol = rol
+    if (sucursalId) where.sucursalId = parseInt(sucursalId)
+    if (buscar) {
+      where.OR = [
+        { nombre: { contains: buscar, mode: 'insensitive' } },
+        { username: { contains: buscar, mode: 'insensitive' } }
+      ]
+    }
+
+    const usuarios = await prisma.usuario.findMany({
+      where,
+      select: {
+        id: true, nombre: true, username: true, rol: true, activo: true, creadoEn: true,
+        sucursal: { select: { id: true, nombre: true } },
+        auditorias: {
+          where: { accion: 'LOGIN' },
+          orderBy: { creadoEn: 'desc' },
+          take: 1,
+          select: { creadoEn: true }
+        }
+      },
+      orderBy: { creadoEn: 'desc' }
+    })
+
+    const resultado = usuarios.map(u => ({
+      ...u,
+      ultimoLogin: u.auditorias[0]?.creadoEn || null,
+      auditorias: undefined
+    }))
+
+    res.json(resultado)
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Error al obtener usuarios' })
+  }
+}
+
+// POST /usuarios
+const crear = async (req, res) => {
+  try {
+    const { nombre, username, password, confirmarPassword, rol, sucursalId } = req.body
+    const solicitante = req.usuario
+
+    if (!nombre || !username || !password || !rol)
+      return res.status(400).json({ error: 'Faltan campos obligatorios' })
+
+    if (password !== confirmarPassword)
+      return res.status(400).json({ error: 'Las contrasenas no coinciden' })
+
+    if (solicitante.rol === 'ADMIN_SUCURSAL') {
+      if (rol === 'SUPERADMIN') return res.status(403).json({ error: 'No tienes permiso para crear superadmin' })
+      if (rol === 'ADMIN_SUCURSAL') return res.status(403).json({ error: 'No tienes permiso para crear administradores' })
+    }
+
+    const existe = await prisma.usuario.findUnique({ where: { username } })
+    if (existe) return res.status(409).json({ error: 'El nombre de usuario ya existe' })
+
+    const sucId = solicitante.rol === 'ADMIN_SUCURSAL'
+      ? solicitante.sucursalId
+      : (sucursalId ? parseInt(sucursalId) : null)
+
+    const hash = await bcrypt.hash(password, 10)
+
+    const usuario = await prisma.usuario.create({
+      data: { nombre, username, passwordHash: hash, rol, sucursalId: sucId, activo: true },
+      select: { id: true, nombre: true, username: true, rol: true, activo: true, sucursal: { select: { id: true, nombre: true } } }
+    })
+
+    await registrarAudit(solicitante, 'CREAR_USUARIO', `${solicitante.nombre} creo al usuario ${username} con rol ${rol}`, req.ip)
+
+    res.status(201).json(usuario)
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Error al crear usuario' })
+  }
+}
+
+// PUT /usuarios/:id
+const editar = async (req, res) => {
+  try {
+    const { id } = req.params
+    const { nombre, username, rol, sucursalId } = req.body
+    const solicitante = req.usuario
+
+    const objetivo = await prisma.usuario.findUnique({ where: { id: parseInt(id) } })
+    if (!objetivo) return res.status(404).json({ error: 'Usuario no encontrado' })
+
+    if (solicitante.rol === 'ADMIN_SUCURSAL') {
+      if (parseInt(id) === solicitante.id && rol && rol !== objetivo.rol)
+        return res.status(403).json({ error: 'No puedes cambiar tu propio rol' })
+      if (objetivo.rol === 'SUPERADMIN')
+        return res.status(403).json({ error: 'No puedes editar a un superadmin' })
+    }
+
+    const data = { nombre, username }
+    if (rol) data.rol = rol
+    if (sucursalId !== undefined) data.sucursalId = sucursalId ? parseInt(sucursalId) : null
+
+    const usuario = await prisma.usuario.update({
+      where: { id: parseInt(id) },
+      data,
+      select: { id: true, nombre: true, username: true, rol: true, activo: true, sucursal: { select: { id: true, nombre: true } } }
+    })
+
+    await registrarAudit(solicitante, 'EDITAR_USUARIO', `${solicitante.nombre} edito al usuario ${objetivo.username}`, req.ip)
+
+    res.json(usuario)
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Error al editar usuario' })
+  }
+}
+
+// PATCH /usuarios/:id/estado
+const cambiarEstado = async (req, res) => {
+  try {
+    const { id } = req.params
+    const { activo } = req.body
+    const solicitante = req.usuario
+
+    const objetivo = await prisma.usuario.findUnique({ where: { id: parseInt(id) } })
+    if (!objetivo) return res.status(404).json({ error: 'Usuario no encontrado' })
+
+    if (solicitante.rol === 'ADMIN_SUCURSAL' && objetivo.rol !== 'VENDEDOR')
+      return res.status(403).json({ error: 'Solo puedes desactivar empleados' })
+
+    const usuario = await prisma.usuario.update({
+      where: { id: parseInt(id) },
+      data: { activo },
+      select: { id: true, nombre: true, activo: true }
+    })
+
+    const accion = activo ? 'ACTIVAR_USUARIO' : 'DESACTIVAR_USUARIO'
+    const detalle = `${solicitante.nombre} ${activo ? 'activo' : 'desactivo'} al usuario ${objetivo.username}`
+    
+    await registrarAudit(solicitante, accion, detalle, req.ip)
+    res.json(usuario)
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Error al cambiar estado' })
+  }
+}
+
+// POST /usuarios/:id/reset-password
+const resetPassword = async (req, res) => {
+  try {
+    const { id } = req.params
+    const { password, confirmarPassword } = req.body
+    const solicitante = req.usuario
+
+    if (!password || !confirmarPassword) return res.status(400).json({ error: 'Faltan campos obligatorios' })
+    if (password !== confirmarPassword) return res.status(400).json({ error: 'Las contrasenas no coinciden' })
+    if (password.length < 6) return res.status(400).json({ error: 'Minimo 6 caracteres' })
+
+    const objetivo = await prisma.usuario.findUnique({ where: { id: parseInt(id) } })
+    if (!objetivo) return res.status(404).json({ error: 'Usuario no encontrado' })
+
+    if (solicitante.rol === 'ADMIN_SUCURSAL' && objetivo.rol !== 'VENDEDOR')
+      return res.status(403).json({ error: 'Solo puedes resetear contrasenas de empleados' })
+
+    const hash = await bcrypt.hash(password, 10)
+    await prisma.usuario.update({ where: { id: parseInt(id) }, data: { passwordHash: hash } })
+
+    await registrarAudit(solicitante, 'RESET_PASSWORD', `${solicitante.nombre} reseteo la contrasena de ${objetivo.username}`, req.ip)
+
+    res.json({ mensaje: 'Contrasena actualizada correctamente' })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Error al resetear contrasena' })
+  }
+}
+
+// GET /usuarios/sucursales
+const listarSucursales = async (req, res) => {
+  try {
+    const sucursales = await prisma.sucursal.findMany({ select: { id: true, nombre: true }, orderBy: { nombre: 'asc' } })
+    res.json(sucursales)
+  } catch (err) {
+    res.status(500).json({ error: 'Error al obtener sucursales' })
+  }
+}
+
+module.exports = { listar, crear, editar, cambiarEstado, resetPassword, listarSucursales }
+</file>
+
+<file path="src/modules/usuarios/usuarios.routes.js">
+const router = require('express').Router()
+const { listar, crear, editar, cambiarEstado, resetPassword, listarSucursales } = require('./usuarios.controller')
+const { requireAuth, requireRole } = require('../../middlewares/auth.middleware')
+
+// IMPORTANTE: ruta fija antes que rutas con :id
+router.get('/sucursales', requireAuth, requireRole('SUPERADMIN', 'ADMIN_SUCURSAL'), listarSucursales)
+
+router.get('/', requireAuth, requireRole('SUPERADMIN', 'ADMIN_SUCURSAL'), listar)
+router.post('/', requireAuth, requireRole('SUPERADMIN', 'ADMIN_SUCURSAL'), crear)
+router.put('/:id', requireAuth, requireRole('SUPERADMIN', 'ADMIN_SUCURSAL'), editar)
+router.patch('/:id/estado', requireAuth, requireRole('SUPERADMIN', 'ADMIN_SUCURSAL'), cambiarEstado)
+router.post('/:id/reset-password', requireAuth, requireRole('SUPERADMIN', 'ADMIN_SUCURSAL'), resetPassword)
+
+module.exports = router
+</file>
+
+<file path="src/prisma.client.js">
+// ═══════════════════════════════════════════════════════════════════
+// PRISMA.CLIENT.JS — Cliente Prisma centralizado
+// Ubicación: src/prisma.client.js
+// ═══════════════════════════════════════════════════════════════════
+
+const { PrismaClient } = require('@prisma/client')
+
+const prisma = new PrismaClient()
+
+module.exports = prisma
+</file>
+
+<file path="src/server.js">
+require('dotenv').config()
+const app = require('./app')
+
+const PORT = process.env.PORT || 3000
+
+app.listen(PORT, () => {
+  console.log(`✅ Servidor JESHA POS corriendo en http://localhost:${PORT}`)
+})
+</file>
+
+</files>

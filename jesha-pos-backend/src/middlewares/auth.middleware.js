@@ -1,5 +1,9 @@
 const jwt = require('jsonwebtoken')
 
+// ═══════════════════════════════════════════════════════════════════
+// REQUIREAUTH - Verificar que el usuario tiene token válido
+// ═══════════════════════════════════════════════════════════════════
+
 const requireAuth = (req, res, next) => {
   const authHeader = req.headers.authorization
 
@@ -12,21 +16,30 @@ const requireAuth = (req, res, next) => {
   try {
     const payload = jwt.verify(token, process.env.JWT_SECRET)
     req.usuario = payload
+    req.usuarioId = payload.id
     next()
   } catch (err) {
     return res.status(401).json({ error: 'Token inválido o expirado' })
   }
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// REQUIREROLE - Verificar que el usuario tiene el rol permitido
+// ═══════════════════════════════════════════════════════════════════
+
 const requireRole = (roles) => {
   const rolesPermitidos = Array.isArray(roles) ? roles : [roles]
   return (req, res, next) => {
     if (!rolesPermitidos.includes(req.usuario.rol)) {
-      return res.status(403).json({ error: 'Acceso denegado' })
+      return res.status(403).json({ error: 'Acceso denegado - rol insuficiente' })
     }
     next()
   }
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// REQUIRESUCURSALACCESS - Verificar que el usuario accede solo su sucursal
+// ═══════════════════════════════════════════════════════════════════
 
 const requireSucursalAccess = (req, res, next) => {
   if (req.usuario.rol === 'SUPERADMIN') return next()
@@ -38,4 +51,12 @@ const requireSucursalAccess = (req, res, next) => {
   next()
 }
 
-module.exports = { requireAuth, requireRole, requireSucursalAccess }
+// ═══════════════════════════════════════════════════════════════════
+// EXPORTAR TODOS LOS MIDDLEWARES
+// ═══════════════════════════════════════════════════════════════════
+
+module.exports = {
+  requireAuth,
+  requireRole,
+  requireSucursalAccess
+}
