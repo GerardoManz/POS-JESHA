@@ -1,6 +1,10 @@
 /* ═══════════════════════════════════════════════════════════════════
-   PRODUCTOS.JS — Frontend Inventario
-   Adaptado a: tabla #productos-tbody (productos.html)
+   PRODUCTOS.JS — Frontend Inventario (VERSIÓN CORREGIDA)
+   
+   CAMBIOS:
+   - Eliminada búsqueda de #logout-btn (sidebar.js lo maneja)
+   - Eliminada duplicación de cargarSidebar()
+   
    ═══════════════════════════════════════════════════════════════════ */
 
 const API_URL = 'http://localhost:3000'
@@ -14,7 +18,7 @@ let productoActual    = null
 let productosTbody, searchInput, filtroDepto, filtroCat
 let btnNuevoProducto, modal, modalTitle, btnCancelModal, btnCloseModal
 let formulario, inputImagen
-let imagenPreviewContainer, imagenPreview, btnCambiarPreview, logoutBtn
+let imagenPreviewContainer, imagenPreview, btnCambiarPreview
 
 // ═══════════════════════════════════════════════════════════════════
 // INICIALIZACIÓN
@@ -42,7 +46,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   imagenPreviewContainer = document.getElementById('imagen-preview-container')
   imagenPreview          = document.getElementById('imagen-preview')
   btnCambiarPreview      = document.getElementById('btn-cambiar-preview')
-  logoutBtn              = document.getElementById('logout-btn')
 
   console.log('✅ Token encontrado')
 
@@ -218,51 +221,46 @@ function actualizarSelectCategorias() {
   const selectCat = document.getElementById('producto-categoria')
   const deptVal   = document.getElementById('producto-departamento')?.value
   if (!selectCat) return
+
   while (selectCat.options.length > 1) selectCat.remove(1)
-  categoriasLista
-    .filter(c => !deptVal || c.departamentoId == deptVal)
-    .forEach(cat => {
-      const opt = document.createElement('option')
-      opt.value = cat.id
-      opt.textContent = cat.nombre
-      selectCat.appendChild(opt)
-    })
+
+  const categs = deptVal
+    ? categoriasLista.filter(c => c.departamentoId == deptVal)
+    : categoriasLista
+
+  categs.forEach(cat => {
+    const opt = document.createElement('option')
+    opt.value = cat.id
+    opt.textContent = cat.nombre
+    selectCat.appendChild(opt)
+  })
 }
 
 // ═══════════════════════════════════════════════════════════════════
 // MODAL
 // ═══════════════════════════════════════════════════════════════════
 
-function abrirModalNuevo() {
-  productoActual = null
-  if (modalTitle) modalTitle.textContent = 'Nuevo Producto'
-  if (formulario) formulario.reset()
-  if (imagenPreviewContainer) imagenPreviewContainer.style.display = 'none'
-  ocultarError()
-  if (modal) modal.classList.add('active')
-}
+window.editarProducto = async function(productoId) {
+  const producto = productosLista.find(p => p.id === productoId)
+  if (!producto) return
 
-window.editarProducto = function(id) {
-  productoActual = productosLista.find(p => p.id === id)
-  if (!productoActual) return
-
+  productoActual = producto
   if (modalTitle) modalTitle.textContent = 'Editar Producto'
 
-  document.getElementById('producto-nombre').value           = productoActual.nombre || ''
-  document.getElementById('producto-codigo').value           = productoActual.codigoInterno || ''
-  document.getElementById('producto-codigoBarras').value     = productoActual.codigoBarras || ''
-  document.getElementById('producto-descripcion').value      = productoActual.descripcion || ''
-  document.getElementById('producto-departamento').value     = productoActual.categoria?.departamentoId || ''
-  document.getElementById('producto-costo').value            = productoActual.costo || ''
-  document.getElementById('producto-precioBase').value       = productoActual.precioBase || ''
-  document.getElementById('producto-unidadCompra').value     = productoActual.unidadCompra || ''
-  document.getElementById('producto-unidadVenta').value      = productoActual.unidadVenta || ''
-  document.getElementById('producto-factorConversion').value = productoActual.factorConversion || ''
-  document.getElementById('producto-claveSat').value         = productoActual.claveSat || ''
-  document.getElementById('producto-unidadSat').value        = productoActual.unidadSat || ''
+  document.getElementById('producto-nombre').value           = producto.nombre || ''
+  document.getElementById('producto-codigo').value           = producto.codigoInterno || ''
+  document.getElementById('producto-codigoBarras').value     = producto.codigoBarras || ''
+  document.getElementById('producto-descripcion').value      = producto.descripcion || ''
+  document.getElementById('producto-costo').value            = producto.costo || ''
+  document.getElementById('producto-precioBase').value       = producto.precioBase || ''
+  document.getElementById('producto-unidadCompra').value     = producto.unidadCompra || ''
+  document.getElementById('producto-unidadVenta').value      = producto.unidadVenta || ''
+  document.getElementById('producto-factorConversion').value = producto.factorConversion || ''
+  document.getElementById('producto-claveSat').value         = producto.claveSat || ''
+  document.getElementById('producto-unidadSat').value        = producto.unidadSat || ''
 
   actualizarSelectCategorias()
-  document.getElementById('producto-categoria').value = productoActual.categoriaId || ''
+  document.getElementById('producto-categoria').value = producto.categoriaId || ''
 
   ocultarError()
   if (modal) modal.classList.add('active')
@@ -423,22 +421,25 @@ function actualizarFecha() {
   })
 }
 
-function logout() {
-  localStorage.removeItem('jesha_token')
-  localStorage.removeItem('jesha_usuario')
-  window.location.href = 'login.html'
-}
-
 // ═══════════════════════════════════════════════════════════════════
 // EVENTOS
 // ═══════════════════════════════════════════════════════════════════
 
 function configurarEventos() {
-  if (btnNuevoProducto) btnNuevoProducto.addEventListener('click', abrirModalNuevo)
+  if (btnNuevoProducto) {
+    btnNuevoProducto.addEventListener('click', () => {
+      productoActual = null
+      if (modalTitle) modalTitle.textContent = 'Nuevo Producto'
+      if (formulario) formulario.reset()
+      actualizarSelectCategorias()
+      ocultarError()
+      if (modal) modal.classList.add('active')
+    })
+  }
+
   if (btnCancelModal)   btnCancelModal.addEventListener('click', cerrarModal)
   if (btnCloseModal)    btnCloseModal.addEventListener('click', cerrarModal)
   if (formulario)       formulario.addEventListener('submit', guardarProducto)
-  if (logoutBtn)        logoutBtn.addEventListener('click', logout)
 
   if (searchInput) {
     searchInput.addEventListener('input', buscarYFiltrar)

@@ -1,5 +1,9 @@
 // ══════════════════════════════════════════════════════════════════
-//  CLIENTES — JAVASCRIPT (VERSIÓN SEGURA SIN BUCLES)
+//  CLIENTES — JAVASCRIPT (VERSIÓN CORREGIDA)
+//  
+//  CAMBIOS:
+//  - Eliminada búsqueda de #logout-btn (sidebar.js lo maneja)
+//  - Eliminada duplicación de cargarSidebar()
 // ══════════════════════════════════════════════════════════════════
 
 // ── OBTENER TOKEN ──
@@ -56,16 +60,11 @@ if (fechaActual) {
   })
 }
 
-// ── LOGOUT ──
-const logoutButton = document.getElementById('logout-btn')
-if (logoutButton) {
-  logoutButton.addEventListener('click', () => {
-    localStorage.removeItem('jesha_token')
-    localStorage.removeItem('jesha_usuario')
-    localStorage.removeItem('redirect_after_login')
-    window.location.href = 'login.html'
-  })
-}
+// ❌ ELIMINADO: Búsqueda de #logout-btn
+// El logout ahora es manejado por sidebar.js después de cargar sidebar.html
+// NO lo buscamos aquí para evitar race condition
+// const logoutButton = document.getElementById('logout-btn')
+// if (logoutButton) { ... }
 
 // ── VARIABLES GLOBALES ──
 let clienteActual = null
