@@ -1,7 +1,5 @@
 // ═══════════════════════════════════════════════════════════════════
-// PRODUCTOS.CONTROLLER.JS
-// FIX: PrismaPg adapter (schema no tiene url en datasource)
-// FIX: Variable shadowing en .map() (p => prod)
+// PRODUCTOS.CONTROLLER.JS (CORREGIDO)
 // ═══════════════════════════════════════════════════════════════════
 
 const { PrismaClient } = require('@prisma/client')
@@ -47,11 +45,13 @@ async function listarCategorias(req, res) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// LISTAR
+// LISTAR TODOS
 // ═══════════════════════════════════════════════════════════════════
 
 async function listar(req, res) {
   try {
+    console.log('🔍 Iniciando query de productos...')
+    
     const productos = await prisma.producto.findMany({
       where: { activo: true },
       include: {
@@ -61,13 +61,12 @@ async function listar(req, res) {
       orderBy: { nombre: 'asc' }
     })
 
-    // FIX: 'prod' en lugar de 'p' para no shadowear nada
     const data = productos.map(prod => ({
       ...prod,
       inventario: prod.inventarios?.length > 0 ? prod.inventarios[0] : null
     }))
 
-    console.log(`✅ Productos: ${data.length}`)
+    console.log(`✅ Productos obtenidos: ${data.length}`)
     res.json({ success: true, data })
   } catch (error) {
     console.error('❌ Error listando productos:', error.message)
@@ -186,20 +185,13 @@ async function editar(req, res) {
     if (!nombre || !codigoInterno || !categoriaId || !precioBase) {
       return res.status(400).json({
         success: false,
-        error: 'Faltan campos requeridos: nombre, codigoInterno, categoriaId, precioBase'
+        error: 'Faltan campos requeridos'
       })
     }
 
     const existente = await prisma.producto.findUnique({ where: { id: parseInt(id) } })
     if (!existente) {
       return res.status(404).json({ success: false, error: 'Producto no encontrado' })
-    }
-
-    if (codigoInterno !== existente.codigoInterno) {
-      const codigoUsado = await prisma.producto.findUnique({ where: { codigoInterno } })
-      if (codigoUsado) {
-        return res.status(400).json({ success: false, error: 'El código interno ya existe' })
-      }
     }
 
     const producto = await prisma.producto.update({
@@ -265,7 +257,7 @@ async function cambiarEstado(req, res) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// ACTUALIZAR IMAGEN (llamado desde routes directamente, no HTTP)
+// ACTUALIZAR IMAGEN
 // ═══════════════════════════════════════════════════════════════════
 
 async function actualizarImagen(id, urlImagen) {
@@ -283,6 +275,10 @@ async function actualizarImagen(id, urlImagen) {
     inventario: producto.inventarios?.length > 0 ? producto.inventarios[0] : null
   }
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// EXPORTAR
+// ═══════════════════════════════════════════════════════════════════
 
 module.exports = {
   listarDepartamentos,

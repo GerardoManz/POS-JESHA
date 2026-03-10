@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>JESHA POS - Importar Productos</title>
+  <link rel="stylesheet" href="dashboard.css" />
+  <style>
+    .importacion-container {
+      max-width: 900px;
+      margin: 40px auto;
+      padding: 30px;
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    .drop-zone {
+      border: 3px dashed #3b82f6;
+      border-radius: 8px;
+      padding: 60px 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.3s;
+      background: #f8fafc;
+    }
+
+    .drop-zone:hover,
+    .drop-zone.dragover {
+      background: #eff6ff;
+      border-color: #1e40af;
+      transform: scale(1.02);
+    }
+
+    .drop-zone svg {
+      width: 48px;
+      height: 48px;
+      margin: 0 auto 12px;
+      color: #3b82f6;
+    }
+
+    .drop-zone h3 {
+      margin: 12px 0 6px;
+      color: #1f2937;
+    }
+
+    .drop-zone p {
+      color: #6b7280;
+      margin: 6px 0;
+    }
+
+    .file-input {
+      display: none;
+    }
+
+    .preview-table {
+      margin-top: 20px;
+      overflow-x: auto;
+    }
+
+    .preview-table table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+
+    .preview-table thead {
+      background: #f3f4f6;
+    }
+
+    .preview-table th, .preview-table td {
+      padding: 8px 12px;
+      text-align: left;
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    .info-box {
+      background: #f0f9ff;
+      border-left: 4px solid #3b82f6;
+      padding: 15px;
+      border-radius: 8px;
+      margin: 20px 0;
+    }
+
+    .info-box p {
+      margin: 6px 0;
+      color: #0c4a6e;
+    }
+
+    .progress-section {
+      display: none;
+      margin-top: 30px;
+    }
+
+    .progress-bar {
+      width: 100%;
+      height: 12px;
+      background: #e5e7eb;
+      border-radius: 6px;
+      overflow: hidden;
+      margin: 15px 0;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #3b82f6, #2563eb);
+      transition: width 0.3s;
+      width: 0%;
+    }
+
+    .resultado-box {
+      display: none;
+      margin-top: 30px;
+      padding: 20px;
+      background: #f0fdf4;
+      border: 2px solid #22c55e;
+      border-radius: 8px;
+    }
+
+    .resultado-box h4 {
+      color: #166534;
+      margin: 0 0 12px;
+    }
+
+    .resultado-box p {
+      margin: 6px 0;
+      color: #15803d;
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 12px;
+      margin-top: 20px;
+    }
+
+    .btn-group button {
+      flex: 1;
+    }
+  </style>
+</head>
+<body data-page="importacion">
+
+<div class="app-shell">
+  <div id="sidebar-container"></div>
+
+  <main class="content">
+    <header class="content-header">
+      <h2>📥 Importar Productos SICAR</h2>
+      <p>Sube tu archivo CSV para cargar todos los 4,852 artículos de una vez</p>
+    </header>
+
+    <div class="importacion-container">
+      
+      <!-- ZONA DRAG & DROP -->
+      <div class="drop-zone" id="drop-zone">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+          <polyline points="17 8 12 3 7 8"></polyline>
+          <line x1="12" y1="3" x2="12" y2="15"></line>
+        </svg>
+        <h3>Arrastra tu archivo CSV aquí</h3>
+        <p>O haz clic para seleccionar</p>
+        <small style="color: #9ca3af;">Soporta: .csv, .xlsx, .xls</small>
+        <input type="file" id="archivo-input" class="file-input" accept=".csv,.xlsx,.xls" />
+        <button class="btn-primary" onclick="document.getElementById('archivo-input').click()" style="margin-top: 12px;">
+          📂 Seleccionar archivo
+        </button>
+      </div>
+
+      <!-- PREVIEW -->
+      <div id="preview-section" style="display: none; margin-top: 30px;">
+        
+        <!-- INFO -->
+        <div class="info-box">
+          <p><strong>📊 Total de filas:</strong> <span id="total-filas">0</span></p>
+          <p><strong>📂 Columnas detectadas:</strong> <span id="total-columnas">0</span></p>
+          <p><strong>📁 Archivo:</strong> <span id="nombre-archivo">-</span></p>
+        </div>
+
+        <!-- PREVIEW TABLA (primeras 10 filas) -->
+        <h4 style="margin-top: 20px;">Preview (primeras 10 filas)</h4>
+        <div class="preview-table">
+          <table>
+            <thead>
+              <tr id="preview-headers"></tr>
+            </thead>
+            <tbody id="preview-body"></tbody>
+          </table>
+        </div>
+
+        <!-- BARRA PROGRESO (oculta hasta que inicie) -->
+        <div class="progress-section" id="progress-section">
+          <h4>📈 Importando...</h4>
+          <p id="progress-text" style="font-size: 14px; color: #6b7280;">0 / 0 productos</p>
+          <div class="progress-bar">
+            <div class="progress-fill" id="progress-fill"></div>
+          </div>
+        </div>
+
+        <!-- RESULTADO -->
+        <div class="resultado-box" id="resultado-box">
+          <h4>✅ Importación completada</h4>
+          <p>📦 <strong>Creados:</strong> <span id="resultado-creados">0</span></p>
+          <p>♻️ <strong>Actualizados:</strong> <span id="resultado-actualizados">0</span></p>
+          <p>❌ <strong>Errores:</strong> <span id="resultado-errores">0</span></p>
+        </div>
+
+        <!-- BOTONES -->
+        <div class="btn-group">
+          <button class="btn-secondary" id="btn-cancelar">Cancelar</button>
+          <button class="btn-primary" id="btn-importar">🚀 Importar productos</button>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<script src="sidebar.js"></script>
+<script src="importacion.js"></script>
+
+</body>
+</html>

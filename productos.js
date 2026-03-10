@@ -1,11 +1,12 @@
 /* ═══════════════════════════════════════════════════════════════════
-   PRODUCTOS.JS — Frontend Inventario (VERSIÓN CORREGIDA)
+   PRODUCTOS.JS — Frontend Inventario (CON ESTADÍSTICAS)
    
-   CAMBIOS:
-   - Eliminada búsqueda de #logout-btn (sidebar.js lo maneja)
-   - Eliminada duplicación de cargarSidebar()
+   AGREGADO:
+   - Estadísticas de inventario (total, con stock, sin stock, bajo stock)
+   - Mostrado en consola y en la página
    
    ═══════════════════════════════════════════════════════════════════ */
+
 
 const API_URL = 'http://localhost:3000'
 let TOKEN = localStorage.getItem('jesha_token')
@@ -104,6 +105,10 @@ async function cargarProductos() {
     const resultado = await response.json()
     productosLista = resultado.data || resultado
     console.log('✅ Productos cargados:', productosLista.length)
+    
+    // MOSTRAR ESTADÍSTICAS
+    mostrarEstadisticasInventario(productosLista)
+    
     renderizarTabla(productosLista)
 
   } catch (error) {
@@ -119,6 +124,73 @@ async function cargarProductos() {
         </tr>
       `
     }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ESTADÍSTICAS DE INVENTARIO
+// ═══════════════════════════════════════════════════════════════════
+
+function mostrarEstadisticasInventario(productos) {
+  // Calcular estadísticas
+  const totalProductos = productos.length
+  const conStock = productos.filter(p => p.inventario && p.inventario.stockActual > 0).length
+  const sinStock = productos.filter(p => !p.inventario || p.inventario.stockActual === 0).length
+  const bajoStock = productos.filter(p => 
+    p.inventario && 
+    p.inventario.stockActual > 0 && 
+    p.inventario.stockActual < p.inventario.stockMinimoAlerta
+  ).length
+
+  // MOSTRAR EN CONSOLA
+  console.log(`
+╔═══════════════════════════════════════════╗
+║         📊 ESTADO DEL INVENTARIO          ║
+╠═══════════════════════════════════════════╣
+║ ✅ Total productos:    ${String(totalProductos).padEnd(19)}║
+║ ✅ Con stock:          ${String(conStock).padEnd(19)}║
+║ ❌ Sin stock:          ${String(sinStock).padEnd(19)}║
+║ ⚠️  Bajo stock:        ${String(bajoStock).padEnd(19)}║
+╚═══════════════════════════════════════════╝
+  `)
+
+  // MOSTRAR EN PÁGINA
+  const headerContent = document.querySelector('.content-header')
+  if (headerContent) {
+    let resumenDiv = document.getElementById('resumen-inventario')
+    
+    if (!resumenDiv) {
+      resumenDiv = document.createElement('div')
+      resumenDiv.id = 'resumen-inventario'
+      headerContent.appendChild(resumenDiv)
+    }
+
+    resumenDiv.style.cssText = `
+      margin-top: 15px;
+      padding: 12px 15px;
+      background: #6f758624;
+      border-left: 4px solid #3b82f6;
+      border-radius: 6px;
+      font-size: 13px;
+      color: #ffffff;
+    `
+
+    resumenDiv.innerHTML = `
+      <strong>📊 Inventario:</strong> 
+      ${totalProductos} total | 
+      <span style="color: #16a34a;">✅ ${conStock} con stock</span> | 
+      <span style="color: #dc2626;">❌ ${sinStock} sin stock</span> | 
+      <span style="color: #ea580c;">⚠️ ${bajoStock} bajo stock</span>
+    `
+  }
+
+  // MOSTRAR PRODUCTOS SIN STOCK EN CONSOLA
+  const sinStockProductos = productos.filter(p => !p.inventario || p.inventario.stockActual === 0)
+  if (sinStockProductos.length > 0) {
+    console.log('\n📋 PRODUCTOS SIN STOCK:\n')
+    sinStockProductos.forEach((p, i) => {
+      console.log(`  ${i + 1}. ${p.nombre} (${p.codigoInterno})`)
+    })
   }
 }
 
@@ -220,15 +292,10 @@ function llenarSelectDepartamentos() {
 function actualizarSelectCategorias() {
   const selectCat = document.getElementById('producto-categoria')
   const deptVal   = document.getElementById('producto-departamento')?.value
-  if (!selectCat) return
-
+  if (!selectCat || !deptVal) return
   while (selectCat.options.length > 1) selectCat.remove(1)
-
-  const categs = deptVal
-    ? categoriasLista.filter(c => c.departamentoId == deptVal)
-    : categoriasLista
-
-  categs.forEach(cat => {
+  const catFilt = categoriasLista.filter(c => c.departamentoId === parseInt(deptVal))
+  catFilt.forEach(cat => {
     const opt = document.createElement('option')
     opt.value = cat.id
     opt.textContent = cat.nombre
@@ -240,24 +307,24 @@ function actualizarSelectCategorias() {
 // MODAL
 // ═══════════════════════════════════════════════════════════════════
 
-window.editarProducto = async function(productoId) {
-  const producto = productosLista.find(p => p.id === productoId)
+window.editarProducto = async function(id) {
+  const producto = productosLista.find(p => p.id === id)
   if (!producto) return
 
   productoActual = producto
   if (modalTitle) modalTitle.textContent = 'Editar Producto'
 
-  document.getElementById('producto-nombre').value           = producto.nombre || ''
-  document.getElementById('producto-codigo').value           = producto.codigoInterno || ''
-  document.getElementById('producto-codigoBarras').value     = producto.codigoBarras || ''
-  document.getElementById('producto-descripcion').value      = producto.descripcion || ''
-  document.getElementById('producto-costo').value            = producto.costo || ''
-  document.getElementById('producto-precioBase').value       = producto.precioBase || ''
-  document.getElementById('producto-unidadCompra').value     = producto.unidadCompra || ''
-  document.getElementById('producto-unidadVenta').value      = producto.unidadVenta || ''
-  document.getElementById('producto-factorConversion').value = producto.factorConversion || ''
-  document.getElementById('producto-claveSat').value         = producto.claveSat || ''
-  document.getElementById('producto-unidadSat').value        = producto.unidadSat || ''
+  document.getElementById('producto-nombre').value             = producto.nombre
+  document.getElementById('producto-codigo').value             = producto.codigoInterno
+  document.getElementById('producto-codigoBarras').value       = producto.codigoBarras || ''
+  document.getElementById('producto-descripcion').value        = producto.descripcion || ''
+  document.getElementById('producto-costo').value              = producto.costo || ''
+  document.getElementById('producto-precioBase').value         = producto.precioBase
+  document.getElementById('producto-unidadCompra').value       = producto.unidadCompra || ''
+  document.getElementById('producto-unidadVenta').value        = producto.unidadVenta || ''
+  document.getElementById('producto-factorConversion').value   = producto.factorConversion || ''
+  document.getElementById('producto-claveSat').value           = producto.claveSat || ''
+  document.getElementById('producto-unidadSat').value          = producto.unidadSat || ''
 
   actualizarSelectCategorias()
   document.getElementById('producto-categoria').value = producto.categoriaId || ''

@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>JESHA POS - Punto de Venta</title>
+  <link rel="stylesheet" href="dashboard.css" />
+  <link rel="stylesheet" href="punto-venta.css" />
+</head>
+<body data-page="punto-venta">
+<div class="app-shell">
+
+  <!-- ✅ SIDEBAR COMPONENTE GLOBAL -->
+  <div id="sidebar-container"></div>
+
+  <!-- ── CONTENIDO PRINCIPAL ── -->
+  <main class="content punto-venta-content">
+    <header class="content-header">
+      <h2>Punto de Venta</h2>
+      <div class="header-info">
+        <p id="fecha-actual"></p>
+        <span class="turno-badge" id="turno-status">⚠️ Sin turno</span>
+      </div>
+    </header>
+
+    <!-- ── CONTENEDOR PRINCIPAL (grid 2 columnas) ── -->
+    <div class="pos-container">
+      
+      <!-- ── SECCIÓN IZQUIERDA: CATÁLOGO ── -->
+      <section class="catalogo-section">
+        
+        <!-- BUSCADOR -->
+        <div class="search-group pos-search">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+          </svg>
+          <input 
+            type="text" 
+            id="search-productos" 
+            placeholder="Buscar por nombre, código o categoría..." 
+            class="search-input pos-search-input"
+          />
+          <span id="search-indicator" class="search-indicator"></span>
+        </div>
+
+        <!-- GRID DE PRODUCTOS -->
+        <div class="productos-grid" id="productos-grid">
+          <div class="loading-placeholder">
+            <div class="spinner"></div>
+            <p>Cargando productos...</p>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- ── SECCIÓN DERECHA: CARRITO ── -->
+      <aside class="carrito-section panel">
+        
+        <h3 class="carrito-title">
+          Carrito
+          <span class="items-count" id="items-count">(0)</span>
+        </h3>
+
+        <!-- TABLA DEL CARRITO -->
+        <div class="carrito-items-container">
+          <table class="carrito-table" id="carrito-table">
+            <thead>
+              <tr>
+                <th>Producto</th>
+                <th style="width: 60px;">Cant</th>
+                <th style="width: 70px;">Subtotal</th>
+                <th style="width: 35px;"></th>
+              </tr>
+            </thead>
+            <tbody id="carrito-tbody">
+              <tr class="carrito-empty">
+                <td colspan="4" style="text-align: center; color: var(--muted); padding: 40px;">
+                  Agrega productos para comenzar
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- DIVIDER -->
+        <div class="carrito-divider"></div>
+
+        <!-- CLIENTE -->
+        <div class="carrito-section-control">
+          <label class="control-label">Cliente</label>
+          <input 
+            type="text" 
+            id="cliente-nombre" 
+            placeholder="Público general" 
+            class="control-input"
+          />
+        </div>
+
+        <!-- MÉTODO DE PAGO -->
+        <div class="carrito-section-control">
+          <label class="control-label">Método de Pago</label>
+          <div class="metodos-pago">
+            <button class="metodo-btn active" data-metodo="EFECTIVO">
+              💵 Efectivo
+            </button>
+            <button class="metodo-btn" data-metodo="CREDITO">
+              💳 Tarjeta
+            </button>
+            <button class="metodo-btn" data-metodo="TRANSFERENCIA">
+              🔄 Transf.
+            </button>
+          </div>
+        </div>
+
+        <!-- MONTO RECIBIDO (si es efectivo) -->
+        <div class="carrito-section-control" id="monto-efectivo-control" style="display: none;">
+          <label class="control-label">Monto Recibido</label>
+          <input 
+            type="number" 
+            id="monto-recibido" 
+            placeholder="0.00" 
+            step="0.01"
+            min="0"
+            class="control-input"
+          />
+          <div class="cambio-info" id="cambio-info" style="display: none;">
+            Cambio: <span id="cambio-valor">$0.00</span>
+          </div>
+        </div>
+
+        <!-- DIVIDER -->
+        <div class="carrito-divider"></div>
+
+        <!-- RESUMEN DE TOTALES -->
+        <div class="carrito-resumen">
+          <div class="resumen-linea">
+            <span>Total:</span>
+            <span id="resumen-total" class="monto">$0.00</span>
+          </div>
+          <div class="resumen-linea muted-text" style="font-size: 0.8rem; color: var(--muted, #999);">
+            <span>IVA incluido en precios</span>
+          </div>
+        </div>
+
+        <!-- DIVIDER -->
+        <div class="carrito-divider"></div>
+
+        <!-- BOTONES DE ACCIÓN -->
+        <div class="carrito-actions">
+          <button id="btn-completar-venta" class="btn-primary btn-completar" disabled>
+            ✓ Completar Venta
+          </button>
+          <button id="btn-limpiar-carrito" class="btn-secondary btn-limpiar">
+            🗑️ Limpiar
+          </button>
+        </div>
+
+      </aside>
+
+    </div>
+  </main>
+
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<!--  MODAL: CREAR CLIENTE RÁPIDO
+<!-- ════════════════════════════════════════════════════════════════ -->
+<div id="modal-cliente-rapido" class="modal" style="display: none;">
+  <div class="modal-content modal-content-small">
+    <div class="modal-header">
+      <h3>Nuevo Cliente</h3>
+      <button class="modal-close" id="modal-cliente-close">&times;</button>
+    </div>
+
+    <form id="cliente-rapido-form">
+      <div class="form-group">
+        <label for="cliente-nombre-form">Nombre *</label>
+        <input type="text" id="cliente-nombre-form" placeholder="Nombre del cliente" required />
+      </div>
+      <div class="form-group">
+        <label for="cliente-telefono-form">Teléfono</label>
+        <input type="tel" id="cliente-telefono-form" placeholder="Teléfono (opcional)" />
+      </div>
+      <div id="cliente-error" class="error-message"></div>
+      <div class="form-actions">
+        <button type="button" class="btn-secondary" id="btn-cancel-cliente">Cancelar</button>
+        <button type="submit" class="btn-primary">Crear Cliente</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<!--  MODAL: CONFIRMACIÓN DE VENTA
+<!-- ════════════════════════════════════════════════════════════════ -->
+<div id="modal-confirmacion" class="modal" style="display: none;">
+  <div class="modal-content modal-content-small">
+    <div class="modal-header">
+      <h3>Confirmar Venta</h3>
+      <button class="modal-close" id="modal-confirmacion-close">&times;</button>
+    </div>
+
+    <div class="modal-body">
+      <p id="confirmacion-texto"></p>
+      <div class="confirmacion-resumen">
+        <div class="resumen-linea">
+          <span>Total:</span>
+          <span id="confirmacion-total"></span>
+        </div>
+        <div class="resumen-linea">
+          <span>Método:</span>
+          <span id="confirmacion-metodo"></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-actions">
+      <button type="button" class="btn-secondary" id="btn-cancelar-venta">Cancelar</button>
+      <button type="button" class="btn-primary" id="btn-confirmar-venta">✓ Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<!--  SCRIPTS
+<!-- ════════════════════════════════════════════════════════════════ -->
+<script src="sidebar.js"></script>
+<script src="punto-venta.js"></script>
+
+</body>
+</html>

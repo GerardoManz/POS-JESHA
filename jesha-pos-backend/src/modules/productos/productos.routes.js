@@ -1,6 +1,5 @@
 // ═══════════════════════════════════════════════════════════════════
-// PRODUCTOS.ROUTES.JS
-// FIX: requireAuth importado del middleware, no redefinido localmente
+// PRODUCTOS.ROUTES.JS (CORREGIDO)
 // ═══════════════════════════════════════════════════════════════════
 
 const express = require('express')
@@ -10,14 +9,14 @@ const path = require('path')
 const fs = require('fs')
 const sharp = require('sharp')
 
-const { requireAuth } = require('../../middlewares/auth.middleware')
 const productosController = require('./productos.controller')
+const importacionController = require('./importacion.controller')
 
 // ═══════════════════════════════════════════════════════════════════
-// MULTER — subida de imágenes en memoria
+// MULTER — PARA IMÁGENES
 // ═══════════════════════════════════════════════════════════════════
 
-const upload = multer({
+const uploadImagen = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
@@ -31,27 +30,44 @@ const upload = multer({
 })
 
 // ═══════════════════════════════════════════════════════════════════
+// MULTER — PARA ARCHIVOS CSV
+// ═══════════════════════════════════════════════════════════════════
+
+const uploadCSV = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 50 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const permitidos = ['text/csv', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']
+    if (permitidos.includes(file.mimetype) || file.originalname.endsWith('.csv')) {
+      cb(null, true)
+    } else {
+      cb(new Error('Solo archivos CSV o Excel permitidos'))
+    }
+  }
+})
+
+// ═══════════════════════════════════════════════════════════════════
 // DEPARTAMENTOS Y CATEGORÍAS
 // ═══════════════════════════════════════════════════════════════════
 
-router.get('/departamentos', requireAuth, productosController.listarDepartamentos)
-router.get('/categorias',    requireAuth, productosController.listarCategorias)
+router.get('/departamentos', productosController.listarDepartamentos)
+router.get('/categorias',    productosController.listarCategorias)
 
 // ═══════════════════════════════════════════════════════════════════
 // CRUD PRODUCTOS
 // ═══════════════════════════════════════════════════════════════════
 
-router.get('/',          requireAuth, productosController.listar)
-router.get('/:id',       requireAuth, productosController.obtener)
-router.post('/',         requireAuth, productosController.crear)
-router.put('/:id',       requireAuth, productosController.editar)
-router.patch('/:id/estado', requireAuth, productosController.cambiarEstado)
+router.get('/',          productosController.listar)
+router.get('/:id',       productosController.obtener)
+router.post('/',         productosController.crear)
+router.put('/:id',       productosController.editar)
+router.patch('/:id/estado', productosController.cambiarEstado)
 
 // ═══════════════════════════════════════════════════════════════════
 // SUBIR IMAGEN
 // ═══════════════════════════════════════════════════════════════════
 
-router.post('/:id/imagen', requireAuth, upload.single('imagen'), async (req, res) => {
+router.post('/:id/imagen', uploadImagen.single('imagen'), async (req, res) => {
   try {
     const { id } = req.params
 
@@ -81,5 +97,15 @@ router.post('/:id/imagen', requireAuth, upload.single('imagen'), async (req, res
     res.status(400).json({ error: err.message })
   }
 })
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPORTACIÓN CSV
+// ═══════════════════════════════════════════════════════════════════
+
+router.post('/importar/csv', uploadCSV.single('archivo'), importacionController.importarCSV)
+
+// ═══════════════════════════════════════════════════════════════════
+// EXPORTAR
+// ═══════════════════════════════════════════════════════════════════
 
 module.exports = router

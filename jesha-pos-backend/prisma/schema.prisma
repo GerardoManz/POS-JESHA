@@ -1,12 +1,3 @@
-// ═══════════════════════════════════════════════════════════════════
-//  JESHA POS — Schema Prisma FINAL UNIFICADO
-//  Base de datos: PostgreSQL 18
-//  Fusión de Schema ACTUAL + Schema V2
-//  DEPARTAMENTOS: Herramientas, Plomería, Electricidad, Pintura, 
-//                Gas, Limpieza, Seguridad, Construcción, SERVICIOS
-//  ¡LISTA PARA IMPLEMENTAR!
-// ═══════════════════════════════════════════════════════════════════
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -14,10 +5,6 @@ generator client {
 datasource db {
   provider = "postgresql"
 }
-
-// ═══════════════════════════════
-//  ENUMS
-// ═══════════════════════════════
 
 enum Rol {
   SUPERADMIN
@@ -29,6 +16,13 @@ enum Rol {
 enum EstadoVenta {
   COMPLETADA
   CANCELADA
+}
+
+enum EstadoPago {
+  PENDIENTE
+  PARCIAL
+  PAGADA
+  ATRASADA
 }
 
 enum MetodoPago {
@@ -103,16 +97,12 @@ enum EstadoAlerta {
   RESUELTA
 }
 
-// ═══════════════════════════════
-//  SUCURSAL
-// ═══════════════════════════════
-
 model Sucursal {
   id           Int      @id @default(autoincrement())
   nombre       String
   direccion    String?
   telefono     String?
-  codigoPostal String   // requerido para CFDI lugar_expedicion
+  codigoPostal String
   activa       Boolean  @default(true)
   creadaEn     DateTime @default(now())
 
@@ -127,10 +117,6 @@ model Sucursal {
   alertasStock  AlertaStock[]
   auditorias    Auditoria[]
 }
-
-// ═══════════════════════════════
-//  USUARIO
-// ═══════════════════════════════
 
 model Usuario {
   id           Int      @id @default(autoincrement())
@@ -152,24 +138,24 @@ model Usuario {
   auditorias     Auditoria[]
 }
 
-// ═══════════════════════════════
-//  CLIENTE
-// ═══════════════════════════════
-
 model Cliente {
   id                 Int      @id @default(autoincrement())
   nombre             String
-  apodo              String?  
+  apodo              String?
   rfc                String?  @unique
   telefono           String?
-  email              String?
+  email              String?  @unique
   codigoPostalFiscal String?
   regimenFiscal      String?
-  razonSocial        String?        
-  usoCfdi            String?        
+  razonSocial        String?
+  usoCfdi            String?
   tipo               String   @default("REGULAR")
+  
   limiteCredito      Decimal  @default(0) @db.Decimal(12,2)
-  activo             Boolean  @default(true)                  
+  saldoPendiente     Decimal  @default(0) @db.Decimal(12,2)
+  totalCreditoUsado  Decimal  @default(0) @db.Decimal(12,2)
+  
+  activo             Boolean  @default(true)
   notas              String?
   creadoEn           DateTime @default(now())
 
@@ -177,12 +163,11 @@ model Cliente {
   cotizaciones Cotizacion[]
   pedidos      Pedido[]
   facturas     FacturaCfdi[]
-}
 
-// ═══════════════════════════════
-//  DEPARTAMENTO (NUEVO)
-//  Nivel alto de categorización
-// ═══════════════════════════════
+  @@index([nombre])
+  @@index([rfc])
+  @@index([email])
+}
 
 model Departamento {
   id        Int       @id @default(autoincrement())
@@ -194,17 +179,11 @@ model Departamento {
   categorias Categoria[]
 }
 
-// ═══════════════════════════════
-//  CATEGORIA
-//  Modificado: Ahora con relación a Departamento
-// ═══════════════════════════════
-
 model Categoria {
   id              Int    @id @default(autoincrement())
   departamentoId  Int
   nombre          String
   descripcion     String?
-
   creadoEn        DateTime @default(now())
 
   departamento Departamento @relation(fields: [departamentoId], references: [id])
@@ -214,14 +193,10 @@ model Categoria {
   @@unique([departamentoId, nombre])
 }
 
-// ═══════════════════════════════
-//  PROVEEDOR
-// ═══════════════════════════════
-
 model Proveedor {
   id            Int      @id @default(autoincrement())
-  nombreOficial String
-  alias         String?
+  nombreOficial String   @unique
+  alias         String?  @unique
   telefono      String?
   celular       String?
   email         String?
@@ -230,12 +205,10 @@ model Proveedor {
 
   productos     ProveedorProducto[]
   ordenesCompra OrdenCompra[]
-}
 
-// ═══════════════════════════════
-//  PROVEEDOR-PRODUCTO
-//  Precio costo por proveedor por producto
-// ═══════════════════════════════
+  @@index([nombreOficial])
+  @@index([alias])
+}
 
 model ProveedorProducto {
   id              Int     @id @default(autoincrement())
@@ -251,43 +224,37 @@ model ProveedorProducto {
   @@unique([proveedorId, productoId])
 }
 
-// ═══════════════════════════════
-//  PRODUCTO
-//  Modificado: Agrega codigoInterno, unidades SAT, costoPromedio
-// ═══════════════════════════════
-
 model Producto {
   id              Int      @id @default(autoincrement())
   
-  // Identificación
   nombre          String
-  codigoInterno   String   @unique      // NUEVO: diferente a código de barras
+  codigoInterno   String   @unique
   codigoBarras    String?  @unique
   descripcion     String?
 
-  // Imágenes
   imagenUrl       String?
-  imagenOriginal  String?               // NUEVO: URL imagen original
+  imagenOriginal  String?
 
-  // Precios y Costos
-  precioBase      Decimal  @db.Decimal(10, 2)     // BLINDADO
-  costo           Decimal? @db.Decimal(10, 2)     // Costo último
-  costoPromedio   Decimal? @db.Decimal(10, 2)     // NUEVO: Costo promedio ponderado
+  precioBase      Decimal  @db.Decimal(10, 2)
+  costo           Decimal? @db.Decimal(10, 2)
+  costoPromedio   Decimal? @db.Decimal(10, 2)
 
-  // Unidades de Medida (NUEVO)
-  unidadCompra    String?                         // ej: "caja"
-  unidadVenta     String?                         // ej: "pza"
-  factorConversion Decimal? @db.Decimal(10, 4)    // ej: 12
+  precioMayoreo   Decimal? @db.Decimal(10, 2)
+  cantidadMinMayoreo Int? @default(10)
+  aplicaMayoreo   Boolean  @default(false)
 
-  // Claves SAT (NUEVO)
-  claveSat        String?                         // 8 dígitos
-  unidadSat       String?                         // código SAT
+  unidadCompra    String?
+  unidadVenta     String?
+  factorConversion Decimal? @db.Decimal(10, 4)
 
-  // Relaciones
+  claveSat        String?
+  unidadSat       String?
+
+  esGranel        Boolean  @default(false)
+  margen          Decimal? @db.Decimal(5, 2)
+
   categoriaId     Int
-  departamentoId  Int?                            // NUEVO: opcional FK a departamento
 
-  // Estado
   activo          Boolean  @default(true)
   creadoEn        DateTime @default(now())
   actualizadoEn   DateTime @updatedAt
@@ -307,10 +274,6 @@ model Producto {
   @@index([codigoBarras])
 }
 
-// ═══════════════════════════════
-//  INVENTARIO POR SUCURSAL
-// ═══════════════════════════════
-
 model InventarioSucursal {
   id                Int      @id @default(autoincrement())
   productoId        Int
@@ -328,16 +291,11 @@ model InventarioSucursal {
   @@index([stockActual])
 }
 
-// ═══════════════════════════════
-//  MOVIMIENTO INVENTARIO
-//  Modificado: Agrega sucursalId, usuarioId e índices
-// ═══════════════════════════════
-
 model MovimientoInventario {
   id           Int                      @id @default(autoincrement())
   productoId   Int
-  sucursalId   Int                      // NUEVO
-  usuarioId    Int?                     // NUEVO: quién hizo el cambio
+  sucursalId   Int
+  usuarioId    Int?
   tipo         TipoMovimientoInventario
   cantidad     Int
   stockAntes   Int
@@ -356,10 +314,6 @@ model MovimientoInventario {
   @@index([creadoEn])
 }
 
-// ═══════════════════════════════
-//  ALERTA DE STOCK BAJO
-// ═══════════════════════════════
-
 model AlertaStock {
   id          Int          @id @default(autoincrement())
   productoId  Int
@@ -369,15 +323,14 @@ model AlertaStock {
   estado      EstadoAlerta @default(PENDIENTE)
   creadaEn    DateTime     @default(now())
   vistaEn     DateTime?
+  resueltaEn  DateTime?
 
   sucursal Sucursal @relation(fields: [sucursalId], references: [id])
 
-  @@unique([productoId, sucursalId, estado])
+  @@unique([productoId, sucursalId])
+  @@index([sucursalId])
+  @@index([estado])
 }
-
-// ═══════════════════════════════
-//  TURNO DE CAJA
-// ═══════════════════════════════
 
 model TurnoCaja {
   id                  Int       @id @default(autoincrement())
@@ -410,37 +363,46 @@ model MovimientoCaja {
   turno TurnoCaja @relation(fields: [turnoId], references: [id], onDelete: Cascade)
 }
 
-// ═══════════════════════════════
-//  VENTA
-// ═══════════════════════════════
-
 model Venta {
   id            Int         @id @default(autoincrement())
   folio         String      @unique
   sucursalId    Int
   usuarioId     Int
   clienteId     Int?
-  turnoId       Int?
+  turnoId       Int
   metodoPago    MetodoPago
+  
   subtotal      Decimal     @db.Decimal(10, 2)
   descuento     Decimal     @default(0) @db.Decimal(10, 2)
   total         Decimal     @db.Decimal(10, 2)
+  
+  estadoPago    EstadoPago  @default(PAGADA)
+  montoAbonado  Decimal     @default(0) @db.Decimal(10, 2)
+  saldoPendiente Decimal    @default(0) @db.Decimal(10, 2)
+  
   estado        EstadoVenta @default(COMPLETADA)
-
-  tokenQr       String        @unique @default(uuid())
+  tokenQr       String      @unique @default(uuid())
   facturaEstado EstadoFactura @default(DISPONIBLE)
   facturaLimite DateTime
-
+  
+  clienteRazonSocial String?
+  clienteRFC String?
+  
   notas    String?
   creadaEn DateTime @default(now())
 
   sucursal     Sucursal       @relation(fields: [sucursalId], references: [id])
   usuario      Usuario        @relation(fields: [usuarioId], references: [id])
   cliente      Cliente?       @relation(fields: [clienteId], references: [id])
-  turno        TurnoCaja?     @relation(fields: [turnoId], references: [id])
+  turno        TurnoCaja      @relation(fields: [turnoId], references: [id])
   detalles     DetalleVenta[]
   devoluciones Devolucion[]
   factura      FacturaCfdi?
+
+  @@index([clienteId])
+  @@index([usuarioId])
+  @@index([sucursalId])
+  @@index([creadaEn])
 }
 
 model DetalleVenta {
@@ -457,10 +419,6 @@ model DetalleVenta {
   producto  Producto   @relation(fields: [productoId], references: [id])
   promocion Promocion? @relation(fields: [promocionId], references: [id])
 }
-
-// ═══════════════════════════════
-//  DEVOLUCIÓN
-// ═══════════════════════════════
 
 model Devolucion {
   id                  Int      @id @default(autoincrement())
@@ -484,13 +442,10 @@ model DetalleDevolucion {
   productoId     Int
   cantidad       Int
   precioUnitario Decimal @db.Decimal(10, 2)
+  creadoEn       DateTime @default(now())
 
   devolucion Devolucion @relation(fields: [devolucionId], references: [id], onDelete: Cascade)
 }
-
-// ═══════════════════════════════
-//  COTIZACIÓN
-// ═══════════════════════════════
 
 model Cotizacion {
   id         Int              @id @default(autoincrement())
@@ -521,10 +476,6 @@ model DetalleCotizacion {
   cotizacion Cotizacion @relation(fields: [cotizacionId], references: [id], onDelete: Cascade)
   producto   Producto   @relation(fields: [productoId], references: [id])
 }
-
-// ═══════════════════════════════
-//  PEDIDO (BITÁCORA)
-// ═══════════════════════════════
 
 model Pedido {
   id             Int          @id @default(autoincrement())
@@ -557,10 +508,6 @@ model DetallePedido {
   producto Producto @relation(fields: [productoId], references: [id])
 }
 
-// ═══════════════════════════════
-//  ORDEN DE COMPRA
-// ═══════════════════════════════
-
 model OrdenCompra {
   id            Int               @id @default(autoincrement())
   folio         String            @unique
@@ -568,6 +515,7 @@ model OrdenCompra {
   proveedorId   Int
   estado        EstadoOrdenCompra @default(ENVIADO)
   totalEstimado Decimal           @db.Decimal(10, 2)
+  totalRecibido Decimal           @default(0) @db.Decimal(10, 2)
   notas         String?
   creadaEn      DateTime          @default(now())
   recibidaEn    DateTime?
@@ -584,15 +532,12 @@ model DetalleOrdenCompra {
   cantidadPedida   Int
   cantidadRecibida Int     @default(0)
   precioCosto      Decimal @db.Decimal(10, 2)
-  subtotal         Decimal @db.Decimal(10, 2)
+  subtotalPedido   Decimal @db.Decimal(10, 2)
+  subtotalRecibido Decimal @default(0) @db.Decimal(10, 2)
 
   ordenCompra OrdenCompra @relation(fields: [ordenCompraId], references: [id], onDelete: Cascade)
   producto    Producto    @relation(fields: [productoId], references: [id])
 }
-
-// ═══════════════════════════════
-//  PROMOCIÓN
-// ═══════════════════════════════
 
 model Promocion {
   id          Int              @id @default(autoincrement())
@@ -612,11 +557,11 @@ model Promocion {
   categoria     Categoria?     @relation(fields: [categoriaId], references: [id])
   productos     Producto[]     @relation("PromocionProducto")
   detallesVenta DetalleVenta[]
-}
 
-// ═══════════════════════════════
-//  FACTURA CFDI 4.0
-// ═══════════════════════════════
+  @@index([activa])
+  @@index([fechaInicio])
+  @@index([fechaFin])
+}
 
 model FacturaCfdi {
   id              Int           @id @default(autoincrement())
@@ -642,14 +587,10 @@ model FacturaCfdi {
   cliente Cliente @relation(fields: [clienteId], references: [id])
 }
 
-// ═══════════════════════════════
-//  AUDITORÍA
-// ═══════════════════════════════
-
 model Auditoria {
   id           Int      @id @default(autoincrement())
-  usuarioId    Int?
-  sucursalId   Int?
+  usuarioId    Int?     // ← NULLABLE (acepta NULL)
+  sucursalId   Int?     // ← NULLABLE (acepta NULL)
   accion       String
   modulo       String
   referencia   String?
@@ -662,6 +603,7 @@ model Auditoria {
   sucursal Sucursal? @relation(fields: [sucursalId], references: [id])
 
   @@index([usuarioId])
+  @@index([sucursalId])
   @@index([modulo])
   @@index([accion])
   @@index([creadoEn])
