@@ -1,18 +1,76 @@
-/* ── PRODUCTOS CSS ── */
+/* ── PRODUCTOS CSS MEJORADO ── */
 /* Hereda variables de dashboard.css */
 
-/* ── TOOLBAR ── */
+/* ── TOOLBAR MEJORADA ── */
 .toolbar {
   display: flex;
-  gap: 16px;
+  gap: 12px;
   margin-bottom: 24px;
-  align-items: center;
+  align-items: flex-end;
   flex-wrap: wrap;
 }
 
+/* ── FILTROS ── */
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  min-width: 180px;
+}
+
+.filter-group label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.filter-select {
+  padding: 10px 12px;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  color: var(--text);
+  font-family: 'Barlow', sans-serif;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%237a8599' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 32px;
+  outline: none;
+}
+
+.filter-select:hover:not(:disabled) {
+  background-color: rgba(255, 255, 255, 0.05);
+  border-color: var(--accent);
+}
+
+.filter-select:focus {
+  background-color: rgba(255, 255, 255, 0.06);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(31, 58, 102, 0.15);
+}
+
+.filter-select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background-color: var(--panel);
+}
+
+.filter-select option {
+  background: var(--sidebar-bg);
+  color: var(--text);
+}
+
+/* ── SEARCH GROUP ── */
 .search-group {
   flex: 1;
-  min-width: 250px;
+  min-width: 200px;
   position: relative;
   display: flex;
   align-items: center;
@@ -27,10 +85,10 @@
 
 .search-input {
   width: 100%;
-  padding: 12px 16px 12px 40px;
+  padding: 10px 16px 10px 40px;
   background: var(--panel);
   border: 1px solid var(--panel-border);
-  border-radius: 10px;
+  border-radius: 8px;
   color: var(--text);
   font-family: 'Barlow', sans-serif;
   font-size: 0.95rem;
@@ -48,18 +106,42 @@
   box-shadow: 0 0 0 3px rgba(31, 58, 102, 0.15);
 }
 
+/* ── BOTÓN LIMPIAR FILTROS ── */
+.btn-filter-reset {
+  padding: 10px 14px;
+  background: transparent;
+  border: 1px solid rgba(244, 67, 54, 0.4);
+  border-radius: 8px;
+  color: #ff9999;
+  font-family: 'Barlow', sans-serif;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-filter-reset:hover {
+  background: rgba(244, 67, 54, 0.1);
+  border-color: #ff9999;
+  color: #ff5555;
+}
+
+.btn-filter-reset:active {
+  transform: scale(0.98);
+}
+
 /* ── BOTÓN PRIMARY ── */
 .btn-primary {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 12px 18px;
+  padding: 10px 16px;
   background: linear-gradient(135deg, #2a4f8a 0%, #1f3a66 100%);
   border: none;
-  border-radius: 10px;
+  border-radius: 8px;
   color: #fff;
   font-family: 'Barlow Condensed', sans-serif;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -166,12 +248,12 @@
   text-transform: uppercase;
 }
 
-.estado-badge.disponible {
+.estado-badge.activo {
   background: rgba(76, 175, 80, 0.2);
   color: #4caf50;
 }
 
-.estado-badge.agotado {
+.estado-badge.inactivo {
   background: rgba(244, 67, 54, 0.2);
   color: #f44336;
 }
@@ -417,22 +499,66 @@
   to { transform: rotate(360deg); }
 }
 
+/* ── MENSAJE "SIN RESULTADOS" ── */
+.empty-state {
+  text-align: center;
+  padding: 60px 30px;
+  color: var(--muted);
+}
+
+.empty-state p {
+  margin: 0;
+  font-size: 1rem;
+  margin-bottom: 10px;
+}
+
+.empty-state small {
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.4);
+}
+
 /* ── RESPONSIVE ── */
+@media (max-width: 1200px) {
+  .toolbar {
+    gap: 8px;
+  }
+
+  .filter-group {
+    min-width: 150px;
+  }
+
+  .search-group {
+    min-width: 150px;
+  }
+}
+
 @media (max-width: 1000px) {
+  .toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .filter-group,
+  .search-group,
+  .btn-primary,
+  .btn-filter-reset {
+    width: 100%;
+  }
+
+  .filter-group {
+    min-width: unset;
+  }
+
+  .search-group {
+    min-width: unset;
+  }
+
   #producto-form {
     grid-template-columns: 1fr;
   }
 
   .form-row {
     grid-template-columns: 1fr;
-  }
-
-  .toolbar {
-    flex-direction: column;
-  }
-
-  .search-group {
-    width: 100%;
   }
 }
 
@@ -452,5 +578,19 @@
 
   .modal-content {
     max-width: 95%;
+  }
+
+  .toolbar {
+    gap: 6px;
+  }
+
+  .filter-group label {
+    display: none;
+  }
+
+  .filter-select,
+  .search-input {
+    padding: 8px 10px;
+    font-size: 0.85rem;
   }
 }

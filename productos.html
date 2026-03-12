@@ -20,8 +20,28 @@
       <p id="fecha-actual"></p>
     </header>
 
-    <!-- ── BUSCADOR Y BOTÓN ── -->
+    <!-- ── ESTADÍSTICAS ── -->
+    <div id="resumen-inventario" style="display: none;"></div>
+
+    <!-- ── FILTROS Y BÚSQUEDA ── -->
     <section class="toolbar">
+      <!-- DEPARTAMENTO (OBLIGATORIO) -->
+      <div class="filter-group">
+        <label for="filtro-departamento">📦 Departamento</label>
+        <select id="filtro-departamento" class="filter-select">
+          <option value="">Seleccionar departamento...</option>
+        </select>
+      </div>
+
+      <!-- CATEGORÍA (DEPENDIENTE DE DEPARTAMENTO) -->
+      <div class="filter-group">
+        <label for="filtro-categoria">📂 Categoría</label>
+        <select id="filtro-categoria" class="filter-select" disabled>
+          <option value="">Todas las categorías</option>
+        </select>
+      </div>
+
+      <!-- BÚSQUEDA -->
       <div class="search-group">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
@@ -34,6 +54,12 @@
         />
       </div>
 
+      <!-- BOTÓN LIMPIAR FILTROS -->
+      <button id="btn-limpiar-filtros" class="btn-filter-reset">
+        ✕ Limpiar
+      </button>
+
+      <!-- BOTÓN AGREGAR -->
       <button id="btn-nuevo-producto" class="btn-primary">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
@@ -194,15 +220,8 @@
 </div>
 
 <!-- ===== SCRIPTS ===== -->
-<!-- ORDEN CORRECTO: sidebar.js PRIMERO (maneja autenticación + sidebar) -->
 <script src="sidebar.js"></script>
-
-<!-- Luego: productos.js (lógica de la página) -->
 <script src="productos.js"></script>
-
-<!-- NOTA: NO llamar cargarSidebar() aquí -->
-<!-- sidebar.js ya lo hace automáticamente en su DOMContentLoaded -->
-<!-- El data-page="inventario" en <body> le dice qué página resaltar -->
 
 </body>
 </html>

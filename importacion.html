@@ -1,223 +1,163 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>JESHA POS - Importar Productos</title>
-  <link rel="stylesheet" href="dashboard.css" />
-  <style>
-    .importacion-container {
-      max-width: 900px;
-      margin: 40px auto;
-      padding: 30px;
-      background: white;
-      border-radius: 12px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    }
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Importación de Productos - JESHA POS</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
 
-    .drop-zone {
-      border: 3px dashed #3b82f6;
-      border-radius: 8px;
-      padding: 60px 20px;
-      text-align: center;
-      cursor: pointer;
-      transition: all 0.3s;
-      background: #f8fafc;
-    }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
 
-    .drop-zone:hover,
-    .drop-zone.dragover {
-      background: #eff6ff;
-      border-color: #1e40af;
-      transform: scale(1.02);
-    }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
 
-    .drop-zone svg {
-      width: 48px;
-      height: 48px;
-      margin: 0 auto 12px;
-      color: #3b82f6;
-    }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px 30px;
+            text-align: center;
+        }
+        .header h1 { font-size: 2em; margin-bottom: 10px; }
+        .header p { font-size: 1.1em; opacity: 0.9; }
 
-    .drop-zone h3 {
-      margin: 12px 0 6px;
-      color: #1f2937;
-    }
+        .content { padding: 40px 30px; }
 
-    .drop-zone p {
-      color: #6b7280;
-      margin: 6px 0;
-    }
+        .form-group { margin-bottom: 30px; }
+        .form-group label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 10px;
+            color: #333;
+        }
 
-    .file-input {
-      display: none;
-    }
+        #csvFile { display: none; }
 
-    .preview-table {
-      margin-top: 20px;
-      overflow-x: auto;
-    }
+        .file-input-label {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 30px;
+            border: 2px dashed #667eea;
+            border-radius: 8px;
+            background: #f8f9ff;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        .file-input-label:hover { background: #f0f2ff; border-color: #764ba2; }
+        .file-input-label span { text-align: center; }
+        .file-name { font-weight: 600; color: #333; display: block; }
+        .file-hint { font-size: 0.9em; color: #999; display: block; margin-top: 5px; }
 
-    .preview-table table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 12px;
-    }
+        .buttons-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-top: 30px;
+        }
 
-    .preview-table thead {
-      background: #f3f4f6;
-    }
+        .btn {
+            padding: 12px 30px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .btn-validate { background: #667eea; color: white; }
+        .btn-validate:hover:not(:disabled) {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+        .btn-import { background: #48bb78; color: white; }
+        .btn-import:hover:not(:disabled) {
+            background: #38a169;
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(72, 187, 120, 0.3);
+        }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-    .preview-table th, .preview-table td {
-      padding: 8px 12px;
-      text-align: left;
-      border-bottom: 1px solid #e5e7eb;
-    }
+        #result { margin-top: 30px; border-radius: 8px; }
 
-    .info-box {
-      background: #f0f9ff;
-      border-left: 4px solid #3b82f6;
-      padding: 15px;
-      border-radius: 8px;
-      margin: 20px 0;
-    }
+        .error-box {
+            background: #fed7d7;
+            border-left: 4px solid #fc8181;
+            color: #742a2a;
+            padding: 15px;
+            border-radius: 4px;
+        }
+        .exito-box {
+            background: #c6f6d5;
+            border-left: 4px solid #68d391;
+            color: #22543d;
+            padding: 15px;
+            border-radius: 4px;
+            font-weight: 600;
+            white-space: pre-line;
+        }
+        .info-box {
+            background: #e6fffa;
+            border-left: 4px solid #38b2ac;
+            color: #234e52;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
 
-    .info-box p {
-      margin: 6px 0;
-      color: #0c4a6e;
-    }
-
-    .progress-section {
-      display: none;
-      margin-top: 30px;
-    }
-
-    .progress-bar {
-      width: 100%;
-      height: 12px;
-      background: #e5e7eb;
-      border-radius: 6px;
-      overflow: hidden;
-      margin: 15px 0;
-    }
-
-    .progress-fill {
-      height: 100%;
-      background: linear-gradient(90deg, #3b82f6, #2563eb);
-      transition: width 0.3s;
-      width: 0%;
-    }
-
-    .resultado-box {
-      display: none;
-      margin-top: 30px;
-      padding: 20px;
-      background: #f0fdf4;
-      border: 2px solid #22c55e;
-      border-radius: 8px;
-    }
-
-    .resultado-box h4 {
-      color: #166534;
-      margin: 0 0 12px;
-    }
-
-    .resultado-box p {
-      margin: 6px 0;
-      color: #15803d;
-    }
-
-    .btn-group {
-      display: flex;
-      gap: 12px;
-      margin-top: 20px;
-    }
-
-    .btn-group button {
-      flex: 1;
-    }
-  </style>
+        @media (max-width: 600px) {
+            .buttons-group { grid-template-columns: 1fr; }
+        }
+    </style>
 </head>
-<body data-page="importacion">
-
-<div class="app-shell">
-  <div id="sidebar-container"></div>
-
-  <main class="content">
-    <header class="content-header">
-      <h2>📥 Importar Productos SICAR</h2>
-      <p>Sube tu archivo CSV para cargar todos los 4,852 artículos de una vez</p>
-    </header>
-
-    <div class="importacion-container">
-      
-      <!-- ZONA DRAG & DROP -->
-      <div class="drop-zone" id="drop-zone">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-          <polyline points="17 8 12 3 7 8"></polyline>
-          <line x1="12" y1="3" x2="12" y2="15"></line>
-        </svg>
-        <h3>Arrastra tu archivo CSV aquí</h3>
-        <p>O haz clic para seleccionar</p>
-        <small style="color: #9ca3af;">Soporta: .csv, .xlsx, .xls</small>
-        <input type="file" id="archivo-input" class="file-input" accept=".csv,.xlsx,.xls" />
-        <button class="btn-primary" onclick="document.getElementById('archivo-input').click()" style="margin-top: 12px;">
-          📂 Seleccionar archivo
-        </button>
-      </div>
-
-      <!-- PREVIEW -->
-      <div id="preview-section" style="display: none; margin-top: 30px;">
-        
-        <!-- INFO -->
-        <div class="info-box">
-          <p><strong>📊 Total de filas:</strong> <span id="total-filas">0</span></p>
-          <p><strong>📂 Columnas detectadas:</strong> <span id="total-columnas">0</span></p>
-          <p><strong>📁 Archivo:</strong> <span id="nombre-archivo">-</span></p>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📦 Importación de Productos</h1>
+            <p>Sistema JESHA POS - Ferretería</p>
         </div>
 
-        <!-- PREVIEW TABLA (primeras 10 filas) -->
-        <h4 style="margin-top: 20px;">Preview (primeras 10 filas)</h4>
-        <div class="preview-table">
-          <table>
-            <thead>
-              <tr id="preview-headers"></tr>
-            </thead>
-            <tbody id="preview-body"></tbody>
-          </table>
-        </div>
+        <div class="content">
+            <div class="info-box">
+                <strong>ℹ️ Información:</strong>
+                <p>Sube un CSV con columnas: CLAVE, CLAVE ALTERNA, DESCRIPCION, PRECIO COMPRA, PRECIO 1, DEPARTAMENTO, CATEGORIA, CLAVE SAT, UNIDAD SAT</p>
+                <p style="margin-top: 5px; font-size: 0.9em;">El sistema detecta automáticamente notación científica, duplicados y datos faltantes.</p>
+            </div>
 
-        <!-- BARRA PROGRESO (oculta hasta que inicie) -->
-        <div class="progress-section" id="progress-section">
-          <h4>📈 Importando...</h4>
-          <p id="progress-text" style="font-size: 14px; color: #6b7280;">0 / 0 productos</p>
-          <div class="progress-bar">
-            <div class="progress-fill" id="progress-fill"></div>
-          </div>
-        </div>
+            <div class="form-group">
+                <label>Seleccionar archivo CSV</label>
+                <div>
+                    <input type="file" id="csvFile" accept=".csv" />
+                    <label for="csvFile" class="file-input-label">
+                        <span>
+                            <span class="file-name">📁 Haz clic o arrastra aquí</span>
+                            <span class="file-hint">Archivos .csv (máx 50 MB)</span>
+                        </span>
+                    </label>
+                </div>
+            </div>
 
-        <!-- RESULTADO -->
-        <div class="resultado-box" id="resultado-box">
-          <h4>✅ Importación completada</h4>
-          <p>📦 <strong>Creados:</strong> <span id="resultado-creados">0</span></p>
-          <p>♻️ <strong>Actualizados:</strong> <span id="resultado-actualizados">0</span></p>
-          <p>❌ <strong>Errores:</strong> <span id="resultado-errores">0</span></p>
-        </div>
+            <div class="buttons-group">
+                <button class="btn btn-validate" id="validateBtn">✓ Validar Archivo</button>
+                <button class="btn btn-import" id="importBtn" disabled>🚀 Importar Productos</button>
+            </div>
 
-        <!-- BOTONES -->
-        <div class="btn-group">
-          <button class="btn-secondary" id="btn-cancelar">Cancelar</button>
-          <button class="btn-primary" id="btn-importar">🚀 Importar productos</button>
+            <div id="result"></div>
         </div>
-      </div>
-
     </div>
-  </main>
-</div>
 
-<script src="sidebar.js"></script>
-<script src="importacion.js"></script>
-
+    <script src="importacion.js"></script>
 </body>
 </html>

@@ -1,229 +1,364 @@
 // ═══════════════════════════════════════════════════════════════════
-// IMPORTACIÓN.CONTROLLER.JS - VERSIÓN FINAL CORREGIDA
-// SIN stockActual/stockMinimoAlerta en Producto (solo en InventarioSucursal)
+// IMPORTACION.CONTROLLER.JS — CORREGIDO
+// Recibe archivo CSV via multer, parsea, valida y hace upsert
 // ═══════════════════════════════════════════════════════════════════
 
-const { PrismaClient } = require('@prisma/client')
-const { PrismaPg } = require('@prisma/adapter-pg')
-const csv = require('csv-parse/sync')
+const prisma = require('../../lib/prisma')
 
-const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL })
-const prisma = new PrismaClient({ adapter })
+// ═══════════════════════════════════════════════════════════════════
+// UTILIDADES DE PARSEO CSV
+// ═══════════════════════════════════════════════════════════════════
 
-async function importarCSV(req, res) {
-  if (!req.file) {
-    return res.status(400).json({ error: 'Archivo requerido' })
-  }
+/**
+ * Parsea una línea CSV respetando entrecomillado y comillas escapadas ("")
+ * Maneja correctamente: "Espatula 5"" PRETUL" → Espatula 5" PRETUL
+ */
+function parseCSVLine(line) {
+    const result = []
+    let current = ''
+    let insideQuotes = false
 
-  try {
-    console.log('📥 Iniciando importación...')
-    const contenido = req.file.buffer.toString('utf-8')
+    for (let i = 0; i < line.length; i++) {
+        const char = line[i]
+        const next = line[i + 1]
 
-    const registros = csv.parse(contenido, {
-      columns: true,
-      skip_empty_lines: true,
-      trim: true
-    })
-
-    console.log(`📊 Total registros CSV: ${registros.length}`)
-
-    // ═══════════════════════════════════════════════════════════════
-    // PASO 1: LIMPIAR BASE DE DATOS (opcional)
-    // ═══════════════════════════════════════════════════════════════
-    
-    console.log('🧹 Limpiando base de datos...')
-    
-    // Eliminar movimientos de inventario
-    await prisma.movimientoInventario.deleteMany({})
-    console.log('  ✅ Movimientos eliminados')
-    
-    // Eliminar inventarios
-    await prisma.inventarioSucursal.deleteMany({})
-    console.log('  ✅ Inventarios eliminados')
-    
-    // Eliminar productos
-    await prisma.producto.deleteMany({})
-    console.log('  ✅ Productos eliminados')
-    
-    // Eliminar categorías
-    await prisma.categoria.deleteMany({})
-    console.log('  ✅ Categorías eliminadas')
-    
-    // Eliminar departamentos
-    await prisma.departamento.deleteMany({})
-    console.log('  ✅ Departamentos eliminados')
-
-    // ═══════════════════════════════════════════════════════════════
-    // PASO 2: CREAR DEPARTAMENTOS
-    // ═══════════════════════════════════════════════════════════════
-
-    const deptosUnicos = [...new Set(
-      registros
-        .map(r => r['DEPARTAMENTO']?.trim())
-        .filter(Boolean)
-    )]
-    
-    const departamentosMap = {}
-
-    console.log(`\n🏢 Creando ${deptosUnicos.length} departamentos...`)
-    
-    for (const depto of deptosUnicos) {
-      const deptoObj = await prisma.departamento.create({
-        data: {
-          nombre: depto,
-          activo: true
+        if (char === '"') {
+            if (insideQuotes && next === '"') {
+                current += '"'
+                i++ // saltar la segunda comilla
+            } else {
+                insideQuotes = !insideQuotes
+            }
+        } else if (char === ',' && !insideQuotes) {
+            result.push(current.trim())
+            current = ''
+        } else {
+            current += char
         }
-      })
-      departamentosMap[depto] = deptoObj.id
-      console.log(`  ✅ ${depto}`)
     }
-
-    // ═══════════════════════════════════════════════════════════════
-    // PASO 3: CREAR CATEGORÍAS
-    // ═══════════════════════════════════════════════════════════════
-
-    const categoriasUnicas = registros.reduce((acc, r) => {
-      const key = `${r['DEPARTAMENTO']}|${r['CATEGORIA']}`
-      if (!acc[key]) {
-        acc[key] = r
-      }
-      return acc
-    }, {})
-
-    const categoriasMap = {}
-
-    console.log(`\n📂 Creando ${Object.keys(categoriasUnicas).length} categorías...`)
-
-    for (const [key, row] of Object.entries(categoriasUnicas)) {
-      const depto = row['DEPARTAMENTO']?.trim()
-      const cat = row['CATEGORIA']?.trim()
-      const deptId = departamentosMap[depto]
-
-      if (!deptId) {
-        console.log(`  ⚠️  Departamento no encontrado: ${depto}`)
-        continue
-      }
-
-      const catObj = await prisma.categoria.create({
-        data: {
-          departamentoId: deptId,
-          nombre: cat,
-          descripcion: null
-        }
-      })
-
-      categoriasMap[cat] = catObj.id
-      console.log(`  ✅ ${depto} > ${cat}`)
-    }
-
-    // ═══════════════════════════════════════════════════════════════
-    // PASO 4: IMPORTAR PRODUCTOS
-    // ═══════════════════════════════════════════════════════════════
-
-    console.log(`\n📦 Importando ${registros.length} productos...`)
-
-    let creados = 0
-    let actualizados = 0
-    let errores = 0
-    const sucursalId = 1
-
-    for (let i = 0; i < registros.length; i++) {
-      try {
-        const row = registros[i]
-
-        // Extraer datos
-        const nombre = row['DESCRIPCION']?.trim()
-        const codigoInterno = row['CLAVE']?.trim()
-        const codigoBarras = row['CLAVE ALTERNA']?.trim() || null
-        const costo = parseFloat(row['PRECIO COMPRA']) || 0
-        const precioBase = parseFloat(row['PRECIO 1']) || 0
-        const precio2 = parseFloat(row['PRECIO 2']) || 0
-        const depto = row['DEPARTAMENTO']?.trim()
-        const cat = row['CATEGORIA']?.trim()
-
-        // Validaciones
-        if (!nombre || !codigoInterno) {
-          errores++
-          continue
-        }
-
-        const deptId = departamentosMap[depto]
-        const catId = categoriasMap[cat]
-
-        if (!deptId || !catId) {
-          errores++
-          continue
-        }
-
-        // Crear producto (SIN stock)
-        const producto = await prisma.producto.create({
-          data: {
-            nombre,
-            codigoInterno,
-            codigoBarras,
-            costo,
-            costoPromedio: costo,
-            precioBase,
-            precioMayoreo: precio2 > 0 && precio2 < precioBase ? precio2 : null,
-            cantidadMinMayoreo: parseInt(row['MAYOREO 2']) || 10,
-            aplicaMayoreo: precio2 > 0 && precio2 < precioBase,
-            esGranel: row['GRANEL (S/N)'] === 'S',
-            descripcion: row['CARACTERISTICAS']?.trim() || null,
-            categoriaId: catId,
-            activo: true
-          }
-        })
-
-        // Crear inventario (AQUÍ VA EL STOCK)
-        await prisma.inventarioSucursal.create({
-          data: {
-            productoId: producto.id,
-            sucursalId,
-            stockActual: parseInt(row['EXIST.']) || 0,
-            stockMinimoAlerta: parseInt(row['INV_MIN']) || 5,
-            stockMaximo: parseInt(row['INV_MAX']) || null
-          }
-        })
-
-        creados++
-
-        // Log cada 500
-        if ((i + 1) % 500 === 0) {
-          console.log(`  ⏳ ${i + 1}/${registros.length} procesados...`)
-        }
-      } catch (error) {
-        console.error(`❌ Fila ${i}: ${error.message}`)
-        errores++
-      }
-    }
-
-    // ═══════════════════════════════════════════════════════════════
-    // RESULTADO
-    // ═══════════════════════════════════════════════════════════════
-
-    console.log(`\n✅ IMPORTACIÓN COMPLETADA`)
-    console.log(`   📦 Creados: ${creados}`)
-    console.log(`   ♻️  Actualizados: ${actualizados}`)
-    console.log(`   ❌ Errores: ${errores}`)
-    console.log(`   📊 Total: ${registros.length}`)
-
-    res.json({
-      success: true,
-      mensaje: 'Importación completada exitosamente',
-      resumen: {
-        creados,
-        actualizados,
-        errores,
-        total: registros.length
-      }
-    })
-  } catch (error) {
-    console.error('❌ Error fatal:', error)
-    res.status(500).json({ 
-      success: false,
-      error: error.message 
-    })
-  }
+    result.push(current.trim())
+    return result
 }
 
-module.exports = { importarCSV }
+/**
+ * Parsea buffer CSV completo → array de objetos {header: valor}
+ */
+function parsearCSVBuffer(buffer) {
+    const texto = buffer.toString('utf-8')
+    const lineas = texto.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n')
+
+    // Buscar header (primera línea no vacía)
+    let headerIdx = 0
+    while (headerIdx < lineas.length && !lineas[headerIdx].trim()) {
+        headerIdx++
+    }
+
+    const headers = parseCSVLine(lineas[headerIdx])
+    const filas = []
+
+    for (let i = headerIdx + 1; i < lineas.length; i++) {
+        const linea = lineas[i].trim()
+        if (!linea) continue
+
+        const valores = parseCSVLine(linea)
+        const obj = {}
+        headers.forEach((h, idx) => {
+            let val = (valores[idx] || '').trim()
+            if (val.toLowerCase() === 'null' || val === '') {
+                val = null
+            }
+            obj[h] = val
+        })
+
+        // Solo incluir filas que tengan CLAVE
+        if (obj['CLAVE']) {
+            filas.push(obj)
+        }
+    }
+
+    return { headers, filas }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// VALIDACIONES
+// ═══════════════════════════════════════════════════════════════════
+
+function esNotacionCientifica(valor) {
+    if (!valor) return false
+    return /^[\d.]+[eE]\+\d+$/.test(valor.trim())
+}
+
+function validarFila(fila, idx) {
+    const errores = []
+    const clave = fila['CLAVE']
+    const desc = fila['DESCRIPCION']
+    const precio = fila['PRECIO 1']
+
+    if (!clave) {
+        errores.push({ fila: idx, error: 'CLAVE vacía' })
+    } else if (esNotacionCientifica(clave)) {
+        errores.push({ fila: idx, clave, error: `CLAVE en notación científica: "${clave}" — Excel corrompió este dato` })
+    }
+
+    if (!desc) {
+        errores.push({ fila: idx, clave, error: 'DESCRIPCION vacía' })
+    }
+
+    const precioNum = parseFloat(precio)
+    if (!precio || isNaN(precioNum) || precioNum <= 0) {
+        errores.push({ fila: idx, clave, error: `PRECIO 1 inválido: "${precio}"` })
+    }
+
+    return errores
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// MAPEO CSV → PRISMA
+// ═══════════════════════════════════════════════════════════════════
+
+function mapearProducto(fila) {
+    // Limpiar codigoBarras si está en notación científica
+    let codigoBarras = fila['CLAVE ALTERNA'] || null
+    if (codigoBarras && esNotacionCientifica(codigoBarras)) {
+        codigoBarras = null
+    }
+
+    return {
+        codigoInterno: fila['CLAVE'].trim(),
+        codigoBarras,
+        nombre: (fila['DESCRIPCION'] || '').trim(),
+        descripcion: fila['CARACTERISTICAS'] || null,
+        precioBase: parseFloat(fila['PRECIO 1']) || 0,
+        costo: fila['PRECIO COMPRA'] ? parseFloat(fila['PRECIO COMPRA']) : null,
+        claveSat: fila['CLAVE SAT'] || '31162800',
+        unidadSat: fila['UNIDAD SAT'] || 'H87',
+        activo: true,
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// PRE-CREAR DEPARTAMENTOS Y CATEGORÍAS (secuencial, sin race condition)
+// Se ejecuta UNA VEZ antes de insertar productos
+// ═══════════════════════════════════════════════════════════════════
+
+async function preSeedDepartamentosYCategorias(filas) {
+    // 1. Extraer combinaciones únicas depto|cat del CSV
+    const combos = new Set()
+    for (const fila of filas) {
+        const depto = (fila['DEPARTAMENTO'] || '').toUpperCase().trim()
+        const cat = (fila['CATEGORIA'] || '').trim()
+        if (depto && cat) {
+            combos.add(`${depto}|${cat}`)
+        }
+    }
+
+    console.log(`📂 Pre-creando ${combos.size} combinaciones depto/categoría...`)
+
+    const cacheDeptos = new Map()  // nombre → id
+    const cacheCats = new Map()    // "DEPTO|cat" → id
+
+    // 2. Procesar en secuencia (sin paralelo = sin race condition)
+    for (const combo of combos) {
+        const [nombreDepto, nombreCat] = combo.split('|')
+
+        // ── Departamento ──
+        let deptoId = cacheDeptos.get(nombreDepto)
+        if (!deptoId) {
+            let depto = await prisma.departamento.findFirst({
+                where: { nombre: { equals: nombreDepto, mode: 'insensitive' } }
+            })
+            if (!depto) {
+                depto = await prisma.departamento.create({
+                    data: { nombre: nombreDepto, activo: true }
+                })
+                console.log(`   + Departamento creado: ${nombreDepto}`)
+            }
+            deptoId = depto.id
+            cacheDeptos.set(nombreDepto, deptoId)
+        }
+
+        // ── Categoría ──
+        const keyCat = combo
+        if (!cacheCats.has(keyCat)) {
+            let cat = await prisma.categoria.findFirst({
+                where: {
+                    departamentoId: deptoId,
+                    nombre: { equals: nombreCat, mode: 'insensitive' }
+                }
+            })
+            if (!cat) {
+                cat = await prisma.categoria.create({
+                    data: { nombre: nombreCat, departamentoId: deptoId }
+                })
+                console.log(`   + Categoría creada: ${nombreDepto} → ${nombreCat}`)
+            }
+            cacheCats.set(keyCat, cat.id)
+        }
+    }
+
+    console.log(`✅ Departamentos y categorías listos`)
+    return cacheCats  // devuelve el mapa "DEPTO|cat" → categoriaId
+}
+
+/**
+ * Busca categoriaId en el cache ya poblado (sin queries, sin race condition)
+ */
+function obtenerCategoriaIdDelCache(cacheCats, nombreDepto, nombreCat) {
+    if (!nombreDepto || !nombreCat) return 1
+
+    const key = `${nombreDepto.toUpperCase().trim()}|${nombreCat.trim()}`
+    return cacheCats.get(key) || 1
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// HANDLER PRINCIPAL — IMPORTAR CSV (recibe archivo via multer)
+// ═══════════════════════════════════════════════════════════════════
+
+exports.importarCSV = async (req, res) => {
+    try {
+        // ── Validar que llegó un archivo ──
+        if (!req.file) {
+            return res.status(400).json({
+                error: 'Archivo CSV requerido. Envía el archivo con campo "archivo".',
+                total: 0, creados: 0, errores: 0
+            })
+        }
+
+        console.log(`📦 Archivo recibido: ${req.file.originalname} (${(req.file.size / 1024).toFixed(1)} KB)`)
+
+        // ── Parsear CSV del buffer ──
+        const { headers, filas } = parsearCSVBuffer(req.file.buffer)
+
+        console.log(`📋 Headers: ${headers.join(', ')}`)
+        console.log(`📊 Filas con datos: ${filas.length}`)
+
+        if (filas.length === 0) {
+            return res.status(400).json({
+                error: 'CSV vacío o sin datos válidos',
+                total: 0, creados: 0, errores: 0
+            })
+        }
+
+        // ── Validar TODAS las filas primero ──
+        const erroresValidacion = []
+        const filasValidas = []
+
+        for (let i = 0; i < filas.length; i++) {
+            const errs = validarFila(filas[i], i + 2) // +2 porque fila 1 es header
+            if (errs.length > 0) {
+                erroresValidacion.push(...errs)
+            } else {
+                filasValidas.push(filas[i])
+            }
+        }
+
+        console.log(`✅ Filas válidas: ${filasValidas.length}`)
+        console.log(`⚠️  Filas con error: ${erroresValidacion.length}`)
+
+        // ── Pre-crear departamentos y categorías (secuencial, sin race condition) ──
+        const cacheCats = await preSeedDepartamentosYCategorias(filasValidas)
+
+        // ── Procesar productos en lotes ──
+        let creados = 0
+        let actualizados = 0
+        const erroresInsert = []
+        const BATCH_SIZE = 50
+
+        for (let i = 0; i < filasValidas.length; i += BATCH_SIZE) {
+            const lote = filasValidas.slice(i, i + BATCH_SIZE)
+
+            const promesas = lote.map(async (fila, j) => {
+                const numFila = i + j + 2
+                try {
+                    const data = mapearProducto(fila)
+
+                    // Obtener categoría del cache (sin queries, sin race condition)
+                    const categoriaId = obtenerCategoriaIdDelCache(
+                        cacheCats,
+                        fila['DEPARTAMENTO'],
+                        fila['CATEGORIA']
+                    )
+
+                    // Upsert: crear si no existe, actualizar si existe
+                    const existente = await prisma.producto.findUnique({
+                        where: { codigoInterno: data.codigoInterno }
+                    })
+
+                    if (existente) {
+                        await prisma.producto.update({
+                            where: { codigoInterno: data.codigoInterno },
+                            data: {
+                                nombre: data.nombre,
+                                codigoBarras: data.codigoBarras,
+                                descripcion: data.descripcion,
+                                precioBase: data.precioBase,
+                                costo: data.costo,
+                                claveSat: data.claveSat,
+                                unidadSat: data.unidadSat,
+                                categoriaId,
+                            }
+                        })
+                        actualizados++
+                    } else {
+                        try {
+                            await prisma.producto.create({
+                                data: {
+                                    ...data,
+                                    categoriaId,
+                                }
+                            })
+                        } catch (createErr) {
+                            // Si falla por codigoBarras duplicado, reintentar sin él
+                            await prisma.producto.create({
+                                data: {
+                                    ...data,
+                                    codigoBarras: null,
+                                    categoriaId,
+                                }
+                            })
+                        }
+                        creados++
+                    }
+
+                } catch (err) {
+                    erroresInsert.push({
+                        fila: numFila,
+                        clave: fila['CLAVE'],
+                        error: err.message.substring(0, 300)
+                    })
+                }
+            })
+
+            await Promise.all(promesas)
+
+            // Log progreso cada lote
+            const procesados = Math.min(i + BATCH_SIZE, filasValidas.length)
+            console.log(`   Procesados: ${procesados}/${filasValidas.length}`)
+        }
+
+        // ── Respuesta ──
+        const todosErrores = [...erroresValidacion, ...erroresInsert]
+
+        console.log(`\n✅ Importación completada`)
+        console.log(`   Creados: ${creados}`)
+        console.log(`   Actualizados: ${actualizados}`)
+        console.log(`   Errores: ${todosErrores.length}`)
+
+        res.json({
+            mensaje: 'Importación completada',
+            total: filas.length,
+            creados,
+            actualizados,
+            omitidos: erroresValidacion.length,
+            errores: erroresInsert.length,
+            detalleErrores: todosErrores.slice(0, 30)
+        })
+
+    } catch (error) {
+        console.error('❌ Error general en importación:', error)
+        res.status(500).json({
+            error: 'Error en importación: ' + error.message,
+            total: 0, creados: 0, errores: 0
+        })
+    }
+}

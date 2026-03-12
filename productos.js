@@ -1,25 +1,31 @@
 /* ═══════════════════════════════════════════════════════════════════
-   PRODUCTOS.JS — Frontend Inventario (CON ESTADÍSTICAS)
+   PRODUCTOS.JS — Frontend Inventario CORREGIDO
    
-   AGREGADO:
-   - Estadísticas de inventario (total, con stock, sin stock, bajo stock)
-   - Mostrado en consola y en la página
+   FIXES:
+   - Departamento y categoría se muestran en tabla
+   - Modal llena departamentos y categorías correctamente
+   - Selector cascada: depto → categoría en el modal
+   - Opción de crear nuevos departamentos/categorías desde el modal
+   - Filtros del toolbar separados de los selects del modal
    
    ═══════════════════════════════════════════════════════════════════ */
 
-
 const API_URL = 'http://localhost:3000'
 let TOKEN = localStorage.getItem('jesha_token')
-let productosLista    = []
+let productosLista     = []
 let departamentosLista = []
-let categoriasLista   = []
-let productoActual    = null
+let categoriasLista    = []
+let productoActual     = null
 
-// Variables DOM — se asignan en DOMContentLoaded
+// Variables DOM
 let productosTbody, searchInput, filtroDepto, filtroCat
 let btnNuevoProducto, modal, modalTitle, btnCancelModal, btnCloseModal
 let formulario, inputImagen
 let imagenPreviewContainer, imagenPreview, btnCambiarPreview
+let btnLimpiarFiltros
+
+// Selects del modal (separados del toolbar)
+let modalDeptoSelect, modalCatSelect
 
 // ═══════════════════════════════════════════════════════════════════
 // INICIALIZACIÓN
@@ -34,10 +40,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     return
   }
 
-  // Capturar DOM aquí, cuando ya existe
+  // Capturar elementos DOM — TOOLBAR
   productosTbody         = document.getElementById('productos-tbody')
   searchInput            = document.getElementById('search-input')
+  filtroDepto            = document.getElementById('filtro-departamento')
+  filtroCat              = document.getElementById('filtro-categoria')
   btnNuevoProducto       = document.getElementById('btn-nuevo-producto')
+  btnLimpiarFiltros      = document.getElementById('btn-limpiar-filtros')
+
+  // Capturar elementos DOM — MODAL
   modal                  = document.getElementById('modal-producto')
   modalTitle             = document.getElementById('modal-title')
   btnCancelModal         = document.getElementById('btn-cancel')
@@ -47,6 +58,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   imagenPreviewContainer = document.getElementById('imagen-preview-container')
   imagenPreview          = document.getElementById('imagen-preview')
   btnCambiarPreview      = document.getElementById('btn-cambiar-preview')
+  modalDeptoSelect       = document.getElementById('producto-departamento')
+  modalCatSelect         = document.getElementById('producto-categoria')
 
   console.log('✅ Token encontrado')
 
@@ -106,17 +119,15 @@ async function cargarProductos() {
     productosLista = resultado.data || resultado
     console.log('✅ Productos cargados:', productosLista.length)
     
-    // MOSTRAR ESTADÍSTICAS
     mostrarEstadisticasInventario(productosLista)
-    
-    renderizarTabla(productosLista)
+    aplicarFiltros()
 
   } catch (error) {
     console.error('❌ Error cargando productos:', error)
     if (productosTbody) {
       productosTbody.innerHTML = `
         <tr>
-          <td colspan="8" style="text-align:center; color:#ff9999; padding:30px;">
+          <td colspan="9" style="text-align:center; color:#ff9999; padding:30px;">
             ❌ Error: ${error.message}
             <br/><br/>
             <button onclick="cargarProductos()" class="btn-secondary">Reintentar</button>
@@ -132,29 +143,13 @@ async function cargarProductos() {
 // ═══════════════════════════════════════════════════════════════════
 
 function mostrarEstadisticasInventario(productos) {
-  // Calcular estadísticas
   const totalProductos = productos.length
   const conStock = productos.filter(p => p.inventario && p.inventario.stockActual > 0).length
   const sinStock = productos.filter(p => !p.inventario || p.inventario.stockActual === 0).length
   const bajoStock = productos.filter(p => 
-    p.inventario && 
-    p.inventario.stockActual > 0 && 
-    p.inventario.stockActual < p.inventario.stockMinimoAlerta
+    p.inventario && p.inventario.stockActual > 0 && p.inventario.stockActual < p.inventario.stockMinimoAlerta
   ).length
 
-  // MOSTRAR EN CONSOLA
-  console.log(`
-╔═══════════════════════════════════════════╗
-║         📊 ESTADO DEL INVENTARIO          ║
-╠═══════════════════════════════════════════╣
-║ ✅ Total productos:    ${String(totalProductos).padEnd(19)}║
-║ ✅ Con stock:          ${String(conStock).padEnd(19)}║
-║ ❌ Sin stock:          ${String(sinStock).padEnd(19)}║
-║ ⚠️  Bajo stock:        ${String(bajoStock).padEnd(19)}║
-╚═══════════════════════════════════════════╝
-  `)
-
-  // MOSTRAR EN PÁGINA
   const headerContent = document.querySelector('.content-header')
   if (headerContent) {
     let resumenDiv = document.getElementById('resumen-inventario')
@@ -168,12 +163,13 @@ function mostrarEstadisticasInventario(productos) {
     resumenDiv.style.cssText = `
       margin-top: 15px;
       padding: 12px 15px;
-      background: #6f758624;
+      background: #f3f4f620;
       border-left: 4px solid #3b82f6;
       border-radius: 6px;
       font-size: 13px;
       color: #ffffff;
     `
+    resumenDiv.style.display = 'block'
 
     resumenDiv.innerHTML = `
       <strong>📊 Inventario:</strong> 
@@ -183,15 +179,247 @@ function mostrarEstadisticasInventario(productos) {
       <span style="color: #ea580c;">⚠️ ${bajoStock} bajo stock</span>
     `
   }
+}
 
-  // MOSTRAR PRODUCTOS SIN STOCK EN CONSOLA
-  const sinStockProductos = productos.filter(p => !p.inventario || p.inventario.stockActual === 0)
-  if (sinStockProductos.length > 0) {
-    console.log('\n📋 PRODUCTOS SIN STOCK:\n')
-    sinStockProductos.forEach((p, i) => {
-      console.log(`  ${i + 1}. ${p.nombre} (${p.codigoInterno})`)
+// ═══════════════════════════════════════════════════════════════════
+// SELECTS — TOOLBAR (filtros)
+// ═══════════════════════════════════════════════════════════════════
+
+function llenarSelectDepartamentos() {
+  // ── Toolbar ──
+  if (filtroDepto) {
+    while (filtroDepto.options.length > 1) filtroDepto.remove(1)
+    departamentosLista.forEach(dept => {
+      const opt = document.createElement('option')
+      opt.value = dept.id
+      opt.textContent = `${dept.icono || '📦'} ${dept.nombre}`
+      filtroDepto.appendChild(opt)
     })
   }
+
+  // ── Modal ──
+  llenarModalDepartamentos()
+}
+
+function actualizarCategoriasFiltroToolbar() {
+  if (!filtroCat) return
+  const deptId = parseInt(filtroDepto.value)
+
+  while (filtroCat.options.length > 1) filtroCat.remove(1)
+
+  if (deptId) {
+    const catFilt = categoriasLista.filter(c => c.departamentoId === deptId)
+    catFilt.forEach(cat => {
+      const opt = document.createElement('option')
+      opt.value = cat.id
+      opt.textContent = cat.nombre
+      filtroCat.appendChild(opt)
+    })
+    filtroCat.disabled = false
+  } else {
+    filtroCat.disabled = true
+    filtroCat.value = ''
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// SELECTS — MODAL (departamento → categoría cascada)
+// ═══════════════════════════════════════════════════════════════════
+
+function llenarModalDepartamentos(selectedId = null) {
+  if (!modalDeptoSelect) return
+
+  // Guardar valor actual si no se especifica
+  const currentVal = selectedId || modalDeptoSelect.value
+
+  modalDeptoSelect.innerHTML = '<option value="">Seleccionar departamento...</option>'
+
+  departamentosLista.forEach(dept => {
+    const opt = document.createElement('option')
+    opt.value = dept.id
+    opt.textContent = dept.nombre
+    if (parseInt(currentVal) === dept.id) opt.selected = true
+    modalDeptoSelect.appendChild(opt)
+  })
+
+  // Opción de agregar nuevo
+  const optNuevo = document.createElement('option')
+  optNuevo.value = '__NUEVO_DEPTO__'
+  optNuevo.textContent = '➕ Agregar nuevo departamento...'
+  modalDeptoSelect.appendChild(optNuevo)
+}
+
+function actualizarModalCategorias(departamentoId, selectedCatId = null) {
+  if (!modalCatSelect) return
+
+  modalCatSelect.innerHTML = '<option value="">Seleccionar categoría...</option>'
+
+  if (!departamentoId) {
+    modalCatSelect.disabled = true
+    return
+  }
+
+  const catFilt = categoriasLista.filter(c => c.departamentoId === parseInt(departamentoId))
+  catFilt.forEach(cat => {
+    const opt = document.createElement('option')
+    opt.value = cat.id
+    opt.textContent = cat.nombre
+    if (selectedCatId && parseInt(selectedCatId) === cat.id) opt.selected = true
+    modalCatSelect.appendChild(opt)
+  })
+
+  // Opción de agregar nueva
+  const optNuevo = document.createElement('option')
+  optNuevo.value = '__NUEVA_CAT__'
+  optNuevo.textContent = '➕ Agregar nueva categoría...'
+  modalCatSelect.appendChild(optNuevo)
+
+  modalCatSelect.disabled = false
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// CREAR NUEVO DEPARTAMENTO / CATEGORÍA
+// ═══════════════════════════════════════════════════════════════════
+
+async function crearNuevoDepartamento() {
+  const nombre = prompt('Nombre del nuevo departamento:')
+  if (!nombre || !nombre.trim()) {
+    modalDeptoSelect.value = ''
+    return
+  }
+
+  try {
+    const response = await fetch(`${API_URL}/productos/departamentos`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${TOKEN}`
+      },
+      body: JSON.stringify({ nombre: nombre.trim() })
+    })
+
+    const json = await response.json()
+
+    if (json.success) {
+      const nuevoDepto = json.data
+      // Agregar al array local
+      if (!departamentosLista.find(d => d.id === nuevoDepto.id)) {
+        departamentosLista.push(nuevoDepto)
+        departamentosLista.sort((a, b) => a.nombre.localeCompare(b.nombre))
+      }
+      // Actualizar ambos selects
+      llenarSelectDepartamentos()
+      // Seleccionar el nuevo en el modal
+      llenarModalDepartamentos(nuevoDepto.id)
+      // Cargar categorías (vacías para depto nuevo)
+      actualizarModalCategorias(nuevoDepto.id)
+      console.log(`✅ Departamento creado: ${nuevoDepto.nombre}`)
+    } else {
+      alert('Error: ' + json.error)
+      modalDeptoSelect.value = ''
+    }
+  } catch (err) {
+    console.error('❌ Error creando departamento:', err)
+    alert('Error de conexión al crear departamento')
+    modalDeptoSelect.value = ''
+  }
+}
+
+async function crearNuevaCategoria() {
+  const departamentoId = modalDeptoSelect.value
+
+  if (!departamentoId || departamentoId === '__NUEVO_DEPTO__') {
+    alert('Selecciona un departamento primero')
+    modalCatSelect.value = ''
+    return
+  }
+
+  const nombre = prompt('Nombre de la nueva categoría:')
+  if (!nombre || !nombre.trim()) {
+    modalCatSelect.value = ''
+    return
+  }
+
+  try {
+    const response = await fetch(`${API_URL}/productos/categorias`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${TOKEN}`
+      },
+      body: JSON.stringify({
+        nombre: nombre.trim(),
+        departamentoId: parseInt(departamentoId)
+      })
+    })
+
+    const json = await response.json()
+
+    if (json.success) {
+      const nuevaCat = json.data
+      // Agregar al array local
+      if (!categoriasLista.find(c => c.id === nuevaCat.id)) {
+        categoriasLista.push(nuevaCat)
+      }
+      // Recargar categorías del modal con la nueva seleccionada
+      actualizarModalCategorias(departamentoId, nuevaCat.id)
+      console.log(`✅ Categoría creada: ${nuevaCat.nombre}`)
+    } else {
+      alert('Error: ' + json.error)
+      modalCatSelect.value = ''
+    }
+  } catch (err) {
+    console.error('❌ Error creando categoría:', err)
+    alert('Error de conexión al crear categoría')
+    modalCatSelect.value = ''
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// FILTRADO Y BÚSQUEDA (toolbar)
+// ═══════════════════════════════════════════════════════════════════
+
+function aplicarFiltros() {
+  const deptId = parseInt(filtroDepto?.value) || null
+  const catId = parseInt(filtroCat?.value) || null
+  const busqueda = (searchInput?.value || '').toLowerCase().trim()
+
+  let filtrados = productosLista
+
+  // Filtrar por departamento
+  if (deptId) {
+    filtrados = filtrados.filter(p => {
+      return p.categoria?.departamento?.id === deptId
+    })
+  }
+
+  // Filtrar por categoría
+  if (catId) {
+    filtrados = filtrados.filter(p => p.categoriaId === catId)
+  }
+
+  // Filtrar por búsqueda
+  if (busqueda) {
+    filtrados = filtrados.filter(p =>
+      p.nombre.toLowerCase().includes(busqueda) ||
+      (p.codigoInterno && p.codigoInterno.toLowerCase().includes(busqueda)) ||
+      (p.codigoBarras && p.codigoBarras.toLowerCase().includes(busqueda)) ||
+      (p.categoria?.nombre && p.categoria.nombre.toLowerCase().includes(busqueda)) ||
+      (p.categoria?.departamento?.nombre && p.categoria.departamento.nombre.toLowerCase().includes(busqueda))
+    )
+  }
+
+  renderizarTabla(filtrados)
+}
+
+function limpiarFiltros() {
+  if (filtroDepto) filtroDepto.value = ''
+  if (filtroCat) { filtroCat.value = ''; filtroCat.disabled = true }
+  if (searchInput) searchInput.value = ''
+  
+  actualizarCategoriasFiltroToolbar()
+  aplicarFiltros()
+  console.log('🔄 Filtros limpiados')
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -202,7 +430,7 @@ function mostrarLoadingTabla() {
   if (!productosTbody) return
   productosTbody.innerHTML = `
     <tr class="loading-row">
-      <td colspan="8" style="text-align:center; padding:40px;">
+      <td colspan="9" style="text-align:center; padding:40px;">
         <div class="spinner"></div>
         <p style="margin-top:12px; color:var(--muted);">Cargando productos...</p>
       </td>
@@ -216,8 +444,11 @@ function renderizarTabla(productos) {
   if (productos.length === 0) {
     productosTbody.innerHTML = `
       <tr>
-        <td colspan="8" style="text-align:center; padding:40px; color:var(--muted);">
-          No hay productos para mostrar
+        <td colspan="9" style="text-align:center; padding:40px; color:var(--muted);">
+          <div class="empty-state">
+            <p>📭 No hay productos para mostrar</p>
+            <small>Ajusta los filtros o realiza una búsqueda diferente</small>
+          </div>
         </td>
       </tr>
     `
@@ -229,6 +460,9 @@ function renderizarTabla(productos) {
     const minStock = p.inventario?.stockMinimoAlerta ?? '-'
     const stockBajo = typeof stock === 'number' && typeof minStock === 'number' && stock <= minStock
 
+    const deptoNombre = p.categoria?.departamento?.nombre || ''
+    const catNombre   = p.categoria?.nombre || '-'
+
     return `
       <tr>
         <td>${p.codigoInterno || '-'}</td>
@@ -236,7 +470,10 @@ function renderizarTabla(productos) {
           <strong>${p.nombre}</strong>
           ${p.codigoBarras ? `<br/><small style="color:var(--muted)">${p.codigoBarras}</small>` : ''}
         </td>
-        <td>${p.categoria?.nombre || '-'}</td>
+        <td>
+          ${deptoNombre ? `<small style="color:var(--muted); display:block; font-size:0.7rem;">${deptoNombre}</small>` : ''}
+          <span class="categoria-badge">${catNombre}</span>
+        </td>
         <td>$${parseFloat(p.precioBase || 0).toFixed(2)}</td>
         <td style="color:${stockBajo ? '#ff9999' : 'inherit'}">${stock}</td>
         <td>${minStock}</td>
@@ -260,51 +497,7 @@ function renderizarTabla(productos) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// BÚSQUEDA
-// ═══════════════════════════════════════════════════════════════════
-
-function buscarYFiltrar() {
-  const texto = searchInput ? searchInput.value.toLowerCase() : ''
-  const filtrados = productosLista.filter(p =>
-    p.nombre.toLowerCase().includes(texto) ||
-    (p.codigoInterno && p.codigoInterno.toLowerCase().includes(texto)) ||
-    (p.codigoBarras  && p.codigoBarras.toLowerCase().includes(texto))
-  )
-  renderizarTabla(filtrados)
-}
-
-// ═══════════════════════════════════════════════════════════════════
-// SELECTS
-// ═══════════════════════════════════════════════════════════════════
-
-function llenarSelectDepartamentos() {
-  const selectDept = document.getElementById('producto-departamento')
-  if (!selectDept) return
-  while (selectDept.options.length > 1) selectDept.remove(1)
-  departamentosLista.forEach(dept => {
-    const opt = document.createElement('option')
-    opt.value = dept.id
-    opt.textContent = `${dept.icono || '📦'} ${dept.nombre}`
-    selectDept.appendChild(opt)
-  })
-}
-
-function actualizarSelectCategorias() {
-  const selectCat = document.getElementById('producto-categoria')
-  const deptVal   = document.getElementById('producto-departamento')?.value
-  if (!selectCat || !deptVal) return
-  while (selectCat.options.length > 1) selectCat.remove(1)
-  const catFilt = categoriasLista.filter(c => c.departamentoId === parseInt(deptVal))
-  catFilt.forEach(cat => {
-    const opt = document.createElement('option')
-    opt.value = cat.id
-    opt.textContent = cat.nombre
-    selectCat.appendChild(opt)
-  })
-}
-
-// ═══════════════════════════════════════════════════════════════════
-// MODAL
+// MODAL — ABRIR / CERRAR
 // ═══════════════════════════════════════════════════════════════════
 
 window.editarProducto = async function(id) {
@@ -314,21 +507,54 @@ window.editarProducto = async function(id) {
   productoActual = producto
   if (modalTitle) modalTitle.textContent = 'Editar Producto'
 
-  document.getElementById('producto-nombre').value             = producto.nombre
-  document.getElementById('producto-codigo').value             = producto.codigoInterno
-  document.getElementById('producto-codigoBarras').value       = producto.codigoBarras || ''
-  document.getElementById('producto-descripcion').value        = producto.descripcion || ''
-  document.getElementById('producto-costo').value              = producto.costo || ''
-  document.getElementById('producto-precioBase').value         = producto.precioBase
-  document.getElementById('producto-unidadCompra').value       = producto.unidadCompra || ''
-  document.getElementById('producto-unidadVenta').value        = producto.unidadVenta || ''
-  document.getElementById('producto-factorConversion').value   = producto.factorConversion || ''
-  document.getElementById('producto-claveSat').value           = producto.claveSat || ''
-  document.getElementById('producto-unidadSat').value          = producto.unidadSat || ''
+  // Llenar campos
+  document.getElementById('producto-nombre').value           = producto.nombre
+  document.getElementById('producto-codigo').value           = producto.codigoInterno
+  document.getElementById('producto-codigoBarras').value     = producto.codigoBarras || ''
+  document.getElementById('producto-descripcion').value      = producto.descripcion || ''
+  document.getElementById('producto-costo').value            = producto.costo || ''
+  document.getElementById('producto-precioBase').value       = producto.precioBase
+  document.getElementById('producto-unidadCompra').value     = producto.unidadCompra || ''
+  document.getElementById('producto-unidadVenta').value      = producto.unidadVenta || ''
+  document.getElementById('producto-factorConversion').value = producto.factorConversion || ''
+  document.getElementById('producto-claveSat').value         = producto.claveSat || ''
+  document.getElementById('producto-unidadSat').value        = producto.unidadSat || ''
 
-  actualizarSelectCategorias()
-  document.getElementById('producto-categoria').value = producto.categoriaId || ''
+  // Llenar departamento y categoría del modal
+  const deptoId = producto.categoria?.departamento?.id || ''
+  llenarModalDepartamentos(deptoId)
+  if (deptoId) {
+    actualizarModalCategorias(deptoId, producto.categoriaId)
+  }
 
+  // Imagen preview
+  if (producto.imagenUrl) {
+    if (imagenPreview) imagenPreview.src = producto.imagenUrl
+    if (imagenPreviewContainer) imagenPreviewContainer.style.display = 'block'
+  } else {
+    if (imagenPreviewContainer) imagenPreviewContainer.style.display = 'none'
+  }
+
+  calcularMargen()
+  ocultarError()
+  if (modal) modal.classList.add('active')
+}
+
+function abrirModalNuevo() {
+  productoActual = null
+  if (modalTitle) modalTitle.textContent = 'Nuevo Producto'
+  if (formulario) formulario.reset()
+  
+  // Reset selects del modal
+  llenarModalDepartamentos()
+  if (modalCatSelect) {
+    modalCatSelect.innerHTML = '<option value="">Seleccionar categoría...</option>'
+    modalCatSelect.disabled = true
+  }
+
+  if (imagenPreviewContainer) imagenPreviewContainer.style.display = 'none'
+  if (document.getElementById('info-margen')) document.getElementById('info-margen').style.display = 'none'
+  
   ocultarError()
   if (modal) modal.classList.add('active')
 }
@@ -350,12 +576,12 @@ async function guardarProducto(e) {
 
   const nombre     = document.getElementById('producto-nombre').value.trim()
   const codigo     = document.getElementById('producto-codigo').value.trim()
-  const categoria  = document.getElementById('producto-categoria').value
+  const categoria  = modalCatSelect?.value
   const precioBase = document.getElementById('producto-precioBase').value
 
   if (!nombre)     return mostrarError('El nombre es requerido')
   if (!codigo)     return mostrarError('El código interno es requerido')
-  if (!categoria)  return mostrarError('La categoría es requerida')
+  if (!categoria || categoria === '__NUEVA_CAT__') return mostrarError('La categoría es requerida')
   if (!precioBase) return mostrarError('El precio de venta es requerido')
 
   const datos = {
@@ -493,36 +719,65 @@ function actualizarFecha() {
 // ═══════════════════════════════════════════════════════════════════
 
 function configurarEventos() {
+  // Nuevo producto
   if (btnNuevoProducto) {
-    btnNuevoProducto.addEventListener('click', () => {
-      productoActual = null
-      if (modalTitle) modalTitle.textContent = 'Nuevo Producto'
-      if (formulario) formulario.reset()
-      actualizarSelectCategorias()
-      ocultarError()
-      if (modal) modal.classList.add('active')
+    btnNuevoProducto.addEventListener('click', abrirModalNuevo)
+  }
+
+  // Cerrar modal
+  if (btnCancelModal) btnCancelModal.addEventListener('click', cerrarModal)
+  if (btnCloseModal)  btnCloseModal.addEventListener('click', cerrarModal)
+  if (formulario)     formulario.addEventListener('submit', guardarProducto)
+
+  // ── Filtros del TOOLBAR ──
+  if (filtroDepto) {
+    filtroDepto.addEventListener('change', () => {
+      actualizarCategoriasFiltroToolbar()
+      aplicarFiltros()
+    })
+  }
+  if (filtroCat) {
+    filtroCat.addEventListener('change', aplicarFiltros)
+  }
+  if (searchInput) {
+    searchInput.addEventListener('input', aplicarFiltros)
+    searchInput.addEventListener('keypress', e => { 
+      if (e.key === 'Enter') aplicarFiltros()
+    })
+  }
+  if (btnLimpiarFiltros) {
+    btnLimpiarFiltros.addEventListener('click', limpiarFiltros)
+  }
+
+  // ── Selects del MODAL (separados del toolbar) ──
+  if (modalDeptoSelect) {
+    modalDeptoSelect.addEventListener('change', () => {
+      const val = modalDeptoSelect.value
+      if (val === '__NUEVO_DEPTO__') {
+        crearNuevoDepartamento()
+      } else if (val) {
+        actualizarModalCategorias(parseInt(val))
+      } else {
+        if (modalCatSelect) {
+          modalCatSelect.innerHTML = '<option value="">Seleccionar categoría...</option>'
+          modalCatSelect.disabled = true
+        }
+      }
     })
   }
 
-  if (btnCancelModal)   btnCancelModal.addEventListener('click', cerrarModal)
-  if (btnCloseModal)    btnCloseModal.addEventListener('click', cerrarModal)
-  if (formulario)       formulario.addEventListener('submit', guardarProducto)
-
-  if (searchInput) {
-    searchInput.addEventListener('input', buscarYFiltrar)
-    searchInput.addEventListener('keypress', e => { if (e.key === 'Enter') buscarYFiltrar() })
+  if (modalCatSelect) {
+    modalCatSelect.addEventListener('change', () => {
+      if (modalCatSelect.value === '__NUEVA_CAT__') {
+        crearNuevaCategoria()
+      }
+    })
   }
 
-  const deptSelect = document.getElementById('producto-departamento')
-  if (deptSelect) deptSelect.addEventListener('change', actualizarSelectCategorias)
-
-  const inputCosto  = document.getElementById('producto-costo')
-  const inputPrecio = document.getElementById('producto-precioBase')
-  if (inputCosto)  inputCosto.addEventListener('input', calcularMargen)
-  if (inputPrecio) inputPrecio.addEventListener('input', calcularMargen)
-
+  // Modal background
   if (modal) modal.addEventListener('click', e => { if (e.target === modal) cerrarModal() })
 
+  // Imagen preview
   if (inputImagen) {
     inputImagen.addEventListener('change', e => {
       const archivo = e.target.files[0]
@@ -542,4 +797,10 @@ function configurarEventos() {
       if (inputImagen) inputImagen.click()
     })
   }
+
+  // Margen
+  const inputCosto  = document.getElementById('producto-costo')
+  const inputPrecio = document.getElementById('producto-precioBase')
+  if (inputCosto)  inputCosto.addEventListener('input', calcularMargen)
+  if (inputPrecio) inputPrecio.addEventListener('input', calcularMargen)
 }
