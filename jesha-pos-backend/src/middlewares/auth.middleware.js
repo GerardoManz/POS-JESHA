@@ -27,8 +27,8 @@ const requireAuth = (req, res, next) => {
 // REQUIREROLE - Verificar que el usuario tiene el rol permitido
 // ═══════════════════════════════════════════════════════════════════
 
-const requireRole = (roles) => {
-  const rolesPermitidos = Array.isArray(roles) ? roles : [roles]
+const requireRole = (...roles) => {
+  const rolesPermitidos = roles.flat()
   return (req, res, next) => {
     if (!rolesPermitidos.includes(req.usuario.rol)) {
       return res.status(403).json({ error: 'Acceso denegado - rol insuficiente' })
@@ -36,7 +36,6 @@ const requireRole = (roles) => {
     next()
   }
 }
-
 // ═══════════════════════════════════════════════════════════════════
 // REQUIRESUCURSALACCESS - Verificar que el usuario accede solo su sucursal
 // ═══════════════════════════════════════════════════════════════════

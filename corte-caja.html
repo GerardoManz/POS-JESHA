@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>JESHA POS - Corte de Caja</title>
+  <link rel="stylesheet" href="dashboard.css" />
+  <link rel="stylesheet" href="corte-caja.css" />
+</head>
+<body data-page="corte-caja">
+<div class="app-shell">
+
+  <div id="sidebar-container"></div>
+
+  <main class="content">
+    <header class="content-header">
+      <h2>Corte de Caja</h2>
+      <p id="fecha-actual"></p>
+    </header>
+
+    <!-- ── ESTADO: SIN TURNO ── -->
+    <div id="estado-sin-turno" class="estado-panel" style="display: none;">
+      <div class="estado-icono">🔒</div>
+      <h3>No hay turno abierto</h3>
+      <p>Abre un turno desde el módulo de Punto de Venta para comenzar a vender.</p>
+      <a href="punto-venta.html" class="btn-primary btn-ir-pos">Ir a Punto de Venta</a>
+    </div>
+
+    <!-- ── CONTENIDO PRINCIPAL ── -->
+    <div id="contenido-corte" style="display: none;">
+
+      <!-- KPIs del turno -->
+      <div class="kpi-grid corte-kpis">
+        <div class="kpi-card">
+          <div class="kpi-icon blue">
+            <svg width="18" height="18" fill="none" stroke="#7aa4e8" stroke-width="2" viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
+            </svg>
+          </div>
+          <div class="kpi-label">Apertura</div>
+          <div class="kpi-value" id="kpi-apertura">—</div>
+        </div>
+
+        <div class="kpi-card">
+          <div class="kpi-icon orange">
+            <svg width="18" height="18" fill="none" stroke="#e8710a" stroke-width="2" viewBox="0 0 24 24">
+              <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+            </svg>
+          </div>
+          <div class="kpi-label">Monto Inicial</div>
+          <div class="kpi-value" id="kpi-monto-inicial">—</div>
+        </div>
+
+        <div class="kpi-card">
+          <div class="kpi-icon blue">
+            <svg width="18" height="18" fill="none" stroke="#7aa4e8" stroke-width="2" viewBox="0 0 24 24">
+              <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/>
+            </svg>
+          </div>
+          <div class="kpi-label">Total Ventas</div>
+          <div class="kpi-value" id="kpi-total-ventas">—</div>
+        </div>
+
+        <div class="kpi-card">
+          <div class="kpi-icon gray">
+            <svg width="18" height="18" fill="none" stroke="#a0aab8" stroke-width="2" viewBox="0 0 24 24">
+              <rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/>
+            </svg>
+          </div>
+          <div class="kpi-label">Núm. Ventas</div>
+          <div class="kpi-value" id="kpi-num-ventas">—</div>
+        </div>
+      </div>
+
+      <!-- Panel de desglose -->
+      <div class="corte-grid">
+
+        <!-- Desglose por método de pago -->
+        <div class="panel">
+          <div class="panel-header">
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/>
+            </svg>
+            <h3>Desglose por Método de Pago</h3>
+          </div>
+
+          <div class="metodo-row">
+            <div class="metodo-info">
+              <span class="metodo-icono efectivo">💵</span>
+              <span class="metodo-nombre">Efectivo</span>
+            </div>
+            <span class="metodo-monto" id="monto-efectivo">$0.00</span>
+          </div>
+          <div class="metodo-row">
+            <div class="metodo-info">
+              <span class="metodo-icono tarjeta">💳</span>
+              <span class="metodo-nombre">Tarjeta</span>
+            </div>
+            <span class="metodo-monto" id="monto-tarjeta">$0.00</span>
+          </div>
+          <div class="metodo-row">
+            <div class="metodo-info">
+              <span class="metodo-icono transferencia">🔄</span>
+              <span class="metodo-nombre">Transferencia</span>
+            </div>
+            <span class="metodo-monto" id="monto-transferencia">$0.00</span>
+          </div>
+
+          <div class="metodo-row metodo-total">
+            <span>Total en ventas</span>
+            <span id="monto-total-ventas">$0.00</span>
+          </div>
+
+          <!-- Efectivo esperado en caja -->
+          <div class="efectivo-esperado">
+            <div class="efectivo-row">
+              <span>Monto inicial</span>
+              <span id="ef-inicial">$0.00</span>
+            </div>
+            <div class="efectivo-row">
+              <span>+ Ventas en efectivo</span>
+              <span id="ef-ventas">$0.00</span>
+            </div>
+            <div class="efectivo-row efectivo-resultado">
+              <span>= Efectivo esperado en caja</span>
+              <span id="ef-total">$0.00</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Panel de cierre -->
+        <div class="panel">
+          <div class="panel-header">
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+            </svg>
+            <h3>Cierre de Turno</h3>
+          </div>
+
+          <div class="cierre-form">
+            <div class="form-group">
+              <label class="form-label">Monto contado en caja</label>
+              <p class="form-hint">Cuenta el dinero físico en caja e ingrésalo aquí</p>
+              <input
+                type="number"
+                id="monto-declarado"
+                placeholder="0.00"
+                step="0.01"
+                min="0"
+                class="control-input monto-input"
+              />
+            </div>
+
+            <!-- Diferencia (se calcula al escribir) -->
+            <div class="diferencia-box" id="diferencia-box" style="display: none;">
+              <div class="diferencia-row">
+                <span>Efectivo esperado</span>
+                <span id="dif-esperado">$0.00</span>
+              </div>
+              <div class="diferencia-row">
+                <span>Monto contado</span>
+                <span id="dif-contado">$0.00</span>
+              </div>
+              <div class="diferencia-row diferencia-resultado" id="diferencia-resultado">
+                <span id="dif-label">Diferencia</span>
+                <span id="dif-valor">$0.00</span>
+              </div>
+            </div>
+
+            <div id="cierre-error" class="cierre-error" style="display: none;"></div>
+
+            <button id="btn-cerrar-turno" class="btn-cerrar">
+              🔒 Cerrar Turno
+            </button>
+          </div>
+
+          <!-- Info del turno -->
+          <div class="turno-info">
+            <div class="turno-info-row">
+              <span class="turno-info-label">Cajero</span>
+              <span id="turno-cajero">—</span>
+            </div>
+            <div class="turno-info-row">
+              <span class="turno-info-label">Sucursal</span>
+              <span id="turno-sucursal">—</span>
+            </div>
+            <div class="turno-info-row">
+              <span class="turno-info-label">ID Turno</span>
+              <span id="turno-id">—</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- MODAL: CONFIRMACIÓN CIERRE -->
+<div id="modal-confirmar-cierre" class="modal" style="display: none;">
+  <div class="modal-content modal-content-small">
+    <div class="modal-header">
+      <h3>Confirmar Cierre de Turno</h3>
+      <button class="modal-close" id="modal-cierre-close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p>¿Estás seguro de cerrar el turno? Esta acción no se puede deshacer.</p>
+      <div class="confirmacion-resumen" id="resumen-cierre-modal" style="margin-top: 16px;"></div>
+    </div>
+    <div class="form-actions">
+      <button type="button" class="btn-secondary" id="btn-cancelar-cierre">Cancelar</button>
+      <button type="button" class="btn-danger" id="btn-confirmar-cierre">🔒 Confirmar Cierre</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: TURNO CERRADO (resumen final) -->
+<div id="modal-resultado-cierre" class="modal" style="display: none;">
+  <div class="modal-content modal-content-small">
+    <div class="modal-header">
+      <h3>✅ Turno Cerrado</h3>
+    </div>
+    <div class="modal-body">
+      <div id="resultado-cierre-contenido"></div>
+    </div>
+    <div class="form-actions">
+      <a href="punto-venta.html" class="btn-primary">Ir a Punto de Venta</a>
+    </div>
+  </div>
+</div>
+
+<script src="sidebar.js"></script>
+<script src="corte-caja.js"></script>
+</body>
+</html>

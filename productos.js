@@ -17,9 +17,13 @@ let departamentosLista = []
 let categoriasLista    = []
 let productoActual     = null
 
+// Total global
+let totalProductos = 0
+
 // Variables DOM
 let productosTbody, searchInput, filtroDepto, filtroCat
 let btnNuevoProducto, modal, modalTitle, btnCancelModal, btnCloseModal
+let filtroStock
 let formulario, inputImagen
 let imagenPreviewContainer, imagenPreview, btnCambiarPreview
 let btnLimpiarFiltros
@@ -47,6 +51,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   filtroCat              = document.getElementById('filtro-categoria')
   btnNuevoProducto       = document.getElementById('btn-nuevo-producto')
   btnLimpiarFiltros      = document.getElementById('btn-limpiar-filtros')
+  filtroStock            = document.getElementById('filtro-stock')
 
   // Capturar elementos DOM — MODAL
   modal                  = document.getElementById('modal-producto')
@@ -110,16 +115,31 @@ async function cargarProductos() {
     console.log('📦 Cargando productos...')
     mostrarLoadingTabla()
 
-    const response = await fetch(`${API_URL}/productos`, {
+    // Construir URL con filtros activos
+    const params = new URLSearchParams()
+    const busqueda = searchInput?.value?.trim()
+    if (busqueda) params.set('buscar', busqueda)
+    const catId = filtroCat?.value
+    if (catId) params.set('categoriaId', catId)
+
+    const response = await fetch(`${API_URL}/productos?${params}`, {
       headers: { 'Authorization': `Bearer ${TOKEN}` }
     })
     if (!response.ok) throw new Error(`Error ${response.status}`)
 
     const resultado = await response.json()
     productosLista = resultado.data || resultado
-    console.log('✅ Productos cargados:', productosLista.length)
-    
-    mostrarEstadisticasInventario(productosLista)
+
+    if (resultado.paginacion) {
+      totalProductos = resultado.paginacion.total
+    }
+
+    if (resultado.resumenStock) {
+      window._resumenStock = resultado.resumenStock
+    }
+
+    console.log(`✅ Productos cargados: ${productosLista.length}`)
+    mostrarEstadisticasInventario()
     aplicarFiltros()
 
   } catch (error) {
@@ -142,43 +162,44 @@ async function cargarProductos() {
 // ESTADÍSTICAS DE INVENTARIO
 // ═══════════════════════════════════════════════════════════════════
 
-function mostrarEstadisticasInventario(productos) {
-  const totalProductos = productos.length
-  const conStock = productos.filter(p => p.inventario && p.inventario.stockActual > 0).length
-  const sinStock = productos.filter(p => !p.inventario || p.inventario.stockActual === 0).length
-  const bajoStock = productos.filter(p => 
+function mostrarEstadisticasInventario() {
+  // Usar conteos globales del backend si están disponibles, si no calcular sobre página actual
+  const rs        = window._resumenStock
+  const conStock  = rs ? rs.conStock  : productosLista.filter(p => p.inventario && p.inventario.stockActual > 0).length
+  const sinStock  = rs ? rs.sinStock  : productosLista.filter(p => !p.inventario || p.inventario.stockActual === 0).length
+  const bajoStock = rs ? rs.bajoStock : productosLista.filter(p =>
     p.inventario && p.inventario.stockActual > 0 && p.inventario.stockActual < p.inventario.stockMinimoAlerta
   ).length
 
   const headerContent = document.querySelector('.content-header')
-  if (headerContent) {
-    let resumenDiv = document.getElementById('resumen-inventario')
-    
-    if (!resumenDiv) {
-      resumenDiv = document.createElement('div')
-      resumenDiv.id = 'resumen-inventario'
-      headerContent.appendChild(resumenDiv)
-    }
+  if (!headerContent) return
 
-    resumenDiv.style.cssText = `
-      margin-top: 15px;
-      padding: 12px 15px;
-      background: #f3f4f620;
-      border-left: 4px solid #3b82f6;
-      border-radius: 6px;
-      font-size: 13px;
-      color: #ffffff;
-    `
-    resumenDiv.style.display = 'block'
-
-    resumenDiv.innerHTML = `
-      <strong>📊 Inventario:</strong> 
-      ${totalProductos} total | 
-      <span style="color: #16a34a;">✅ ${conStock} con stock</span> | 
-      <span style="color: #dc2626;">❌ ${sinStock} sin stock</span> | 
-      <span style="color: #ea580c;">⚠️ ${bajoStock} bajo stock</span>
-    `
+  let resumenDiv = document.getElementById('resumen-inventario')
+  if (!resumenDiv) {
+    resumenDiv = document.createElement('div')
+    resumenDiv.id = 'resumen-inventario'
+    headerContent.appendChild(resumenDiv)
   }
+
+  resumenDiv.style.cssText = `
+    margin-top: 15px;
+    padding: 12px 15px;
+    background: #f3f4f620;
+    border-left: 4px solid #3b82f6;
+    border-radius: 6px;
+    font-size: 13px;
+    color: #ffffff;
+  `
+  resumenDiv.style.display = 'block'
+
+  resumenDiv.innerHTML = `
+    <strong>📊 Inventario:</strong>
+    ${totalProductos} total |
+    <span style="color: #16a34a;">✅ ${conStock} con stock</span> |
+    <span style="color: #dc2626;">❌ ${sinStock} sin stock</span> |
+    <span style="color: #ea580c;">⚠️ ${bajoStock} bajo stock</span>
+
+  `
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -380,32 +401,23 @@ async function crearNuevaCategoria() {
 // ═══════════════════════════════════════════════════════════════════
 
 function aplicarFiltros() {
-  const deptId = parseInt(filtroDepto?.value) || null
-  const catId = parseInt(filtroCat?.value) || null
-  const busqueda = (searchInput?.value || '').toLowerCase().trim()
+  const deptId     = parseInt(filtroDepto?.value) || null
+  const stockFiltro = filtroStock?.value || ''
+  let filtrados    = productosLista
 
-  let filtrados = productosLista
-
-  // Filtrar por departamento
   if (deptId) {
-    filtrados = filtrados.filter(p => {
-      return p.categoria?.departamento?.id === deptId
-    })
+    filtrados = filtrados.filter(p => p.categoria?.departamento?.id === deptId)
   }
 
-  // Filtrar por categoría
-  if (catId) {
-    filtrados = filtrados.filter(p => p.categoriaId === catId)
-  }
-
-  // Filtrar por búsqueda
-  if (busqueda) {
+  if (stockFiltro === 'con') {
+    filtrados = filtrados.filter(p => p.inventario && p.inventario.stockActual > 0)
+  } else if (stockFiltro === 'sin') {
+    filtrados = filtrados.filter(p => !p.inventario || p.inventario.stockActual === 0)
+  } else if (stockFiltro === 'bajo') {
     filtrados = filtrados.filter(p =>
-      p.nombre.toLowerCase().includes(busqueda) ||
-      (p.codigoInterno && p.codigoInterno.toLowerCase().includes(busqueda)) ||
-      (p.codigoBarras && p.codigoBarras.toLowerCase().includes(busqueda)) ||
-      (p.categoria?.nombre && p.categoria.nombre.toLowerCase().includes(busqueda)) ||
-      (p.categoria?.departamento?.nombre && p.categoria.departamento.nombre.toLowerCase().includes(busqueda))
+      p.inventario &&
+      p.inventario.stockActual > 0 &&
+      p.inventario.stockActual <= p.inventario.stockMinimoAlerta
     )
   }
 
@@ -413,18 +425,19 @@ function aplicarFiltros() {
 }
 
 function limpiarFiltros() {
-  if (filtroDepto) filtroDepto.value = ''
-  if (filtroCat) { filtroCat.value = ''; filtroCat.disabled = true }
-  if (searchInput) searchInput.value = ''
-  
+  if (filtroDepto)  filtroDepto.value = ''
+  if (filtroStock)   filtroStock.value = ''
+  if (filtroCat)  { filtroCat.value = ''; filtroCat.disabled = true }
+  if (searchInput)  searchInput.value = ''
   actualizarCategoriasFiltroToolbar()
-  aplicarFiltros()
+  cargarProductos()
   console.log('🔄 Filtros limpiados')
 }
 
 // ═══════════════════════════════════════════════════════════════════
 // RENDERIZAR TABLA
 // ═══════════════════════════════════════════════════════════════════
+
 
 function mostrarLoadingTabla() {
   if (!productosTbody) return
@@ -733,17 +746,24 @@ function configurarEventos() {
   if (filtroDepto) {
     filtroDepto.addEventListener('change', () => {
       actualizarCategoriasFiltroToolbar()
-      aplicarFiltros()
+      aplicarFiltros()   // solo filtra localmente por depto, sin nueva request
     })
   }
   if (filtroCat) {
-    filtroCat.addEventListener('change', aplicarFiltros)
+    filtroCat.addEventListener('change', () => cargarProductos())
   }
   if (searchInput) {
-    searchInput.addEventListener('input', aplicarFiltros)
-    searchInput.addEventListener('keypress', e => { 
-      if (e.key === 'Enter') aplicarFiltros()
+    let debounce
+    searchInput.addEventListener('input', () => {
+      clearTimeout(debounce)
+      debounce = setTimeout(() => cargarProductos(), 400)
     })
+    searchInput.addEventListener('keypress', e => {
+      if (e.key === 'Enter') { clearTimeout(debounce); cargarProductos() }
+    })
+  }
+  if (filtroStock) {
+    filtroStock.addEventListener('change', aplicarFiltros)
   }
   if (btnLimpiarFiltros) {
     btnLimpiarFiltros.addEventListener('click', limpiarFiltros)

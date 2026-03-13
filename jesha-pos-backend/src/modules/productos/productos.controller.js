@@ -49,22 +49,89 @@ async function listar(req, res) {
     try {
         console.log('🔍 Iniciando query de productos...')
 
-        const productos = await prisma.producto.findMany({
-            where: { activo: true },
-            include: {
-                categoria: { include: { departamento: true } },
-                inventarios: { where: { sucursalId: 1 }, take: 1 }
-            },
-            orderBy: { nombre: 'asc' }
-        })
+        const { buscar, q, enStock, categoriaId, skip = 0, take = 9999 } = req.query
+
+        const terminoBusqueda = buscar || q
+        const skipNum = parseInt(skip)
+        const takeNum = parseInt(take)
+
+        const where = { activo: true }
+
+        if (terminoBusqueda) {
+            where.OR = [
+                { nombre:        { contains: terminoBusqueda, mode: 'insensitive' } },
+                { codigoInterno: { contains: terminoBusqueda, mode: 'insensitive' } },
+                { codigoBarras:  { contains: terminoBusqueda, mode: 'insensitive' } }
+            ]
+        }
+
+        if (categoriaId) {
+            where.categoriaId = parseInt(categoriaId)
+        }
+
+        if (enStock === 'true') {
+            where.inventarios = { some: { stockActual: { gt: 0 } } }
+        }
+
+        // Query de datos y conteo en paralelo
+        // whereBase: igual que where pero sin filtros de stock/búsqueda para conteos globales
+        const whereGlobal = { activo: true }
+
+        const [productos, total, conStock, sinStock, bajoStock] = await Promise.all([
+            prisma.producto.findMany({
+                where,
+                include: {
+                    categoria: { include: { departamento: true } },
+                    inventarios: { where: { sucursalId: 1 }, take: 1 }
+                },
+                orderBy: { nombre: 'asc' },
+                skip: skipNum,
+                take: takeNum
+            }),
+            prisma.producto.count({ where }),
+            // Con stock > 0
+            prisma.producto.count({
+                where: { ...whereGlobal, inventarios: { some: { sucursalId: 1, stockActual: { gt: 0 } } } }
+            }),
+            // Sin stock (0 o sin registro)
+            prisma.producto.count({
+                where: { ...whereGlobal, inventarios: { none: { sucursalId: 1, stockActual: { gt: 0 } } } }
+            }),
+            // Bajo stock: stockActual > 0 pero <= stockMinimoAlerta (comparación de columnas, requiere raw)
+            prisma.$queryRaw`
+                SELECT COUNT(*)::int AS count
+                FROM "InventarioSucursal" i
+                JOIN "Producto" p ON p.id = i."productoId"
+                WHERE i."sucursalId" = 1
+                  AND i."stockActual" > 0
+                  AND i."stockActual" <= i."stockMinimoAlerta"
+                  AND p.activo = true
+            `.then(r => r[0].count)
+        ])
 
         const data = productos.map(prod => ({
             ...prod,
+            stock: prod.inventarios?.length > 0 ? prod.inventarios[0].stockActual : 0,
             inventario: prod.inventarios?.length > 0 ? prod.inventarios[0] : null
         }))
 
-        console.log(`✅ Productos obtenidos: ${data.length}`)
-        res.json({ success: true, data })
+        console.log(`✅ Productos: ${data.length} de ${total} | stock: ${conStock} con, ${sinStock} sin, ${bajoStock} bajo`)
+        res.json({
+            success: true,
+            data,
+            paginacion: {
+                total,
+                skip:         skipNum,
+                take:         takeNum,
+                pagina:       Math.floor(skipNum / takeNum) + 1,
+                totalPaginas: Math.ceil(total / takeNum)
+            },
+            resumenStock: {
+                conStock:  Number(conStock),
+                sinStock:  Number(sinStock),
+                bajoStock: Number(bajoStock)
+            }
+        })
     } catch (error) {
         console.error('❌ Error listando productos:', error.message)
         res.status(500).json({ success: false, error: error.message })

@@ -1,4 +1,5 @@
 require('dotenv').config()
+const { requireAuth } = require('./middlewares/auth.middleware')
 const express = require('express')
 const cors = require('cors')
 const path = require('path')
@@ -20,38 +21,7 @@ app.use(express.json())
 // MIDDLEWARE DE AUTENTICACIÓN
 // ═══════════════════════════════════════════════════════════════════
 
-// ✅ NUEVO: Middleware que valida el token
-const requireAuth = (req, res, next) => {
-  try {
-    const authHeader = req.headers.authorization
-    
-    if (!authHeader) {
-      return res.status(401).json({ 
-        success: false, 
-        error: 'No token provided' 
-      })
-    }
 
-    const token = authHeader.replace('Bearer ', '')
-    
-    if (!token) {
-      return res.status(401).json({ 
-        success: false, 
-        error: 'Invalid token format' 
-      })
-    }
-
-    // ✅ Token válido, continuar
-    req.token = token
-    next()
-  } catch (error) {
-    console.error('❌ Error en autenticación:', error.message)
-    res.status(401).json({ 
-      success: false, 
-      error: error.message 
-    })
-  }
-}
 
 // ═══════════════════════════════════════════════════════════════════
 // RUTAS PÚBLICAS (sin autenticación)
@@ -67,6 +37,8 @@ app.use('/auth', require('./modules/auth/auth.routes'))
 app.use('/usuarios', requireAuth, require('./modules/usuarios/usuarios.routes'))
 app.use('/clientes', requireAuth, require('./modules/clientes/clientes.routes'))
 app.use('/productos', requireAuth, require('./modules/productos/productos.routes'))
+app.use('/ventas',   requireAuth, require('./modules/ventas/ventas.routes'))
+app.use('/turnos-caja', requireAuth, require('./modules/turnos-caja/turnos-caja.routes'))
 
 // ═══════════════════════════════════════════════════════════════════
 // RUTAS ESTÁTICAS

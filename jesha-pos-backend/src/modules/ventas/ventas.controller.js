@@ -15,7 +15,7 @@
 //  - Auditoría
 // ════════════════════════════════════════════════════════════════════
 
-const prisma = require('../../prisma.client')
+const prisma = require('../../lib/prisma')
 
 /**
  * POST /api/ventas
@@ -197,7 +197,6 @@ exports.crearVenta = async (req, res) => {
           turnoId,
           metodoPago,
           subtotal: totalRecalculado,
-          iva: 0,  // No hay IVA adicional (precios ya lo incluyen)
           descuento: parseFloat(descuento || 0),
           total: totalRecalculado,
           estado: 'COMPLETADA',
@@ -467,23 +466,9 @@ async function generarFolio() {
   const dia = String(fecha.getDate()).padStart(2, '0')
   const fechaStr = `${año}${mes}${dia}`
 
-  // Contar ventas del día
-  const hoyInicio = new Date(fecha)
-  hoyInicio.setHours(0, 0, 0, 0)
+  const result = await prisma.$queryRaw`SELECT nextval('folio_venta_seq') as seq`
+  const secuencial = String(Number(result[0].seq)).padStart(5, '0')
 
-  const hoyFin = new Date(fecha)
-  hoyFin.setHours(23, 59, 59, 999)
-
-  const countHoy = await prisma.venta.count({
-    where: {
-      creadaEn: {
-        gte: hoyInicio,
-        lte: hoyFin
-      }
-    }
-  })
-
-  const secuencial = String(countHoy + 1).padStart(5, '0')
   return `VTA-${fechaStr}-${secuencial}`
 }
 

@@ -285,11 +285,24 @@ exports.importarCSV = async (req, res) => {
                     })
 
                     if (existente) {
+                        // Verificar si el codigoBarras del CSV ya pertenece a OTRO producto.
+                        // Puede pasar cuando SICAR asignó el mismo código alterno a dos artículos.
+                        // En ese caso conservamos el codigoBarras que ya tiene el producto en BD.
+                        let codigoBarrasFinal = data.codigoBarras
+                        if (codigoBarrasFinal) {
+                            const conflicto = await prisma.producto.findUnique({
+                                where: { codigoBarras: codigoBarrasFinal }
+                            })
+                            if (conflicto && conflicto.id !== existente.id) {
+                                codigoBarrasFinal = existente.codigoBarras // conservar el actual
+                            }
+                        }
+
                         await prisma.producto.update({
                             where: { codigoInterno: data.codigoInterno },
                             data: {
                                 nombre: data.nombre,
-                                codigoBarras: data.codigoBarras,
+                                codigoBarras: codigoBarrasFinal,
                                 descripcion: data.descripcion,
                                 precioBase: data.precioBase,
                                 costo: data.costo,
