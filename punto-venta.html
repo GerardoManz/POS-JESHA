@@ -147,13 +147,16 @@
 
         <!-- BOTONES DE ACCIÓN -->
         <div class="carrito-actions">
-          <button id="btn-completar-venta" class="btn-primary btn-completar" disabled>
-            ✓ Completar Venta
-          </button>
-          <button id="btn-limpiar-carrito" class="btn-secondary btn-limpiar">
-            🗑️ Limpiar
-          </button>
-        </div>
+  <button id="btn-completar-venta" class="btn-primary btn-completar" disabled>
+    ✓ Completar Venta
+  </button>
+  <button id="btn-cotizar-carrito" class="btn-secondary btn-limpiar" disabled>
+    📋 Cotizar
+  </button>
+  <button id="btn-limpiar-carrito" class="btn-secondary btn-limpiar">
+    🗑️ Limpiar
+  </button>
+</div>
 
       </aside>
 
@@ -257,6 +260,66 @@
 <!-- ════════════════════════════════════════════════════════════════ -->
 <!--  SCRIPTS
 <!-- ════════════════════════════════════════════════════════════════ -->
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<!--  MODAL: GUARDAR COMO COTIZACIÓN
+<!--  Pegar justo antes de los SCRIPTS al final de punto-venta.html
+<!-- ════════════════════════════════════════════════════════════════ -->
+<div id="modal-cotizar" class="modal" style="display: none;">
+  <div class="modal-content modal-content-small">
+    <div class="modal-header">
+      <h3>Guardar Cotización</h3>
+      <button class="modal-close" id="modal-cotizar-close">&times;</button>
+    </div>
+
+    <div class="modal-body">
+      <p style="color: var(--muted); margin-bottom: 16px; font-size: 0.875rem;">
+        Se guardará el carrito actual como cotización. El stock no se reserva.
+      </p>
+
+      <div class="form-group" style="margin-bottom: 12px;">
+        <label style="font-size:0.8rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;display:block;margin-bottom:6px;">
+          Vigencia (opcional)
+        </label>
+        <input
+          type="date"
+          id="cotizar-vence"
+          class="control-input"
+          style="width: 100%; box-sizing: border-box;"
+        />
+      </div>
+
+      <div class="form-group" style="margin-bottom: 4px;">
+        <label style="font-size:0.8rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;display:block;margin-bottom:6px;">
+          Notas (opcional)
+        </label>
+        <textarea
+          id="cotizar-notas"
+          rows="3"
+          placeholder="Observaciones, condiciones..."
+          class="control-input"
+          style="width: 100%; box-sizing: border-box; resize: vertical; font-family: inherit;"
+        ></textarea>
+      </div>
+
+      <div id="cotizar-error" style="display:none; margin-top:12px; padding:10px 14px; background:rgba(244,67,54,0.1); border-left:3px solid #f44336; border-radius:4px; color:#ff9999; font-size:0.85rem;"></div>
+    </div>
+
+    <div class="form-actions">
+      <button type="button" class="btn-secondary" id="btn-cancel-cotizar">Cancelar</button>
+      <button type="button" class="btn-primary" id="btn-confirmar-cotizar">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+          <line x1="12" y1="18" x2="12" y2="12"/>
+          <line x1="9" y1="15" x2="15" y2="15"/>
+        </svg>
+        Guardar Cotización
+      </button>
+    </div>
+  </div>
+</div>
+
 <script src="sidebar.js"></script>
 <script src="punto-venta.js"></script>
 

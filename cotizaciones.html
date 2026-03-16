@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>JESHA POS - Cotizaciones</title>
+  <link rel="stylesheet" href="dashboard.css" />
+  <link rel="stylesheet" href="cotizaciones.css" />
+</head>
+<body data-page="cotizaciones">
+<div class="app-shell">
+  <div id="sidebar-container"></div>
+
+  <main class="content">
+    <header class="content-header">
+      <h2>Cotizaciones</h2>
+      <p id="fecha-actual"></p>
+    </header>
+
+    <section class="toolbar">
+      <div class="search-group">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input type="text" id="search-input" placeholder="Buscar por folio, cliente o notas..." class="search-input" />
+      </div>
+      <select id="filtro-estado" class="filter-select">
+        <option value="">Todos los estados</option>
+        <option value="PENDIENTE">Pendiente</option>
+        <option value="CONVERTIDA">Convertida</option>
+        <option value="VENCIDA">Vencida</option>
+        <option value="CANCELADA">Cancelada</option>
+      </select>
+      <select id="filtro-tipo" class="filter-select">
+        <option value="">Todos los tipos</option>
+        <option value="PRODUCTOS">Productos</option>
+        <option value="SERVICIOS">Servicios</option>
+      </select>
+      <button id="btn-nueva-cotizacion" class="btn-primary">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Nueva Cotización
+      </button>
+    </section>
+
+    <section class="panel">
+      <div class="table-wrapper">
+        <table class="cot-table">
+          <thead>
+            <tr>
+              <th>Folio</th>
+              <th>Tipo</th>
+              <th>Fecha</th>
+              <th>Cliente</th>
+              <th>Líneas</th>
+              <th>Total</th>
+              <th>Vigencia</th>
+              <th>Estado</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="cot-tbody">
+            <tr><td colspan="9" class="loading-cell"><div class="spinner"></div><p>Cargando cotizaciones...</p></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="pagination" id="pagination" style="display:none;">
+        <button id="btn-prev" class="btn-pag" disabled>&#8592; Anterior</button>
+        <span id="pag-info" class="pag-info"></span>
+        <button id="btn-next" class="btn-pag">Siguiente &#8594;</button>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     MODAL CREAR / EDITAR
+══════════════════════════════════════════════════════════════ -->
+<div id="modal-cotizacion" class="modal">
+  <div class="modal-content modal-xl">
+    <div class="modal-header">
+      <div style="display:flex;align-items:center;gap:16px;">
+        <h3 id="modal-titulo">Nueva Cotización</h3>
+        <div class="tipo-tabs" id="tipo-tabs">
+          <button class="tipo-tab active" data-tipo="PRODUCTOS">📦 Productos</button>
+          <button class="tipo-tab" data-tipo="SERVICIOS">🔧 Servicios</button>
+        </div>
+      </div>
+      <button class="modal-close" id="modal-close-btn">&times;</button>
+    </div>
+
+    <div class="modal-body-split">
+      <!-- Panel izquierdo: solo visible en tipo PRODUCTOS -->
+      <div class="panel-productos" id="panel-productos-left">
+        <p class="panel-label">Agregar productos</p>
+        <div class="search-group" style="margin-bottom:12px;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+          <input type="text" id="search-producto-modal" placeholder="Nombre o código..." class="search-input" />
+        </div>
+        <div id="lista-productos-modal" class="lista-productos-modal">
+          <p class="muted-hint">Escribe para buscar productos...</p>
+        </div>
+      </div>
+
+      <!-- Panel derecho: detalle -->
+      <div class="panel-detalle">
+        <p class="panel-label">Detalle</p>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Cliente</label>
+            <input type="text" id="cot-cliente-buscar" placeholder="Buscar cliente..." class="search-input" autocomplete="off" />
+            <input type="hidden" id="cot-cliente-id" />
+            <div id="dropdown-clientes" class="dropdown-clientes" style="display:none;"></div>
+          </div>
+          <div class="form-group">
+            <label>Vigencia</label>
+            <input type="date" id="cot-vence" />
+          </div>
+        </div>
+
+        <div class="form-group" style="margin-bottom:16px;">
+          <label>Notas</label>
+          <textarea id="cot-notas" rows="2" placeholder="Observaciones o condiciones..."></textarea>
+        </div>
+
+        <!-- Tabla items PRODUCTOS -->
+        <div id="tabla-productos-container" class="items-wrapper">
+          <table class="items-table">
+            <thead>
+              <tr>
+                <th>Producto</th>
+                <th style="width:55px">Unidad</th>
+                <th style="width:60px">Cant.</th>
+                <th style="width:90px">Precio</th>
+                <th style="width:90px">Descuento</th>
+                <th style="width:90px">Importe</th>
+                <th style="width:32px"></th>
+              </tr>
+            </thead>
+            <tbody id="items-tbody">
+              <tr id="items-empty"><td colspan="7" class="empty-items">Agrega productos desde el panel izquierdo</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Tabla items SERVICIOS -->
+        <div id="tabla-servicios-container" class="items-wrapper" style="display:none;">
+          <table class="items-table">
+            <thead>
+              <tr>
+                <th>Concepto</th>
+                <th style="width:70px">Unidad</th>
+                <th style="width:60px">Cant.</th>
+                <th style="width:90px">P.U.</th>
+                <th style="width:90px">Total</th>
+                <th style="width:32px"></th>
+              </tr>
+            </thead>
+            <tbody id="servicios-tbody">
+              <tr id="servicios-empty"><td colspan="6" class="empty-items">Agrega líneas con el botón +</td></tr>
+            </tbody>
+          </table>
+          <button id="btn-add-servicio" class="btn-add-linea">+ Agregar línea</button>
+        </div>
+
+        <div class="total-row">
+          <span>Total:</span>
+          <span id="modal-total" class="total-monto">$0.00</span>
+        </div>
+
+        <div id="modal-error" class="error-message"></div>
+
+        <div class="form-actions">
+          <button type="button" class="btn-secondary" id="btn-cancel-modal">Cancelar</button>
+          <button type="button" class="btn-primary" id="btn-guardar-cotizacion">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+            Guardar Cotización
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     MODAL VER / ACCIONES
+══════════════════════════════════════════════════════════════ -->
+<div id="modal-ver" class="modal">
+  <div class="modal-content modal-large">
+    <div class="modal-header">
+      <div>
+        <h3 id="ver-folio">COT-...</h3>
+        <span id="ver-estado-badge" class="estado-badge pendiente">Pendiente</span>
+        <span id="ver-tipo-badge" class="tipo-badge-ver" style="margin-left:8px;"></span>
+      </div>
+      <button class="modal-close" id="ver-close-btn">&times;</button>
+    </div>
+    <div class="ver-body">
+      <div class="ver-meta">
+        <div class="meta-item"><span class="meta-label">Cliente</span><span class="meta-valor" id="ver-cliente">—</span></div>
+        <div class="meta-item"><span class="meta-label">Fecha</span><span class="meta-valor" id="ver-fecha">—</span></div>
+        <div class="meta-item"><span class="meta-label">Vigencia</span><span class="meta-valor" id="ver-vigencia">—</span></div>
+        <div class="meta-item"><span class="meta-label">Elaboró</span><span class="meta-valor" id="ver-usuario">—</span></div>
+      </div>
+      <p class="meta-notas" id="ver-notas" style="display:none;"></p>
+
+      <div class="table-wrapper" style="margin:16px 0;">
+        <table class="cot-table" id="ver-tabla-productos" style="display:none;">
+          <thead>
+            <tr>
+              <th style="width:80px">Imagen</th>
+              <th>Clave</th>
+              <th>Descripción</th>
+              <th>Unidad</th>
+              <th style="width:60px">Cant.</th>
+              <th style="width:90px">P. Unit.</th>
+              <th style="width:80px">Descuento</th>
+              <th style="width:90px">Importe</th>
+            </tr>
+          </thead>
+          <tbody id="ver-items-tbody"></tbody>
+        </table>
+
+        <table class="cot-table" id="ver-tabla-servicios" style="display:none;">
+          <thead>
+            <tr>
+              <th>Concepto</th>
+              <th style="width:80px">Unidad</th>
+              <th style="width:60px">Cant.</th>
+              <th style="width:100px">P.U.</th>
+              <th style="width:100px">Total</th>
+            </tr>
+          </thead>
+          <tbody id="ver-servicios-tbody"></tbody>
+        </table>
+      </div>
+
+      <!-- Resumen totales -->
+      <div id="ver-resumen-productos" style="display:none;">
+        <div class="resumen-totales">
+          <div class="resumen-linea-tot"><span>Subtotal (sin IVA):</span><span id="ver-subtotal">$0.00</span></div>
+          <div class="resumen-linea-tot"><span>Descuento total:</span><span id="ver-descuento-total">$0.00</span></div>
+          <div class="resumen-linea-tot"><span>IVA (16%):</span><span id="ver-iva">$0.00</span></div>
+          <div class="resumen-linea-tot total-final"><span>Total:</span><span id="ver-total">$0.00</span></div>
+        </div>
+      </div>
+      <div id="ver-resumen-servicios" style="display:none;">
+        <div class="resumen-totales">
+          <div class="resumen-linea-tot total-final"><span>Total:</span><span id="ver-total-srv">$0.00</span></div>
+        </div>
+      </div>
+
+      <div class="ver-acciones">
+        <button id="btn-editar-cot" class="btn-secondary">✏️ Editar</button>
+        <button id="btn-cargar-pos" class="btn-pos">🛒 Cargar en POS</button>
+        <button id="btn-pdf" class="btn-pdf">📄 Descargar PDF</button>
+        <button id="btn-cancelar-cot" class="btn-danger">✕ Cancelar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="sidebar.js"></script>
+<script src="cotizaciones.js"></script>
+</body>
+</html>

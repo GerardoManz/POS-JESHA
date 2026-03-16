@@ -85,6 +85,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   mostrarEstadoInicial()
   configurarEventListeners()
   actualizarCarrito()
+  cargarCotizacionDesdeStorage()
+  configurarEventosCotizar()
   console.log('✅ Punto de Venta listo')
 })
 
@@ -402,6 +404,8 @@ function actualizarCarrito() {
   }
 
   btnCompletarVenta.disabled = !(carrito.length > 0 && turnoActivo)
+  const btnCotizar = document.getElementById('btn-cotizar-carrito')
+  if (btnCotizar) btnCotizar.disabled = carrito.length === 0
 }
 
 async function completarVenta() {
@@ -447,13 +451,14 @@ async function confirmarVenta() {
   try {
     const total = carrito.reduce((sum, item) => sum + (item.precio * item.cantidad), 0)
 
-    const detalles = carrito.map(item => ({
-      productoId: item.id,
-      cantidad: item.cantidad,
-      precioUnitario: item.precio,
-      subtotal: parseFloat((item.precio * item.cantidad).toFixed(2))
-    }))
+  const detalles = carrito.map(item => ({
+  productoId:     parseInt(item.id),
+  cantidad:       parseInt(item.cantidad),
+  precioUnitario: parseFloat(item.precio),
+  subtotal:       parseFloat((parseFloat(item.precio) * parseInt(item.cantidad)).toFixed(2))
+}))
 
+    
     const payload = {
       sucursalId: turnoActivo.sucursalId,
       usuarioId: turnoActivo.usuarioId,
@@ -663,6 +668,190 @@ function configurarEventListeners() {
   })
 
   console.log('✅ Event listeners configurados')
+}
+
+function cargarCotizacionDesdeStorage() {
+  const raw = localStorage.getItem('pos_cotizacion')
+  if (!raw) return
+
+  try {
+    const payload = JSON.parse(raw)
+    localStorage.removeItem('pos_cotizacion')
+
+    if (payload.fuente !== 'cotizacion' || !Array.isArray(payload.items) || payload.items.length === 0) return
+
+    // Cargar ítems en el carrito
+    payload.items.forEach(item => {
+      carrito.push({
+        id:       item.id,
+        nombre:   item.nombre,
+        precio:   parseFloat(item.precio),
+        cantidad: parseInt(item.cantidad) || 1
+      })
+      productoCache.set(item.id, {
+        id: item.id, nombre: item.nombre, precioBase: item.precio, stock: null
+      })
+    })
+
+    // Asignar cliente si venía uno
+    if (payload.clienteId && payload.clienteNombre) {
+      clienteSeleccionado = { id: payload.clienteId, nombre: payload.clienteNombre }
+      if (clienteNombre) clienteNombre.value = payload.clienteNombre
+    }
+
+    actualizarCarrito()
+
+    // Aviso visual (desaparece solo)
+    const aviso = document.createElement('div')
+    aviso.textContent = `✓ Cotización ${payload.cotFolio} cargada — ${payload.items.length} producto(s)`
+    Object.assign(aviso.style, {
+      position: 'fixed', top: '20px', right: '20px', zIndex: '9999',
+      background: '#1f3a66', color: '#fff', padding: '12px 20px',
+      borderRadius: '8px', fontSize: '0.875rem', fontWeight: '600',
+      boxShadow: '0 4px 16px rgba(0,0,0,0.4)', transition: 'opacity 0.4s'
+    })
+    document.body.appendChild(aviso)
+    setTimeout(() => {
+      aviso.style.opacity = '0'
+      setTimeout(() => aviso.remove(), 400)
+    }, 3500)
+
+    console.log('✅ Cotización cargada:', payload.cotFolio)
+
+  } catch (e) {
+    console.warn('⚠️ Error leyendo pos_cotizacion:', e.message)
+    localStorage.removeItem('pos_cotizacion')
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  COTIZAR DESDE POS
+//  Pegar al final de punto-venta.js (antes del último console.log)
+// ════════════════════════════════════════════════════════════════════
+
+// ── Abrir modal de cotización ──
+function abrirModalCotizar() {
+  if (carrito.length === 0) {
+    alert('❌ El carrito está vacío')
+    return
+  }
+
+  // Limpiar campos del modal
+  const venceInput = document.getElementById('cotizar-vence')
+  const notasInput = document.getElementById('cotizar-notas')
+  const errorDiv   = document.getElementById('cotizar-error')
+
+  if (venceInput) venceInput.value = ''
+  if (notasInput) notasInput.value = ''
+  if (errorDiv)   { errorDiv.style.display = 'none'; errorDiv.textContent = '' }
+
+  document.getElementById('modal-cotizar').style.display = 'flex'
+}
+
+// ── Cerrar modal de cotización ──
+function cerrarModalCotizar() {
+  document.getElementById('modal-cotizar').style.display = 'none'
+}
+
+// ── Guardar cotización desde el POS ──
+async function confirmarCotizar() {
+  const venceEn = document.getElementById('cotizar-vence')?.value || null
+  const notas   = document.getElementById('cotizar-notas')?.value.trim() || null
+  const errorDiv = document.getElementById('cotizar-error')
+
+  if (errorDiv) { errorDiv.style.display = 'none'; errorDiv.textContent = '' }
+
+  const btnGuardar = document.getElementById('btn-confirmar-cotizar')
+  btnGuardar.disabled  = true
+  btnGuardar.innerHTML = '⟳ Guardando...'
+
+  try {
+    // Construir detalles desde el carrito actual
+    const detalles = carrito.map(item => ({
+      productoId:     parseInt(item.id) || null,
+      cantidad:       parseInt(item.cantidad) || 1,
+      precioUnitario: parseFloat(item.precio) || 0
+    })).filter(d => d.productoId && d.productoId > 0)  // eliminar ítems sin id válido
+
+    if (detalles.length === 0) {
+      throw new Error('El carrito no tiene productos válidos para cotizar')
+    }
+
+    const payload = {
+      clienteId: clienteSeleccionado?.id || null,
+      tipo: 'PRODUCTOS',
+      detalles,
+      notas,
+      venceEn: venceEn || null
+    }
+
+    const response = await fetch(`${API_URL}/cotizaciones`, {
+      method:  'POST',
+      headers: {
+        'Content-Type':  'application/json',
+        'Authorization': `Bearer ${TOKEN}`
+      },
+      body: JSON.stringify(payload)
+    })
+
+    const data = await response.json()
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Error guardando cotización')
+    }
+
+    cerrarModalCotizar()
+
+    // Toast de éxito
+    const folio = data.data?.folio || 'COT-...'
+    const aviso = document.createElement('div')
+    aviso.innerHTML = `✓ Cotización <strong>${folio}</strong> guardada — <a href="cotizaciones.html" style="color:#90c8ff;text-decoration:underline;">Ver cotizaciones</a>`
+    Object.assign(aviso.style, {
+      position: 'fixed', top: '20px', right: '20px', zIndex: '9999',
+      background: '#1f3a66', color: '#fff', padding: '14px 20px',
+      borderRadius: '8px', fontSize: '0.875rem', fontWeight: '600',
+      boxShadow: '0 4px 16px rgba(0,0,0,0.4)', transition: 'opacity 0.4s',
+      maxWidth: '340px', lineHeight: '1.5'
+    })
+    document.body.appendChild(aviso)
+    setTimeout(() => { aviso.style.opacity = '0'; setTimeout(() => aviso.remove(), 400) }, 5000)
+
+    console.log('✅ Cotización creada desde POS:', folio)
+
+  } catch (err) {
+    console.error('❌ Error creando cotización:', err)
+    if (errorDiv) {
+      errorDiv.textContent = err.message
+      errorDiv.style.display = 'block'
+    } else {
+      alert('❌ ' + err.message)
+    }
+  } finally {
+    btnGuardar.disabled = false
+    btnGuardar.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg> Guardar Cotización`
+  }
+}
+
+// ── Registrar event listeners del modal cotizar ──
+// Llamar esta función dentro de configurarEventListeners()
+// o directamente en DOMContentLoaded
+function configurarEventosCotizar() {
+  document.getElementById('btn-cotizar-carrito')
+    ?.addEventListener('click', abrirModalCotizar)
+
+  document.getElementById('modal-cotizar-close')
+    ?.addEventListener('click', cerrarModalCotizar)
+
+  document.getElementById('btn-cancel-cotizar')
+    ?.addEventListener('click', cerrarModalCotizar)
+
+  document.getElementById('btn-confirmar-cotizar')
+    ?.addEventListener('click', confirmarCotizar)
+
+  // Cerrar con Escape (añadir al listener existente de keydown)
+  // El listener de Escape ya existe en configurarEventListeners(),
+  // solo añadir esta línea dentro del handler existente:
+  // document.getElementById('modal-cotizar')?.style.display = 'none'
 }
 
 console.log('✅ punto-venta.js completamente cargado')

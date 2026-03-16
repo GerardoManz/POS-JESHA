@@ -284,3 +284,38 @@ body {
 @media (max-width: 500px) {
   .kpi-grid { grid-template-columns: 1fr; }
 }
+
+/* Etiquetas de sección (VENTAS / INVENTARIO / ADMINISTRACIÓN) */
+.menu-section-label {
+  display: block;
+  padding: 14px 12px 4px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  opacity: 0.6;
+  pointer-events: none;
+  user-select: none;
+}
+ 
+/* Primera etiqueta sin padding superior extra */
+.menu-section-label:first-child {
+  padding-top: 4px;
+}
+ 
+/* El nav.menu ahora es scrolleable para pantallas pequeñas */
+.menu {
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--panel-border) transparent;
+}
+ 
+.menu::-webkit-scrollbar {
+  width: 3px;
+}
+ 
+.menu::-webkit-scrollbar-thumb {
+  background: var(--panel-border);
+  border-radius: 2px;
+}
