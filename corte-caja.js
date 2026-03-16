@@ -14,43 +14,43 @@ if (!TOKEN && !window.location.pathname.includes('login.html')) {
 const API_URL = 'http://localhost:3000'
 
 // ── DOM ──
-const estadoSinTurno      = document.getElementById('estado-sin-turno')
-const contenidoCorte      = document.getElementById('contenido-corte')
-const fechaActualEl       = document.getElementById('fecha-actual')
-const kpiApertura         = document.getElementById('kpi-apertura')
-const kpiMontoInicial     = document.getElementById('kpi-monto-inicial')
-const kpiTotalVentas      = document.getElementById('kpi-total-ventas')
-const kpiNumVentas        = document.getElementById('kpi-num-ventas')
-const montoEfectivo       = document.getElementById('monto-efectivo')
-const montoTarjeta        = document.getElementById('monto-tarjeta')
-const montoTransferencia  = document.getElementById('monto-transferencia')
-const montoTotalVentas    = document.getElementById('monto-total-ventas')
-const efInicial           = document.getElementById('ef-inicial')
-const efVentas            = document.getElementById('ef-ventas')
-const efTotal             = document.getElementById('ef-total')
-const turnosCajero        = document.getElementById('turno-cajero')
-const turnoSucursal       = document.getElementById('turno-sucursal')
-const turnoId             = document.getElementById('turno-id')
-const montoDeclarado      = document.getElementById('monto-declarado')
-const diferenciaBox       = document.getElementById('diferencia-box')
-const difEsperado         = document.getElementById('dif-esperado')
-const difContado          = document.getElementById('dif-contado')
-const difLabel            = document.getElementById('dif-label')
-const difValor            = document.getElementById('dif-valor')
-const diferenciaResultado = document.getElementById('diferencia-resultado')
-const cierreError         = document.getElementById('cierre-error')
-const btnCerrarTurno      = document.getElementById('btn-cerrar-turno')
-const modalConfirmarCierre   = document.getElementById('modal-confirmar-cierre')
-const modalResultadoCierre   = document.getElementById('modal-resultado-cierre')
-const btnCancelarCierre      = document.getElementById('btn-cancelar-cierre')
-const btnConfirmarCierre     = document.getElementById('btn-confirmar-cierre')
-const modalCierreClose       = document.getElementById('modal-cierre-close')
-const resumenCierreModal     = document.getElementById('resumen-cierre-modal')
+const estadoSinTurno        = document.getElementById('estado-sin-turno')
+const contenidoCorte        = document.getElementById('contenido-corte')
+const fechaActualEl         = document.getElementById('fecha-actual')
+const kpiApertura           = document.getElementById('kpi-apertura')
+const kpiMontoInicial       = document.getElementById('kpi-monto-inicial')
+const kpiTotalVentas        = document.getElementById('kpi-total-ventas')
+const kpiNumVentas          = document.getElementById('kpi-num-ventas')
+const montoEfectivo         = document.getElementById('monto-efectivo')
+const montoTarjeta          = document.getElementById('monto-tarjeta')
+const montoTransferencia    = document.getElementById('monto-transferencia')
+const montoTotalVentas      = document.getElementById('monto-total-ventas')
+const efInicial             = document.getElementById('ef-inicial')
+const efVentas              = document.getElementById('ef-ventas')
+const efTotal               = document.getElementById('ef-total')
+const turnosCajero          = document.getElementById('turno-cajero')
+const turnoSucursal         = document.getElementById('turno-sucursal')
+const turnoId               = document.getElementById('turno-id')
+const montoDeclarado        = document.getElementById('monto-declarado')
+const diferenciaBox         = document.getElementById('diferencia-box')
+const difEsperado           = document.getElementById('dif-esperado')
+const difContado            = document.getElementById('dif-contado')
+const difLabel              = document.getElementById('dif-label')
+const difValor              = document.getElementById('dif-valor')
+const diferenciaResultado   = document.getElementById('diferencia-resultado')
+const cierreError           = document.getElementById('cierre-error')
+const btnCerrarTurno        = document.getElementById('btn-cerrar-turno')
+const modalConfirmarCierre  = document.getElementById('modal-confirmar-cierre')
+const modalResultadoCierre  = document.getElementById('modal-resultado-cierre')
+const btnCancelarCierre     = document.getElementById('btn-cancelar-cierre')
+const btnConfirmarCierre    = document.getElementById('btn-confirmar-cierre')
+const modalCierreClose      = document.getElementById('modal-cierre-close')
+const resumenCierreModal    = document.getElementById('resumen-cierre-modal')
 const resultadoCierreContenido = document.getElementById('resultado-cierre-contenido')
 
 // ── ESTADO ──
-let turnoActivo       = null
-let efectivoEsperado  = 0
+let turnoActivo     = null
+let efectivoEsperado = 0
 
 // ══════════════════════════════════════════════════════════════════
 //  INICIALIZACIÓN
@@ -62,7 +62,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
     })
   }
-
   await cargarTurno()
   configurarEventListeners()
 })
@@ -76,23 +75,17 @@ async function cargarTurno() {
     const response = await fetch(`${API_URL}/turnos-caja/activo`, {
       headers: { 'Authorization': `Bearer ${TOKEN}` }
     })
-
     if (!response.ok) {
-      // Sin turno abierto
-      estadoSinTurno.style.display  = 'flex'
-      contenidoCorte.style.display  = 'none'
+      estadoSinTurno.style.display = 'flex'
+      contenidoCorte.style.display = 'none'
       return
     }
-
     const data = await response.json()
     turnoActivo = data.data
-
     estadoSinTurno.style.display = 'none'
     contenidoCorte.style.display = 'block'
-
     renderizarTurno()
     await cargarVentas()
-
   } catch (err) {
     console.error('❌ Error cargando turno:', err)
     estadoSinTurno.style.display = 'flex'
@@ -106,32 +99,28 @@ async function cargarTurno() {
 
 function renderizarTurno() {
   const apertura = new Date(turnoActivo.abiertaEn)
-  kpiApertura.textContent     = apertura.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })
+  kpiApertura.textContent    = apertura.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })
   kpiMontoInicial.textContent = fmt(turnoActivo.montoInicial)
-
-  turnosCajero.textContent  = turnoActivo.usuario?.nombre || '—'
-  turnoSucursal.textContent = turnoActivo.sucursal?.nombre || '—'
-  turnoId.textContent       = `#${turnoActivo.id}`
+  turnosCajero.textContent   = turnoActivo.usuario?.nombre || '—'
+  turnoSucursal.textContent  = turnoActivo.sucursal?.nombre || '—'
+  turnoId.textContent        = `#${turnoActivo.id}`
 }
 
 // ══════════════════════════════════════════════════════════════════
 //  CARGAR VENTAS DEL TURNO
+//  take=9999 garantiza que se sumen TODAS las ventas del turno
 // ══════════════════════════════════════════════════════════════════
 
 async function cargarVentas() {
   try {
     const response = await fetch(
-      `${API_URL}/ventas?turnoId=${turnoActivo.id}`,
+      `${API_URL}/ventas?turnoId=${turnoActivo.id}&take=9999`,
       { headers: { 'Authorization': `Bearer ${TOKEN}` } }
     )
-
     if (!response.ok) throw new Error('Error cargando ventas')
-
-    const data = await response.json()
+    const data   = await response.json()
     const ventas = data.data || []
-
     calcularTotales(ventas)
-
   } catch (err) {
     console.error('❌ Error cargando ventas:', err)
   }
@@ -150,23 +139,21 @@ function calcularTotales(ventas) {
   ventas.forEach(v => {
     const monto = parseFloat(v.total)
     totalGeneral += monto
-
-    if (v.metodoPago === 'EFECTIVO') totalEfectivo      += monto
-    if (v.metodoPago === 'CREDITO' || v.metodoPago === 'DEBITO') totalTarjeta += monto
-    if (v.metodoPago === 'TRANSFERENCIA') totalTransferencia += monto
+    if (v.metodoPago === 'EFECTIVO')                              totalEfectivo      += monto
+    if (v.metodoPago === 'CREDITO' || v.metodoPago === 'DEBITO') totalTarjeta       += monto
+    if (v.metodoPago === 'TRANSFERENCIA')                         totalTransferencia += monto
   })
 
-  // Actualizar UI
-  kpiTotalVentas.textContent     = fmt(totalGeneral)
-  kpiNumVentas.textContent       = ventas.length
-  montoEfectivo.textContent      = fmt(totalEfectivo)
-  montoTarjeta.textContent       = fmt(totalTarjeta)
+  kpiTotalVentas.textContent    = fmt(totalGeneral)
+  kpiNumVentas.textContent      = ventas.length
+  montoEfectivo.textContent     = fmt(totalEfectivo)
+  montoTarjeta.textContent      = fmt(totalTarjeta)
   montoTransferencia.textContent = fmt(totalTransferencia)
-  montoTotalVentas.textContent   = fmt(totalGeneral)
+  montoTotalVentas.textContent  = fmt(totalGeneral)
 
-  // Efectivo esperado en caja = monto inicial + ventas en efectivo
-  const inicial = parseFloat(turnoActivo.montoInicial) || 0
-  efectivoEsperado = inicial + totalEfectivo
+  // Efectivo esperado = monto inicial + ventas en efectivo ÚNICAMENTE
+  const inicial    = parseFloat(turnoActivo.montoInicial) || 0
+  efectivoEsperado = parseFloat((inicial + totalEfectivo).toFixed(2))
 
   efInicial.textContent = fmt(inicial)
   efVentas.textContent  = fmt(totalEfectivo)
@@ -179,44 +166,43 @@ function calcularTotales(ventas) {
 
 function calcularDiferencia() {
   const contado = parseFloat(montoDeclarado.value)
-
   if (isNaN(contado) || montoDeclarado.value === '') {
     diferenciaBox.style.display = 'none'
     return
   }
 
   diferenciaBox.style.display = 'block'
-  const diferencia = contado - efectivoEsperado
+  const diferencia = parseFloat((contado - efectivoEsperado).toFixed(2))
 
   difEsperado.textContent = fmt(efectivoEsperado)
   difContado.textContent  = fmt(contado)
-  difValor.textContent    = fmt(Math.abs(diferencia))
 
-  // Limpiar clases
   diferenciaResultado.classList.remove('diferencia-ok', 'diferencia-mal', 'diferencia-cero')
 
   if (diferencia === 0) {
     difLabel.textContent = 'Sin diferencia'
+    difValor.textContent = '$0.00'
     diferenciaResultado.classList.add('diferencia-cero')
   } else if (diferencia > 0) {
-    difLabel.textContent = `Sobrante`
+    difLabel.textContent = 'Sobrante'
     difValor.textContent = `+${fmt(diferencia)}`
     diferenciaResultado.classList.add('diferencia-ok')
   } else {
-    difLabel.textContent = `Faltante`
+    difLabel.textContent = 'Faltante'
     difValor.textContent = `-${fmt(Math.abs(diferencia))}`
     diferenciaResultado.classList.add('diferencia-mal')
   }
 }
 
 // ══════════════════════════════════════════════════════════════════
-//  MOSTRAR MODAL CONFIRMACIÓN
+//  MODAL CONFIRMACIÓN DE CIERRE
 // ══════════════════════════════════════════════════════════════════
 
 function mostrarModalCierre() {
   const contado    = parseFloat(montoDeclarado.value) || 0
-  const diferencia = contado - efectivoEsperado
-  const signo      = diferencia >= 0 ? '+' : ''
+  const diferencia = parseFloat((contado - efectivoEsperado).toFixed(2))
+  const signo      = diferencia > 0 ? '+' : ''
+  const color      = diferencia === 0 ? 'var(--muted)' : diferencia > 0 ? '#60d080' : '#ff6b6b'
 
   resumenCierreModal.innerHTML = `
     <div class="resumen-modal-row">
@@ -227,14 +213,11 @@ function mostrarModalCierre() {
       <span>Monto contado</span>
       <span>${fmt(contado)}</span>
     </div>
-    <div class="resumen-modal-row" style="font-weight:600; padding-top: 10px;">
+    <div class="resumen-modal-row" style="font-weight:600; padding-top:10px;">
       <span>Diferencia</span>
-      <span style="color: ${diferencia === 0 ? 'var(--muted)' : diferencia > 0 ? '#60d080' : '#ff6b6b'}">
-        ${signo}${fmt(diferencia)}
-      </span>
+      <span style="color:${color}">${diferencia === 0 ? '$0.00' : signo + fmt(diferencia)}</span>
     </div>
   `
-
   modalConfirmarCierre.style.display = 'flex'
 }
 
@@ -244,25 +227,21 @@ function mostrarModalCierre() {
 
 async function cerrarTurno() {
   const montoFinalDeclarado = parseFloat(montoDeclarado.value)
-
   if (isNaN(montoFinalDeclarado) || montoFinalDeclarado < 0) {
-    cierreError.textContent   = 'Ingresa el monto contado en caja'
+    cierreError.textContent  = 'Ingresa el monto contado en caja'
     cierreError.style.display = 'block'
     return
   }
 
-  btnConfirmarCierre.disabled    = true
-  btnConfirmarCierre.textContent = '⟳ Cerrando...'
-  cierreError.style.display      = 'none'
+  btnConfirmarCierre.disabled     = true
+  btnConfirmarCierre.textContent  = '⟳ Cerrando...'
+  cierreError.style.display       = 'none'
 
   try {
     const response = await fetch(`${API_URL}/turnos-caja/cerrar`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${TOKEN}`
-      },
-      body: JSON.stringify({ montoFinalDeclarado })
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
+      body:    JSON.stringify({ montoFinalDeclarado })
     })
 
     const data = await response.json()
@@ -274,9 +253,8 @@ async function cerrarTurno() {
       return
     }
 
-    // Turno cerrado exitosamente
     modalConfirmarCierre.style.display = 'none'
-    mostrarResultadoCierre(data.data)
+    mostrarResultadoCierre(data.data, montoFinalDeclarado)
 
   } catch (err) {
     console.error('❌ Error cerrando turno:', err)
@@ -290,12 +268,18 @@ async function cerrarTurno() {
 }
 
 // ══════════════════════════════════════════════════════════════════
-//  MOSTRAR RESULTADO FINAL
+//  RESULTADO FINAL DEL CIERRE
+//  Usa efectivoEsperado local (calculado solo con ventas en efectivo)
+//  para garantizar consistencia con lo que el cajero vio en pantalla
 // ══════════════════════════════════════════════════════════════════
 
-function mostrarResultadoCierre(turno) {
-  const diferencia = parseFloat(turno.diferencia) || 0
-  const signo      = diferencia >= 0 ? '+' : ''
+function mostrarResultadoCierre(turno, montoContado) {
+  // Usar el efectivoEsperado calculado localmente (solo efectivo)
+  // y el monto que el cajero declaró — no confiar en turno.diferencia
+  // del backend viejo que incluía todos los métodos de pago
+  const contado    = parseFloat(montoContado)
+  const diferencia = parseFloat((contado - efectivoEsperado).toFixed(2))
+  const signo      = diferencia > 0 ? '+' : ''
   const claseColor = diferencia === 0 ? '' : diferencia > 0 ? 'resultado-ok' : 'resultado-mal'
 
   resultadoCierreContenido.innerHTML = `
@@ -318,15 +302,16 @@ function mostrarResultadoCierre(turno) {
       </div>
       <div class="resultado-row">
         <span>Monto contado</span>
-        <span>${fmt(turno.montoFinalDeclarado)}</span>
+        <span>${fmt(contado)}</span>
       </div>
       <div class="resultado-row" style="font-weight:600;">
         <span>Diferencia</span>
-        <span class="${claseColor}">${signo}${fmt(diferencia)}</span>
+        <span class="${claseColor}">
+          ${diferencia === 0 ? '$0.00' : signo + fmt(diferencia)}
+        </span>
       </div>
     </div>
   `
-
   modalResultadoCierre.style.display = 'flex'
 }
 
@@ -360,7 +345,7 @@ function configurarEventListeners() {
 
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
-      modalConfirmarCierre.style.display = 'none'
+      modalConfirmarCierre.style.display  = 'none'
     }
   })
 }
@@ -370,7 +355,10 @@ function configurarEventListeners() {
 // ══════════════════════════════════════════════════════════════════
 
 function fmt(valor) {
-  return `$${parseFloat(valor || 0).toFixed(2)}`
+  return `$${parseFloat(valor || 0).toLocaleString('es-MX', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  })}`
 }
 
 console.log('✅ corte-caja.js cargado')
