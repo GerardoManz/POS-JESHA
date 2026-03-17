@@ -319,3 +319,17 @@ body {
   background: var(--panel-border);
   border-radius: 2px;
 }
+
+/* ── DASHBOARD TABLAS ── */
+.panel-tabla { overflow:hidden; }
+.dash-table { width:100%; border-collapse:collapse; font-size:0.85rem; margin-top:4px; }
+.dash-table th { padding:8px 12px; text-align:left; border-bottom:1px solid var(--panel-border); font-weight:600; color:var(--muted); font-size:0.72rem; text-transform:uppercase; letter-spacing:0.04em; }
+.dash-table td { padding:10px 12px; border-bottom:1px solid rgba(255,255,255,0.04); color:var(--text); vertical-align:middle; }
+.dash-table tr:last-child td { border-bottom:none; }
+.dash-ver-mas { display:block; text-align:center; padding:10px; color:var(--muted); font-size:0.8rem; text-decoration:none; border-top:1px solid var(--panel-border); transition:color 0.15s; }
+.dash-ver-mas:hover { color:var(--text); }
+.stock-badge { display:inline-block; padding:2px 8px; border-radius:12px; font-weight:700; font-size:0.82rem; }
+.stock-cero { background:rgba(255,107,107,0.15); color:#ff6b6b; }
+.stock-bajo { background:rgba(232,113,10,0.15);  color:var(--orange); }
+.spinner { width:24px; height:24px; border:3px solid rgba(255,255,255,0.1); border-top-color:var(--accent); border-radius:50%; animation:spin 0.8s linear infinite; margin:0 auto; }
+@keyframes spin { to { transform:rotate(360deg); } }
