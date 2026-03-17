@@ -137,18 +137,23 @@ exports.crearVenta = async (req, res) => {
  */
 exports.obtenerVentas = async (req, res) => {
   try {
-    const { skip = 0, take = 20, search, metodoPago, desde, hasta, turnoId } = req.query
+    const { skip = 0, take = 20, search, metodoPago, desde, hasta, turnoId, clienteId, usuarioId } = req.query
 
     const where = {}
 
     // ── FILTRO POR TURNO (corte de caja) ──────────────────────────
-    if (turnoId) {
-      where.turnoId = parseInt(turnoId)
+    if (turnoId)  where.turnoId  = parseInt(turnoId)
+    if (usuarioId) where.usuarioId = parseInt(usuarioId)
+    if (clienteId === 'null') {
+      // Ventas sin cliente asignado (Público general)
+      where.clienteId = null
+    } else if (clienteId && parseInt(clienteId) > 0) {
+      where.clienteId = parseInt(clienteId)
     }
 
     if (search) {
       where.OR = [
-        { folio: { contains: search, mode: 'insensitive' } },
+        { folio:   { contains: search, mode: 'insensitive' } },
         { cliente: { nombre: { contains: search, mode: 'insensitive' } } }
       ]
     }

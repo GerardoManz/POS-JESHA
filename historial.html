@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>JESHA POS - Historial de Ventas</title>
+  <link rel="stylesheet" href="dashboard.css" />
+  <link rel="stylesheet" href="historial.css" />
+</head>
+<body data-page="historial">
+<div class="app-shell">
+  <div id="sidebar-container"></div>
+
+  <main class="content">
+    <header class="content-header">
+      <h2>Historial de Ventas</h2>
+      <p id="fecha-actual"></p>
+    </header>
+
+    <!-- ── TOOLBAR ── -->
+    <section class="toolbar historial-toolbar">
+
+      <!-- Búsqueda -->
+      <div class="search-group">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input type="text" id="search-input" placeholder="Folio o cliente..." class="search-input" />
+      </div>
+
+      <!-- Fecha desde -->
+      <div class="filter-date-group">
+        <label class="filter-date-label">Desde</label>
+        <input type="date" id="filtro-desde" class="filter-date" />
+      </div>
+
+      <!-- Fecha hasta -->
+      <div class="filter-date-group">
+        <label class="filter-date-label">Hasta</label>
+        <input type="date" id="filtro-hasta" class="filter-date" />
+      </div>
+
+      <!-- Método de pago -->
+      <select id="filtro-metodo" class="filter-select">
+        <option value="">Todos los métodos</option>
+        <option value="EFECTIVO">💵 Efectivo</option>
+        <option value="CREDITO">💳 Tarjeta</option>
+        <option value="TRANSFERENCIA">🔄 Transferencia</option>
+      </select>
+
+      <!-- Cliente -->
+      <select id="filtro-cliente" class="filter-select">
+        <option value="">Todos los clientes</option>
+      </select>
+
+      <!-- Cajero -->
+      <select id="filtro-usuario" class="filter-select">
+        <option value="">Todos los cajeros</option>
+      </select>
+
+      <!-- Botón limpiar -->
+      <button id="btn-limpiar-filtros" class="btn-secondary btn-limpiar-hist" title="Limpiar filtros">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.5"/></svg>
+        Limpiar
+      </button>
+
+    </section>
+
+    <!-- ── KPIs ── -->
+    <section class="hist-kpis" id="hist-kpis" style="display:none;">
+      <div class="hist-kpi">
+        <span class="hist-kpi-label">Ventas encontradas</span>
+        <span class="hist-kpi-valor" id="kpi-total-ventas">0</span>
+      </div>
+      <div class="hist-kpi">
+        <span class="hist-kpi-label">Monto total</span>
+        <span class="hist-kpi-valor" id="kpi-monto-total">$0.00</span>
+      </div>
+      <div class="hist-kpi">
+        <span class="hist-kpi-label">Efectivo</span>
+        <span class="hist-kpi-valor" id="kpi-efectivo">$0.00</span>
+      </div>
+      <div class="hist-kpi">
+        <span class="hist-kpi-label">Tarjeta</span>
+        <span class="hist-kpi-valor" id="kpi-tarjeta">$0.00</span>
+      </div>
+      <div class="hist-kpi">
+        <span class="hist-kpi-label">Transferencia</span>
+        <span class="hist-kpi-valor" id="kpi-transferencia">$0.00</span>
+      </div>
+    </section>
+
+    <!-- ── TABLA ── -->
+    <section class="panel">
+      <div class="table-wrapper">
+        <table class="hist-table">
+          <thead>
+            <tr>
+              <th>Folio</th>
+              <th>Fecha</th>
+              <th>Cliente</th>
+              <th>Cajero</th>
+              <th>Método</th>
+              <th style="width:60px">Arts.</th>
+              <th style="width:110px">Total</th>
+              <th style="width:80px">Estado</th>
+              <th style="width:50px"></th>
+            </tr>
+          </thead>
+          <tbody id="hist-tbody">
+            <tr>
+              <td colspan="9" class="loading-cell">
+                <div class="spinner"></div>
+                <p>Cargando historial...</p>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Paginación -->
+      <div class="pagination" id="pagination" style="display:none;">
+        <button id="btn-prev" class="btn-pag" disabled>&#8592; Anterior</button>
+        <span id="pag-info" class="pag-info"></span>
+        <button id="btn-next" class="btn-pag">Siguiente &#8594;</button>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     MODAL DETALLE DE VENTA
+══════════════════════════════════════════════════════════════ -->
+<div id="modal-venta" class="modal">
+  <div class="modal-content modal-large">
+    <div class="modal-header">
+      <div>
+        <h3 id="det-folio">VTA-...</h3>
+        <span id="det-estado-badge" class="estado-badge completada">Completada</span>
+      </div>
+      <button class="modal-close" id="modal-venta-close">&times;</button>
+    </div>
+
+    <div class="ver-body">
+      <!-- Meta -->
+      <div class="ver-meta">
+        <div class="meta-item"><span class="meta-label">Fecha</span><span class="meta-valor" id="det-fecha">—</span></div>
+        <div class="meta-item"><span class="meta-label">Cliente</span><span class="meta-valor" id="det-cliente">—</span></div>
+        <div class="meta-item"><span class="meta-label">Cajero</span><span class="meta-valor" id="det-cajero">—</span></div>
+        <div class="meta-item"><span class="meta-label">Sucursal</span><span class="meta-valor" id="det-sucursal">—</span></div>
+        <div class="meta-item"><span class="meta-label">Método de pago</span><span class="meta-valor" id="det-metodo">—</span></div>
+        <div class="meta-item"><span class="meta-label">Factura</span><span class="meta-valor" id="det-factura">—</span></div>
+      </div>
+
+      <!-- Tabla de productos -->
+      <div class="table-wrapper" style="margin:16px 0;">
+        <table class="hist-table">
+          <thead>
+            <tr>
+              <th>Producto</th>
+              <th>Código</th>
+              <th style="width:70px">Cant.</th>
+              <th style="width:100px">Precio Unit.</th>
+              <th style="width:100px">Subtotal</th>
+            </tr>
+          </thead>
+          <tbody id="det-items-tbody"></tbody>
+        </table>
+      </div>
+
+      <!-- Resumen -->
+      <div class="det-resumen">
+        <div class="det-resumen-row"><span>Subtotal:</span><span id="det-subtotal">$0.00</span></div>
+        <div class="det-resumen-row"><span>Descuento:</span><span id="det-descuento">$0.00</span></div>
+        <div class="det-resumen-row det-total"><span>Total:</span><span id="det-total">$0.00</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="sidebar.js"></script>
+<script src="historial.js"></script>
+</body>
+</html>
