@@ -1,0 +1,457 @@
+// ════════════════════════════════════════════════════════════════════
+//  PEDIDOS.JS
+// ════════════════════════════════════════════════════════════════════
+
+const TOKEN   = localStorage.getItem('jesha_token')
+const USUARIO = JSON.parse(localStorage.getItem('jesha_usuario') || '{}')
+const API_URL = 'http://localhost:3000'
+const LIMIT   = 25
+
+if (!TOKEN) {
+  localStorage.setItem('redirect_after_login', 'pedidos.html')
+  window.location.href = 'login.html'
+  throw new Error('Sin autenticación')
+}
+
+// ── Estado ──
+let paginaActual   = 1
+let pedidoActual   = null
+let itemsEdicion   = []
+let clientesLista  = []
+let debounce, debounceSearch, debounceProducto
+
+// ── Helpers ──
+const fmt = v => `$${parseFloat(v||0).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})}`
+const fmtFecha = iso => iso ? new Date(iso).toLocaleString('es-MX',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '—'
+
+const ESTADO_MAP = {
+  BORRADOR:  { label:'Borrador',  cls:'borrador'  },
+  ACTIVO:    { label:'Activo',    cls:'activo'    },
+  EJECUTADO: { label:'Ejecutado', cls:'ejecutado' },
+  CANCELADO: { label:'Cancelado', cls:'cancelado' }
+}
+
+function estadoBadge(estado) {
+  const m = ESTADO_MAP[estado] || { label: estado, cls: 'borrador' }
+  return `<span class="ped-estado-badge ${m.cls}">${m.label}</span>`
+}
+
+async function apiFetch(path, opts = {}) {
+  const res = await fetch(`${API_URL}${path}`, {
+    ...opts,
+    headers: { 'Content-Type':'application/json', 'Authorization':`Bearer ${TOKEN}`, ...(opts.headers||{}) }
+  })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error || `Error ${res.status}`)
+  return data
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  LISTAR
+// ════════════════════════════════════════════════════════════════════
+
+async function cargarPedidos() {
+  const tbody  = document.getElementById('ped-tbody')
+  const pagDiv = document.getElementById('pagination')
+  tbody.innerHTML = `<tr><td colspan="8" class="loading-cell"><div class="spinner"></div><p>Cargando...</p></td></tr>`
+
+  const buscar  = document.getElementById('search-input')?.value.trim() || ''
+  const estado  = document.getElementById('filtro-estado')?.value || ''
+  const cliente = document.getElementById('filtro-cliente')?.value || ''
+  const params  = new URLSearchParams({ page: paginaActual, limit: LIMIT })
+  if (buscar)  params.set('buscar',    buscar)
+  if (estado)  params.set('estado',    estado)
+  if (cliente && parseInt(cliente) > 0) params.set('clienteId', cliente)
+
+  try {
+    const data    = await apiFetch(`/pedidos?${params}`)
+    const pedidos = data.data || []
+    const total   = data.total || 0
+
+    if (pedidos.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="8" class="loading-cell"><p>No hay pedidos con los filtros aplicados</p></td></tr>`
+      pagDiv.style.display = 'none'
+      return
+    }
+
+    tbody.innerHTML = pedidos.map(p => `
+      <tr onclick="verPedido(${p.id})">
+        <td><strong>${p.folio}</strong></td>
+        <td style="color:var(--muted);font-size:0.82rem">${fmtFecha(p.creadoEn)}</td>
+        <td>${p.cliente?.nombre || '<span style="color:var(--muted)">Sin cliente</span>'}</td>
+        <td style="color:var(--muted)">${p.usuario?.nombre || '—'}</td>
+        <td style="text-align:center;color:var(--muted)">${p.detalles?.length || 0}</td>
+        <td><strong>${fmt(p.totalEstimado)}</strong></td>
+        <td>${estadoBadge(p.estado)}</td>
+        <td><button class="btn-icon" onclick="event.stopPropagation();verPedido(${p.id})">Ver</button></td>
+      </tr>
+    `).join('')
+
+    const totalPags = Math.ceil(total / LIMIT)
+    if (totalPags > 1) {
+      pagDiv.style.display = 'flex'
+      document.getElementById('pag-info').textContent = `Página ${paginaActual} de ${totalPags} (${total} pedidos)`
+      document.getElementById('btn-prev').disabled = paginaActual <= 1
+      document.getElementById('btn-next').disabled = paginaActual >= totalPags
+    } else {
+      pagDiv.style.display = 'none'
+    }
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="8" class="loading-cell"><p style="color:#f44336">Error: ${err.message}</p></td></tr>`
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  VER DETALLE
+// ════════════════════════════════════════════════════════════════════
+
+window.verPedido = async function(id) {
+  try {
+    const data = await apiFetch(`/pedidos/${id}`)
+    pedidoActual = data.data
+    const p = pedidoActual
+
+    document.getElementById('ver-folio').textContent     = p.folio
+    const badge = document.getElementById('ver-estado-badge')
+    const m     = ESTADO_MAP[p.estado] || { label: p.estado, cls: 'borrador' }
+    badge.className   = `ped-estado-badge ${m.cls}`
+    badge.textContent = m.label
+
+    document.getElementById('ver-cliente').textContent    = p.cliente?.nombre  || '—'
+    document.getElementById('ver-telefono').textContent   = p.cliente?.telefono || '—'
+    document.getElementById('ver-fecha').textContent      = fmtFecha(p.creadoEn)
+    document.getElementById('ver-usuario').textContent    = p.usuario?.nombre   || '—'
+    document.getElementById('ver-sucursal').textContent   = p.sucursal?.nombre  || '—'
+    document.getElementById('ver-actualizado').textContent = fmtFecha(p.actualizadoEn)
+
+    const notasEl = document.getElementById('ver-notas')
+    if (p.notas) { notasEl.textContent = p.notas; notasEl.style.display = 'block' }
+    else notasEl.style.display = 'none'
+
+    document.getElementById('ver-items-tbody').innerHTML = (p.detalles || []).map(d => `
+      <tr>
+        <td>${d.producto?.nombre || '—'}</td>
+        <td style="color:var(--muted);font-size:0.8rem">${d.producto?.codigoInterno || '—'}</td>
+        <td style="text-align:center">${d.cantidad}</td>
+        <td>${fmt(d.precioAcordado)}</td>
+        <td><strong>${fmt(d.subtotal)}</strong></td>
+      </tr>
+    `).join('')
+
+    document.getElementById('ver-total').textContent = fmt(p.totalEstimado)
+
+    // Botones de acción según estado
+    const acciones = document.getElementById('ver-acciones')
+    acciones.innerHTML = ''
+
+    if (p.estado === 'BORRADOR') {
+      acciones.innerHTML += `<button class="btn-secondary" onclick="abrirEdicion(${p.id})">✏️ Editar</button>`
+      acciones.innerHTML += `<button class="btn-success"   onclick="cambiarEstado(${p.id},'ACTIVO')">✓ Confirmar</button>`
+      acciones.innerHTML += `<button class="btn-danger"    onclick="cambiarEstado(${p.id},'CANCELADO')">✕ Cancelar</button>`
+    }
+    if (p.estado === 'ACTIVO') {
+      acciones.innerHTML += `<button class="btn-secondary" onclick="abrirEdicion(${p.id})">✏️ Editar</button>`
+      acciones.innerHTML += `<button class="btn-pos"       onclick="cargarEnPos(${p.id})">🛒 Cargar en POS</button>`
+      acciones.innerHTML += `<button class="btn-success"   onclick="cambiarEstado(${p.id},'EJECUTADO')">✓ Marcar ejecutado</button>`
+      acciones.innerHTML += `<button class="btn-danger"    onclick="cambiarEstado(${p.id},'CANCELADO')">✕ Cancelar</button>`
+    }
+    if (p.estado === 'EJECUTADO') {
+      acciones.innerHTML += `<button class="btn-pos" onclick="cargarEnPos(${p.id})">🛒 Cargar en POS</button>`
+    }
+
+    document.getElementById('modal-ver').classList.add('active')
+  } catch (err) { alert('Error: ' + err.message) }
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  CAMBIAR ESTADO
+// ════════════════════════════════════════════════════════════════════
+
+window.cambiarEstado = async function(id, estado) {
+  const labels = { ACTIVO:'confirmar', EJECUTADO:'marcar como ejecutado', CANCELADO:'cancelar' }
+  if (!confirm(`¿${labels[estado] || 'cambiar estado de'} el pedido ${pedidoActual?.folio}?`)) return
+  try {
+    await apiFetch(`/pedidos/${id}/estado`, { method:'PATCH', body: JSON.stringify({ estado }) })
+    document.getElementById('modal-ver').classList.remove('active')
+    cargarPedidos()
+  } catch (err) { alert('Error: ' + err.message) }
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  CARGAR EN POS (mismo patrón que cotizaciones)
+// ════════════════════════════════════════════════════════════════════
+
+window.cargarEnPos = async function(id) {
+  try {
+    let p = pedidoActual?.id === id ? pedidoActual : null
+    if (!p) { const d = await apiFetch(`/pedidos/${id}`); p = d.data }
+
+    if (!p.detalles || p.detalles.length === 0) { alert('Este pedido no tiene productos.'); return }
+
+    const payload = {
+      fuente:        'pedido',
+      pedFolio:      p.folio,
+      pedId:         p.id,
+      clienteId:     p.clienteId || null,
+      clienteNombre: p.cliente?.nombre || '',
+      items: p.detalles.map(d => ({
+        id:       d.producto?.id ?? d.productoId,
+        nombre:   d.producto?.nombre || '—',
+        precio:   parseFloat(d.precioAcordado),
+        cantidad: parseInt(d.cantidad) || 1
+      }))
+    }
+    localStorage.setItem('pos_cotizacion', JSON.stringify(payload))
+    window.location.href = 'punto-venta.html'
+  } catch (err) { alert('Error: ' + err.message) }
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  MODAL CREAR / EDITAR
+// ════════════════════════════════════════════════════════════════════
+
+function abrirModalNuevo() {
+  pedidoActual = null
+  itemsEdicion = []
+  document.getElementById('modal-titulo').textContent    = 'Nuevo Pedido'
+  document.getElementById('ped-cliente-buscar').value    = ''
+  document.getElementById('ped-cliente-id').value        = ''
+  document.getElementById('ped-notas').value             = ''
+  document.getElementById('search-prod-modal').value     = ''
+  document.getElementById('lista-prod-modal').innerHTML  = '<p class="muted-hint">Escribe para buscar...</p>'
+  document.getElementById('ped-error').classList.remove('show')
+  renderItems()
+  document.getElementById('modal-pedido').classList.add('active')
+}
+
+window.abrirEdicion = async function(id) {
+  document.getElementById('modal-ver').classList.remove('active')
+  try {
+    const data = await apiFetch(`/pedidos/${id}`)
+    pedidoActual = data.data
+    const p = pedidoActual
+
+    document.getElementById('modal-titulo').textContent    = `Editar ${p.folio}`
+    document.getElementById('ped-cliente-buscar').value    = p.cliente?.nombre || ''
+    document.getElementById('ped-cliente-id').value        = p.clienteId || ''
+    document.getElementById('ped-notas').value             = p.notas || ''
+    document.getElementById('search-prod-modal').value     = ''
+    document.getElementById('lista-prod-modal').innerHTML  = '<p class="muted-hint">Escribe para buscar...</p>'
+    document.getElementById('ped-error').classList.remove('show')
+
+    itemsEdicion = (p.detalles || []).map(d => ({
+      productoId: d.productoId || d.producto?.id,
+      nombre:     d.producto?.nombre || '—',
+      unidad:     d.producto?.unidadVenta || 'PZA',
+      cantidad:   d.cantidad,
+      precio:     parseFloat(d.precioAcordado)
+    }))
+
+    renderItems()
+    document.getElementById('modal-pedido').classList.add('active')
+  } catch (err) { alert('Error: ' + err.message) }
+}
+
+// ── Render tabla de ítems ──
+function renderItems() {
+  const tbody = document.getElementById('ped-items-tbody')
+  if (itemsEdicion.length === 0) {
+    tbody.innerHTML = `<tr id="ped-items-empty"><td colspan="6" class="empty-items">Agrega productos desde el panel izquierdo</td></tr>`
+    actualizarTotal()
+    return
+  }
+  tbody.innerHTML = itemsEdicion.map((item, i) => `
+    <tr>
+      <td style="max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${item.nombre}">${item.nombre}</td>
+      <td style="color:var(--muted);font-size:0.8rem">${item.unidad || 'PZA'}</td>
+      <td><input type="number" min="1" value="${item.cantidad}" style="width:52px" oninput="actualizarCantidad(${i},this.value)" /></td>
+      <td><input type="number" min="0" step="0.01" value="${item.precio.toFixed(2)}" style="width:80px" oninput="actualizarPrecio(${i},this.value)" /></td>
+      <td id="item-total-${i}"><strong>${fmt(item.precio * item.cantidad)}</strong></td>
+      <td><button class="btn-eliminar" onclick="quitarItem(${i})">✕</button></td>
+    </tr>
+  `).join('')
+  actualizarTotal()
+}
+
+window.actualizarCantidad = function(i, v) {
+  const n = parseInt(v); if (!isNaN(n) && n > 0) { itemsEdicion[i].cantidad = n; actualizarFila(i) }
+}
+window.actualizarPrecio = function(i, v) {
+  const n = parseFloat(v); if (!isNaN(n) && n >= 0) { itemsEdicion[i].precio = n; actualizarFila(i) }
+}
+window.quitarItem = function(i) { itemsEdicion.splice(i, 1); renderItems() }
+
+function actualizarFila(i) {
+  const item  = itemsEdicion[i]
+  const celda = document.getElementById(`item-total-${i}`)
+  if (celda) celda.innerHTML = `<strong>${fmt(item.precio * item.cantidad)}</strong>`
+  actualizarTotal()
+}
+
+function actualizarTotal() {
+  const t = itemsEdicion.reduce((s, i) => s + i.precio * i.cantidad, 0)
+  document.getElementById('ped-total').textContent = fmt(t)
+}
+
+function agregarProducto(prod) {
+  const existe = itemsEdicion.find(i => i.productoId === prod.id)
+  if (existe) { existe.cantidad += 1 }
+  else {
+    itemsEdicion.push({ productoId: prod.id, nombre: prod.nombre, unidad: prod.unidadVenta || 'PZA', cantidad: 1, precio: parseFloat(prod.precioBase) })
+  }
+  renderItems()
+}
+
+// ── Búsqueda de productos ──
+async function buscarProductos(q) {
+  const lista = document.getElementById('lista-prod-modal')
+  if (!q || q.length < 2) { lista.innerHTML = '<p class="muted-hint">Escribe para buscar...</p>'; return }
+  lista.innerHTML = '<p class="muted-hint">Buscando...</p>'
+  try {
+    const data = await apiFetch(`/productos?buscar=${encodeURIComponent(q)}&take=30`)
+    const prods = data.data || data
+    if (!prods || prods.length === 0) { lista.innerHTML = '<p class="muted-hint">Sin resultados</p>'; return }
+    window._prodCache = {}
+    prods.forEach(p => { window._prodCache[p.id] = p })
+    lista.innerHTML = prods.map(p => `
+      <div class="prod-item-modal" onclick="window._addProd(${p.id})">
+        <span class="prod-nombre">${p.nombre}</span>
+        <span class="prod-precio">${fmt(p.precioBase)}</span>
+      </div>
+    `).join('')
+  } catch (err) { lista.innerHTML = `<p class="muted-hint" style="color:#f44336">Error: ${err.message}</p>` }
+}
+window._addProd = id => { const p = window._prodCache?.[id]; if (p) agregarProducto(p) }
+
+// ── Autocompletado clientes ──
+async function cargarClientes() {
+  try {
+    const data = await apiFetch('/clientes?activo=true')
+    clientesLista = Array.isArray(data) ? data : (data.data || [])
+
+    // Llenar también el filtro de la toolbar
+    const sel = document.getElementById('filtro-cliente')
+    clientesLista.sort((a,b) => a.nombre.localeCompare(b.nombre)).forEach(c => {
+      const opt = document.createElement('option')
+      opt.value = c.id; opt.textContent = c.nombre
+      sel.appendChild(opt)
+    })
+  } catch(e) { console.warn('No se cargaron clientes:', e.message) }
+}
+
+function filtrarClientes(q) {
+  if (!q || q.length < 2) return []
+  const l = q.toLowerCase()
+  return clientesLista.filter(c => c.nombre?.toLowerCase().includes(l)).slice(0, 8)
+}
+
+function renderDropdown(res) {
+  const dd = document.getElementById('dropdown-ped-clientes')
+  if (!res.length) { dd.style.display = 'none'; return }
+  dd.style.display = 'block'
+  dd.innerHTML = res.map(c => `
+    <div class="dropdown-item" onclick="selCliente(${c.id},'${c.nombre.replace(/'/g,"\\'")}')">
+      ${c.nombre}${c.telefono ? ` <span style="color:var(--muted);font-size:0.8rem">(${c.telefono})</span>` : ''}
+    </div>
+  `).join('')
+}
+
+window.selCliente = (id, nombre) => {
+  document.getElementById('ped-cliente-id').value     = id
+  document.getElementById('ped-cliente-buscar').value = nombre
+  document.getElementById('dropdown-ped-clientes').style.display = 'none'
+}
+
+// ── Guardar pedido ──
+async function guardarPedido() {
+  document.getElementById('ped-error').classList.remove('show')
+  const clienteId = document.getElementById('ped-cliente-id').value
+  const notas     = document.getElementById('ped-notas').value.trim() || null
+
+  if (!clienteId) { mostrarError('ped-error', 'Selecciona un cliente.'); return }
+  if (itemsEdicion.length === 0) { mostrarError('ped-error', 'Agrega al menos un producto.'); return }
+
+  const detalles = itemsEdicion.map(i => ({
+    productoId:    i.productoId,
+    cantidad:      i.cantidad,
+    precioAcordado: i.precio
+  }))
+
+  const btn = document.getElementById('btn-guardar-pedido')
+  btn.disabled = true; btn.textContent = 'Guardando...'
+
+  try {
+    if (pedidoActual) {
+      await apiFetch(`/pedidos/${pedidoActual.id}`, { method:'PUT', body: JSON.stringify({ clienteId, detalles, notas }) })
+    } else {
+      await apiFetch('/pedidos', { method:'POST', body: JSON.stringify({ clienteId, detalles, notas }) })
+    }
+    document.getElementById('modal-pedido').classList.remove('active')
+    paginaActual = 1
+    cargarPedidos()
+  } catch (err) {
+    mostrarError('ped-error', err.message)
+  } finally {
+    btn.disabled = false; btn.textContent = 'Guardar Pedido'
+  }
+}
+
+function mostrarError(id, msg) {
+  const el = document.getElementById(id)
+  if (el) { el.textContent = msg; el.classList.add('show') }
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  INICIALIZACIÓN
+// ════════════════════════════════════════════════════════════════════
+
+document.addEventListener('DOMContentLoaded', async () => {
+  const fechaEl = document.getElementById('fecha-actual')
+  if (fechaEl) fechaEl.textContent = new Date().toLocaleDateString('es-MX',{ weekday:'long', year:'numeric', month:'long', day:'numeric' })
+
+  await cargarClientes()
+  cargarPedidos()
+
+  // Filtros toolbar
+  document.getElementById('search-input')?.addEventListener('input', () => {
+    clearTimeout(debounceSearch); debounceSearch = setTimeout(() => { paginaActual = 1; cargarPedidos() }, 400)
+  })
+  ;['filtro-estado','filtro-cliente'].forEach(id => {
+    document.getElementById(id)?.addEventListener('change', () => { paginaActual = 1; cargarPedidos() })
+  })
+
+  // Paginación
+  document.getElementById('btn-prev')?.addEventListener('click', () => { if (paginaActual > 1) { paginaActual--; cargarPedidos() } })
+  document.getElementById('btn-next')?.addEventListener('click', () => { paginaActual++; cargarPedidos() })
+
+  // Modal nuevo
+  document.getElementById('btn-nuevo-pedido')?.addEventListener('click', abrirModalNuevo)
+  document.getElementById('modal-close-btn')?.addEventListener('click', () => document.getElementById('modal-pedido').classList.remove('active'))
+  document.getElementById('btn-cancel-modal')?.addEventListener('click', () => document.getElementById('modal-pedido').classList.remove('active'))
+  document.getElementById('btn-guardar-pedido')?.addEventListener('click', guardarPedido)
+
+  // Búsqueda de productos
+  document.getElementById('search-prod-modal')?.addEventListener('input', e => {
+    clearTimeout(debounceProducto); debounceProducto = setTimeout(() => buscarProductos(e.target.value.trim()), 350)
+  })
+
+  // Autocomplete cliente
+  document.getElementById('ped-cliente-buscar')?.addEventListener('input', e => renderDropdown(filtrarClientes(e.target.value)))
+  document.addEventListener('click', e => {
+    if (!e.target.closest('#ped-cliente-buscar') && !e.target.closest('#dropdown-ped-clientes'))
+      document.getElementById('dropdown-ped-clientes').style.display = 'none'
+  })
+
+  // Modal ver
+  document.getElementById('ver-close-btn')?.addEventListener('click', () => document.getElementById('modal-ver').classList.remove('active'))
+
+  // Escape
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      document.getElementById('modal-pedido')?.classList.remove('active')
+      document.getElementById('modal-ver')?.classList.remove('active')
+    }
+  })
+})
+
+console.log('✅ pedidos.js cargado')

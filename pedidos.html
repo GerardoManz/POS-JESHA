@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>JESHA POS - Pedidos</title>
+  <link rel="stylesheet" href="dashboard.css" />
+  <link rel="stylesheet" href="pedidos.css" />
+</head>
+<body data-page="pedidos">
+<div class="app-shell">
+  <div id="sidebar-container"></div>
+
+  <main class="content">
+    <header class="content-header">
+      <h2>Pedidos</h2>
+      <p id="fecha-actual"></p>
+    </header>
+
+    <section class="toolbar">
+      <div class="search-group">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input type="text" id="search-input" placeholder="Folio, cliente o notas..." class="search-input" />
+      </div>
+      <select id="filtro-estado" class="filter-select">
+        <option value="">Todos los estados</option>
+        <option value="BORRADOR">Borrador</option>
+        <option value="ACTIVO">Activo</option>
+        <option value="EJECUTADO">Ejecutado</option>
+        <option value="CANCELADO">Cancelado</option>
+      </select>
+      <select id="filtro-cliente" class="filter-select">
+        <option value="">Todos los clientes</option>
+      </select>
+      <button id="btn-nuevo-pedido" class="btn-primary">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Nuevo Pedido
+      </button>
+    </section>
+
+    <section class="panel">
+      <div class="table-wrapper">
+        <table class="ped-table">
+          <thead>
+            <tr>
+              <th>Folio</th>
+              <th>Fecha</th>
+              <th>Cliente</th>
+              <th>Elaboró</th>
+              <th style="width:70px">Líneas</th>
+              <th style="width:110px">Total Est.</th>
+              <th style="width:90px">Estado</th>
+              <th style="width:50px"></th>
+            </tr>
+          </thead>
+          <tbody id="ped-tbody">
+            <tr><td colspan="8" class="loading-cell"><div class="spinner"></div><p>Cargando pedidos...</p></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="pagination" id="pagination" style="display:none;">
+        <button id="btn-prev" class="btn-pag" disabled>&#8592; Anterior</button>
+        <span id="pag-info" class="pag-info"></span>
+        <button id="btn-next" class="btn-pag">Siguiente &#8594;</button>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- ══ MODAL CREAR / EDITAR ══ -->
+<div id="modal-pedido" class="modal">
+  <div class="modal-content modal-xl">
+    <div class="modal-header">
+      <h3 id="modal-titulo">Nuevo Pedido</h3>
+      <button class="modal-close" id="modal-close-btn">&times;</button>
+    </div>
+    <div class="modal-body-split">
+
+      <!-- Panel izquierdo: búsqueda de productos -->
+      <div class="panel-izq">
+        <p class="panel-label">Agregar productos</p>
+        <div class="search-group" style="margin-bottom:12px;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+          <input type="text" id="search-prod-modal" placeholder="Nombre o código..." class="search-input" />
+        </div>
+        <div id="lista-prod-modal" class="lista-prod-modal">
+          <p class="muted-hint">Escribe para buscar...</p>
+        </div>
+      </div>
+
+      <!-- Panel derecho: detalle -->
+      <div class="panel-der">
+        <p class="panel-label">Detalle</p>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Cliente *</label>
+            <input type="text" id="ped-cliente-buscar" placeholder="Buscar cliente..." class="search-input" autocomplete="off" />
+            <input type="hidden" id="ped-cliente-id" />
+            <div id="dropdown-ped-clientes" class="dropdown-clientes" style="display:none;"></div>
+          </div>
+        </div>
+
+        <div class="form-group" style="margin-bottom:16px;">
+          <label>Notas</label>
+          <textarea id="ped-notas" rows="2" placeholder="Observaciones del pedido..."></textarea>
+        </div>
+
+        <div class="items-wrapper">
+          <table class="items-table">
+            <thead>
+              <tr>
+                <th>Producto</th>
+                <th style="width:55px">Unid.</th>
+                <th style="width:60px">Cant.</th>
+                <th style="width:95px">Precio</th>
+                <th style="width:95px">Subtotal</th>
+                <th style="width:32px"></th>
+              </tr>
+            </thead>
+            <tbody id="ped-items-tbody">
+              <tr id="ped-items-empty"><td colspan="6" class="empty-items">Agrega productos desde el panel izquierdo</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="total-row">
+          <span>Total estimado:</span>
+          <span id="ped-total" class="total-monto">$0.00</span>
+        </div>
+
+        <div id="ped-error" class="error-message"></div>
+
+        <div class="form-actions">
+          <button type="button" class="btn-secondary" id="btn-cancel-modal">Cancelar</button>
+          <button type="button" class="btn-primary" id="btn-guardar-pedido">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+            Guardar Pedido
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL VER ══ -->
+<div id="modal-ver" class="modal">
+  <div class="modal-content modal-large">
+    <div class="modal-header">
+      <div>
+        <h3 id="ver-folio">PED-...</h3>
+        <span id="ver-estado-badge" class="ped-estado-badge borrador">Borrador</span>
+      </div>
+      <button class="modal-close" id="ver-close-btn">&times;</button>
+    </div>
+    <div class="ver-body">
+      <div class="ver-meta">
+        <div class="meta-item"><span class="meta-label">Cliente</span><span class="meta-valor" id="ver-cliente">—</span></div>
+        <div class="meta-item"><span class="meta-label">Teléfono</span><span class="meta-valor" id="ver-telefono">—</span></div>
+        <div class="meta-item"><span class="meta-label">Fecha</span><span class="meta-valor" id="ver-fecha">—</span></div>
+        <div class="meta-item"><span class="meta-label">Elaboró</span><span class="meta-valor" id="ver-usuario">—</span></div>
+        <div class="meta-item"><span class="meta-label">Sucursal</span><span class="meta-valor" id="ver-sucursal">—</span></div>
+        <div class="meta-item"><span class="meta-label">Actualizado</span><span class="meta-valor" id="ver-actualizado">—</span></div>
+      </div>
+      <p class="meta-notas" id="ver-notas" style="display:none;"></p>
+
+      <div class="table-wrapper" style="margin:16px 0;">
+        <table class="ped-table">
+          <thead>
+            <tr>
+              <th>Producto</th>
+              <th>Código</th>
+              <th style="width:70px">Cant.</th>
+              <th style="width:100px">Precio</th>
+              <th style="width:100px">Subtotal</th>
+            </tr>
+          </thead>
+          <tbody id="ver-items-tbody"></tbody>
+        </table>
+      </div>
+
+      <div class="det-resumen">
+        <div class="det-resumen-row det-total">
+          <span>Total estimado:</span>
+          <span id="ver-total">$0.00</span>
+        </div>
+      </div>
+
+      <div class="ver-acciones" id="ver-acciones"></div>
+    </div>
+  </div>
+</div>
+
+<script src="sidebar.js"></script>
+<script src="pedidos.js"></script>
+</body>
+</html>

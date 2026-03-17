@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>JESHA POS - Bitácora</title>
+  <link rel="stylesheet" href="dashboard.css" />
+  <link rel="stylesheet" href="bitacora.css" />
+</head>
+<body data-page="bitacora">
+<div class="app-shell">
+  <div id="sidebar-container"></div>
+
+  <main class="content">
+    <header class="content-header">
+      <h2>Bitácora de Proyectos</h2>
+      <p id="fecha-actual"></p>
+    </header>
+
+    <section class="toolbar">
+      <div class="search-group">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input type="text" id="search-input" placeholder="Folio, título o cliente..." class="search-input" />
+      </div>
+      <select id="filtro-estado" class="filter-select">
+        <option value="">Todos los estados</option>
+        <option value="ABIERTA">Abierta</option>
+        <option value="PAUSADA">Pausada</option>
+        <option value="CERRADA_VENTA">Cerrada con venta</option>
+        <option value="CERRADA_INTERNA">Cerrada interna</option>
+      </select>
+      <select id="filtro-cliente" class="filter-select">
+        <option value="">Todos los clientes</option>
+      </select>
+      <button id="btn-nueva" class="btn-primary">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Nueva Bitácora
+      </button>
+    </section>
+
+    <section class="panel">
+      <div class="table-wrapper">
+        <table class="bit-table">
+          <thead>
+            <tr>
+              <th>Folio</th>
+              <th>Título</th>
+              <th>Cliente</th>
+              <th>Materiales</th>
+              <th>Abonado</th>
+              <th>Saldo</th>
+              <th>Estado</th>
+              <th style="width:50px"></th>
+            </tr>
+          </thead>
+          <tbody id="bit-tbody">
+            <tr><td colspan="8" class="loading-cell"><div class="spinner"></div><p>Cargando bitácoras...</p></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="pagination" id="pagination" style="display:none;">
+        <button id="btn-prev" class="btn-pag" disabled>&#8592; Anterior</button>
+        <span id="pag-info" class="pag-info"></span>
+        <button id="btn-next" class="btn-pag">Siguiente &#8594;</button>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- ══ MODAL CREAR ══ -->
+<div id="modal-crear" class="modal">
+  <div class="modal-content" style="max-width:520px;">
+    <div class="modal-header">
+      <h3 id="crear-titulo">Nueva Bitácora</h3>
+      <button class="modal-close" id="crear-close">&times;</button>
+    </div>
+    <div style="padding:20px 22px;">
+      <div class="form-group" style="margin-bottom:12px;">
+        <label>Título del proyecto *</label>
+        <input type="text" id="bit-titulo" placeholder="Ej: Instalación eléctrica casa Martínez" class="search-input" style="width:100%" />
+      </div>
+      <div class="form-group" style="margin-bottom:12px;">
+        <label>Cliente</label>
+        <input type="text" id="bit-cliente-buscar" placeholder="Buscar cliente..." class="search-input" style="width:100%" autocomplete="off" />
+        <input type="hidden" id="bit-cliente-id" />
+        <div id="dd-bit-clientes" class="dropdown-clientes" style="display:none;"></div>
+      </div>
+      <div class="form-group" style="margin-bottom:12px;">
+        <label>Descripción</label>
+        <textarea id="bit-descripcion" rows="2" placeholder="Descripción general del proyecto..." style="width:100%;resize:vertical;padding:9px 12px;background:rgba(255,255,255,0.04);border:1px solid var(--panel-border);border-radius:8px;color:var(--text);font-family:'Barlow',sans-serif;font-size:0.9rem;outline:none;"></textarea>
+      </div>
+      <div class="form-group" style="margin-bottom:16px;">
+        <label>Notas</label>
+        <textarea id="bit-notas" rows="2" placeholder="Observaciones iniciales..." style="width:100%;resize:vertical;padding:9px 12px;background:rgba(255,255,255,0.04);border:1px solid var(--panel-border);border-radius:8px;color:var(--text);font-family:'Barlow',sans-serif;font-size:0.9rem;outline:none;"></textarea>
+      </div>
+      <div id="crear-error" class="error-message"></div>
+      <div class="form-actions">
+        <button class="btn-secondary" id="crear-cancel">Cancelar</button>
+        <button class="btn-primary" id="crear-guardar">Crear Bitácora</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL DETALLE (vista principal de trabajo) ══ -->
+<div id="modal-detalle" class="modal">
+  <div class="modal-content modal-detalle-xl">
+    <div class="modal-header">
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        <h3 id="det-folio">BIT-...</h3>
+        <span id="det-estado-badge" class="bit-estado-badge abierta">Abierta</span>
+        <span id="det-titulo-header" style="color:var(--muted);font-size:0.9rem;"></span>
+      </div>
+      <button class="modal-close" id="det-close">&times;</button>
+    </div>
+
+    <div class="detalle-layout">
+
+      <!-- ── Panel izquierdo: info + abonos ── -->
+      <div class="det-panel-izq">
+
+        <!-- Info general -->
+        <div class="det-card">
+          <div class="det-card-header">📋 Información</div>
+          <div class="ver-meta" style="grid-template-columns:1fr 1fr;">
+            <div class="meta-item"><span class="meta-label">Cliente</span><span class="meta-valor" id="det-cliente">—</span></div>
+            <div class="meta-item"><span class="meta-label">Teléfono</span><span class="meta-valor" id="det-telefono">—</span></div>
+            <div class="meta-item"><span class="meta-label">Inicio</span><span class="meta-valor" id="det-fecha">—</span></div>
+            <div class="meta-item"><span class="meta-label">Cajero</span><span class="meta-valor" id="det-usuario">—</span></div>
+          </div>
+          <p id="det-descripcion" class="det-descripcion" style="display:none;"></p>
+          <p id="det-notas-p" class="det-notas" style="display:none;"></p>
+        </div>
+
+        <!-- Resumen financiero -->
+        <div class="det-card det-card-financiero">
+          <div class="det-card-header">💰 Resumen financiero</div>
+          <div class="fin-row"><span>Total materiales</span><span id="fin-materiales" class="fin-monto">$0.00</span></div>
+          <div class="fin-row"><span>Total abonado</span><span id="fin-abonado" class="fin-monto fin-verde">$0.00</span></div>
+          <div class="fin-row fin-saldo"><span>Saldo pendiente</span><span id="fin-saldo" class="fin-monto fin-naranja">$0.00</span></div>
+        </div>
+
+        <!-- Registrar abono -->
+        <div class="det-card" id="card-abono">
+          <div class="det-card-header">💳 Registrar abono</div>
+          <div style="display:flex;gap:8px;margin-bottom:8px;">
+            <input type="number" id="abono-monto" min="0.01" step="0.01" placeholder="Monto ($)" style="flex:1;padding:8px 10px;background:rgba(255,255,255,0.04);border:1px solid var(--panel-border);border-radius:7px;color:var(--text);font-family:'Barlow',sans-serif;font-size:0.9rem;outline:none;" />
+            <select id="abono-metodo" style="padding:8px 10px;background:rgba(255,255,255,0.04);border:1px solid var(--panel-border);border-radius:7px;color:var(--text);font-family:'Barlow',sans-serif;font-size:0.85rem;">
+              <option value="EFECTIVO">💵 Efectivo</option>
+              <option value="TRANSFERENCIA">🔄 Transf.</option>
+              <option value="CREDITO">💳 Tarjeta</option>
+            </select>
+          </div>
+          <input type="text" id="abono-notas" placeholder="Nota del abono (opcional)" style="width:100%;margin-bottom:8px;padding:8px 10px;background:rgba(255,255,255,0.04);border:1px solid var(--panel-border);border-radius:7px;color:var(--text);font-family:'Barlow',sans-serif;font-size:0.85rem;outline:none;" />
+          <button class="btn-success" id="btn-abonar" style="width:100%;">+ Registrar abono</button>
+        </div>
+
+        <!-- Historial de abonos -->
+        <div class="det-card">
+          <div class="det-card-header">📒 Historial de abonos</div>
+          <div id="lista-abonos" class="lista-abonos">
+            <p class="muted-hint">Sin abonos registrados</p>
+          </div>
+        </div>
+
+        <!-- Acciones de estado -->
+        <div class="det-acciones" id="det-acciones"></div>
+      </div>
+
+      <!-- ── Panel derecho: productos ── -->
+      <div class="det-panel-der">
+        <div class="det-card det-card-full">
+          <div class="det-card-header" style="display:flex;justify-content:space-between;align-items:center;">
+            <span>🔧 Materiales utilizados</span>
+            <button class="btn-primary btn-sm" id="btn-agregar-prod">+ Agregar producto</button>
+          </div>
+
+          <!-- Buscador inline (se muestra al hacer clic en agregar) -->
+          <div id="buscador-prod-panel" style="display:none;margin-bottom:12px;">
+            <div class="search-group" style="margin-bottom:8px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+              <input type="text" id="search-prod-det" placeholder="Buscar producto..." class="search-input" />
+            </div>
+            <div id="lista-prod-det" class="lista-prod-inline">
+              <p class="muted-hint">Escribe para buscar...</p>
+            </div>
+            <!-- Form de cantidad al seleccionar producto -->
+            <div id="form-cantidad-prod" style="display:none;margin-top:10px;padding:12px;background:rgba(255,255,255,0.03);border:1px solid var(--panel-border);border-radius:8px;">
+              <p id="prod-seleccionado-nombre" style="font-weight:600;margin-bottom:8px;font-size:0.875rem;"></p>
+              <div style="display:flex;gap:8px;align-items:flex-end;">
+                <div style="flex:1;">
+                  <label style="font-size:0.75rem;color:var(--muted);display:block;margin-bottom:4px;">CANTIDAD</label>
+                  <input type="number" id="prod-cantidad" min="1" value="1" style="width:100%;padding:8px 10px;background:rgba(255,255,255,0.04);border:1px solid var(--panel-border);border-radius:7px;color:var(--text);font-family:'Barlow',sans-serif;font-size:0.9rem;outline:none;" />
+                </div>
+                <div style="flex:1;">
+                  <label style="font-size:0.75rem;color:var(--muted);display:block;margin-bottom:4px;">PRECIO UNIT.</label>
+                  <input type="number" id="prod-precio" min="0" step="0.01" style="width:100%;padding:8px 10px;background:rgba(255,255,255,0.04);border:1px solid var(--panel-border);border-radius:7px;color:var(--text);font-family:'Barlow',sans-serif;font-size:0.9rem;outline:none;" />
+                </div>
+                <button class="btn-primary btn-sm" id="btn-confirmar-prod">Agregar</button>
+                <button class="btn-secondary btn-sm" id="btn-cancelar-prod">✕</button>
+              </div>
+              <div id="prod-error" class="error-message" style="margin-top:8px;"></div>
+            </div>
+          </div>
+
+          <!-- Tabla de materiales -->
+          <div class="table-wrapper">
+            <table class="bit-table">
+              <thead>
+                <tr>
+                  <th>Producto</th>
+                  <th style="width:55px">Unid.</th>
+                  <th style="width:60px">Cant.</th>
+                  <th style="width:100px">Precio</th>
+                  <th style="width:100px">Subtotal</th>
+                  <th style="width:60px">Fecha</th>
+                  <th style="width:36px"></th>
+                </tr>
+              </thead>
+              <tbody id="det-items-tbody">
+                <tr><td colspan="7" class="loading-cell"><p>Sin materiales aún</p></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="sidebar.js"></script>
+<script src="bitacora.js"></script>
+</body>
+</html>

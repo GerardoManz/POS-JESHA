@@ -678,7 +678,7 @@ function cargarCotizacionDesdeStorage() {
     const payload = JSON.parse(raw)
     localStorage.removeItem('pos_cotizacion')
 
-    if (payload.fuente !== 'cotizacion' || !Array.isArray(payload.items) || payload.items.length === 0) return
+    if (!['cotizacion','pedido'].includes(payload.fuente) || !Array.isArray(payload.items) || payload.items.length === 0) return
 
     // Cargar ítems en el carrito
     payload.items.forEach(item => {
@@ -768,18 +768,13 @@ async function confirmarCotizar() {
   try {
     // Construir detalles desde el carrito actual
     const detalles = carrito.map(item => ({
-      productoId:     parseInt(item.id) || null,
-      cantidad:       parseInt(item.cantidad) || 1,
-      precioUnitario: parseFloat(item.precio) || 0
-    })).filter(d => d.productoId && d.productoId > 0)  // eliminar ítems sin id válido
-
-    if (detalles.length === 0) {
-      throw new Error('El carrito no tiene productos válidos para cotizar')
-    }
+      productoId:     parseInt(item.id),
+      cantidad:       parseInt(item.cantidad),
+      precioUnitario: parseFloat(item.precio)
+    }))
 
     const payload = {
       clienteId: clienteSeleccionado?.id || null,
-      tipo: 'PRODUCTOS',
       detalles,
       notas,
       venceEn: venceEn || null
