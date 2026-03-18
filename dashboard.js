@@ -35,26 +35,31 @@ async function cargarKPIs() {
     document.querySelector('.kpi-card:nth-child(1) .kpi-sub').textContent   = `${countHoy} transaccion${countHoy !== 1 ? 'es' : ''}`
 
     // Ventas totales (histórico)
-    const ventasTotal = await apiFetch('/ventas?take=1')
     const montoTotal  = await apiFetch('/ventas?take=9999')
     const sumTotal    = (montoTotal.data || []).reduce((s, v) => s + parseFloat(v.total), 0)
+    const countTotal  = montoTotal.total || (montoTotal.data || []).length
 
     document.querySelector('.kpi-card:nth-child(2) .kpi-value').textContent = fmt(sumTotal)
-    document.querySelector('.kpi-card:nth-child(2) .kpi-sub').textContent   = `${montoTotal.total || 0} ventas totales`
+    document.querySelector('.kpi-card:nth-child(2) .kpi-sub').textContent   = `${countTotal} ventas totales`
 
-    // Productos e inventario
-    const productos = await apiFetch('/productos?take=1')
-    document.querySelector('.kpi-card:nth-child(3) .kpi-value').textContent = productos.total || 0
+    // Productos e inventario — usar paginacion.total (estructura correcta del endpoint)
+    const productos = await apiFetch('/productos?take=9999')
+    const listaProd  = productos.data  || [] + "PRODUCTOS DISPONIBLES"
+    const totalActivos = productos.paginacion?.total  || listaProd.length
 
-    // Stock bajo (usando estadísticas del endpoint de productos)
-    const stockBajo = await apiFetch('/productos?take=9999')
-    const sinStock  = (stockBajo.data || []).filter(p => {
+    // Productos CON stock (stockActual > 0)
+    const conStock = listaProd.filter(p => (p.inventarios?.[0]?.stockActual ?? 0) > 0).length
+
+    document.querySelector('.kpi-card:nth-child(3) .kpi-value').textContent = conStock
+    document.querySelector('.kpi-card:nth-child(3) .kpi-sub').textContent   = `de ${totalActivos} productos activos`
+
+    // Stock bajo (stockActual <= stockMinimoAlerta)
+    const sinStock = listaProd.filter(p => {
       const stock = p.inventarios?.[0]?.stockActual ?? 0
       const min   = p.inventarios?.[0]?.stockMinimoAlerta ?? 5
       return stock <= min
     }).length
 
-    document.querySelector('.kpi-card:nth-child(3) .kpi-sub').textContent   = `${(stockBajo.data||[]).length} activos`
     document.querySelector('.kpi-card:nth-child(4) .kpi-value').textContent = sinStock
     document.querySelector('.kpi-card:nth-child(4) .kpi-sub').textContent   = sinStock > 0 ? 'Requieren reposición' : 'Stock suficiente ✓'
 

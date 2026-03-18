@@ -86,15 +86,20 @@
         <div class="carrito-divider"></div>
 
         <!-- CLIENTE -->
-        <div class="carrito-section-control">
-          <label class="control-label">Cliente</label>
-          <input 
-            type="text" 
-            id="cliente-nombre" 
-            placeholder="Público general" 
-            class="control-input"
-          />
-        </div>
+    <div class="carrito-section-control">
+      <label class="control-label">Cliente</label>
+      <div class="cliente-input-wrap" style="position:relative;">
+        <input type="text" id="cliente-nombre" placeholder="Buscar o seleccionar..." class="control-input cliente-input" autocomplete="off" />
+        <button type="button" id="btn-lista-clientes" class="btn-lista-clientes" title="Ver todos los clientes">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div id="dropdown-clientes-pos" class="dropdown-clientes-pos" style="display:none;"></div>
+      </div>
+      <div id="cliente-seleccionado-badge" class="cliente-badge" style="display:none;">
+        <span id="cliente-badge-nombre"></span>
+        <button type="button" id="btn-limpiar-cliente" class="btn-limpiar-cliente">×</button>
+      </div>
+    </div>
 
         <!-- MÉTODO DE PAGO -->
         <div class="carrito-section-control">
@@ -166,37 +171,57 @@
 </div>
 <!-- ════════════════════════════════════════════════════════════════ -->
 <!--  MODAL: ABRIR TURNO
-<!-- ════════════════════════════════════════════════════════════════ -->
-<div id="modal-abrir-turno" class="modal" style="display: none;">
-  <div class="modal-content modal-content-small">
-    <div class="modal-header">
-      <h3>Abrir Turno de Caja</h3>
-      <button class="modal-close" id="modal-turno-close">&times;</button>
-    </div>
-    <div class="modal-body">
-      <p style="color: var(--muted); margin-bottom: 16px;">
-        Ingresa el monto inicial en caja para comenzar el turno.
-      </p>
-      <div class="form-group">
-        <label>Monto inicial en caja</label>
-        <input 
-          type="number" 
-          id="monto-inicial-turno" 
-          placeholder="0.00" 
-          step="0.01" 
-          min="0"
-          value="0"
-          class="control-input" 
-          style="width: 100%; box-sizing: border-box;"
-        />
+<!-- ══ MODAL: ABRIR TURNO ══ -->
+<div id="modal-abrir-turno" class="modal modal-turno-overlay" style="display: none;">
+  <div class="modal-turno-card">
+
+    <!-- Icono y encabezado -->
+    <div class="modal-turno-header">
+      <div class="modal-turno-icon">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#6b9de8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="7" width="20" height="14" rx="2"/>
+          <path d="M16 7V5a2 2 0 0 0-4 0v2"/>
+          <line x1="12" y1="12" x2="12" y2="16"/>
+          <line x1="10" y1="14" x2="14" y2="14"/>
+        </svg>
       </div>
-      <div id="turno-error" style="color: #ff6b6b; font-size: 0.85rem; display: none;"></div>
+      <div>
+        <h3 class="modal-turno-titulo">Abrir Turno de Caja</h3>
+        <p class="modal-turno-sub">Ferretería JESHA &mdash; Matriz</p>
+      </div>
     </div>
-    <div class="form-actions">
-      <button type="button" class="btn-secondary" id="btn-cancel-turno">Cancelar</button>
-      <button type="button" class="btn-primary" id="btn-confirmar-abrir-turno">Abrir Turno</button>
+
+    <div class="modal-turno-divider"></div>
+
+    <div class="modal-turno-body">
+      <p class="modal-turno-desc">Ingresa el monto inicial en caja para comenzar el turno del día.</p>
+
+      <div class="modal-turno-field">
+        <label class="modal-turno-label">Monto inicial en caja</label>
+        <div class="modal-turno-input-wrap">
+          <span class="modal-turno-prefix">$</span>
+          <input type="number" id="monto-inicial-turno" placeholder="0.00"
+            step="0.01" min="0" value="0" class="modal-turno-input" autocomplete="off" />
+          <span class="modal-turno-suffix">MXN</span>
+        </div>
+      </div>
+
+      <div id="turno-error" class="modal-turno-error" style="display:none;"></div>
     </div>
+
+    <div class="modal-turno-actions">
+      <button type="button" class="modal-turno-btn-cancel" id="btn-cancel-turno">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        Cancelar
+      </button>
+      <button type="button" class="modal-turno-btn-confirm" id="btn-confirmar-abrir-turno">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+        Abrir Turno
+      </button>
+    </div>
+
   </div>
+</div>
 </div>
 <!-- ════════════════════════════════════════════════════════════════ -->
 <!--  MODAL: CREAR CLIENTE RÁPIDO
@@ -229,31 +254,66 @@
 <!-- ════════════════════════════════════════════════════════════════ -->
 <!--  MODAL: CONFIRMACIÓN DE VENTA
 <!-- ════════════════════════════════════════════════════════════════ -->
-<div id="modal-confirmacion" class="modal" style="display: none;">
-  <div class="modal-content modal-content-small">
-    <div class="modal-header">
-      <h3>Confirmar Venta</h3>
-      <button class="modal-close" id="modal-confirmacion-close">&times;</button>
+<!-- ══ MODAL: CONFIRMACIÓN DE VENTA ══ -->
+<div id="modal-confirmacion" class="modal modal-confirm-overlay" style="display: none;">
+  <div class="modal-confirm-card">
+
+    <!-- Icono y encabezado -->
+    <div class="modal-confirm-header">
+      <div class="modal-confirm-icon">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#60d080" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>
+          <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
+        </svg>
+      </div>
+      <div>
+        <h3 class="modal-confirm-titulo">Confirmar Venta</h3>
+        <p class="modal-confirm-sub">Revisa los datos antes de procesar</p>
+      </div>
+      <button class="modal-confirm-close" id="modal-confirmacion-close">&times;</button>
     </div>
 
-    <div class="modal-body">
-      <p id="confirmacion-texto"></p>
-      <div class="confirmacion-resumen">
-        <div class="resumen-linea">
-          <span>Total:</span>
-          <span id="confirmacion-total"></span>
+    <div class="modal-confirm-divider"></div>
+
+    <!-- Resumen de la venta -->
+    <div class="modal-confirm-body">
+
+      <div class="modal-confirm-resumen">
+        <div class="modal-confirm-row">
+          <span class="modal-confirm-label">Total</span>
+          <span class="modal-confirm-valor total" id="confirmacion-total">$0.00</span>
         </div>
-        <div class="resumen-linea">
-          <span>Método:</span>
-          <span id="confirmacion-metodo"></span>
+        <div class="modal-confirm-row">
+          <span class="modal-confirm-label">Método de pago</span>
+          <span class="modal-confirm-valor" id="confirmacion-metodo">—</span>
+        </div>
+        <div class="modal-confirm-row" id="confirm-row-cliente" style="display:none;">
+          <span class="modal-confirm-label">Cliente</span>
+          <span class="modal-confirm-valor" id="confirmacion-cliente">—</span>
+        </div>
+        <div class="modal-confirm-row" id="confirm-row-cambio" style="display:none;">
+          <span class="modal-confirm-label">Cambio</span>
+          <span class="modal-confirm-valor cambio" id="confirmacion-cambio">$0.00</span>
         </div>
       </div>
+
+      <p class="modal-confirm-aviso">
+        Esta acción descontará el inventario y registrará la venta. No se puede deshacer.
+      </p>
     </div>
 
-    <div class="form-actions">
-      <button type="button" class="btn-secondary" id="btn-cancelar-venta">Cancelar</button>
-      <button type="button" class="btn-primary" id="btn-confirmar-venta">✓ Confirmar</button>
+    <!-- Acciones -->
+    <div class="modal-confirm-actions">
+      <button type="button" class="modal-confirm-btn-cancel" id="btn-cancelar-venta">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        Cancelar
+      </button>
+      <button type="button" class="modal-confirm-btn-confirm" id="btn-confirmar-venta">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+        Confirmar venta
+      </button>
     </div>
+
   </div>
 </div>
 
