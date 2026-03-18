@@ -2,49 +2,74 @@
    HISTORIAL.CSS
    ════════════════════════════════════════════════════════════════════ */
 
-/* ── TOOLBAR ── */
-.historial-toolbar {
+/* ── TOOLBAR — igual que pedidos ── */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
   flex-wrap: wrap;
+}
+
+.search-group {
+  display: flex;
+  align-items: center;
   gap: 8px;
 }
 
-.filter-date-group {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+.search-input {
+  flex: 1;
+  padding: 9px 12px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  color: var(--text);
+  font-family: 'Barlow', sans-serif;
+  font-size: 0.875rem;
+  outline: none;
+  transition: border-color 0.15s;
 }
+.search-input:focus { border-color: var(--accent); }
 
-.filter-date-label {
-  font-size: 0.7rem;
-  font-weight: 600;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.filter-date {
+.filter-select {
   padding: 8px 12px;
   background: rgba(255,255,255,0.04);
   border: 1px solid var(--panel-border);
   border-radius: 8px;
   color: var(--text);
   font-family: 'Barlow', sans-serif;
-  font-size: 0.85rem;
+  font-size: 0.875rem;
   cursor: pointer;
+  outline: none;
   transition: border-color 0.15s;
 }
+.filter-select:focus { border-color: var(--accent); }
 
-.filter-date:focus {
-  outline: none;
-  border-color: var(--accent);
+/* Fechas — mismo ancho que los selects */
+input.filter-select[type="date"] {
+  cursor: pointer;
 }
 
+/* Botón limpiar — idéntico al de pedidos */
 .btn-limpiar-hist {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 14px;
+  padding: 9px 18px;
+  background: transparent;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  color: var(--muted);
+  font-family: 'Barlow', sans-serif;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
   white-space: nowrap;
+}
+.btn-limpiar-hist:hover {
+  border-color: rgba(255,255,255,0.2);
+  color: var(--text);
 }
 
 /* ── KPIs ── */
@@ -371,4 +396,36 @@
   overflow-x: auto;
   border-radius: 8px;
   border: 1px solid var(--panel-border);
+}
+
+/* ── BOTÓN TICKET ── */
+.btn-ticket-hist {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  background: rgba(232,113,10,0.1);
+  border: 1px solid rgba(232,113,10,0.25);
+  border-radius: 6px;
+  color: var(--orange, #e8710a);
+  font-family: 'Barlow', sans-serif;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.btn-ticket-hist:hover {
+  background: rgba(232,113,10,0.2);
+  border-color: rgba(232,113,10,0.45);
+}
+
+/* ── ACCIONES MODAL ── */
+.det-acciones-modal {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  border-top: 1px solid var(--panel-border);
+  margin-top: 12px;
+  padding-top: 12px;
 }

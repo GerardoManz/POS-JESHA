@@ -1,40 +1,30 @@
 // ════════════════════════════════════════════════════════════════════
 //  VENTAS ROUTES
-//  Ubicación: src/modules/ventas/ventas.routes.js
+//  src/modules/ventas/ventas.routes.js
 // ════════════════════════════════════════════════════════════════════
 
-const express = require('express')
-const router = express.Router()
+const express  = require('express')
+const router   = express.Router()
 
-const {
-  crearVenta,
-  obtenerVentas,
-  obtenerVenta,
-  obtenerHistorial
-} = require('./ventas.controller')
+const { crearVenta, obtenerVentas, obtenerVenta, obtenerHistorial } = require('./ventas.controller')
+const ticketController = require('./ticket.controller')
 
-/**
- * POST /api/ventas
- * Crear nueva venta
- */
+// POST /ventas — Crear venta
 router.post('/', crearVenta)
 
-/**
- * GET /api/ventas
- * Obtener lista de ventas con paginación y filtros
- */
+// GET /ventas — Lista con filtros y paginación
 router.get('/', obtenerVentas)
 
-/**
- * GET /api/ventas/:id
- * Obtener venta específica con detalles
- */
-router.get('/:id', obtenerVenta)
-
-/**
- * GET /api/ventas/historial
- * Obtener historial de ventas (más datos)
- */
+// GET /ventas/historial/lista
 router.get('/historial/lista', obtenerHistorial)
+
+// GET /ventas/:id/ticket — Ticket imprimible (desktop)
+router.get('/:id/ticket', ticketController.generarTicket)
+
+// GET /ventas/:id/ticket/thermal — Ticket optimizado 80mm
+router.get('/:id/ticket/thermal', ticketController.generarTicketThermal)
+
+// GET /ventas/:id — Venta específica con detalles
+router.get('/:id', obtenerVenta)
 
 module.exports = router

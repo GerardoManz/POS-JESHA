@@ -333,3 +333,89 @@ body {
 .stock-bajo { background:rgba(232,113,10,0.15);  color:var(--orange); }
 .spinner { width:24px; height:24px; border:3px solid rgba(255,255,255,0.1); border-top-color:var(--accent); border-radius:50%; animation:spin 0.8s linear infinite; margin:0 auto; }
 @keyframes spin { to { transform:rotate(360deg); } }
+
+/* ════════════════════════════════════════════════════════════════════
+   SELECTS GLOBALES — fondo oscuro del sistema en todos los módulos
+   Añadir al final de dashboard.css
+   ════════════════════════════════════════════════════════════════════ */
+
+/* Select nativo — fondo oscuro en TODOS los módulos */
+select,
+select.filter-select,
+select.filter-group select,
+.filter-select {
+  background-color: #1a1d22 !important;
+  color: var(--text) !important;
+  border: 1px solid var(--panel-border) !important;
+  border-radius: 8px !important;
+  padding: 8px 12px !important;
+  font-family: 'Barlow', sans-serif !important;
+  font-size: 0.875rem !important;
+  cursor: pointer !important;
+  outline: none !important;
+  appearance: auto;
+  -webkit-appearance: auto;
+  color-scheme: dark;
+}
+
+select:focus,
+select.filter-select:focus,
+.filter-select:focus {
+  border-color: var(--accent) !important;
+  outline: none !important;
+}
+
+/* Opciones del select — fondo oscuro */
+select option {
+  background-color: #1a1d22;
+  color: var(--text, #e9edf4);
+  padding: 8px 12px;
+}
+
+select option:hover,
+select option:checked {
+  background-color: var(--accent, #1f3a66);
+  color: #fff;
+}
+
+/* Input date — mismo estilo que los selects */
+input[type="date"].filter-select,
+input[type="date"].filter-date {
+  background-color: #1a1d22 !important;
+  color: var(--text) !important;
+  border: 1px solid var(--panel-border) !important;
+  border-radius: 8px !important;
+  padding: 8px 12px !important;
+  font-family: 'Barlow', sans-serif !important;
+  font-size: 0.875rem !important;
+  cursor: pointer !important;
+  outline: none !important;
+  color-scheme: dark;
+}
+
+input[type="date"].filter-select:focus,
+input[type="date"].filter-date:focus {
+  border-color: var(--accent) !important;
+}
+
+/* Botón limpiar/reset global — estándar del proyecto */
+.btn-filter-reset {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 16px;
+  background: transparent;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  color: var(--muted);
+  font-family: 'Barlow', sans-serif;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.btn-filter-reset:hover {
+  border-color: rgba(255,255,255,0.2);
+  color: var(--text);
+}

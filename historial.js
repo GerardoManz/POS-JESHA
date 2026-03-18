@@ -97,7 +97,7 @@ async function cargarVentas() {
   const tbody  = document.getElementById('hist-tbody')
   const pagDiv = document.getElementById('pagination')
 
-  tbody.innerHTML = `<tr><td colspan="9" class="loading-cell"><div class="spinner"></div><p>Cargando...</p></td></tr>`
+  tbody.innerHTML = `<tr><td colspan="10" class="loading-cell"><div class="spinner"></div><p>Cargando...</p></td></tr>`
 
   const params = construirParams()
 
@@ -112,7 +112,7 @@ async function cargarVentas() {
     const total  = data.total || 0
 
     if (ventas.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="9" class="loading-cell"><p>No se encontraron ventas con los filtros aplicados</p></td></tr>`
+      tbody.innerHTML = `<tr><td colspan="10" class="loading-cell"><p>No se encontraron ventas con los filtros aplicados</p></td></tr>`
       document.getElementById('hist-kpis').style.display = 'none'
       pagDiv.style.display = 'none'
       return
@@ -129,6 +129,12 @@ async function cargarVentas() {
         <td style="text-align:center;color:var(--muted)">${v.productosCount}</td>
         <td><strong>${fmt(v.total)}</strong></td>
         <td><span class="estado-badge ${v.estado.toLowerCase()}">${v.estado === 'COMPLETADA' ? 'Completada' : 'Cancelada'}</span></td>
+        <td>
+          <button class="btn-ticket-hist" onclick="event.stopPropagation();imprimirTicket(${v.id})" title="Imprimir ticket">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+            Ticket
+          </button>
+        </td>
         <td><button class="btn-ver-venta" onclick="event.stopPropagation();verDetalle(${v.id})">Ver</button></td>
       </tr>
     `).join('')
@@ -148,7 +154,7 @@ async function cargarVentas() {
     }
 
   } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="9" class="loading-cell"><p style="color:#f44336">Error: ${err.message}</p></td></tr>`
+    tbody.innerHTML = `<tr><td colspan="10" class="loading-cell"><p style="color:#f44336">Error: ${err.message}</p></td></tr>`
     console.error('❌ Error historial:', err)
   }
 }
@@ -242,6 +248,7 @@ window.verDetalle = async function(id) {
     document.getElementById('det-descuento').textContent = fmt(v.descuento)
     document.getElementById('det-total').textContent     = fmt(v.total)
 
+    renderAccionesModal(v)
     document.getElementById('modal-venta').classList.add('active')
 
   } catch (err) {
@@ -310,5 +317,39 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (e.key === 'Escape') document.getElementById('modal-venta')?.classList.remove('active')
   })
 })
+
+// ════════════════════════════════════════════════════════════════════
+//  IMPRIMIR TICKET
+// ════════════════════════════════════════════════════════════════════
+
+window.imprimirTicket = function(id) {
+  const token = localStorage.getItem('jesha_token')
+  const url   = `${API_URL}/ventas/${id}/ticket`
+  // Abrir en ventana nueva → el ticket se auto-imprime
+  const win = window.open('', '_blank', 'width=420,height=700,scrollbars=yes')
+  win.document.write('<html><body style="font-family:sans-serif;text-align:center;padding:20px"><p>Cargando ticket...</p></body></html>')
+  fetch(url, { headers: { 'Authorization': `Bearer ${token}` } })
+    .then(r => r.text())
+    .then(html => {
+      win.document.open()
+      win.document.write(html)
+      win.document.close()
+    })
+    .catch(err => {
+      win.document.write(`<p style="color:red">Error: ${err.message}</p>`)
+    })
+}
+
+// Fix 4: añadir botón ticket en modal de detalle
+function renderAccionesModal(v) {
+  const div = document.getElementById('det-acciones-modal')
+  if (!div) return
+  div.innerHTML = `
+    <button class="btn-ticket-hist" onclick="imprimirTicket(${v.id})" style="margin-top:12px;">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+      🖨️ Imprimir Ticket
+    </button>
+  `
+}
 
 console.log('✅ historial.js cargado')
