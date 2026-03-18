@@ -594,3 +594,237 @@
     font-size: 0.85rem;
   }
 }
+
+/* ════════════════════════════════════════════════════════════════════
+   IMPORTACIÓN INVENTARIO — CSS
+   Pegar al final de productos.css
+   ════════════════════════════════════════════════════════════════════ */
+
+/* ── Botón Subir Inventario ── */
+.btn-upload-inv {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 16px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 8px;
+  color: var(--muted);
+  font-family: 'Barlow', sans-serif;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.btn-upload-inv:hover {
+  background: rgba(107,157,232,0.12);
+  border-color: rgba(107,157,232,0.35);
+  color: #6b9de8;
+}
+
+/* ── Modal overlay ── */
+.modal-import-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.75);
+  backdrop-filter: blur(4px);
+  z-index: 2000;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.modal-import-card {
+  background: #16191e;
+  border: 1px solid rgba(255,255,255,0.09);
+  border-radius: 16px;
+  width: 100%;
+  max-width: 560px;
+  max-height: 92vh;
+  overflow-y: auto;
+  box-shadow: 0 32px 80px rgba(0,0,0,0.7);
+  animation: importSlide 0.22s cubic-bezier(0.16,1,0.3,1);
+}
+@keyframes importSlide {
+  from { opacity:0; transform:translateY(18px) scale(0.97); }
+  to   { opacity:1; transform:translateY(0)   scale(1); }
+}
+
+/* Header */
+.modal-import-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 20px 22px 16px;
+}
+.modal-import-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: rgba(107,157,232,0.1);
+  border: 1px solid rgba(107,157,232,0.2);
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+.modal-import-titulo {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 1.2rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #e9edf4;
+  margin: 0;
+  line-height: 1.1;
+}
+.modal-import-sub {
+  font-size: 0.78rem;
+  color: #7a8599;
+  margin: 3px 0 0;
+}
+.modal-import-close {
+  background: none;
+  border: none;
+  color: #7a8599;
+  font-size: 1.4rem;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  margin-left: auto;
+  transition: all 0.15s;
+  line-height: 1;
+}
+.modal-import-close:hover { background: rgba(255,255,255,0.06); color: #e9edf4; }
+.modal-import-divider { height:1px; background:rgba(255,255,255,0.06); margin:0 22px; }
+
+/* Body */
+.modal-import-body { padding: 18px 22px; display: flex; flex-direction: column; gap: 14px; }
+
+/* Info box */
+.import-info-box {
+  padding: 12px 14px;
+  background: rgba(107,157,232,0.06);
+  border: 1px solid rgba(107,157,232,0.15);
+  border-radius: 8px;
+  font-size: 0.8rem;
+  color: #7a8599;
+  line-height: 1.6;
+}
+.import-info-box strong { color: #e9edf4; }
+
+/* Drop zone */
+.import-drop-zone {
+  border: 2px dashed rgba(255,255,255,0.1);
+  border-radius: 12px;
+  padding: 30px 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.import-drop-zone:hover,
+.import-drop-zone.drag-over {
+  border-color: rgba(107,157,232,0.4);
+  background: rgba(107,157,232,0.04);
+}
+.import-drop-zone.tiene-archivo {
+  border-color: rgba(96,208,128,0.4);
+  background: rgba(96,208,128,0.04);
+}
+.import-drop-icon { margin-bottom: 10px; }
+.import-drop-text { font-size: 0.875rem; color: #7a8599; margin: 0 0 4px; }
+.import-drop-hint { font-size: 0.78rem; color: #555f73; margin: 0; }
+.import-link { color: #6b9de8; cursor: pointer; text-decoration: underline; }
+
+/* Validación */
+.import-validacion {
+  padding: 14px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 8px;
+  font-size: 0.82rem;
+  line-height: 1.7;
+}
+.import-stat { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.04); }
+.import-stat:last-child { border-bottom: none; }
+.import-stat-label { color: #7a8599; }
+.import-stat-val   { font-weight: 700; color: #e9edf4; }
+.import-stat-val.ok     { color: #60d080; }
+.import-stat-val.warn   { color: #ffc107; }
+.import-stat-val.danger { color: #ff6b6b; }
+
+/* Progreso */
+.import-progreso-wrap { display: flex; flex-direction: column; gap: 8px; }
+.import-progreso-bar {
+  height: 6px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.import-progreso-fill {
+  height: 100%;
+  background: #6b9de8;
+  border-radius: 3px;
+  width: 0%;
+  transition: width 0.3s ease;
+  animation: progressAnim 1.5s ease-in-out infinite;
+}
+@keyframes progressAnim {
+  0%   { opacity: 1; }
+  50%  { opacity: 0.6; }
+  100% { opacity: 1; }
+}
+.import-progreso-texto { font-size: 0.82rem; color: #7a8599; text-align: center; margin: 0; }
+
+/* Error */
+.import-error-box {
+  padding: 10px 14px;
+  background: rgba(244,67,54,0.08);
+  border-left: 3px solid #f44336;
+  border-radius: 5px;
+  color: #ff9999;
+  font-size: 0.82rem;
+}
+
+/* Acciones */
+.modal-import-actions {
+  display: flex;
+  gap: 8px;
+  padding: 14px 22px 20px;
+  justify-content: flex-end;
+}
+.modal-import-btn-cancel,
+.modal-import-btn-validate,
+.modal-import-btn-import {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 18px;
+  border-radius: 9px;
+  font-family: 'Barlow', sans-serif;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.modal-import-btn-cancel {
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.1);
+  color: #7a8599;
+}
+.modal-import-btn-cancel:hover { background: rgba(255,255,255,0.04); color: #e9edf4; }
+.modal-import-btn-validate {
+  background: rgba(107,157,232,0.12);
+  border: 1px solid rgba(107,157,232,0.3);
+  color: #6b9de8;
+}
+.modal-import-btn-validate:hover:not(:disabled) { background: rgba(107,157,232,0.22); }
+.modal-import-btn-validate:disabled { opacity: 0.35; cursor: not-allowed; }
+.modal-import-btn-import {
+  background: rgba(96,208,128,0.12);
+  border: 1px solid rgba(96,208,128,0.3);
+  color: #60d080;
+}
+.modal-import-btn-import:hover:not(:disabled) { background: rgba(96,208,128,0.22); }
+.modal-import-btn-import:disabled { opacity: 0.35; cursor: not-allowed; }

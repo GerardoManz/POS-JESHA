@@ -9,7 +9,6 @@
 </head>
 <body data-page="inventario">
 <div class="app-shell">
-
   <!-- ✅ SIDEBAR COMPONENTE GLOBAL -->
   <div id="sidebar-container"></div>
 
@@ -25,6 +24,7 @@
 
     <!-- ── FILTROS Y BÚSQUEDA ── -->
     <section class="toolbar">
+
       <!-- DEPARTAMENTO (OBLIGATORIO) -->
       <div class="filter-group">
         <label for="filtro-departamento">📦 Departamento</label>
@@ -57,12 +57,7 @@
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
         </svg>
-        <input 
-          type="text" 
-          id="search-input" 
-          placeholder="Buscar productos..." 
-          class="search-input"
-        />
+        <input type="text" id="search-input" placeholder="Buscar productos..." class="search-input" />
       </div>
 
       <!-- BOTÓN LIMPIAR FILTROS -->
@@ -77,6 +72,17 @@
         </svg>
         Agregar Producto
       </button>
+
+      <!-- BOTÓN SUBIR INVENTARIO ← NUEVO -->
+      <button id="btn-subir-inventario" class="btn-upload-inv">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="16 16 12 12 8 16"/>
+          <line x1="12" y1="12" x2="12" y2="21"/>
+          <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>
+        </svg>
+        Subir Inventario
+      </button>
+
     </section>
 
     <!-- ── TABLA DE PRODUCTOS ── -->
@@ -107,7 +113,6 @@
       </div>
     </section>
   </main>
-
 </div>
 
 <!-- ── MODAL CREAR/EDITAR PRODUCTO ── -->
@@ -117,8 +122,8 @@
       <h3 id="modal-title">Nuevo Producto</h3>
       <button class="modal-close" id="modal-close-btn">&times;</button>
     </div>
-
     <form id="producto-form">
+
       <!-- Nombre y Código -->
       <div class="form-row">
         <div class="form-group">
@@ -226,13 +231,86 @@
         <button type="button" class="btn-secondary" id="btn-cancel">Cancelar</button>
         <button type="submit" class="btn-primary">Guardar Producto</button>
       </div>
+
     </form>
+  </div>
+</div>
+
+<!-- ══ MODAL SUBIR INVENTARIO (CSV) ← NUEVO ══ -->
+<div id="modal-importacion" class="modal modal-import-overlay" style="display:none;">
+  <div class="modal-import-card">
+
+    <div class="modal-import-header">
+      <div class="modal-import-icon">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#6b9de8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="16 16 12 12 8 16"/>
+          <line x1="12" y1="12" x2="12" y2="21"/>
+          <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>
+        </svg>
+      </div>
+      <div>
+        <h3 class="modal-import-titulo">Subir Inventario</h3>
+        <p class="modal-import-sub">Importar productos desde archivo CSV</p>
+      </div>
+      <button class="modal-import-close" id="import-close-btn">&times;</button>
+    </div>
+
+    <div class="modal-import-divider"></div>
+
+    <div class="modal-import-body">
+
+      <div class="import-info-box">
+        <strong>Columnas requeridas:</strong>
+        <span>CLAVE, DESCRIPCION, PRECIO 1</span><br/>
+        <strong>Columnas opcionales:</strong>
+        <span>CLAVE ALTERNA, PRECIO COMPRA, DEPARTAMENTO, CATEGORIA, CLAVE SAT, UNIDAD SAT, EXIST., INV_MIN, INV_MAX, GRANEL (S/N)</span>
+      </div>
+
+      <div class="import-drop-zone" id="import-drop-zone">
+        <input type="file" id="import-csv-file" accept=".csv" style="display:none;" />
+        <div class="import-drop-icon">
+          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color:var(--muted)">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/>
+            <line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+        </div>
+        <p class="import-drop-text">Arrastra el CSV aquí o <span class="import-link" onclick="document.getElementById('import-csv-file').click()">selecciona el archivo</span></p>
+        <p class="import-drop-hint" id="import-filename">Archivos .csv</p>
+      </div>
+
+      <div id="import-validacion" style="display:none;" class="import-validacion"></div>
+
+      <div id="import-progreso" style="display:none;" class="import-progreso-wrap">
+        <div class="import-progreso-bar">
+          <div class="import-progreso-fill" id="import-progreso-fill"></div>
+        </div>
+        <p class="import-progreso-texto" id="import-progreso-texto">Importando...</p>
+      </div>
+
+      <div id="import-error" class="import-error-box" style="display:none;"></div>
+
+    </div>
+
+    <div class="modal-import-divider"></div>
+
+    <div class="modal-import-actions">
+      <button type="button" class="modal-import-btn-cancel" id="import-cancel-btn">Cancelar</button>
+      <button type="button" class="modal-import-btn-validate" id="import-validate-btn" disabled>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+        Validar CSV
+      </button>
+      <button type="button" class="modal-import-btn-import" id="import-confirm-btn" disabled>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/></svg>
+        Importar
+      </button>
+    </div>
+
   </div>
 </div>
 
 <!-- ===== SCRIPTS ===== -->
 <script src="sidebar.js"></script>
 <script src="productos.js"></script>
-
 </body>
 </html>

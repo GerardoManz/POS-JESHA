@@ -117,11 +117,16 @@ function validarFila(fila, idx) {
 // ═══════════════════════════════════════════════════════════════════
 
 function mapearProducto(fila) {
-    // Limpiar codigoBarras si está en notación científica
     let codigoBarras = fila['CLAVE ALTERNA'] || null
     if (codigoBarras && esNotacionCientifica(codigoBarras)) {
         codigoBarras = null
     }
+
+    // Stock inicial y mínimo desde el CSV
+    const stockInicial = parseInt(fila['EXIST.']) || 0
+    const stockMinimo  = parseInt(fila['INV_MIN']) || 5
+    const stockMaximo  = parseInt(fila['INV_MAX']) || null
+    const esGranel     = (fila['GRANEL (S/N)'] || '').toUpperCase().trim() === 'S'
 
     return {
         codigoInterno: fila['CLAVE'].trim(),
@@ -130,9 +135,14 @@ function mapearProducto(fila) {
         descripcion: fila['CARACTERISTICAS'] || null,
         precioBase: parseFloat(fila['PRECIO 1']) || 0,
         costo: fila['PRECIO COMPRA'] ? parseFloat(fila['PRECIO COMPRA']) : null,
-        claveSat: fila['CLAVE SAT'] || '31162800',
+        claveSat:  fila['CLAVE SAT']  || '31162800',
         unidadSat: fila['UNIDAD SAT'] || 'H87',
+        esGranel,
         activo: true,
+        // Campos auxiliares no en BD directa — los usamos para el inventario
+        _stockInicial: stockInicial,
+        _stockMinimo:  stockMinimo,
+        _stockMaximo:  stockMaximo,
     }
 }
 
@@ -285,51 +295,73 @@ exports.importarCSV = async (req, res) => {
                     })
 
                     if (existente) {
-                        // Verificar si el codigoBarras del CSV ya pertenece a OTRO producto.
-                        // Puede pasar cuando SICAR asignó el mismo código alterno a dos artículos.
-                        // En ese caso conservamos el codigoBarras que ya tiene el producto en BD.
-                        let codigoBarrasFinal = data.codigoBarras
-                        if (codigoBarrasFinal) {
-                            const conflicto = await prisma.producto.findUnique({
-                                where: { codigoBarras: codigoBarrasFinal }
-                            })
-                            if (conflicto && conflicto.id !== existente.id) {
-                                codigoBarrasFinal = existente.codigoBarras // conservar el actual
-                            }
-                        }
-
+                        const { _stockInicial, _stockMinimo, _stockMaximo, ...dataSinAux } = data
                         await prisma.producto.update({
-                            where: { codigoInterno: data.codigoInterno },
+                            where: { codigoInterno: dataSinAux.codigoInterno },
                             data: {
-                                nombre: data.nombre,
-                                codigoBarras: codigoBarrasFinal,
-                                descripcion: data.descripcion,
-                                precioBase: data.precioBase,
-                                costo: data.costo,
-                                claveSat: data.claveSat,
-                                unidadSat: data.unidadSat,
+                                nombre:       dataSinAux.nombre,
+                                codigoBarras: dataSinAux.codigoBarras,
+                                descripcion:  dataSinAux.descripcion,
+                                precioBase:   dataSinAux.precioBase,
+                                costo:        dataSinAux.costo,
+                                claveSat:     dataSinAux.claveSat,
+                                unidadSat:    dataSinAux.unidadSat,
+                                esGranel:     dataSinAux.esGranel,
                                 categoriaId,
                             }
                         })
-                        actualizados++
-                    } else {
-                        try {
-                            await prisma.producto.create({
-                                data: {
-                                    ...data,
-                                    categoriaId,
-                                }
-                            })
-                        } catch (createErr) {
-                            // Si falla por codigoBarras duplicado, reintentar sin él
-                            await prisma.producto.create({
-                                data: {
-                                    ...data,
-                                    codigoBarras: null,
-                                    categoriaId,
+                        // Actualizar inventario si tiene stock en el CSV
+                        if (_stockInicial > 0 || _stockMinimo > 0) {
+                            const sucursalId = req.usuario?.sucursalId || 1
+                            await prisma.inventarioSucursal.upsert({
+                                where: { productoId_sucursalId: { productoId: existente.id, sucursalId } },
+                                update: {
+                                    stockActual:       _stockInicial,
+                                    stockMinimoAlerta: _stockMinimo,
+                                    ..._stockMaximo && { stockMaximo: _stockMaximo }
+                                },
+                                create: {
+                                    productoId:        existente.id,
+                                    sucursalId,
+                                    stockActual:       _stockInicial,
+                                    stockMinimoAlerta: _stockMinimo,
+                                    ..._stockMaximo && { stockMaximo: _stockMaximo }
                                 }
                             })
                         }
+                        actualizados++
+                    } else {
+                        // Extraer campos auxiliares antes de insertar
+                        const { _stockInicial, _stockMinimo, _stockMaximo, ...dataSinAux } = data
+
+                        let productoCreado
+                        try {
+                            productoCreado = await prisma.producto.create({
+                                data: { ...dataSinAux, categoriaId }
+                            })
+                        } catch (createErr) {
+                            productoCreado = await prisma.producto.create({
+                                data: { ...dataSinAux, codigoBarras: null, categoriaId }
+                            })
+                        }
+
+                        // Crear o actualizar inventario con stock del CSV
+                        const sucursalId = req.usuario?.sucursalId || 1
+                        await prisma.inventarioSucursal.upsert({
+                            where: { productoId_sucursalId: { productoId: productoCreado.id, sucursalId } },
+                            update: {
+                                stockActual:       _stockInicial,
+                                stockMinimoAlerta: _stockMinimo,
+                                ..._stockMaximo && { stockMaximo: _stockMaximo }
+                            },
+                            create: {
+                                productoId:        productoCreado.id,
+                                sucursalId,
+                                stockActual:       _stockInicial,
+                                stockMinimoAlerta: _stockMinimo,
+                                ..._stockMaximo && { stockMaximo: _stockMaximo }
+                            }
+                        })
                         creados++
                     }
 
