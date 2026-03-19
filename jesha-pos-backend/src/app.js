@@ -30,3 +30,5 @@ app.use((req, res) => res.status(404).json({ error: `Ruta no encontrada: ${req.m
 app.use((err, req, res, next) => { console.error('Error:', err); res.status(500).json({ error: 'Error interno' }) })
 
 module.exports = app
+
+app.use('/facturar', require('./modules/facturacion/facturacion.routes'))

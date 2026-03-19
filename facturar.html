@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Solicitar Factura — JESHA</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0e1117;
+      --panel:    #16191e;
+      --border:   rgba(255,255,255,0.08);
+      --text:     #e9edf4;
+      --muted:    #7a8599;
+      --accent:   #1f3a66;
+      --blue:     #6b9de8;
+      --green:    #60d080;
+      --orange:   #e8710a;
+      --red:      #ff6b6b;
+    }
+
+    body {
+      font-family: 'Barlow', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 24px 16px 48px;
+    }
+
+    /* ── HEADER ── */
+    .fact-header {
+      text-align: center;
+      margin-bottom: 28px;
+    }
+    .fact-logo {
+      width: 140px;
+      margin-bottom: 10px;
+      filter: brightness(0) invert(1);
+    }
+    .fact-title {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 1.6rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    .fact-sub {
+      font-size: 0.875rem;
+      color: var(--muted);
+      margin-top: 4px;
+    }
+
+    /* ── CONTENEDOR ── */
+    .fact-container {
+      max-width: 600px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    /* ── CARDS ── */
+    .fact-card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 20px 22px;
+    }
+    .fact-card-title {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 0.85rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 14px;
+    }
+
+    /* ── RESUMEN DE VENTA ── */
+    .fact-resumen-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+      font-size: 0.875rem;
+    }
+    .fact-resumen-row:last-child { border-bottom: none; }
+    .fact-resumen-label { color: var(--muted); }
+    .fact-resumen-val   { font-weight: 600; }
+    .fact-resumen-val.total {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 1.3rem;
+      color: var(--blue);
+    }
+    .fact-metodo {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 10px;
+      background: rgba(107,157,232,0.1);
+      border: 1px solid rgba(107,157,232,0.2);
+      border-radius: 20px;
+      font-size: 0.78rem;
+      color: var(--blue);
+    }
+
+    /* ── FORM ── */
+    .fact-form { display: flex; flex-direction: column; gap: 14px; }
+    .fact-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    @media (max-width: 480px) { .fact-form-row { grid-template-columns: 1fr; } }
+
+    .fact-field { display: flex; flex-direction: column; gap: 6px; }
+    .fact-label {
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .fact-label span { color: var(--red); margin-left: 2px; }
+
+    .fact-input,
+    .fact-select {
+      padding: 10px 13px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      color: var(--text);
+      font-family: 'Barlow', sans-serif;
+      font-size: 0.9rem;
+      outline: none;
+      transition: border-color 0.15s;
+      width: 100%;
+      color-scheme: dark;
+    }
+    .fact-input:focus, .fact-select:focus { border-color: var(--blue); }
+    .fact-input::placeholder { color: #4a5568; }
+    .fact-select option { background: #1a1d22; color: var(--text); }
+
+    .fact-input.valido   { border-color: rgba(96,208,128,0.4); }
+    .fact-input.invalido { border-color: rgba(255,107,107,0.4); }
+
+    /* ── HINT RFC ── */
+    .rfc-hint {
+      font-size: 0.75rem;
+      color: var(--muted);
+      display: none;
+      margin-top: 2px;
+    }
+    .rfc-hint.show { display: block; }
+    .rfc-hint.ok   { color: var(--green); }
+    .rfc-hint.err  { color: var(--red); }
+
+    /* ── AVISO AUTOCOMPLETE ── */
+    .fact-autocomplete-aviso {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      background: rgba(96,208,128,0.06);
+      border: 1px solid rgba(96,208,128,0.15);
+      border-radius: 8px;
+      font-size: 0.82rem;
+      color: var(--green);
+    }
+
+    /* ── BOTÓN SUBMIT ── */
+    .fact-btn {
+      width: 100%;
+      padding: 14px;
+      background: var(--accent);
+      border: 1px solid rgba(107,157,232,0.3);
+      border-radius: 10px;
+      color: #fff;
+      font-family: 'Barlow', sans-serif;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.15s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      letter-spacing: 0.02em;
+    }
+    .fact-btn:hover:not(:disabled) {
+      background: #243f72;
+      box-shadow: 0 4px 20px rgba(31,58,102,0.4);
+    }
+    .fact-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    /* ── ESTADOS ── */
+    #estado-loading,
+    #estado-error,
+    #estado-exito { display: none; }
+
+    .fact-spinner {
+      width: 40px; height: 40px;
+      border: 3px solid rgba(107,157,232,0.15);
+      border-top-color: var(--blue);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 12px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .estado-icono {
+      font-size: 3rem;
+      text-align: center;
+      margin-bottom: 12px;
+    }
+    .estado-titulo {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 1.4rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      text-align: center;
+      margin-bottom: 8px;
+    }
+    .estado-desc {
+      font-size: 0.9rem;
+      color: var(--muted);
+      text-align: center;
+      line-height: 1.6;
+    }
+
+    .error-inline {
+      padding: 10px 14px;
+      background: rgba(255,107,107,0.08);
+      border-left: 3px solid var(--red);
+      border-radius: 5px;
+      color: #ff9999;
+      font-size: 0.85rem;
+      display: none;
+    }
+    .error-inline.show { display: block; }
+
+    /* ── FOOTER ── */
+    .fact-footer {
+      text-align: center;
+      font-size: 0.78rem;
+      color: var(--muted);
+      margin-top: 8px;
+      line-height: 1.6;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- LOADING -->
+  <div id="estado-loading" style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;">
+    <div class="fact-spinner"></div>
+    <p style="color:var(--muted);font-size:0.9rem;">Verificando información de la venta...</p>
+  </div>
+
+  <!-- ERROR (venta inválida / expirada) -->
+  <div id="estado-error">
+    <div class="fact-container">
+      <div class="fact-header">
+        <img src="Imagenes/logo-jesha.png" alt="JESHA" class="fact-logo" onerror="this.style.display='none'" />
+        <div class="fact-title">Facturación JESHA</div>
+      </div>
+      <div class="fact-card" style="text-align:center;">
+        <div class="estado-icono" id="error-icono">⚠️</div>
+        <div class="estado-titulo" id="error-titulo">No disponible</div>
+        <p class="estado-desc" id="error-desc">—</p>
+      </div>
+      <p class="fact-footer">¿Necesitas ayuda? Llama al 4921941703 o visítanos en Av. San Simón #03, Guadalupe, Zacatecas.</p>
+    </div>
+  </div>
+
+  <!-- FORMULARIO -->
+  <div id="estado-form">
+    <div class="fact-container">
+
+      <div class="fact-header">
+        <img src="Imagenes/logo-jesha.png" alt="JESHA" class="fact-logo" onerror="this.style.display='none'" />
+        <div class="fact-title">Solicitar Factura</div>
+        <div class="fact-sub">Completa tus datos fiscales para emitir el CFDI 4.0</div>
+      </div>
+
+      <!-- Resumen de la venta -->
+      <div class="fact-card">
+        <div class="fact-card-title">Resumen de la venta</div>
+        <div class="fact-resumen-row">
+          <span class="fact-resumen-label">Folio</span>
+          <span class="fact-resumen-val" id="res-folio">—</span>
+        </div>
+        <div class="fact-resumen-row">
+          <span class="fact-resumen-label">Fecha</span>
+          <span class="fact-resumen-val" id="res-fecha">—</span>
+        </div>
+        <div class="fact-resumen-row">
+          <span class="fact-resumen-label">Método de pago</span>
+          <span class="fact-resumen-val" id="res-metodo">—</span>
+        </div>
+        <div class="fact-resumen-row">
+          <span class="fact-resumen-label">Subtotal (sin IVA)</span>
+          <span class="fact-resumen-val" id="res-subtotal">—</span>
+        </div>
+        <div class="fact-resumen-row">
+          <span class="fact-resumen-label">IVA (16%)</span>
+          <span class="fact-resumen-val" id="res-iva">—</span>
+        </div>
+        <div class="fact-resumen-row">
+          <span class="fact-resumen-label">Total</span>
+          <span class="fact-resumen-val total" id="res-total">—</span>
+        </div>
+      </div>
+
+      <!-- Formulario fiscal -->
+      <div class="fact-card">
+        <div class="fact-card-title">Datos fiscales del receptor</div>
+
+        <div id="autocomplete-aviso" class="fact-autocomplete-aviso" style="display:none;margin-bottom:14px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+          Datos autocompletos de tu perfil registrado. Verifica y ajusta si es necesario.
+        </div>
+
+        <form class="fact-form" id="fact-form" autocomplete="off">
+
+          <!-- RFC -->
+          <div class="fact-field">
+            <label class="fact-label">RFC <span>*</span></label>
+            <input type="text" id="f-rfc" class="fact-input" placeholder="XAXX010101000"
+                   maxlength="13" style="text-transform:uppercase;" />
+            <span class="rfc-hint" id="rfc-hint"></span>
+          </div>
+
+          <!-- Razón social -->
+          <div class="fact-field">
+            <label class="fact-label">Nombre / Razón Social <span>*</span></label>
+            <input type="text" id="f-razon" class="fact-input" placeholder="Como aparece en tu constancia fiscal" />
+          </div>
+
+          <!-- Régimen + CP -->
+          <div class="fact-form-row">
+            <div class="fact-field">
+              <label class="fact-label">Régimen Fiscal <span>*</span></label>
+              <select id="f-regimen" class="fact-select">
+                <option value="">Selecciona...</option>
+              </select>
+            </div>
+            <div class="fact-field">
+              <label class="fact-label">C.P. Fiscal <span>*</span></label>
+              <input type="text" id="f-cp" class="fact-input" placeholder="00000" maxlength="5" />
+            </div>
+          </div>
+
+          <!-- Uso CFDI -->
+          <div class="fact-field">
+            <label class="fact-label">Uso del CFDI <span>*</span></label>
+            <select id="f-uso" class="fact-select">
+              <option value="">Selecciona...</option>
+            </select>
+          </div>
+
+          <!-- Email -->
+          <div class="fact-field">
+            <label class="fact-label">Correo electrónico <span>*</span></label>
+            <input type="email" id="f-email" class="fact-input" placeholder="tu@correo.com" />
+            <span style="font-size:0.75rem;color:var(--muted);margin-top:2px;">Te enviaremos el XML y PDF de tu factura aquí</span>
+          </div>
+
+          <div class="error-inline" id="form-error"></div>
+
+          <button type="submit" class="fact-btn" id="btn-facturar">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+            Solicitar Factura
+          </button>
+
+        </form>
+      </div>
+
+      <p class="fact-footer">
+        JESHA — Ferretería e Iluminación · RFC: VADJ820305197<br/>
+        Av. San Simón #03, Guadalupe, Zacatecas · Tel: 4921941703
+      </p>
+    </div>
+  </div>
+
+  <!-- ÉXITO -->
+  <div id="estado-exito">
+    <div class="fact-container">
+      <div class="fact-header">
+        <img src="Imagenes/logo-jesha.png" alt="JESHA" class="fact-logo" onerror="this.style.display='none'" />
+        <div class="fact-title">Facturación JESHA</div>
+      </div>
+      <div class="fact-card" style="text-align:center;padding:32px 22px;">
+        <div class="estado-icono">✅</div>
+        <div class="estado-titulo" style="color:var(--green);">Solicitud Recibida</div>
+        <p class="estado-desc" id="exito-desc">—</p>
+        <p style="font-size:0.8rem;color:var(--muted);margin-top:16px;">
+          El proceso de timbrado puede tardar unos minutos.<br/>
+          Revisa tu bandeja de entrada y carpeta de spam.
+        </p>
+      </div>
+      <p class="fact-footer">
+        JESHA — Ferretería e Iluminación · RFC: VADJ820305197<br/>
+        Av. San Simón #03, Guadalupe, Zacatecas · Tel: 4921941703
+      </p>
+    </div>
+  </div>
+
+<script>
+const API = 'http://192.168.X.X:3000'
+const params = new URLSearchParams(window.location.search)
+const TOKEN  = params.get('token')
+
+const fmt = v => `$${parseFloat(v||0).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})}`
+const fmtFecha = iso => new Date(iso).toLocaleDateString('es-MX',{day:'2-digit',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'})
+const metodoLabel = { EFECTIVO:'💵 Efectivo', CREDITO:'💳 Tarjeta crédito', DEBITO:'💳 Tarjeta débito', TRANSFERENCIA:'🔄 Transferencia' }
+
+function mostrar(id) {
+  ['estado-loading','estado-error','estado-form','estado-exito'].forEach(s => {
+    document.getElementById(s).style.display = s === id ? (id === 'estado-form' || id === 'estado-exito' || id === 'estado-error' ? 'block' : 'flex') : 'none'
+  })
+}
+
+function mostrarError(razon, mensaje) {
+  const iconos = { YA_FACTURADA:'🧾', TIEMPO_EXPIRADO:'⏰', MONTO_EFECTIVO:'💵' }
+  document.getElementById('error-icono').textContent = iconos[razon] || '⚠️'
+  document.getElementById('error-titulo').textContent = {
+    YA_FACTURADA:    'Ya facturada',
+    TIEMPO_EXPIRADO: 'Plazo vencido',
+    MONTO_EFECTIVO:  'No aplica facturación en línea'
+  }[razon] || 'No disponible'
+  document.getElementById('error-desc').textContent = mensaje
+  mostrar('estado-error')
+}
+
+async function cargarDatos() {
+  if (!TOKEN) { mostrarError('SIN_TOKEN', 'El enlace no es válido. Escanea el código QR de tu ticket.'); return }
+  mostrar('estado-loading')
+  try {
+    const r = await fetch(`${API}/facturar?token=${TOKEN}`)
+    const d = await r.json()
+    if (!r.ok || !d.valida) { mostrarError(d.razon || 'ERROR', d.mensaje || d.error || 'Error desconocido'); return }
+    renderFormulario(d)
+  } catch(e) {
+    mostrarError('ERROR_CONEXION', 'No se pudo conectar con el servidor. Intenta más tarde.')
+  }
+}
+
+function renderFormulario(d) {
+  const v = d.venta
+  document.getElementById('res-folio').textContent    = v.folio
+  document.getElementById('res-fecha').textContent    = fmtFecha(v.fecha)
+  document.getElementById('res-metodo').innerHTML     = `<span class="fact-metodo">${metodoLabel[v.metodoPago] || v.metodoPago}</span>`
+  document.getElementById('res-subtotal').textContent = fmt(v.subtotal)
+  document.getElementById('res-iva').textContent      = fmt(v.iva)
+  document.getElementById('res-total').textContent    = fmt(v.total)
+
+  // Llenar catálogos
+  const selReg = document.getElementById('f-regimen')
+  const selUso = document.getElementById('f-uso')
+  d.catalogos.regimenes.forEach(r => {
+    const o = document.createElement('option')
+    o.value = r.clave; o.textContent = `${r.clave} — ${r.desc}`
+    selReg.appendChild(o)
+  })
+  d.catalogos.usos.forEach(u => {
+    const o = document.createElement('option')
+    o.value = u.clave; o.textContent = `${u.clave} — ${u.desc}`
+    selUso.appendChild(o)
+  })
+
+  // Autocompletar si hay datos fiscales del cliente
+  if (d.datosFiscales) {
+    const df = d.datosFiscales
+    if (df.rfc)           document.getElementById('f-rfc').value     = df.rfc
+    if (df.razonSocial)   document.getElementById('f-razon').value   = df.razonSocial
+    if (df.regimenFiscal) document.getElementById('f-regimen').value = df.regimenFiscal
+    if (df.codigoPostal)  document.getElementById('f-cp').value      = df.codigoPostal
+    if (df.usoCfdi)       document.getElementById('f-uso').value     = df.usoCfdi
+    if (df.email)         document.getElementById('f-email').value   = df.email
+    document.getElementById('autocomplete-aviso').style.display = 'flex'
+  }
+
+  mostrar('estado-form')
+}
+
+// Validación RFC en tiempo real
+document.getElementById('f-rfc').addEventListener('input', function() {
+  const v   = this.value.toUpperCase().replace(/[^A-ZÑ&0-9]/g,'')
+  this.value = v
+  const hint = document.getElementById('rfc-hint')
+  const rfcRegex = /^[A-ZÑ&]{3,4}\d{6}[A-Z0-9]{3}$/
+  if (v.length === 0) { hint.className = 'rfc-hint'; this.className = 'fact-input'; return }
+  if (rfcRegex.test(v)) {
+    hint.textContent = '✓ RFC válido'; hint.className = 'rfc-hint show ok'
+    this.className = 'fact-input valido'
+  } else {
+    hint.textContent = v.length < 12 ? 'Mínimo 12 caracteres' : 'Formato inválido — ej: XAXX010101000'
+    hint.className = 'rfc-hint show err'
+    this.className = 'fact-input invalido'
+  }
+})
+
+// Solo números en CP
+document.getElementById('f-cp').addEventListener('input', function() {
+  this.value = this.value.replace(/\D/g,'').substring(0,5)
+})
+
+// Submit
+document.getElementById('fact-form').addEventListener('submit', async function(e) {
+  e.preventDefault()
+  const btn      = document.getElementById('btn-facturar')
+  const errorDiv = document.getElementById('form-error')
+  errorDiv.className = 'error-inline'
+
+  const body = {
+    token:        TOKEN,
+    rfc:          document.getElementById('f-rfc').value.trim(),
+    razonSocial:  document.getElementById('f-razon').value.trim(),
+    regimenFiscal:document.getElementById('f-regimen').value,
+    codigoPostal: document.getElementById('f-cp').value.trim(),
+    usoCfdi:      document.getElementById('f-uso').value,
+    email:        document.getElementById('f-email').value.trim(),
+  }
+
+  // Validar campos
+  const campos = [
+    [body.rfc,           'RFC requerido'],
+    [body.razonSocial,   'Razón social requerida'],
+    [body.regimenFiscal, 'Selecciona el régimen fiscal'],
+    [body.codigoPostal,  'Código postal requerido'],
+    [body.usoCfdi,       'Selecciona el uso del CFDI'],
+    [body.email,         'Correo electrónico requerido'],
+  ]
+  for (const [val, msg] of campos) {
+    if (!val) { errorDiv.textContent = msg; errorDiv.className = 'error-inline show'; return }
+  }
+  if (body.codigoPostal.length !== 5) {
+    errorDiv.textContent = 'El código postal debe tener 5 dígitos'
+    errorDiv.className = 'error-inline show'; return
+  }
+
+  btn.disabled = true
+  btn.innerHTML = '⟳ Enviando solicitud...'
+
+  try {
+    const r = await fetch(`${API}/facturar`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    })
+    const d = await r.json()
+    if (!r.ok) throw new Error(d.error || 'Error al procesar la solicitud')
+    document.getElementById('exito-desc').textContent = d.mensaje
+    mostrar('estado-exito')
+  } catch(err) {
+    errorDiv.textContent = err.message
+    errorDiv.className   = 'error-inline show'
+    btn.disabled         = false
+    btn.innerHTML        = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg> Solicitar Factura`
+  }
+})
+
+// Arranque
+cargarDatos()
+</script>
+</body>
+</html>
