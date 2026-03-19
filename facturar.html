@@ -436,13 +436,25 @@ function mostrarError(razon, mensaje) {
 async function cargarDatos() {
   if (!TOKEN) { mostrarError('SIN_TOKEN', 'El enlace no es válido. Escanea el código QR de tu ticket.'); return }
   mostrar('estado-loading')
+  console.log('API:', API)
+  console.log('TOKEN:', TOKEN)
+  console.log('URL:', `${API}/facturar/api?token=${TOKEN}`)
   try {
     const r = await fetch(`${API}/facturar/api?token=${TOKEN}`)
     const d = await r.json()
-    if (!r.ok || !d.valida) { mostrarError(d.razon || 'ERROR', d.mensaje || d.error || 'Error desconocido'); return }
+    if (!r.ok || (!d.valida && !d.success)) {
+      mostrarError(d.razon || 'ERROR', d.mensaje || d.error || 'Error desconocido')
+      return
+    }
+    // Normalizar — el API puede devolver valida:true o success:true
+    if (!d.valida && d.success) {
+      d.valida      = true
+      d.datosFiscales = d.clienteDatos || null
+    }
     renderFormulario(d)
   } catch(e) {
-    mostrarError('ERROR_CONEXION', 'No se pudo conectar con el servidor. Intenta más tarde.')
+    mostrarError('ERROR_CONEXION', 'No se pudo conectar con el servidor. Detalle: ' + e.message)
+    console.error('Error facturación:', e)
   }
 }
 
@@ -451,8 +463,10 @@ function renderFormulario(d) {
   document.getElementById('res-folio').textContent    = v.folio
   document.getElementById('res-fecha').textContent    = fmtFecha(v.fecha)
   document.getElementById('res-metodo').innerHTML     = `<span class="fact-metodo">${metodoLabel[v.metodoPago] || v.metodoPago}</span>`
-  document.getElementById('res-subtotal').textContent = fmt(v.subtotal)
-  document.getElementById('res-iva').textContent      = fmt(v.iva)
+  const subtotal = v.subtotal || (parseFloat(v.total) / 1.16).toFixed(2)
+  const iva      = v.iva      || (parseFloat(v.total) - parseFloat(v.total) / 1.16).toFixed(2)
+  document.getElementById('res-subtotal').textContent = fmt(subtotal)
+  document.getElementById('res-iva').textContent      = fmt(iva)
   document.getElementById('res-total').textContent    = fmt(v.total)
 
   // Llenar catálogos
@@ -460,12 +474,13 @@ function renderFormulario(d) {
   const selUso = document.getElementById('f-uso')
   d.catalogos.regimenes.forEach(r => {
     const o = document.createElement('option')
-    o.value = r.clave; o.textContent = `${r.clave} — ${r.desc}`
+    o.value = r.clave; o.textContent = `${r.clave} — ${r.desc || r.descripcion}`
     selReg.appendChild(o)
   })
-  d.catalogos.usos.forEach(u => {
+  const usos = d.catalogos.usos || d.catalogos.usosCfdi || []
+  usos.forEach(u => {
     const o = document.createElement('option')
-    o.value = u.clave; o.textContent = `${u.clave} — ${u.desc}`
+    o.value = u.clave; o.textContent = `${u.clave} — ${u.desc || u.descripcion}`
     selUso.appendChild(o)
   })
 
