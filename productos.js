@@ -346,7 +346,11 @@ function renderizarTabla(productos) {
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
           Stock
         </button>
-        <button class="btn-icon" onclick="toggleEstadoProducto(${p.id}, ${!p.activo})" title="${p.activo ? 'Desactivar' : 'Activar'}">${p.activo ? '👁️' : '🔒'}</button>
+        <button class="btn-icon btn-toggle-estado ${p.activo ? 'btn-desactivar' : 'btn-activar'}"
+          onclick="toggleEstadoProducto(${p.id}, ${!p.activo}, '${p.nombre.replace(/'/g,"\\'")}')"
+          title="${p.activo ? 'Desactivar producto — dejará de aparecer en el POS' : 'Activar producto — volverá a aparecer en el POS'}">
+          ${p.activo ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>' : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>'}
+        </button>
       </div></td>
     </tr>`
   }).join('')
@@ -450,7 +454,17 @@ async function guardarProducto(e) {
 // ESTADO / IMAGEN / MARGEN
 // ═══════════════════════════════════════════════════════════════════
 
-window.toggleEstadoProducto = async function(id, nuevoEstado) {
+window.toggleEstadoProducto = function(id, nuevoEstado, nombreProducto) {
+  if (!nuevoEstado) {
+    // Desactivar — mostrar modal de confirmación del sistema
+    mostrarConfirmEstado(id, nuevoEstado, nombreProducto)
+  } else {
+    // Activar — directo sin confirmación
+    ejecutarToggleEstado(id, nuevoEstado)
+  }
+}
+
+async function ejecutarToggleEstado(id, nuevoEstado) {
   try {
     const response = await fetch(`${API_URL}/productos/${id}/estado`, {
       method: 'PATCH',
@@ -459,7 +473,132 @@ window.toggleEstadoProducto = async function(id, nuevoEstado) {
     })
     if (!response.ok) throw new Error(`Error ${response.status}`)
     await cargarProductos()
-  } catch (error) { console.error('❌ Error cambiando estado:', error); alert('Error al cambiar estado') }
+  } catch (error) {
+    console.error('❌ Error cambiando estado:', error)
+    alert('Error al cambiar estado del producto')
+  }
+}
+
+function mostrarConfirmEstado(id, nuevoEstado, nombreProducto) {
+  // Remover modal anterior si existe
+  document.getElementById('modal-confirm-estado')?.remove()
+
+  const nombre = (nombreProducto || 'este producto').substring(0, 60)
+
+  const modal = document.createElement('div')
+  modal.id = 'modal-confirm-estado'
+  modal.style.cssText = `
+    position:fixed;inset:0;background:rgba(0,0,0,0.72);
+    backdrop-filter:blur(4px);z-index:3000;
+    display:flex;align-items:center;justify-content:center;padding:20px;
+  `
+
+  modal.innerHTML = `
+    <div style="
+      background:#16191e;border:1px solid rgba(255,255,255,0.09);
+      border-radius:16px;width:100%;max-width:400px;overflow:hidden;
+      box-shadow:0 32px 80px rgba(0,0,0,0.7);
+      animation:confirmEstadoIn 0.2s cubic-bezier(0.16,1,0.3,1);
+    ">
+      <style>
+        @keyframes confirmEstadoIn {
+          from{opacity:0;transform:translateY(16px) scale(0.97)}
+          to{opacity:1;transform:translateY(0) scale(1)}
+        }
+      </style>
+
+      <!-- Header -->
+      <div style="display:flex;align-items:center;gap:14px;padding:20px 22px 16px;">
+        <div style="
+          width:46px;height:46px;border-radius:11px;flex-shrink:0;
+          background:rgba(232,113,10,0.12);border:1px solid rgba(232,113,10,0.25);
+          display:grid;place-items:center;
+        ">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#e8710a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
+            <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
+            <line x1="1" y1="1" x2="23" y2="23"/>
+          </svg>
+        </div>
+        <div>
+          <div style="font-family:'Barlow Condensed',sans-serif;font-size:1.15rem;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:#e9edf4;line-height:1.1;">
+            Desactivar Producto
+          </div>
+          <div style="font-size:0.78rem;color:#7a8599;margin-top:3px;max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+            ${nombre}
+          </div>
+        </div>
+      </div>
+
+      <div style="height:1px;background:rgba(255,255,255,0.06);margin:0 22px;"></div>
+
+      <!-- Body -->
+      <div style="padding:18px 22px;">
+        <p style="font-size:0.875rem;color:#7a8599;line-height:1.6;margin:0 0 12px;">
+          Este producto <strong style="color:#e9edf4;">dejará de aparecer en el Punto de Venta</strong> y no podrá ser vendido.
+        </p>
+        <div style="
+          display:flex;align-items:flex-start;gap:10px;
+          padding:10px 14px;background:rgba(232,113,10,0.06);
+          border:1px solid rgba(232,113,10,0.15);border-radius:8px;
+        ">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#e8710a" stroke-width="2" style="flex-shrink:0;margin-top:2px;">
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+          <span style="font-size:0.8rem;color:#e8710a;line-height:1.5;">
+            Puedes volver a activarlo en cualquier momento desde el inventario.
+          </span>
+        </div>
+      </div>
+
+      <div style="height:1px;background:rgba(255,255,255,0.06);margin:0 22px;"></div>
+
+      <!-- Acciones -->
+      <div style="display:flex;gap:10px;padding:14px 22px 20px;">
+        <button id="cfe-cancel" style="
+          flex:1;padding:11px 18px;background:transparent;
+          border:1px solid rgba(255,255,255,0.1);border-radius:10px;
+          color:#7a8599;font-family:'Barlow',sans-serif;font-size:0.875rem;
+          font-weight:700;cursor:pointer;transition:all 0.15s;
+        ">Cancelar</button>
+        <button id="cfe-confirm" style="
+          flex:1;padding:11px 18px;
+          background:rgba(232,113,10,0.12);
+          border:1px solid rgba(232,113,10,0.3);border-radius:10px;
+          color:#e8710a;font-family:'Barlow',sans-serif;font-size:0.875rem;
+          font-weight:700;cursor:pointer;transition:all 0.15s;
+          display:inline-flex;align-items:center;justify-content:center;gap:7px;
+        ">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+          Sí, desactivar
+        </button>
+      </div>
+    </div>
+  `
+
+  document.body.appendChild(modal)
+
+  // Eventos
+  const cerrar = () => modal.remove()
+
+  document.getElementById('cfe-cancel').addEventListener('click', cerrar)
+  modal.addEventListener('click', e => { if (e.target === modal) cerrar() })
+  document.addEventListener('keydown', function escHandler(e) {
+    if (e.key === 'Escape') { cerrar(); document.removeEventListener('keydown', escHandler) }
+  })
+
+  // Hover en botones
+  const btnCancel  = document.getElementById('cfe-cancel')
+  const btnConfirm = document.getElementById('cfe-confirm')
+  btnCancel.addEventListener('mouseenter',  () => { btnCancel.style.background = 'rgba(255,255,255,0.05)'; btnCancel.style.color = '#e9edf4' })
+  btnCancel.addEventListener('mouseleave',  () => { btnCancel.style.background = 'transparent'; btnCancel.style.color = '#7a8599' })
+  btnConfirm.addEventListener('mouseenter', () => { btnConfirm.style.background = 'rgba(232,113,10,0.22)' })
+  btnConfirm.addEventListener('mouseleave', () => { btnConfirm.style.background = 'rgba(232,113,10,0.12)' })
+
+  document.getElementById('cfe-confirm').addEventListener('click', () => {
+    cerrar()
+    ejecutarToggleEstado(id, nuevoEstado)
+  })
 }
 
 async function subirImagen(productoId, archivo) {
