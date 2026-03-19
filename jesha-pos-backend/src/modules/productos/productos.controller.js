@@ -426,6 +426,96 @@ async function crearCategoria(req, res) {
 // EXPORTAR
 // ═══════════════════════════════════════════════════════════════════
 
+async function ajustarInventario(req, res) {
+  try {
+    const { id } = req.params
+    const { stockActual, stockMinimoAlerta, motivo } = req.body
+    const usuario = req.usuario  // viene del middleware requireAuth
+ 
+    // ── Validar rol ──
+    const rolesPermitidos = ['SUPERADMIN', 'ADMIN_SUCURSAL']
+    if (!rolesPermitidos.includes(usuario.rol)) {
+      return res.status(403).json({
+        error: 'No tienes permisos para ajustar inventario. Se requiere SUPERADMIN o ADMIN_SUCURSAL.'
+      })
+    }
+ 
+    // ── Validar que el producto existe ──
+    const producto = await prisma.producto.findUnique({
+      where: { id: parseInt(id) },
+      include: {
+        inventarios: {
+          where: { sucursalId: usuario.sucursalId || 1 }
+        }
+      }
+    })
+    if (!producto) return res.status(404).json({ error: 'Producto no encontrado' })
+ 
+    // ── Validar valores ──
+    if (stockActual !== undefined && (isNaN(stockActual) || parseInt(stockActual) < 0)) {
+      return res.status(400).json({ error: 'Stock actual debe ser un número >= 0' })
+    }
+    if (stockMinimoAlerta !== undefined && (isNaN(stockMinimoAlerta) || parseInt(stockMinimoAlerta) < 0)) {
+      return res.status(400).json({ error: 'Stock mínimo debe ser un número >= 0' })
+    }
+ 
+    const sucursalId = usuario.sucursalId || 1
+    const stockAnterior = producto.inventarios[0]?.stockActual ?? 0
+    const minAnterior   = producto.inventarios[0]?.stockMinimoAlerta ?? 5
+ 
+    // ── Upsert inventario ──
+    const updateData = {}
+    if (stockActual      !== undefined) updateData.stockActual       = parseInt(stockActual)
+    if (stockMinimoAlerta !== undefined) updateData.stockMinimoAlerta = parseInt(stockMinimoAlerta)
+ 
+    const inventario = await prisma.inventarioSucursal.upsert({
+      where: { productoId_sucursalId: { productoId: parseInt(id), sucursalId } },
+      update: updateData,
+      create: {
+        productoId:        parseInt(id),
+        sucursalId,
+        stockActual:       parseInt(stockActual ?? 0),
+        stockMinimoAlerta: parseInt(stockMinimoAlerta ?? 5),
+      }
+    })
+ 
+    // ── Registrar en MovimientoInventario si cambió el stock ──
+    if (stockActual !== undefined && parseInt(stockActual) !== stockAnterior) {
+      const diferencia = parseInt(stockActual) - stockAnterior
+      await prisma.movimientoInventario.create({
+        data: {
+          productoId:  parseInt(id),
+          sucursalId,
+          usuarioId:   usuario.id,
+          tipo:        diferencia > 0 ? 'AJUSTE_ENTRADA' : 'AJUSTE_SALIDA',
+          cantidad:    Math.abs(diferencia),
+          stockAntes:  stockAnterior,
+          stockDespues: parseInt(stockActual),
+          motivo:      motivo || 'Ajuste manual de inventario',
+        }
+      })
+    }
+ 
+    console.log(`✅ Inventario ajustado: producto ${id} | stock ${stockAnterior}→${stockActual ?? stockAnterior} | min ${minAnterior}→${stockMinimoAlerta ?? minAnterior} | por ${usuario.nombre}`)
+ 
+    res.json({
+      success: true,
+      mensaje: 'Inventario actualizado correctamente',
+      data: {
+        productoId:        parseInt(id),
+        stockActual:       inventario.stockActual,
+        stockMinimoAlerta: inventario.stockMinimoAlerta,
+        stockAnterior,
+        minAnterior,
+      }
+    })
+ 
+  } catch (err) {
+    console.error('❌ Error ajustando inventario:', err)
+    res.status(500).json({ error: err.message })
+  }
+}
+
 module.exports = {
     listarDepartamentos,
     listarCategorias,
@@ -437,5 +527,6 @@ module.exports = {
     crear,
     editar,
     cambiarEstado,
-    actualizarImagen
+    actualizarImagen,
+    ajustarInventario
 }

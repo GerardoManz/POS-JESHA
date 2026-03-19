@@ -70,6 +70,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Inicializar módulo de importación
   initImportacion()
+
+  // Inicializar ajuste de inventario
+  initAjusteInventario()
 })
 
 // ═══════════════════════════════════════════════════════════════════
@@ -339,6 +342,10 @@ function renderizarTabla(productos) {
       <td><span class="estado-badge ${p.activo ? 'activo' : 'inactivo'}">${p.activo ? 'Activo' : 'Inactivo'}</span></td>
       <td><div class="actions-cell">
         <button class="btn-icon" onclick="editarProducto(${p.id})" title="Editar">✏️</button>
+        <button class="btn-ajuste-inv" onclick="event.stopPropagation();abrirAjusteInventario(${p.id})" title="Ajustar stock">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+          Stock
+        </button>
         <button class="btn-icon" onclick="toggleEstadoProducto(${p.id}, ${!p.activo})" title="${p.activo ? 'Desactivar' : 'Activar'}">${p.activo ? '👁️' : '🔒'}</button>
       </div></td>
     </tr>`
@@ -848,4 +855,141 @@ function resetModalImport() {
 function mostrarErrorImport(msg) {
   const el = document.getElementById('import-error')
   if (el) { el.textContent = msg; el.style.display = 'block' }
+}
+
+
+// ════════════════════════════════════════════════════════════════════
+//  AJUSTE INVENTARIO — añadir al final de productos.js
+//  Llama initAjusteInventario() dentro de DOMContentLoaded
+// ════════════════════════════════════════════════════════════════════
+
+// Roles que pueden ajustar inventario
+const ROLES_AJUSTE = ['SUPERADMIN', 'ADMIN_SUCURSAL']
+
+// Producto actualmente en el modal de ajuste
+let productoAjuste = null
+
+// ── Inicializar ──
+function initAjusteInventario() {
+  const usuario = JSON.parse(localStorage.getItem('jesha_usuario') || '{}')
+  const puedeAjustar = ROLES_AJUSTE.includes(usuario.rol)
+
+  // Si no tiene permiso, ocultar todos los botones (por clase)
+  if (!puedeAjustar) {
+    document.querySelectorAll('.btn-ajuste-inv').forEach(b => b.classList.add('hidden'))
+    return
+  }
+
+  const modal      = document.getElementById('modal-ajuste-inv')
+  const btnClose   = document.getElementById('ajuste-close-btn')
+  const btnCancel  = document.getElementById('ajuste-cancel-btn')
+  const btnConfirm = document.getElementById('ajuste-confirm-btn')
+
+  const cerrar = () => {
+    modal.style.display = 'none'
+    productoAjuste = null
+    document.getElementById('ajuste-stock-nuevo').value = ''
+    document.getElementById('ajuste-min-nuevo').value   = ''
+    document.getElementById('ajuste-motivo').value      = ''
+    document.getElementById('ajuste-error').style.display = 'none'
+  }
+
+  btnClose?.addEventListener('click', cerrar)
+  btnCancel?.addEventListener('click', cerrar)
+  modal?.addEventListener('click', e => { if (e.target === modal) cerrar() })
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') cerrar() })
+  btnConfirm?.addEventListener('click', guardarAjuste)
+}
+
+// ── Abrir modal con datos del producto ──
+window.abrirAjusteInventario = function(id) {
+  const usuario = JSON.parse(localStorage.getItem('jesha_usuario') || '{}')
+  if (!ROLES_AJUSTE.includes(usuario.rol)) {
+    alert('No tienes permisos para ajustar inventario.')
+    return
+  }
+
+  const producto = productosLista.find(p => p.id === id)
+  if (!producto) return
+
+  productoAjuste = producto
+
+  const stock = producto.inventario?.stockActual ?? 0
+  const min   = producto.inventario?.stockMinimoAlerta ?? 5
+
+  document.getElementById('ajuste-producto-nombre').textContent   = producto.nombre
+  document.getElementById('ajuste-stock-actual-display').textContent = stock
+  document.getElementById('ajuste-min-actual-display').textContent   = min
+  document.getElementById('ajuste-stock-nuevo').value = ''
+  document.getElementById('ajuste-min-nuevo').value   = ''
+  document.getElementById('ajuste-motivo').value      = ''
+  document.getElementById('ajuste-error').style.display = 'none'
+
+  document.getElementById('modal-ajuste-inv').style.display = 'flex'
+  setTimeout(() => document.getElementById('ajuste-stock-nuevo').focus(), 80)
+}
+
+// ── Guardar ajuste ──
+async function guardarAjuste() {
+  if (!productoAjuste) return
+
+  const stockNuevo = document.getElementById('ajuste-stock-nuevo').value.trim()
+  const minNuevo   = document.getElementById('ajuste-min-nuevo').value.trim()
+  const motivo     = document.getElementById('ajuste-motivo').value.trim()
+  const errorDiv   = document.getElementById('ajuste-error')
+  const btnConfirm = document.getElementById('ajuste-confirm-btn')
+
+  // Validar que al menos uno tiene valor
+  if (stockNuevo === '' && minNuevo === '') {
+    errorDiv.textContent  = 'Ingresa al menos un valor a cambiar.'
+    errorDiv.style.display = 'block'
+    return
+  }
+
+  errorDiv.style.display = 'none'
+  btnConfirm.disabled    = true
+  btnConfirm.innerHTML   = '⟳ Guardando...'
+
+  try {
+    const body = {}
+    if (stockNuevo !== '') body.stockActual       = parseInt(stockNuevo)
+    if (minNuevo   !== '') body.stockMinimoAlerta = parseInt(minNuevo)
+    if (motivo)            body.motivo            = motivo
+
+    const token    = localStorage.getItem('jesha_token')
+    const response = await fetch(`${API_URL}/productos/${productoAjuste.id}/inventario`, {
+      method:  'PATCH',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body:    JSON.stringify(body)
+    })
+
+    const data = await response.json()
+    if (!response.ok) throw new Error(data.error || 'Error al ajustar inventario')
+
+    // Cerrar y recargar tabla
+    document.getElementById('modal-ajuste-inv').style.display = 'none'
+    productoAjuste = null
+
+    // Toast de éxito
+    const toast = document.createElement('div')
+    toast.textContent = '✅ Inventario actualizado correctamente'
+    Object.assign(toast.style, {
+      position:'fixed', top:'20px', right:'20px', zIndex:'9999',
+      background:'#1a3a1a', color:'#60d080', padding:'12px 20px',
+      borderRadius:'8px', fontSize:'0.875rem', fontWeight:'600',
+      border:'1px solid rgba(96,208,128,0.3)',
+      boxShadow:'0 4px 16px rgba(0,0,0,0.4)', transition:'opacity 0.4s'
+    })
+    document.body.appendChild(toast)
+    setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 400) }, 2500)
+
+    await cargarProductos()
+
+  } catch (err) {
+    errorDiv.textContent   = err.message
+    errorDiv.style.display = 'block'
+  } finally {
+    btnConfirm.disabled  = false
+    btnConfirm.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Guardar ajuste'
+  }
 }

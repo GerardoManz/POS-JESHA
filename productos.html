@@ -309,6 +309,74 @@
   </div>
 </div>
 
+<!-- ══ MODAL AJUSTE DE INVENTARIO ← NUEVO ══ -->
+<!-- Pegar antes de los scripts en productos.html -->
+<div id="modal-ajuste-inv" class="modal modal-ajuste-overlay" style="display:none;">
+  <div class="modal-ajuste-card">
+
+    <div class="modal-ajuste-header">
+      <div class="modal-ajuste-icon">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#6b9de8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="12" y1="1" x2="12" y2="23"/>
+          <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+        </svg>
+      </div>
+      <div>
+        <h3 class="modal-ajuste-titulo">Ajuste de Inventario</h3>
+        <p class="modal-ajuste-sub" id="ajuste-producto-nombre">—</p>
+      </div>
+      <button class="modal-ajuste-close" id="ajuste-close-btn">&times;</button>
+    </div>
+
+    <div class="modal-ajuste-divider"></div>
+
+    <div class="modal-ajuste-body">
+
+      <!-- Stock actual -->
+      <div class="ajuste-field">
+        <label class="ajuste-label">Stock actual</label>
+        <div class="ajuste-input-row">
+          <div class="ajuste-stock-actual" id="ajuste-stock-actual-display">—</div>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          <input type="number" id="ajuste-stock-nuevo" class="ajuste-input"
+                 min="0" placeholder="Nuevo stock" autocomplete="off" />
+        </div>
+      </div>
+
+      <!-- Stock mínimo -->
+      <div class="ajuste-field">
+        <label class="ajuste-label">Stock mínimo (alerta)</label>
+        <div class="ajuste-input-row">
+          <div class="ajuste-stock-actual" id="ajuste-min-actual-display">—</div>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          <input type="number" id="ajuste-min-nuevo" class="ajuste-input"
+                 min="0" placeholder="Nuevo mínimo" autocomplete="off" />
+        </div>
+      </div>
+
+      <!-- Motivo -->
+      <div class="ajuste-field">
+        <label class="ajuste-label">Motivo <span style="color:var(--muted);font-weight:400">(opcional)</span></label>
+        <input type="text" id="ajuste-motivo" class="ajuste-input-full"
+               placeholder="ej: Conteo físico, corrección de error..." autocomplete="off" />
+      </div>
+
+      <div id="ajuste-error" class="ajuste-error" style="display:none;"></div>
+    </div>
+
+    <div class="modal-ajuste-divider"></div>
+
+    <div class="modal-ajuste-actions">
+      <button type="button" class="modal-ajuste-btn-cancel" id="ajuste-cancel-btn">Cancelar</button>
+      <button type="button" class="modal-ajuste-btn-confirm" id="ajuste-confirm-btn">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+        Guardar ajuste
+      </button>
+    </div>
+
+  </div>
+</div>
+
 <!-- ===== SCRIPTS ===== -->
 <script src="sidebar.js"></script>
 <script src="productos.js"></script>
