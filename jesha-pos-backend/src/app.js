@@ -32,6 +32,7 @@ app.use('/auth',         require('./modules/auth/auth.routes'))
 app.use('/facturar/api', require('./modules/facturacion/facturacion.routes'))
 
 // ── Rutas protegidas ──
+app.use('/facturas',    requireAuth, require('./modules/facturas/facturas.routes'))
 app.use('/usuarios',    requireAuth, require('./modules/usuarios/usuarios.routes'))
 app.use('/clientes',    requireAuth, require('./modules/clientes/clientes.routes'))
 app.use('/productos',   requireAuth, require('./modules/productos/productos.routes'))

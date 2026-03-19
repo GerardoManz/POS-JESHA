@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>JESHA POS - Facturas</title>
+  <link rel="stylesheet" href="dashboard.css" />
+  <link rel="stylesheet" href="facturas.css" />
+</head>
+<body data-page="facturas">
+<div class="app-shell">
+  <div id="sidebar-container"></div>
+
+  <main class="content">
+    <header class="content-header">
+      <h2>Facturas</h2>
+      <p id="fecha-actual"></p>
+    </header>
+
+    <!-- TOOLBAR -->
+    <section class="toolbar">
+      <div class="search-group">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input type="text" id="search-input" placeholder="Folio, RFC o razón social..." class="search-input" />
+      </div>
+
+      <input type="date" id="filtro-desde" class="filter-select" />
+      <input type="date" id="filtro-hasta" class="filter-select" />
+
+      <select id="filtro-estado" class="filter-select">
+        <option value="">Todos los estados</option>
+        <option value="PENDIENTE_TIMBRADO">⏳ Pendiente</option>
+        <option value="TIMBRADA">✅ Timbrada</option>
+        <option value="CANCELADA">❌ Cancelada</option>
+      </select>
+
+      <button id="btn-limpiar" class="btn-filter-reset">✕ Limpiar</button>
+    </section>
+
+    <!-- KPIs -->
+    <section class="fact-admin-kpis" id="kpis-section">
+      <div class="fact-admin-kpi">
+        <span class="fact-admin-kpi-label">Total facturas</span>
+        <span class="fact-admin-kpi-val" id="kpi-total">0</span>
+      </div>
+      <div class="fact-admin-kpi pendiente">
+        <span class="fact-admin-kpi-label">Pendientes</span>
+        <span class="fact-admin-kpi-val" id="kpi-pendientes">0</span>
+      </div>
+      <div class="fact-admin-kpi timbrada">
+        <span class="fact-admin-kpi-label">Timbradas</span>
+        <span class="fact-admin-kpi-val" id="kpi-timbradas">0</span>
+      </div>
+      <div class="fact-admin-kpi cancelada">
+        <span class="fact-admin-kpi-label">Canceladas</span>
+        <span class="fact-admin-kpi-val" id="kpi-canceladas">0</span>
+      </div>
+    </section>
+
+    <!-- TABLA -->
+    <section class="panel">
+      <div class="table-wrapper">
+        <table class="fact-table">
+          <thead>
+            <tr>
+              <th>Folio venta</th>
+              <th>Fecha solicitud</th>
+              <th>RFC receptor</th>
+              <th>Razón social</th>
+              <th>Total</th>
+              <th>Estado</th>
+              <th>UUID</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="fact-tbody">
+            <tr>
+              <td colspan="8" class="loading-cell">
+                <div class="spinner"></div>
+                <p>Cargando facturas...</p>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="pagination" id="pagination" style="display:none;">
+        <button id="btn-prev" class="btn-pag" disabled>← Anterior</button>
+        <span id="pag-info" class="pag-info"></span>
+        <button id="btn-next" class="btn-pag">Siguiente →</button>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- MODAL DETALLE FACTURA -->
+<div id="modal-factura" class="modal">
+  <div class="modal-content modal-large">
+    <div class="modal-header">
+      <div>
+        <h3 id="mf-folio">FAC-...</h3>
+        <span id="mf-estado-badge" class="fact-badge pendiente">Pendiente</span>
+      </div>
+      <button class="modal-close" id="modal-factura-close">&times;</button>
+    </div>
+
+    <div class="ver-body">
+
+      <!-- Meta info -->
+      <div class="ver-meta" style="grid-template-columns:repeat(3,1fr)">
+        <div class="meta-item"><span class="meta-label">Folio venta</span><span class="meta-valor" id="mf-venta-folio">—</span></div>
+        <div class="meta-item"><span class="meta-label">Fecha solicitud</span><span class="meta-valor" id="mf-fecha">—</span></div>
+        <div class="meta-item"><span class="meta-label">Total</span><span class="meta-valor" id="mf-total">—</span></div>
+        <div class="meta-item"><span class="meta-label">RFC receptor</span><span class="meta-valor" id="mf-rfc">—</span></div>
+        <div class="meta-item"><span class="meta-label">Razón social</span><span class="meta-valor" id="mf-razon">—</span></div>
+        <div class="meta-item"><span class="meta-label">Régimen fiscal</span><span class="meta-valor" id="mf-regimen">—</span></div>
+        <div class="meta-item"><span class="meta-label">C.P. fiscal</span><span class="meta-valor" id="mf-cp">—</span></div>
+        <div class="meta-item"><span class="meta-label">Uso CFDI</span><span class="meta-valor" id="mf-uso">—</span></div>
+        <div class="meta-item"><span class="meta-label">Email</span><span class="meta-valor" id="mf-email">—</span></div>
+      </div>
+
+      <!-- UUID si está timbrada -->
+      <div id="mf-uuid-section" style="display:none;margin:12px 0;padding:12px 14px;background:rgba(96,208,128,0.06);border:1px solid rgba(96,208,128,0.15);border-radius:8px;">
+        <div style="font-size:0.75rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px;">UUID Fiscal</div>
+        <div id="mf-uuid" style="font-size:0.85rem;color:#60d080;word-break:break-all;font-family:monospace;">—</div>
+      </div>
+
+      <!-- Acciones del modal -->
+      <div class="fact-modal-acciones" id="fact-modal-acciones"></div>
+
+    </div>
+  </div>
+</div>
+
+<script src="sidebar.js"></script>
+<script src="facturas.js"></script>
+</body>
+</html>

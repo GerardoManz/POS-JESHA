@@ -65,6 +65,8 @@ enum EstadoFactura {
   VENCIDA
   CANCELADA
   BLOQUEADA
+  PENDIENTE_TIMBRADO
+  TIMBRADA
 }
 
 enum TipoMovimientoInventario {
