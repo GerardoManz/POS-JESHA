@@ -1130,3 +1130,120 @@
   cursor: not-allowed;
   transform: none;
 }
+
+/* ════════════════════════════════════════════════════════════════════
+   MODAL GUARDAR COTIZACIÓN — pegar al final de punto-venta.css
+   ════════════════════════════════════════════════════════════════════ */
+
+.modal-cotizar-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.72);
+  backdrop-filter: blur(4px);
+  z-index: 2000;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.modal-cotizar-card {
+  background: #16191e;
+  border: 1px solid rgba(255,255,255,0.09);
+  border-radius: 16px;
+  width: 100%;
+  max-width: 420px;
+  box-shadow: 0 32px 80px rgba(0,0,0,0.7);
+  animation: cotizarSlide 0.22s cubic-bezier(0.16,1,0.3,1);
+  overflow: hidden;
+}
+@keyframes cotizarSlide {
+  from { opacity:0; transform:translateY(18px) scale(0.97); }
+  to   { opacity:1; transform:translateY(0) scale(1); }
+}
+
+.modal-cotizar-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 20px 22px 16px;
+}
+.modal-cotizar-icon {
+  width: 46px; height: 46px;
+  border-radius: 11px;
+  background: rgba(107,157,232,0.1);
+  border: 1px solid rgba(107,157,232,0.2);
+  display: grid; place-items: center;
+  flex-shrink: 0;
+}
+.modal-cotizar-titulo {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 1.15rem; font-weight: 700;
+  letter-spacing: 0.04em; text-transform: uppercase;
+  color: #e9edf4; margin: 0; line-height: 1.1;
+}
+.modal-cotizar-sub {
+  font-size: 0.78rem; color: #7a8599; margin: 3px 0 0;
+}
+.modal-cotizar-close {
+  background: none; border: none; color: #7a8599;
+  font-size: 1.4rem; cursor: pointer; padding: 4px 8px;
+  border-radius: 6px; margin-left: auto; transition: all 0.15s; line-height: 1;
+}
+.modal-cotizar-close:hover { background: rgba(255,255,255,0.06); color: #e9edf4; }
+.modal-cotizar-divider { height:1px; background:rgba(255,255,255,0.06); margin:0 22px; }
+
+.modal-cotizar-body { padding: 18px 22px; display: flex; flex-direction: column; gap: 14px; }
+.modal-cotizar-field { display: flex; flex-direction: column; gap: 7px; }
+.modal-cotizar-label {
+  font-size: 0.78rem; font-weight: 700; color: #7a8599;
+  text-transform: uppercase; letter-spacing: 0.07em;
+}
+
+.modal-cotizar-input-full,
+.modal-cotizar-textarea {
+  width: 100%;
+  padding: 10px 13px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 9px;
+  color: #e9edf4;
+  font-family: 'Barlow', sans-serif;
+  font-size: 0.9rem;
+  outline: none;
+  transition: border-color 0.15s;
+  box-sizing: border-box;
+  color-scheme: dark;
+}
+.modal-cotizar-input-full:focus,
+.modal-cotizar-textarea:focus { border-color: rgba(107,157,232,0.5); }
+.modal-cotizar-textarea { resize: vertical; min-height: 80px; }
+.modal-cotizar-textarea::placeholder { color: #4a5568; }
+
+.modal-cotizar-error {
+  padding: 9px 13px;
+  background: rgba(244,67,54,0.08);
+  border-left: 3px solid #f44336;
+  border-radius: 5px; color: #ff9999; font-size: 0.82rem;
+}
+
+.modal-cotizar-actions {
+  display: flex; gap: 10px; padding: 14px 22px 20px;
+}
+.modal-cotizar-btn-cancel,
+.modal-cotizar-btn-confirm {
+  flex: 1; display: inline-flex; align-items: center;
+  justify-content: center; gap: 7px; padding: 12px 18px;
+  border-radius: 10px; font-family: 'Barlow', sans-serif;
+  font-size: 0.875rem; font-weight: 700; cursor: pointer; transition: all 0.15s;
+}
+.modal-cotizar-btn-cancel {
+  background: transparent; border: 1px solid rgba(255,255,255,0.1); color: #7a8599;
+}
+.modal-cotizar-btn-cancel:hover { background: rgba(255,255,255,0.05); color: #e9edf4; border-color: rgba(255,255,255,0.2); }
+.modal-cotizar-btn-confirm {
+  background: rgba(107,157,232,0.12);
+  border: 1px solid rgba(107,157,232,0.3); color: #6b9de8;
+}
+.modal-cotizar-btn-confirm:hover { background: rgba(107,157,232,0.22); border-color: rgba(107,157,232,0.5); }
+.modal-cotizar-btn-confirm:disabled { opacity: 0.4; cursor: not-allowed; }
