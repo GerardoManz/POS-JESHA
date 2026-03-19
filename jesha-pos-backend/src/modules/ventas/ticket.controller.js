@@ -18,7 +18,7 @@ const EMPRESA = {
   tel2:     '4921016879',
 }
 
-const BASE_URL = process.env.BASE_URL || 'http://192.168.0.102:3000'
+const BASE_URL = process.env.BASE_URL || 'http://192.168.0.190:3000'
 
 // ── Cargar logo como base64 una sola vez ──
 function cargarLogoBase64() {
