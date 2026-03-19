@@ -62,7 +62,7 @@ if (fechaActual) {
 
 let carrito                = []
 let turnoActivo            = null
-let metodoPagoSeleccionado = 'EFECTIVO'
+let metodoPagoSeleccionado = null   // null = sin selección, cajero debe elegir
 let clienteSeleccionado    = null
 let ventaEnProceso         = false
 let clientesLista          = []
@@ -78,6 +78,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   await cargarClientes()
   mostrarEstadoInicial()
   configurarEventListeners()
+  // Quitar selección predeterminada de método de pago
+  document.querySelectorAll('.metodo-btn').forEach(b => b.classList.remove('active'))
+  metodoPagoSeleccionado = null
   actualizarCarrito()
   cargarCotizacionDesdeStorage()
   configurarEventosCotizar()
@@ -427,7 +430,7 @@ function actualizarCarrito() {
     }
   }
 
-  btnCompletarVenta.disabled = !(carrito.length > 0 && turnoActivo)
+  btnCompletarVenta.disabled = !(carrito.length > 0 && turnoActivo && metodoPagoSeleccionado)
   const btnCotizar = document.getElementById('btn-cotizar-carrito')
   if (btnCotizar) btnCotizar.disabled = carrito.length === 0
 }
@@ -446,6 +449,12 @@ function limpiarCarrito() {
   const badge = document.getElementById('cliente-seleccionado-badge')
   if (badge) badge.style.display = 'none'
 
+  // Resetear método de pago
+  metodoPagoSeleccionado = null
+  document.querySelectorAll('.metodo-btn').forEach(b => b.classList.remove('active'))
+  if (montoEfectivoControl) montoEfectivoControl.style.display = 'none'
+  if (cambioInfo) cambioInfo.style.display = 'none'
+
   cerrarDropdownClientes()
   mostrarEstadoInicial()
   actualizarCarrito()
@@ -456,9 +465,19 @@ function limpiarCarrito() {
 // ══════════════════════════════════════════════════════════════════
 
 async function completarVenta() {
-  if (carrito.length === 0)          { alert('❌ El carrito está vacío'); return }
-  if (!turnoActivo)                  { alert('❌ No hay turno abierto'); return }
-  if (!metodoPagoSeleccionado)       { alert('❌ Selecciona método de pago'); return }
+  if (carrito.length === 0)    { alert('❌ El carrito está vacío'); return }
+  if (!turnoActivo)            { alert('❌ No hay turno abierto'); return }
+  if (!metodoPagoSeleccionado) { 
+    // Resaltar visualmente los botones de método
+    const metodos = document.querySelector('.metodos-pago')
+    if (metodos) {
+      metodos.style.outline = '2px solid #e8710a'
+      metodos.style.borderRadius = '8px'
+      setTimeout(() => { metodos.style.outline = ''; metodos.style.borderRadius = '' }, 1500)
+    }
+    alert('⚠️ Selecciona el método de pago antes de continuar')
+    return
+  }
 
   const total = carrito.reduce((sum, item) => sum + (item.precio * item.cantidad), 0)
   if (metodoPagoSeleccionado === 'EFECTIVO') {
@@ -560,6 +579,12 @@ async function confirmarVenta() {
 
     const badge = document.getElementById('cliente-seleccionado-badge')
     if (badge) badge.style.display = 'none'
+
+    // Resetear método de pago
+    metodoPagoSeleccionado = null
+    document.querySelectorAll('.metodo-btn').forEach(b => b.classList.remove('active'))
+    if (montoEfectivoControl) montoEfectivoControl.style.display = 'none'
+    if (cambioInfo) cambioInfo.style.display = 'none'
 
     cerrarDropdownClientes()
     mostrarEstadoInicial()
