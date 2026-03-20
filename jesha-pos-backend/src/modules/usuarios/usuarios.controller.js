@@ -1,9 +1,5 @@
-const { PrismaClient } = require('@prisma/client')
-const { PrismaPg } = require('@prisma/adapter-pg')
-const bcrypt = require('bcrypt')
-
-const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL })
-const prisma = new PrismaClient({ adapter })
+const bcrypt = require('bcryptjs')
+const prisma = require('../../lib/prisma')
 
 async function registrarAudit(solicitante, accion, referencia, ip) {
   try {
@@ -158,7 +154,7 @@ const cambiarEstado = async (req, res) => {
     const objetivo = await prisma.usuario.findUnique({ where: { id: parseInt(id) } })
     if (!objetivo) return res.status(404).json({ error: 'Usuario no encontrado' })
 
-    if (solicitante.rol === 'ADMIN_SUCURSAL' && objetivo.rol !== 'VENDEDOR')
+    if (solicitante.rol === 'ADMIN_SUCURSAL' && objetivo.rol !== 'EMPLEADO')
       return res.status(403).json({ error: 'Solo puedes desactivar empleados' })
 
     const usuario = await prisma.usuario.update({
@@ -192,7 +188,7 @@ const resetPassword = async (req, res) => {
     const objetivo = await prisma.usuario.findUnique({ where: { id: parseInt(id) } })
     if (!objetivo) return res.status(404).json({ error: 'Usuario no encontrado' })
 
-    if (solicitante.rol === 'ADMIN_SUCURSAL' && objetivo.rol !== 'VENDEDOR')
+    if (solicitante.rol === 'ADMIN_SUCURSAL' && objetivo.rol !== 'EMPLEADO')
       return res.status(403).json({ error: 'Solo puedes resetear contrasenas de empleados' })
 
     const hash = await bcrypt.hash(password, 10)

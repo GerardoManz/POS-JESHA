@@ -1,8 +1,6 @@
-# Crear .gitignore en la raíz del proyecto
-@"
-node_modules/
+﻿node_modules/
 .env
 *.log
 dist/
 .prisma/
-"@ | Out-File -FilePath .gitignore -Encoding utf8
+.claude/

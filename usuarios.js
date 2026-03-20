@@ -1,9 +1,9 @@
-
-// ── GUARD DE ACCESO ──
+// ── GUARD DE ACCESO (FIX #4: whitelist en lugar de blacklist) ──
 ;(function() {
   try {
-    const rol = JSON.parse(localStorage.getItem('jesha_usuario') || '{}').rol || 'EMPLEADO'
-    if (['ADMIN_SUCURSAL', 'EMPLEADO'].includes(rol)) {
+    const rol = JSON.parse(localStorage.getItem('jesha_usuario') || '{}').rol
+    const ROLES_PERMITIDOS = ['SUPERADMIN']
+    if (!ROLES_PERMITIDOS.includes(rol)) {
       window.location.replace('index.html')
     }
   } catch(e) { window.location.replace('index.html') }
@@ -123,6 +123,25 @@ async function cargarUsuarios() {
         </tr>
       `
     }
+  }
+}
+
+// FIX #2: cargarSucursales movida al scope global (antes estaba dentro del submit handler)
+async function cargarSucursales() {
+  try {
+    const res = await fetch(`${API_URL}/usuarios/sucursales`, {
+      headers: { 'Authorization': `Bearer ${TOKEN}` }
+    })
+    if (!res.ok) return
+    const sucursales = await res.json()
+    const select = document.getElementById('f-sucursal')
+    if (!select) return
+    select.innerHTML = '<option value="">Seleccionar sucursal...</option>'
+    sucursales.forEach(s => {
+      select.innerHTML += `<option value="${s.id}">${s.nombre}</option>`
+    })
+  } catch (e) {
+    console.error('Error cargando sucursales:', e)
   }
 }
 
@@ -332,8 +351,9 @@ if (formUsuario) {
       nombre,
       username,
       rol,
-      sucursalId: document.getElementById('f-sucursal').value || null,
-      ...(password && { password })
+      // FIX #5: convertir a número antes de enviar
+      sucursalId: parseInt(document.getElementById('f-sucursal').value) || null,
+      ...(password && { password, confirmarPassword: confirmar })
     }
 
     try {
@@ -364,6 +384,7 @@ if (formUsuario) {
 }
 
 // ── RESET PASSWORD ──
+// FIX #3: URL corregida a /reset-password, método POST, body incluye confirmarPassword
 document.getElementById('btn-reset-guardar')?.addEventListener('click', async (e) => {
   e.preventDefault()
   
@@ -375,13 +396,13 @@ document.getElementById('btn-reset-guardar')?.addEventListener('click', async (e
   if (password !== confirmar) return mostrarErrorReset('Las contraseñas no coinciden')
   
   try {
-    const response = await fetch(`${API_URL}/usuarios/${usuarioResetId}/password`, {
-      method: 'PATCH',
+    const response = await fetch(`${API_URL}/usuarios/${usuarioResetId}/reset-password`, {
+      method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${TOKEN}`
       },
-      body: JSON.stringify({ password })
+      body: JSON.stringify({ password, confirmarPassword: confirmar })
     })
 
     if (!response.ok) {
@@ -437,3 +458,4 @@ function togglePassword() {
 // ── INICIAR ──
 console.log('🚀 Inicializando módulo de usuarios...')
 cargarUsuarios()
+cargarSucursales()
