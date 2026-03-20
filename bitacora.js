@@ -324,12 +324,13 @@ async function registrarAbono() {
 //  CREAR BITÁCORA
 // ════════════════════════════════════════════════════════════════════
 function abrirModalCrear() {
-  document.getElementById('bit-titulo').value        = ''
+  document.getElementById('bit-titulo').value         = ''
   document.getElementById('bit-cliente-buscar').value = ''
-  document.getElementById('bit-cliente-id').value    = ''
-  document.getElementById('bit-descripcion').value   = ''
-  document.getElementById('bit-notas').value         = ''
+  document.getElementById('bit-cliente-id').value     = ''
+  document.getElementById('bit-descripcion').value    = ''
+  document.getElementById('bit-notas').value          = ''
   document.getElementById('crear-error').classList.remove('show')
+  cerrarBitDD()
   document.getElementById('modal-crear').classList.add('active')
   setTimeout(() => document.getElementById('bit-titulo').focus(), 100)
 }
@@ -382,27 +383,134 @@ async function cargarClientes() {
   } catch(e) { console.warn('No se cargaron clientes:', e.message) }
 }
 
+// ════════════════════════════════════════════════════════════════════
+//  DROPDOWN CLIENTES — patrón portal (body-level, escapa overflow)
+// ════════════════════════════════════════════════════════════════════
+
+;(function() {
+  if (document.getElementById('bit-dd-styles')) return
+  const s = document.createElement('style')
+  s.id = 'bit-dd-styles'
+  s.textContent = `
+    #bit-dd-portal {
+      position: fixed;
+      z-index: 999999;
+      background: #1a1d23;
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 8px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+      flex-direction: column;
+      overflow: hidden;
+    }
+    #bit-dd-portal .dd-search-wrap {
+      padding: 8px 10px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      flex-shrink: 0;
+    }
+    #bit-dd-portal .dd-search-wrap input {
+      width: 100%;
+      box-sizing: border-box;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 6px;
+      padding: 6px 10px;
+      color: #e9edf4;
+      font-size: 0.875rem;
+      outline: none;
+    }
+    #bit-dd-portal .dd-list { overflow-y: auto; max-height: 220px; }
+    #bit-dd-portal .dd-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 9px 14px;
+      cursor: pointer;
+      font-size: 0.875rem;
+      color: #e9edf4;
+      transition: background 0.12s;
+      gap: 12px;
+    }
+    #bit-dd-portal .dd-item:hover { background: rgba(255,255,255,0.06); }
+    #bit-dd-portal .dd-item .dd-tel { color: #6b7280; font-size: 0.78rem; white-space: nowrap; }
+    #bit-dd-portal .dd-item .dd-sin { color: #6b7280; }
+  `
+  document.head.appendChild(s)
+})()
+
+function obtenerPortal() {
+  let p = document.getElementById('bit-dd-portal')
+  if (!p) {
+    p = document.createElement('div')
+    p.id = 'bit-dd-portal'
+    p.style.display = 'none'
+    document.body.appendChild(p)
+  }
+  return p
+}
+
 function filtrarClientes(q) {
-  if (!q || q.length < 2) return []
-  const l = q.toLowerCase()
-  return clientesLista.filter(c => c.nombre?.toLowerCase().includes(l)).slice(0, 8)
+  const s = (q || '').toLowerCase().trim()
+  if (!s) return clientesLista.slice(0, 60)
+  return clientesLista.filter(c =>
+    c.nombre?.toLowerCase().includes(s) ||
+    c.apodo?.toLowerCase().includes(s)  ||
+    c.telefono?.includes(s)
+  ).slice(0, 60)
 }
 
-function renderDD(res, inputId, hiddenId, ddId) {
-  const dd = document.getElementById(ddId)
-  if (!res.length) { dd.style.display = 'none'; return }
-  dd.style.display = 'block'
-  dd.innerHTML = res.map(c => `
-    <div class="dropdown-item" onclick="selCliente('${inputId}','${hiddenId}','${ddId}',${c.id},'${c.nombre.replace(/'/g,"\\'")}')">
-      ${c.nombre}${c.telefono ? ` <span style="color:var(--muted);font-size:0.8rem">(${c.telefono})</span>` : ''}
+function renderItemsPortal(clientes) {
+  const list = document.querySelector('#bit-dd-portal .dd-list')
+  if (!list) return
+  list.innerHTML =
+    `<div class="dd-item" onclick="selBitCliente(null,'')">
+       <span class="dd-sin">👤 Sin cliente</span>
+     </div>` +
+    clientes.map(c => `
+      <div class="dd-item" onclick="selBitCliente(${c.id},'${c.nombre.replace(/'/g,"\\'")}')">
+        <span>${c.nombre}</span>
+        ${c.telefono ? `<span class="dd-tel">${c.telefono}</span>` : ''}
+      </div>`
+    ).join('')
+}
+
+function abrirBitDD() {
+  const input  = document.getElementById('bit-cliente-buscar')
+  const portal = obtenerPortal()
+  if (!input) return
+
+  if (portal.style.display === 'flex') { cerrarBitDD(); return }
+
+  const rect = input.getBoundingClientRect()
+  Object.assign(portal.style, {
+    display: 'flex',
+    top:     `${rect.bottom + 4}px`,
+    left:    `${rect.left}px`,
+    width:   `${rect.width}px`
+  })
+
+  portal.innerHTML = `
+    <div class="dd-search-wrap">
+      <input type="text" id="dd-bit-search" placeholder="Buscar cliente..." autocomplete="off" />
     </div>
-  `).join('')
+    <div class="dd-list"></div>
+  `
+  renderItemsPortal(filtrarClientes(''))
+
+  const inp = document.getElementById('dd-bit-search')
+  inp?.addEventListener('input', e => renderItemsPortal(filtrarClientes(e.target.value)))
+  inp?.addEventListener('mousedown', e => e.stopPropagation())
+  setTimeout(() => inp?.focus(), 40)
 }
 
-window.selCliente = (inputId, hiddenId, ddId, id, nombre) => {
-  document.getElementById(inputId).value = nombre
-  document.getElementById(hiddenId).value = id
-  document.getElementById(ddId).style.display = 'none'
+function cerrarBitDD() {
+  const p = document.getElementById('bit-dd-portal')
+  if (p) p.style.display = 'none'
+}
+
+window.selBitCliente = function(id, nombre) {
+  document.getElementById('bit-cliente-id').value     = id || ''
+  document.getElementById('bit-cliente-buscar').value = nombre || ''
+  cerrarBitDD()
 }
 
 function mostrarError(id, msg) {
@@ -438,11 +546,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('crear-cancel')?.addEventListener('click', () => document.getElementById('modal-crear').classList.remove('active'))
   document.getElementById('crear-guardar')?.addEventListener('click', guardarNuevaBitacora)
 
-  // Autocomplete cliente en modal crear
-  document.getElementById('bit-cliente-buscar')?.addEventListener('input', e => renderDD(filtrarClientes(e.target.value), 'bit-cliente-buscar','bit-cliente-id','dd-bit-clientes'))
-  document.addEventListener('click', e => {
-    if (!e.target.closest('#bit-cliente-buscar') && !e.target.closest('#dd-bit-clientes'))
-      document.getElementById('dd-bit-clientes').style.display = 'none'
+  // Dropdown cliente en modal crear
+  document.getElementById('bit-cliente-buscar')?.addEventListener('click', abrirBitDD)
+  document.getElementById('btn-lista-bit-clientes')?.addEventListener('click', abrirBitDD)
+  document.addEventListener('mousedown', e => {
+    if (!e.target.closest('#bit-cliente-buscar') &&
+        !e.target.closest('#btn-lista-bit-clientes') &&
+        !e.target.closest('#bit-dd-portal'))
+      cerrarBitDD()
   })
 
   // Modal detalle

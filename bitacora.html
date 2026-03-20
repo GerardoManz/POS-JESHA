@@ -81,9 +81,12 @@
       </div>
       <div class="form-group" style="margin-bottom:12px;">
         <label>Cliente</label>
-        <input type="text" id="bit-cliente-buscar" placeholder="Buscar cliente..." class="search-input" style="width:100%" autocomplete="off" />
-        <input type="hidden" id="bit-cliente-id" />
-        <div id="dd-bit-clientes" class="dropdown-clientes" style="display:none;"></div>
+        <div class="cliente-input-wrap" style="position:relative;">
+          <input type="text" id="bit-cliente-buscar" placeholder="Buscar o seleccionar cliente..." class="search-input" style="width:100%;padding-right:36px;" autocomplete="off" readonly />
+          <button type="button" id="btn-lista-bit-clientes" style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--muted);padding:4px;">&#8964;</button>
+          <input type="hidden" id="bit-cliente-id" />
+        </div>
+
       </div>
       <div class="form-group" style="margin-bottom:12px;">
         <label>Descripción</label>
@@ -227,6 +230,9 @@
     </div>
   </div>
 </div>
+
+<!-- Dropdown clientes — fuera de modales para evitar overflow clipping -->
+<div id="dd-bit-clientes" style="display:none;position:fixed;z-index:99999;flex-direction:column;"></div>
 
 <script src="sidebar.js"></script>
 <script src="bitacora.js"></script>

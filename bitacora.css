@@ -121,3 +121,4 @@
 .btn-danger:hover   { background:rgba(255,107,107,0.2); }
 .btn-eliminar { background:none; border:none; cursor:pointer; color:#ff6b6b; font-size:13px; padding:2px 6px; opacity:0.6; transition:opacity 0.15s; }
 .btn-eliminar:hover { opacity:1; }
+
