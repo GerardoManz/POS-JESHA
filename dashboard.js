@@ -21,6 +21,23 @@ async function apiFetch(path) {
 //  KPIs
 // ════════════════════════════════════════════════════════════════════
 async function cargarKPIs() {
+  const _rol = (() => { try { return JSON.parse(localStorage.getItem('jesha_usuario')||'{}').rol || 'EMPLEADO' } catch { return 'EMPLEADO' } })()
+
+  // Admin Sucursal: ocultar KPI Total Ventas con candado
+  if (_rol === 'ADMIN_SUCURSAL') {
+    const kpiTotal = document.querySelector('.kpi-card:nth-child(2)')
+    if (kpiTotal) {
+      kpiTotal.style.filter         = 'blur(5px)'
+      kpiTotal.style.userSelect     = 'none'
+      kpiTotal.style.pointerEvents  = 'none'
+      kpiTotal.style.position       = 'relative'
+      const ov = document.createElement('div')
+      ov.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;z-index:2;border-radius:inherit;cursor:not-allowed;'
+      ov.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.35)" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>'
+      kpiTotal.appendChild(ov)
+    }
+  }
+
   try {
     // Ventas de hoy
     const hoy   = new Date()
@@ -44,8 +61,8 @@ async function cargarKPIs() {
 
     // Productos e inventario — usar paginacion.total (estructura correcta del endpoint)
     const productos = await apiFetch('/productos?take=9999')
-    const listaProd  = productos.data  || [] + "PRODUCTOS DISPONIBLES"
-    const totalActivos = productos.paginacion?.total  || listaProd.length
+    const listaProd  = productos.data || []
+    const totalActivos = productos.paginacion?.total || listaProd.length
 
     // Productos CON stock (stockActual > 0)
     const conStock = listaProd.filter(p => (p.inventarios?.[0]?.stockActual ?? 0) > 0).length

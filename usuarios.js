@@ -1,9 +1,14 @@
-// ══════════════════════════════════════════════════════════════════
-//  USUARIOS — JAVASCRIPT (NUEVO - ARCHIVO FALTANTE)
-//  
-//  Basado en clientes.js pero adaptado para gestión de usuarios
-//  Gestión de usuarios del sistema POS
-// ══════════════════════════════════════════════════════════════════
+
+// ── GUARD DE ACCESO ──
+;(function() {
+  try {
+    const rol = JSON.parse(localStorage.getItem('jesha_usuario') || '{}').rol || 'EMPLEADO'
+    if (['ADMIN_SUCURSAL', 'EMPLEADO'].includes(rol)) {
+      window.location.replace('index.html')
+    }
+  } catch(e) { window.location.replace('index.html') }
+})()
+
 
 // ── OBTENER TOKEN ──
 const TOKEN = localStorage.getItem('jesha_token')

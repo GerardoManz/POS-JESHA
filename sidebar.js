@@ -1,88 +1,106 @@
-// ===== SIDEBAR.JS (VERSIÓN FINAL CORREGIDA) =====
-// Este archivo centraliza la autenticación y la carga del menú global.
+// ===== SIDEBAR.JS — CONTROL DE PERMISOS POR ROL =====
 
-// 🔒 1. VERIFICAR AUTENTICACIÓN
-function verificarAutenticacion() {
-  const token = localStorage.getItem('jesha_token');
-  const usuario = localStorage.getItem('jesha_usuario');
-  
-  if (!token || !usuario) {
-    console.warn('⚠️ No hay autenticación - redirigiendo a login');
-    window.location.href = 'login.html';
-    return false;
-  }
-  return true;
+// ════════════════════════════════════════════════════
+//  MAPA DE PERMISOS
+//  páginas que NO deben aparecer NI en menú NI ser accesibles
+// ════════════════════════════════════════════════════
+const ROL_BLOQUEADO = {
+  ADMIN_SUCURSAL: ['reportes', 'usuarios'],
+  EMPLEADO:       ['reportes', 'usuarios', 'corte-caja', 'dashboard'],
 }
 
-// 📂 2. CARGAR SIDEBAR DINÁMICO
+// Páginas donde el empleado es redirigido al POS en vez del dashboard
+const REDIRECCION_ROL = {
+  EMPLEADO: 'punto-venta.html',
+}
+
+function getRol() {
+  try { return JSON.parse(localStorage.getItem('jesha_usuario') || '{}').rol || 'EMPLEADO' }
+  catch { return 'EMPLEADO' }
+}
+
+function verificarAutenticacion() {
+  const token   = localStorage.getItem('jesha_token')
+  const usuario = localStorage.getItem('jesha_usuario')
+  if (!token || !usuario) {
+    window.location.href = 'login.html'
+    return false
+  }
+  return true
+}
+
+function verificarAccesoPagina(pagina) {
+  const rol = getRol()
+  if (rol === 'SUPERADMIN') return true
+
+  const bloqueadas = ROL_BLOQUEADO[rol] || []
+  if (bloqueadas.includes(pagina)) {
+    // Redirigir según el rol
+    const destino = REDIRECCION_ROL[rol] || 'index.html'
+    window.location.replace(destino)
+    return false
+  }
+  return true
+}
+
 async function cargarSidebar(paginaActual) {
   try {
-    const response = await fetch('sidebar.html');
-    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-    
-    const html = await response.text();
-    const container = document.getElementById('sidebar-container');
-    
-    if (!container) {
-      console.error('❌ Error: No se encontró el contenedor #sidebar-container');
-      return;
-    }
-    
-    // Inyectar el HTML
-    container.innerHTML = html;
-    console.log('✓ Sidebar inyectado correctamente');
+    const response = await fetch('sidebar.html')
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
+    const html = await response.text()
+    const container = document.getElementById('sidebar-container')
+    if (!container) { console.error('❌ No se encontró #sidebar-container'); return }
 
-    // Marcar el ítem del menú como activo
-    marcarPaginaActiva(paginaActual);
-    
-    // Configurar el botón de salida con reintentos para evitar el error de "No existe"
-    configurarLogoutConReintentos(10);
+    container.innerHTML = html
+    console.log('✓ Sidebar inyectado correctamente')
 
+    aplicarPermisosMenu()
+    marcarPaginaActiva(paginaActual)
+    configurarLogoutConReintentos(10)
   } catch (error) {
-    console.error('❌ Error cargando el archivo sidebar.html:', error);
+    console.error('❌ Error cargando sidebar.html:', error)
   }
 }
 
-// 📍 3. RESALTAR PÁGINA ACTUAL
+function aplicarPermisosMenu() {
+  const rol = getRol()
+  if (rol === 'SUPERADMIN') return
+
+  const bloqueadas = ROL_BLOQUEADO[rol] || []
+
+  bloqueadas.forEach(pagina => {
+    const item = document.querySelector(`.menu-item[data-page="${pagina}"]`)
+    if (item) {
+      item.style.display = 'none'
+    }
+  })
+}
+
 function marcarPaginaActiva(paginaActual) {
-  const items = document.querySelectorAll('.menu-item');
-  items.forEach(item => item.classList.remove('active'));
-  
-  const itemActivo = document.querySelector(`.menu-item[data-page="${paginaActual}"]`);
-  if (itemActivo) {
-    itemActivo.classList.add('active');
-    console.log(`✓ Menú activo: ${paginaActual}`);
-  }
+  const items = document.querySelectorAll('.menu-item')
+  items.forEach(item => item.classList.remove('active'))
+  const itemActivo = document.querySelector(`.menu-item[data-page="${paginaActual}"]`)
+  if (itemActivo) { itemActivo.classList.add('active'); console.log(`✓ Menú activo: ${paginaActual}`) }
 }
 
-// 🚪 4. CONFIGURAR LOGOUT (Robusto)
 function configurarLogoutConReintentos(intentos) {
-  const logoutBtn = document.getElementById('logout-btn');
-  
+  const logoutBtn = document.getElementById('logout-btn')
   if (logoutBtn) {
     logoutBtn.addEventListener('click', (e) => {
-      e.preventDefault();
-      console.log('🔓 Cerrando sesión...');
-      localStorage.removeItem('jesha_token');
-      localStorage.removeItem('jesha_usuario');
-      window.location.href = 'login.html';
-    });
-    console.log('✓ Botón de salida vinculado');
+      e.preventDefault()
+      localStorage.removeItem('jesha_token')
+      localStorage.removeItem('jesha_usuario')
+      window.location.href = 'login.html'
+    })
+    console.log('✓ Botón de salida vinculado')
   } else if (intentos > 0) {
-    // Si el DOM aún no procesa el ID, esperamos un frame (aprox 16ms) y reintentamos
-    requestAnimationFrame(() => configurarLogoutConReintentos(intentos - 1));
-  } else {
-    console.warn('⚠️ No se pudo vincular el botón de salida (no se encontró el ID)');
+    requestAnimationFrame(() => configurarLogoutConReintentos(intentos - 1))
   }
 }
 
-// ⚡ 5. INICIALIZACIÓN AUTOMÁTICA
 document.addEventListener('DOMContentLoaded', () => {
-  console.log('📄 DOMContentLoaded: Iniciando sidebar...');
-  
-  if (verificarAutenticacion()) {
-    // Obtenemos la página actual del atributo data-page del body
-    const paginaActual = document.body.getAttribute('data-page') || 'dashboard';
-    cargarSidebar(paginaActual);
-  }
-});
+  if (!verificarAutenticacion()) return
+  const paginaActual = document.body.getAttribute('data-page') || ''
+  if (!verificarAccesoPagina(paginaActual)) return
+  cargarSidebar(paginaActual)
+})

@@ -1,8 +1,3 @@
-// ════════════════════════════════════════════════════════════════════
-//  TICKET.CONTROLLER.JS
-//  src/modules/ventas/ticket.controller.js
-// ════════════════════════════════════════════════════════════════════
-
 const prisma  = require('../../lib/prisma')
 const QRCode  = require('qrcode')
 const fs      = require('fs')
@@ -14,8 +9,7 @@ const EMPRESA = {
   slogan:   'Productos y Servicios de Máxima Calidad',
   direccion:'Av. San Simón #03',
   ciudad:   'Guadalupe, Zacatecas',
-  tel1:     '4921941703',
-  tel2:     '4921016879',
+  tel1:     '4921016879',
 }
 
 const BASE_URL = process.env.BASE_URL || 'http://192.168.0.190:3000'
@@ -198,7 +192,6 @@ function generarHTMLTicket(venta, qrDataUrl, fechaStr, pagos) {
   <div style="text-align:center;font-size:10px;margin:2px 0;">Números de contacto:</div>
   <div class="tel-row">
     <span>${EMPRESA.tel1}</span>
-    <span>${EMPRESA.tel2}</span>
   </div>
 
   ${venta.cliente ? `<div class="cliente-row">Cliente: ${venta.cliente.nombre}</div>` : ''}
@@ -239,7 +232,12 @@ function generarHTMLTicket(venta, qrDataUrl, fechaStr, pagos) {
 
   <div class="footer">
     Gracias por su compra<br/>
-    Conserve su ticket para cualquier aclaración
+    Conserve su ticket para cualquier aclaración<br/><br/>
+    <span style="font-size:8px;color:#333;">
+      Tienes <strong>3 días</strong> a partir de la fecha de compra para solicitar tu factura.<br/>
+      Pasado este plazo, Ferretería JESHA no se hace responsable de la emisión.<br/>
+      No se aceptan devoluciones de productos dañados o con mal uso.
+    </span>
   </div>
 
   <button class="btn-print" onclick="window.print()">🖨️ Imprimir Ticket</button>

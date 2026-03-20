@@ -1,3 +1,13 @@
+// ── GUARD DE ACCESO ──
+;(function() {
+  try {
+    const rol = JSON.parse(localStorage.getItem('jesha_usuario') || '{}').rol || 'EMPLEADO'
+    if (['EMPLEADO'].includes(rol)) {
+      window.location.replace('punto-venta.html')
+    }
+  } catch(e) { window.location.replace('punto-venta.html') }
+})()
+
 // ══════════════════════════════════════════════════════════════════
 //  CORTE DE CAJA — JAVASCRIPT
 // ══════════════════════════════════════════════════════════════════

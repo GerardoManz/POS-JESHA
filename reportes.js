@@ -1,3 +1,28 @@
+// ── GUARD DE ACCESO ──
+;(function() {
+  try {
+    const rol = JSON.parse(localStorage.getItem('jesha_usuario') || '{}').rol || 'EMPLEADO'
+    if (['ADMIN_SUCURSAL', 'EMPLEADO'].includes(rol)) {
+      window.location.replace('index.html')
+    }
+  } catch(e) { window.location.replace('index.html') }
+})()
+
+  // Página actual
+  const pagina = document.body?.getAttribute('data-page') || ''
+
+  const bloqueadas = {
+    ADMIN_SUCURSAL: ['reportes', 'usuarios'],
+    CAJERO:         ['reportes', 'usuarios'],
+  }
+
+  const bloq = bloqueadas[rol] || []
+  if (rol !== 'SUPERADMIN' && bloq.includes(pagina)) {
+    window.location.href = 'index.html'
+  }
+})()
+
+
 // ════════════════════════════════════════════════════════════════════
 //  REPORTES.JS
 // ════════════════════════════════════════════════════════════════════
