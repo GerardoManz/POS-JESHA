@@ -1247,3 +1247,7 @@
 }
 .modal-cotizar-btn-confirm:hover { background: rgba(107,157,232,0.22); border-color: rgba(107,157,232,0.5); }
 .modal-cotizar-btn-confirm:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.modal-cotizar-overlay.open {
+  display: flex;
+}

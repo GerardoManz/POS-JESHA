@@ -541,7 +541,7 @@ async function confirmarVenta() {
 
     const payload = {
       sucursalId:  turnoActivo.sucursalId,
-      usuarioId:   turnoActivo.usuarioId,
+      usuarioId:   USUARIO.id,
       turnoId:     turnoActivo.id,
       clienteId:   clienteSeleccionado?.id || null,
       metodoPago:  metodoPagoSeleccionado,
@@ -613,11 +613,11 @@ function abrirModalCotizar() {
   if (venceInput)  venceInput.value = ''
   if (notasInput)  notasInput.value = ''
   if (errorDiv)    { errorDiv.style.display = 'none'; errorDiv.textContent = '' }
-  document.getElementById('modal-cotizar').style.display = 'flex'
+  document.getElementById('modal-cotizar').classList.add('open')
 }
 
 function cerrarModalCotizar() {
-  document.getElementById('modal-cotizar').style.display = 'none'
+  document.getElementById('modal-cotizar').classList.remove('open')
 }
 
 async function confirmarCotizar() {
@@ -809,8 +809,7 @@ function configurarEventListeners() {
       modalConfirmacion.style.display     = 'none'
       modalClienteRapido.style.display    = 'none'
       modalAbrirTurno.style.display       = 'none'
-      document.getElementById('modal-cotizar')?.style &&
-        (document.getElementById('modal-cotizar').style.display = 'none')
+      document.getElementById('modal-cotizar')?.classList.remove('open')
     }
   })
 

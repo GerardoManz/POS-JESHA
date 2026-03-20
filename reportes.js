@@ -1,25 +1,12 @@
 // ── GUARD DE ACCESO ──
 ;(function() {
   try {
-    const rol = JSON.parse(localStorage.getItem('jesha_usuario') || '{}').rol || 'EMPLEADO'
-    if (['ADMIN_SUCURSAL', 'EMPLEADO'].includes(rol)) {
+    const rol = JSON.parse(localStorage.getItem('jesha_usuario') || '{}').rol
+    const ROLES_PERMITIDOS = ['SUPERADMIN']
+    if (!ROLES_PERMITIDOS.includes(rol)) {
       window.location.replace('index.html')
     }
   } catch(e) { window.location.replace('index.html') }
-})()
-
-  // Página actual
-  const pagina = document.body?.getAttribute('data-page') || ''
-
-  const bloqueadas = {
-    ADMIN_SUCURSAL: ['reportes', 'usuarios'],
-    CAJERO:         ['reportes', 'usuarios'],
-  }
-
-  const bloq = bloqueadas[rol] || []
-  if (rol !== 'SUPERADMIN' && bloq.includes(pagina)) {
-    window.location.href = 'index.html'
-  }
 })()
 
 
@@ -135,7 +122,7 @@ function renderMetodos(ventas, totalIngresos) {
     grupos[m].count++
   })
 
-  const icons = { EFECTIVO:'💵', TARJETA:'💳', TRANSFERENCIA:'🔄' }
+  const icons  = { EFECTIVO:'💵', TARJETA:'💳', TRANSFERENCIA:'🔄' }
   const labels = { EFECTIVO:'Efectivo', TARJETA:'Tarjeta', TRANSFERENCIA:'Transferencia' }
   const clases = { EFECTIVO:'verde', TARJETA:'azul', TRANSFERENCIA:'naranja' }
 
@@ -163,16 +150,6 @@ function renderProductos(ventas) {
   const el = document.getElementById('rep-productos')
   if (ventas.length === 0) { el.className = 'panel-empty'; el.textContent = 'Sin ventas en este período'; return }
 
-  // Necesitamos el detalle de productos — extraemos de las ventas si están disponibles
-  // Si no, mostramos por conteo de ventas agrupado por folio
-  const prodMap = {}
-  ventas.forEach(v => {
-    // El endpoint /ventas devuelve productosCount pero no los detalles
-    // Usamos el cliente como agrupación alternativa si no hay detalles
-  })
-
-  // Como /ventas no trae detalles de productos, mostramos resumen general
-  // La data completa vendría de un endpoint de reportes dedicado
   el.className = ''
   el.innerHTML = `
     <div style="padding:10px 0;">
@@ -209,7 +186,6 @@ function renderPorDia(ventas) {
   const dias = Object.entries(porDia).sort((a,b) => new Date(a[0]) - new Date(b[0]))
 
   if (dias.length === 1) {
-    // Solo un día — mostrar por horas
     const porHora = {}
     ventas.forEach(v => {
       const h = new Date(v.fecha).getHours()
@@ -260,11 +236,11 @@ function renderClientes(ventas, totalIngresos) {
     clienteMap[nombre].count++
   })
 
-  const top = Object.entries(clienteMap).sort((a,b) => b[1].total - a[1].total).slice(0, 8)
+  const top  = Object.entries(clienteMap).sort((a,b) => b[1].total - a[1].total).slice(0, 8)
   const maxC = top[0]?.[1].total || 1
 
   const filas = top.map(([nombre, g], i) => {
-    const pct = (g.total / maxC * 100).toFixed(0)
+    const pct     = (g.total / maxC * 100).toFixed(0)
     const pcTotal = totalIngresos > 0 ? (g.total / totalIngresos * 100).toFixed(1) : 0
     return `<tr>
       <td style="color:var(--muted);font-size:0.78rem">${i+1}</td>
