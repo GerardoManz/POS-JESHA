@@ -1,18 +1,16 @@
 // ════════════════════════════════════════════════════════════════════
-//  APP.JS
+// APP.JS
 // ════════════════════════════════════════════════════════════════════
-
 require('dotenv').config()
 const { requireAuth } = require('./middlewares/auth.middleware')
 const express = require('express')
 const cors    = require('cors')
 const path    = require('path')
-
-const app = express()
+const app     = express()
 
 app.use(cors({
-  origin: '*',
-  methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
+  origin:         '*',
+  methods:        ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
   allowedHeaders: ['Content-Type','Authorization']
 }))
 app.use(express.json())
@@ -22,26 +20,26 @@ const frontendPath = path.join(__dirname, '../../')
 app.use(express.static(frontendPath))
 
 // ── Ruta especial: GET /facturar?token=... → sirve el HTML ──
-// POST /facturar sigue siendo el API para guardar la solicitud
 app.get('/facturar', (req, res) => {
   res.sendFile(path.join(frontendPath, 'facturar.html'))
 })
 
 // ── Rutas PÚBLICAS del API ──
-app.use('/auth',         require('./modules/auth/auth.routes'))
-app.use('/facturar/api', require('./modules/facturacion/facturacion.routes'))
+app.use('/auth',          require('./modules/auth/auth.routes'))
+app.use('/facturar/api',  require('./modules/facturacion/facturacion.routes'))
 
 // ── Rutas protegidas ──
-app.use('/facturas',    requireAuth, require('./modules/facturas/facturas.routes'))
-app.use('/usuarios',    requireAuth, require('./modules/usuarios/usuarios.routes'))
-app.use('/clientes',    requireAuth, require('./modules/clientes/clientes.routes'))
-app.use('/productos',   requireAuth, require('./modules/productos/productos.routes'))
-app.use('/ventas',      requireAuth, require('./modules/ventas/ventas.routes'))
-app.use('/turnos-caja', requireAuth, require('./modules/turnos-caja/turnos-caja.routes'))
-app.use('/cotizaciones',requireAuth, require('./modules/cotizaciones/cotizaciones.routes'))
-app.use('/pedidos',     requireAuth, require('./modules/pedidos/pedidos.routes'))
-app.use('/bitacoras',   requireAuth, require('./modules/bitacora/bitacora.routes'))
-app.use('/compras',     requireAuth, require('./modules/compras/compras.routes'))
+app.use('/facturas',     requireAuth, require('./modules/facturas/facturas.routes'))
+app.use('/usuarios',     requireAuth, require('./modules/usuarios/usuarios.routes'))
+app.use('/clientes',     requireAuth, require('./modules/clientes/clientes.routes'))
+app.use('/productos',    requireAuth, require('./modules/productos/productos.routes'))
+app.use('/ventas',       requireAuth, require('./modules/ventas/ventas.routes'))
+app.use('/turnos-caja',  requireAuth, require('./modules/turnos-caja/turnos-caja.routes'))
+app.use('/cotizaciones', requireAuth, require('./modules/cotizaciones/cotizaciones.routes'))
+app.use('/pedidos',      requireAuth, require('./modules/pedidos/pedidos.routes'))
+app.use('/bitacoras',    requireAuth, require('./modules/bitacora/bitacora.routes'))
+app.use('/compras',      requireAuth, require('./modules/compras/compras.routes'))
+app.use('/devoluciones', requireAuth, require('./modules/devoluciones/devoluciones.routes'))
 
 // ── Imágenes de productos ──
 app.use('/imagenes', express.static(path.join(__dirname, 'public/imagenes')))

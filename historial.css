@@ -429,3 +429,108 @@ input.filter-select[type="date"] {
   margin-top: 12px;
   padding-top: 12px;
 }
+
+/* ════════════════════════════════════════════════════════════════════
+   DEVOLUCIONES — agregar al final de historial.css
+   ════════════════════════════════════════════════════════════════════ */
+
+/* ── Botón "Devolver productos" en modal de detalle ── */
+.btn-devolver-hist {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background: rgba(255,107,107,0.1);
+  border: 1px solid rgba(255,107,107,0.3);
+  border-radius: 8px;
+  color: #ff6b6b;
+  font-family: 'Barlow', sans-serif;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-devolver-hist:hover {
+  background: rgba(255,107,107,0.2);
+  border-color: rgba(255,107,107,0.5);
+}
+
+/* ── Tipos de resolución ── */
+.dev-tipo-btn {
+  padding: 8px 16px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  color: var(--muted);
+  font-family: 'Barlow', sans-serif;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.dev-tipo-btn:hover {
+  border-color: rgba(255,255,255,0.2);
+  color: var(--text);
+}
+.dev-tipo-btn.active {
+  background: rgba(74,144,226,0.12);
+  border-color: rgba(74,144,226,0.4);
+  color: #4a90e2;
+}
+.dev-tipo-reembolso.active {
+  background: rgba(255,107,107,0.1);
+  border-color: rgba(255,107,107,0.35);
+  color: #ff6b6b;
+}
+
+/* ── Chips de motivo ── */
+.dev-motivo-chip {
+  padding: 5px 12px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--panel-border);
+  border-radius: 20px;
+  color: var(--muted);
+  font-family: 'Barlow', sans-serif;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.dev-motivo-chip:hover {
+  border-color: rgba(255,255,255,0.2);
+  color: var(--text);
+}
+.dev-motivo-chip.active {
+  background: rgba(74,144,226,0.1);
+  border-color: rgba(74,144,226,0.35);
+  color: #4a90e2;
+}
+
+/* ── Filas deshabilitadas en tabla de devolución ── */
+.dev-row-disabled td {
+  opacity: 0.35;
+}
+
+/* ── Btn danger ── */
+.btn-danger {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 18px;
+  background: rgba(255,107,107,0.12);
+  border: 1px solid rgba(255,107,107,0.35);
+  border-radius: 8px;
+  color: #ff6b6b;
+  font-family: 'Barlow', sans-serif;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-danger:hover:not(:disabled) {
+  background: rgba(255,107,107,0.22);
+  border-color: rgba(255,107,107,0.55);
+}
+.btn-danger:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}

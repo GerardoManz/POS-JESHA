@@ -17,36 +17,29 @@
       <p id="fecha-actual"></p>
     </header>
 
-    <!-- ── TOOLBAR — idéntico a pedidos ── -->
+    <!-- ── TOOLBAR ── -->
     <section class="toolbar">
-
       <div class="search-group">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
         <input type="text" id="search-input" placeholder="Folio o cliente..." class="search-input" />
       </div>
-
       <input type="date" id="filtro-desde" class="filter-select" placeholder="Desde" />
       <input type="date" id="filtro-hasta" class="filter-select" placeholder="Hasta" />
-
       <select id="filtro-metodo" class="filter-select">
         <option value="">Todos los métodos</option>
         <option value="EFECTIVO">💵 Efectivo</option>
         <option value="CREDITO">💳 Tarjeta</option>
         <option value="TRANSFERENCIA">🔄 Transferencia</option>
       </select>
-
       <select id="filtro-cliente" class="filter-select">
         <option value="">Todos los clientes</option>
       </select>
-
       <select id="filtro-usuario" class="filter-select">
         <option value="">Todos los cajeros</option>
       </select>
-
       <button id="btn-limpiar-filtros" class="btn-secondary btn-limpiar-hist">
         ✕ Limpiar
       </button>
-
     </section>
 
     <!-- ── KPIs ── -->
@@ -101,15 +94,12 @@
           </tbody>
         </table>
       </div>
-
-      <!-- Paginación -->
       <div class="pagination" id="pagination" style="display:none;">
         <button id="btn-prev" class="btn-pag" disabled>&#8592; Anterior</button>
         <span id="pag-info" class="pag-info"></span>
         <button id="btn-next" class="btn-pag">Siguiente &#8594;</button>
       </div>
     </section>
-
   </main>
 </div>
 
@@ -123,7 +113,6 @@
       </div>
       <button class="modal-close" id="modal-venta-close">&times;</button>
     </div>
-
     <div class="ver-body">
       <div class="ver-meta">
         <div class="meta-item"><span class="meta-label">Fecha</span><span class="meta-valor" id="det-fecha">—</span></div>
@@ -133,7 +122,6 @@
         <div class="meta-item"><span class="meta-label">Método de pago</span><span class="meta-valor" id="det-metodo">—</span></div>
         <div class="meta-item"><span class="meta-label">Factura</span><span class="meta-valor" id="det-factura">—</span></div>
       </div>
-
       <div class="table-wrapper" style="margin:16px 0;">
         <table class="hist-table">
           <thead>
@@ -148,15 +136,118 @@
           <tbody id="det-items-tbody"></tbody>
         </table>
       </div>
-
       <div class="det-resumen">
         <div class="det-resumen-row"><span>Subtotal:</span><span id="det-subtotal">$0.00</span></div>
         <div class="det-resumen-row"><span>Descuento:</span><span id="det-descuento">$0.00</span></div>
         <div class="det-resumen-row det-total"><span>Total:</span><span id="det-total">$0.00</span></div>
       </div>
-
-      <!-- Acciones del modal -->
       <div class="det-acciones-modal" id="det-acciones-modal"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL DEVOLUCIÓN ══ -->
+<div id="modal-devolucion" class="modal">
+  <div class="modal-content modal-large">
+    <div class="modal-header">
+      <div>
+        <h3 id="dev-folio-titulo">Devolución — VTA-...</h3>
+        <span id="dev-aviso-tiempo" class="estado-badge cancelada" style="display:none;">
+          Más de 72h — requiere autorización
+        </span>
+      </div>
+      <button class="modal-close" id="modal-dev-close">&times;</button>
+    </div>
+
+    <div class="ver-body">
+
+      <!-- Aviso factura -->
+      <div id="dev-aviso-factura" style="display:none; padding:10px 14px; background:rgba(255,193,7,0.08); border:1px solid rgba(255,193,7,0.25); border-radius:8px; color:#ffc107; font-size:0.85rem; margin-bottom:14px;">
+        ⚠️ Esta venta tiene factura. La devolución requiere nota de crédito CFDI — procede con tu contador.
+      </div>
+
+      <!-- Tabla de productos a devolver -->
+      <p style="font-size:0.78rem; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:0.05em; margin-bottom:8px;">
+        Selecciona productos a devolver
+      </p>
+      <div class="table-wrapper" style="margin-bottom:16px;">
+        <table class="hist-table">
+          <thead>
+            <tr>
+              <th style="width:36px"></th>
+              <th>Producto</th>
+              <th style="width:80px">Vendidos</th>
+              <th style="width:80px">Ya dev.</th>
+              <th style="width:80px">Disponible</th>
+              <th style="width:100px">A devolver</th>
+              <th style="width:100px">Subtotal</th>
+            </tr>
+          </thead>
+          <tbody id="dev-items-tbody"></tbody>
+        </table>
+      </div>
+
+      <!-- Fila resumen monto -->
+      <div style="display:flex; justify-content:flex-end; margin-bottom:16px;">
+        <div style="background:rgba(255,255,255,0.03); border:1px solid var(--panel-border); border-radius:8px; padding:12px 18px; text-align:right;">
+          <div style="font-size:0.75rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.05em; margin-bottom:4px;">Monto a reembolsar</div>
+          <div id="dev-monto-total" style="font-family:'Barlow Condensed',sans-serif; font-size:1.6rem; font-weight:700; color:var(--accent);">$0.00</div>
+        </div>
+      </div>
+
+      <!-- Tipo de resolución -->
+      <div style="margin-bottom:14px;">
+        <label style="font-size:0.78rem; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:0.05em; display:block; margin-bottom:8px;">
+          Tipo de resolución *
+        </label>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <button type="button" class="dev-tipo-btn" data-tipo="CAMBIO_PRODUCTO">
+            🔄 Cambio de producto
+          </button>
+          <button type="button" class="dev-tipo-btn" data-tipo="CAMBIO_PARCIAL">
+            ↔️ Cambio parcial
+          </button>
+          <button type="button" class="dev-tipo-btn dev-tipo-reembolso" data-tipo="REEMBOLSO">
+            💵 Reembolso
+          </button>
+        </div>
+      </div>
+
+      <!-- Motivo -->
+      <div style="margin-bottom:14px;">
+        <label style="font-size:0.78rem; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:0.05em; display:block; margin-bottom:6px;">
+          Motivo * (obligatorio)
+        </label>
+        <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">
+          <button type="button" class="dev-motivo-chip" data-motivo="Producto defectuoso">Producto defectuoso</button>
+          <button type="button" class="dev-motivo-chip" data-motivo="Error en venta">Error en venta</button>
+          <button type="button" class="dev-motivo-chip" data-motivo="Cliente cambió de opinión">Cliente cambió de opinión</button>
+          <button type="button" class="dev-motivo-chip" data-motivo="Producto equivocado">Producto equivocado</button>
+        </div>
+        <input type="text" id="dev-motivo" placeholder="O escribe el motivo aquí..." 
+               style="width:100%; padding:9px 12px; background:rgba(255,255,255,0.04); border:1px solid var(--panel-border); border-radius:8px; color:var(--text); font-family:'Barlow',sans-serif; font-size:0.875rem; outline:none; box-sizing:border-box;" />
+      </div>
+
+      <!-- Notas opcionales -->
+      <div style="margin-bottom:16px;">
+        <label style="font-size:0.78rem; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:0.05em; display:block; margin-bottom:6px;">
+          Notas (opcional)
+        </label>
+        <textarea id="dev-notas" rows="2" placeholder="Observaciones adicionales..."
+                  style="width:100%; padding:9px 12px; background:rgba(255,255,255,0.04); border:1px solid var(--panel-border); border-radius:8px; color:var(--text); font-family:'Barlow',sans-serif; font-size:0.875rem; outline:none; resize:vertical; box-sizing:border-box;"></textarea>
+      </div>
+
+      <!-- Error -->
+      <div id="dev-error" style="display:none; padding:10px 14px; background:rgba(244,67,54,0.1); border-left:3px solid #f44336; border-radius:4px; color:#ff9999; font-size:0.85rem; margin-bottom:12px;"></div>
+
+      <!-- Acciones -->
+      <div style="display:flex; justify-content:flex-end; gap:10px; padding-top:8px; border-top:1px solid var(--panel-border);">
+        <button type="button" id="dev-cancelar" class="btn-secondary">Cancelar</button>
+        <button type="button" id="dev-confirmar" class="btn-danger" disabled>
+          Registrar devolución
+        </button>
+      </div>
+
     </div>
   </div>
 </div>

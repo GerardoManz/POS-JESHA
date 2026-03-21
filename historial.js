@@ -1,7 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 //  HISTORIAL DE VENTAS — JAVASCRIPT
 // ════════════════════════════════════════════════════════════════════
-
 const TOKEN   = localStorage.getItem('jesha_token')
 const USUARIO = JSON.parse(localStorage.getItem('jesha_usuario') || '{}')
 
@@ -15,99 +14,73 @@ const API_URL = 'http://localhost:3000'
 const LIMIT   = 25
 
 // ── ESTADO ──
-let paginaActual    = 1
+let paginaActual        = 1
 let debounceSearch
+let ventaActual         = null
+let devVentaData        = null
+let devResumenPrevio    = {}
+let devTipoSeleccionado = null
 
 // ── HELPERS ──
 const fmt = v => `$${parseFloat(v || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-
-const fmtFecha = iso => iso
-  ? new Date(iso).toLocaleString('es-MX', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' })
-  : '—'
-
+const fmtFecha = iso => iso ? new Date(iso).toLocaleString('es-MX', {
+  day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
+}) : '—'
 const metodoBadge = m => {
-  const map = {
-    EFECTIVO:       '💵 Efectivo',
-    CREDITO:        '💳 Tarjeta',
-    DEBITO:         '💳 Tarjeta',
-    TRANSFERENCIA:  '🔄 Transf.'
-  }
+  const map = { EFECTIVO: '💵 Efectivo', CREDITO: '💳 Tarjeta', DEBITO: '💳 Tarjeta', TRANSFERENCIA: '🔄 Transf.' }
   return `<span class="metodo-badge">${map[m] || m}</span>`
 }
 
 // ════════════════════════════════════════════════════════════════════
-//  CARGAR CATÁLOGOS (clientes y cajeros para los selects)
+//  CARGAR CATÁLOGOS
 // ════════════════════════════════════════════════════════════════════
-
 async function cargarCatalogos() {
   try {
-    // Clientes
-    const resC = await fetch(`${API_URL}/clientes?activo=true`, {
-      headers: { 'Authorization': `Bearer ${TOKEN}` }
-    })
+    const resC = await fetch(`${API_URL}/clientes?activo=true`, { headers: { 'Authorization': `Bearer ${TOKEN}` } })
     if (resC.ok) {
-      const dataC = await resC.json()
+      const dataC    = await resC.json()
       const clientes = Array.isArray(dataC) ? dataC : (dataC.data || [])
-      const selCliente = document.getElementById('filtro-cliente')
-      // Opción especial para ventas sin cliente asignado
-      const optPublico = document.createElement('option')
-      optPublico.value       = 'null'
-      optPublico.textContent = 'Público general'
-      selCliente.appendChild(optPublico)
-
+      const sel      = document.getElementById('filtro-cliente')
+      const optPub   = document.createElement('option')
+      optPub.value   = 'null'; optPub.textContent = 'Público general'
+      sel.appendChild(optPub)
       clientes
-        .filter(c => c.nombre.toLowerCase() !== 'cliente general' && c.nombre.toLowerCase() !== 'público general')
+        .filter(c => !['cliente general','público general'].includes(c.nombre.toLowerCase()))
         .sort((a, b) => a.nombre.localeCompare(b.nombre))
         .forEach(c => {
           const opt = document.createElement('option')
-          opt.value       = c.id
-          opt.textContent = c.nombre
-          selCliente.appendChild(opt)
+          opt.value = c.id; opt.textContent = c.nombre
+          sel.appendChild(opt)
         })
     }
 
-    // Usuarios (cajeros)
-    const resU = await fetch(`${API_URL}/usuarios`, {
-      headers: { 'Authorization': `Bearer ${TOKEN}` }
-    })
+    const resU = await fetch(`${API_URL}/usuarios`, { headers: { 'Authorization': `Bearer ${TOKEN}` } })
     if (resU.ok) {
-      const dataU = await resU.json()
+      const dataU    = await resU.json()
       const usuarios = Array.isArray(dataU) ? dataU : (dataU.data || [])
-      const selUsuario = document.getElementById('filtro-usuario')
-      usuarios
-        .filter(u => u.activo)
-        .sort((a, b) => a.nombre.localeCompare(b.nombre))
-        .forEach(u => {
-          const opt = document.createElement('option')
-          opt.value       = u.id
-          opt.textContent = u.nombre
-          selUsuario.appendChild(opt)
-        })
+      const sel      = document.getElementById('filtro-usuario')
+      usuarios.filter(u => u.activo).sort((a, b) => a.nombre.localeCompare(b.nombre)).forEach(u => {
+        const opt = document.createElement('option')
+        opt.value = u.id; opt.textContent = u.nombre
+        sel.appendChild(opt)
+      })
     }
-  } catch (e) {
-    console.warn('No se pudieron cargar catálogos:', e.message)
-  }
+  } catch (e) { console.warn('No se pudieron cargar catálogos:', e.message) }
 }
 
 // ════════════════════════════════════════════════════════════════════
 //  CARGAR VENTAS
 // ════════════════════════════════════════════════════════════════════
-
 async function cargarVentas() {
   const tbody  = document.getElementById('hist-tbody')
   const pagDiv = document.getElementById('pagination')
-
   tbody.innerHTML = `<tr><td colspan="10" class="loading-cell"><div class="spinner"></div><p>Cargando...</p></td></tr>`
 
   const params = construirParams()
-
   try {
-    const res  = await fetch(`${API_URL}/ventas?${params}`, {
-      headers: { 'Authorization': `Bearer ${TOKEN}` }
-    })
+    const res   = await fetch(`${API_URL}/ventas?${params}`, { headers: { 'Authorization': `Bearer ${TOKEN}` } })
     if (!res.ok) throw new Error('Error cargando ventas')
-
-    const data   = await res.json()
+    const data  = await res.json()
     const ventas = data.data || []
     const total  = data.total || 0
 
@@ -118,7 +91,6 @@ async function cargarVentas() {
       return
     }
 
-    // Render filas
     tbody.innerHTML = ventas.map(v => `
       <tr onclick="verDetalle(${v.id})">
         <td><strong>${v.folio}</strong></td>
@@ -139,19 +111,15 @@ async function cargarVentas() {
       </tr>
     `).join('')
 
-    // KPIs del resultado actual
     actualizarKpis(ventas, total)
 
-    // Paginación
     const totalPags = Math.ceil(total / LIMIT)
     if (totalPags > 1) {
       pagDiv.style.display = 'flex'
       document.getElementById('pag-info').textContent = `Página ${paginaActual} de ${totalPags} (${total} ventas)`
       document.getElementById('btn-prev').disabled = paginaActual <= 1
       document.getElementById('btn-next').disabled = paginaActual >= totalPags
-    } else {
-      pagDiv.style.display = 'none'
-    }
+    } else { pagDiv.style.display = 'none' }
 
   } catch (err) {
     tbody.innerHTML = `<tr><td colspan="10" class="loading-cell"><p style="color:#f44336">Error: ${err.message}</p></td></tr>`
@@ -160,9 +128,8 @@ async function cargarVentas() {
 }
 
 // ════════════════════════════════════════════════════════════════════
-//  CONSTRUIR PARAMS DE LA URL
+//  CONSTRUIR PARAMS
 // ════════════════════════════════════════════════════════════════════
-
 function construirParams() {
   const skip    = (paginaActual - 1) * LIMIT
   const search  = document.getElementById('search-input')?.value.trim()
@@ -171,36 +138,29 @@ function construirParams() {
   const metodo  = document.getElementById('filtro-metodo')?.value
   const cliente = document.getElementById('filtro-cliente')?.value
   const usuario = document.getElementById('filtro-usuario')?.value
-
-  const p = new URLSearchParams({ skip, take: LIMIT })
-  if (search)               p.set('search',     search)
-  if (desde)                p.set('desde',      desde)
-  if (hasta)                p.set('hasta',      hasta)
-  if (metodo)               p.set('metodoPago', metodo)
-  if (cliente === 'null')     p.set('clienteId', 'null')  // Público general
-  else if (cliente && parseInt(cliente) > 0)
-                            p.set('clienteId',  parseInt(cliente))
-  if (usuario && usuario !== '0' && parseInt(usuario) > 0)
-                            p.set('usuarioId',  parseInt(usuario))
-
+  const p       = new URLSearchParams({ skip, take: LIMIT })
+  if (search)  p.set('search', search)
+  if (desde)   p.set('desde', desde)
+  if (hasta)   p.set('hasta', hasta)
+  if (metodo)  p.set('metodoPago', metodo)
+  if (cliente === 'null')                     p.set('clienteId', 'null')
+  else if (cliente && parseInt(cliente) > 0)  p.set('clienteId', parseInt(cliente))
+  if (usuario && usuario !== '0' && parseInt(usuario) > 0) p.set('usuarioId', parseInt(usuario))
   return p.toString()
 }
 
 // ════════════════════════════════════════════════════════════════════
-//  KPIS DEL RESULTADO
+//  KPIS
 // ════════════════════════════════════════════════════════════════════
-
 function actualizarKpis(ventas, totalRegistros) {
   let montoTotal = 0, efectivo = 0, tarjeta = 0, transferencia = 0
-
   ventas.forEach(v => {
     const t = parseFloat(v.total)
     montoTotal += t
-    if (v.metodoPago === 'EFECTIVO')                              efectivo     += t
-    if (v.metodoPago === 'CREDITO' || v.metodoPago === 'DEBITO') tarjeta       += t
-    if (v.metodoPago === 'TRANSFERENCIA')                         transferencia += t
+    if (v.metodoPago === 'EFECTIVO')                              efectivo      += t
+    if (v.metodoPago === 'CREDITO' || v.metodoPago === 'DEBITO') tarjeta        += t
+    if (v.metodoPago === 'TRANSFERENCIA')                         transferencia  += t
   })
-
   document.getElementById('kpi-total-ventas').textContent  = totalRegistros
   document.getElementById('kpi-monto-total').textContent   = fmt(montoTotal)
   document.getElementById('kpi-efectivo').textContent      = fmt(efectivo)
@@ -210,27 +170,29 @@ function actualizarKpis(ventas, totalRegistros) {
 }
 
 // ════════════════════════════════════════════════════════════════════
-//  VER DETALLE DE VENTA
+//  VER DETALLE
 // ════════════════════════════════════════════════════════════════════
-
 window.verDetalle = async function(id) {
   try {
-    const res  = await fetch(`${API_URL}/ventas/${id}`, {
-      headers: { 'Authorization': `Bearer ${TOKEN}` }
-    })
+    const res  = await fetch(`${API_URL}/ventas/${id}`, { headers: { 'Authorization': `Bearer ${TOKEN}` } })
     if (!res.ok) throw new Error('No se pudo cargar la venta')
     const data = await res.json()
     const v    = data.data
+    ventaActual = v
 
     document.getElementById('det-folio').textContent    = v.folio
     document.getElementById('det-fecha').textContent    = fmtFecha(v.fecha)
     document.getElementById('det-cliente').textContent  = (typeof v.cliente === 'object' ? v.cliente?.nombre : v.cliente) || 'Público general'
     document.getElementById('det-cajero').textContent   = v.usuario || '—'
     document.getElementById('det-sucursal').textContent = v.sucursal || '—'
-    document.getElementById('det-metodo').textContent   = { EFECTIVO:'💵 Efectivo', CREDITO:'💳 Tarjeta', DEBITO:'💳 Tarjeta', TRANSFERENCIA:'🔄 Transferencia' }[v.metodoPago] || v.metodoPago
-    document.getElementById('det-factura').textContent  = { DISPONIBLE:'Disponible', BLOQUEADA:'Bloqueada', FACTURADA:'Facturada', VENCIDA:'Vencida' }[v.facturaEstado] || v.facturaEstado
+    document.getElementById('det-metodo').textContent   = {
+      EFECTIVO:'💵 Efectivo', CREDITO:'💳 Tarjeta', DEBITO:'💳 Tarjeta', TRANSFERENCIA:'🔄 Transferencia'
+    }[v.metodoPago] || v.metodoPago
+    document.getElementById('det-factura').textContent  = {
+      DISPONIBLE:'Disponible', BLOQUEADA:'Bloqueada', FACTURADA:'Facturada', VENCIDA:'Vencida'
+    }[v.facturaEstado] || v.facturaEstado
 
-    const badge = document.getElementById('det-estado-badge')
+    const badge       = document.getElementById('det-estado-badge')
     badge.textContent = v.estado === 'COMPLETADA' ? 'Completada' : 'Cancelada'
     badge.className   = `estado-badge ${v.estado.toLowerCase()}`
 
@@ -250,20 +212,268 @@ window.verDetalle = async function(id) {
 
     renderAccionesModal(v)
     document.getElementById('modal-venta').classList.add('active')
+  } catch (err) { alert('Error cargando detalle: ' + err.message) }
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  ACCIONES EN MODAL DE DETALLE
+// ════════════════════════════════════════════════════════════════════
+function renderAccionesModal(v) {
+  const div = document.getElementById('det-acciones-modal')
+  if (!div) return
+
+  const btnTicket = `
+    <button class="btn-ticket-hist" onclick="imprimirTicket(${v.id})">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+      🖨️ Imprimir Ticket
+    </button>`
+
+  const btnDevolver = v.estado === 'COMPLETADA' ? `
+    <button class="btn-devolver-hist" onclick="abrirModalDevolucion(${v.id})">
+      ↩️ Devolver productos
+    </button>` : ''
+
+  div.innerHTML = btnTicket + btnDevolver
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  MÓDULO DE DEVOLUCIÓN
+// ════════════════════════════════════════════════════════════════════
+
+window.abrirModalDevolucion = async function(ventaId) {
+  try {
+    const resV = await fetch(`${API_URL}/ventas/${ventaId}`, { headers: { 'Authorization': `Bearer ${TOKEN}` } })
+    if (!resV.ok) throw new Error('No se pudo cargar la venta')
+    const dataV  = await resV.json()
+    devVentaData = dataV.data
+
+    const resD = await fetch(`${API_URL}/devoluciones/venta/${ventaId}`, { headers: { 'Authorization': `Bearer ${TOKEN}` } })
+    devResumenPrevio = {}
+    if (resD.ok) {
+      const dataD      = await resD.json()
+      devResumenPrevio = dataD.resumenDevuelto || {}
+    }
+
+    devTipoSeleccionado = null
+    document.querySelectorAll('.dev-tipo-btn').forEach(b => b.classList.remove('active'))
+    document.getElementById('dev-motivo').value        = ''
+    document.getElementById('dev-notas').value         = ''
+    document.getElementById('dev-error').style.display = 'none'
+    document.getElementById('dev-confirmar').disabled  = true
+    document.getElementById('dev-monto-total').textContent = '$0.00'
+    document.getElementById('dev-folio-titulo').textContent = `Devolución — ${devVentaData.folio}`
+
+    const horasTranscurridas = (Date.now() - new Date(devVentaData.fecha).getTime()) / 36e5
+    document.getElementById('dev-aviso-tiempo').style.display = horasTranscurridas > 72 ? 'inline-block' : 'none'
+    document.getElementById('dev-aviso-factura').style.display = devVentaData.facturaEstado === 'FACTURADA' ? 'block' : 'none'
+
+    renderTablaDevolucion()
+
+    document.getElementById('modal-venta').classList.remove('active')
+    document.getElementById('modal-devolucion').classList.add('active')
+  } catch (err) {
+    alert('Error abriendo devolución: ' + err.message)
+  }
+}
+
+function renderTablaDevolucion() {
+  const tbody = document.getElementById('dev-items-tbody')
+  if (!tbody || !devVentaData?.detalles) return
+
+  tbody.innerHTML = devVentaData.detalles.map(d => {
+    const yaDevuelto    = devResumenPrevio[d.productoId] || 0
+    const disponible    = d.cantidad - yaDevuelto
+    const deshabilitado = disponible <= 0
+
+    return `
+      <tr id="dev-row-${d.productoId}" class="${deshabilitado ? 'dev-row-disabled' : ''}">
+        <td style="text-align:center;">
+          <input type="checkbox" class="dev-check"
+            data-id="${d.productoId}"
+            data-precio="${d.precioUnitario}"
+            data-disponible="${disponible}"
+            ${deshabilitado ? 'disabled' : ''}
+            onchange="onDevCheckChange(this)" />
+        </td>
+        <td>${d.nombre}</td>
+        <td style="text-align:center;color:var(--muted)">${d.cantidad}</td>
+        <td style="text-align:center;color:var(--muted)">${yaDevuelto > 0 ? yaDevuelto : '—'}</td>
+        <td style="text-align:center;color:${disponible > 0 ? 'var(--text)' : '#ff6b6b'};font-weight:600">${disponible}</td>
+        <td style="text-align:center;">
+          <input type="number" class="dev-cantidad"
+            id="dev-cant-${d.productoId}"
+            data-id="${d.productoId}"
+            data-precio="${d.precioUnitario}"
+            data-disponible="${disponible}"
+            min="1" max="${disponible}" value="1"
+            disabled
+            style="width:60px;padding:4px 6px;background:rgba(255,255,255,0.04);border:1px solid var(--panel-border);border-radius:6px;color:var(--text);font-family:'Barlow',sans-serif;font-size:0.875rem;text-align:center;"
+            onchange="recalcularMontoDevolucion()" />
+        </td>
+        <td style="text-align:right;" id="dev-sub-${d.productoId}">—</td>
+      </tr>
+    `
+  }).join('')
+}
+
+window.onDevCheckChange = function(checkbox) {
+  const productoId = checkbox.dataset.id
+  const cantInput  = document.getElementById(`dev-cant-${productoId}`)
+  const disponible = parseInt(checkbox.dataset.disponible)
+
+  if (checkbox.checked) {
+    cantInput.disabled = false
+    cantInput.value    = disponible
+  } else {
+    cantInput.disabled = true
+    cantInput.value    = 1
+    document.getElementById(`dev-sub-${productoId}`).textContent = '—'
+  }
+  recalcularMontoDevolucion()
+}
+
+function recalcularMontoDevolucion() {
+  let total = 0
+  document.querySelectorAll('.dev-check:checked').forEach(chk => {
+    const productoId = chk.dataset.id
+    const precio     = parseFloat(chk.dataset.precio)
+    const disponible = parseInt(chk.dataset.disponible)
+    const cantInput  = document.getElementById(`dev-cant-${productoId}`)
+    let cantidad     = parseInt(cantInput.value) || 1
+
+    if (cantidad < 1) cantidad = 1
+    if (cantidad > disponible) { cantidad = disponible; cantInput.value = disponible }
+
+    const subtotal = precio * cantidad
+    total += subtotal
+    document.getElementById(`dev-sub-${productoId}`).textContent = fmt(subtotal)
+  })
+  document.getElementById('dev-monto-total').textContent = fmt(total)
+  validarFormularioDevolucion()
+}
+
+function validarFormularioDevolucion() {
+  const hayProductos = document.querySelectorAll('.dev-check:checked').length > 0
+  const hayTipo      = devTipoSeleccionado !== null
+  const hayMotivo    = document.getElementById('dev-motivo').value.trim().length > 0
+  document.getElementById('dev-confirmar').disabled = !(hayProductos && hayTipo && hayMotivo)
+}
+
+async function confirmarDevolucion() {
+  const productos = []
+  document.querySelectorAll('.dev-check:checked').forEach(chk => {
+    const productoId = parseInt(chk.dataset.id)
+    const cantidad   = parseInt(document.getElementById(`dev-cant-${productoId}`).value) || 1
+    productos.push({ productoId, cantidad })
+  })
+
+  if (!productos.length)      return mostrarErrorDev('Selecciona al menos un producto')
+  if (!devTipoSeleccionado)   return mostrarErrorDev('Selecciona el tipo de resolución')
+
+  const motivo = document.getElementById('dev-motivo').value.trim()
+  if (!motivo) return mostrarErrorDev('El motivo es obligatorio')
+
+  // ── Verificar turno activo antes de proceder ──────────────────
+  try {
+    const resTurno = await fetch(`${API_URL}/turnos-caja/activo`, {
+      headers: { 'Authorization': `Bearer ${TOKEN}` }
+    })
+    if (!resTurno.ok) {
+      // Sin turno — advertir solo si el tipo implica movimiento de caja
+      if (devTipoSeleccionado === 'REEMBOLSO' || devTipoSeleccionado === 'CAMBIO_PARCIAL') {
+        const continuar = window.confirm(
+          '⚠️ No hay turno de caja abierto.\n\n' +
+          'El inventario se reintegrará correctamente, PERO el egreso de caja ' +
+          `($${document.getElementById('dev-monto-total').textContent}) ` +
+          'NO quedará registrado en ningún turno.\n\n' +
+          '¿Deseas continuar de todas formas?'
+        )
+        if (!continuar) return
+      }
+    }
+  } catch (e) {
+    // Si falla la verificación de turno, dejar pasar — el backend lo maneja
+    console.warn('No se pudo verificar turno:', e.message)
+  }
+
+  const notas  = document.getElementById('dev-notas').value.trim() || null
+  const btn    = document.getElementById('dev-confirmar')
+  btn.disabled    = true
+  btn.textContent = 'Registrando...'
+  document.getElementById('dev-error').style.display = 'none'
+
+  try {
+    const res = await fetch(`${API_URL}/devoluciones`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
+      body:    JSON.stringify({
+        ventaId:       devVentaData.id,
+        motivo,
+        tipoReembolso: devTipoSeleccionado,
+        productos,
+        notas
+      })
+    })
+
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.error || 'Error al registrar devolución')
+
+    cerrarModalDevolucion()
+    cargarVentas()
+
+    // Toast de éxito
+    const toast = document.createElement('div')
+    let mensajeToast = `✓ Devolución <strong>${data.folio}</strong> registrada — ${fmt(data.data.montoReembolso)}`
+    if (data.sinTurno) {
+      mensajeToast += `<br><span style="font-size:0.8rem;opacity:0.85">⚠️ Sin turno activo — egreso de caja no registrado</span>`
+    }
+    toast.innerHTML = mensajeToast
+    Object.assign(toast.style, {
+      position: 'fixed', top: '20px', right: '20px', zIndex: '9999',
+      background: data.sinTurno ? '#3a2a10' : '#1a3a28',
+      border: `1px solid ${data.sinTurno ? 'rgba(255,193,7,0.3)' : 'rgba(96,208,128,0.3)'}`,
+      color: data.sinTurno ? '#ffc107' : '#60d080',
+      padding: '14px 20px', borderRadius: '8px',
+      fontSize: '0.875rem', fontWeight: '600',
+      boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+      transition: 'opacity 0.4s', maxWidth: '380px', lineHeight: '1.5'
+    })
+    document.body.appendChild(toast)
+    setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 400) }, 6000)
+
+    if (devVentaData.facturaEstado === 'FACTURADA') {
+      setTimeout(() => alert('Recuerda emitir la nota de crédito CFDI con tu contador.'), 600)
+    }
 
   } catch (err) {
-    alert('Error cargando detalle: ' + err.message)
+    mostrarErrorDev(err.message)
+  } finally {
+    btn.disabled    = false
+    btn.textContent = 'Registrar devolución'
   }
+}
+
+function mostrarErrorDev(msg) {
+  const el = document.getElementById('dev-error')
+  el.textContent   = msg
+  el.style.display = 'block'
+  el.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+}
+
+function cerrarModalDevolucion() {
+  document.getElementById('modal-devolucion').classList.remove('active')
+  devVentaData        = null
+  devResumenPrevio    = {}
+  devTipoSeleccionado = null
 }
 
 // ════════════════════════════════════════════════════════════════════
 //  LIMPIAR FILTROS
 // ════════════════════════════════════════════════════════════════════
-
 function limpiarFiltros() {
-  document.getElementById('search-input').value  = ''
-  document.getElementById('filtro-desde').value  = ''
-  document.getElementById('filtro-hasta').value  = ''
+  document.getElementById('search-input').value   = ''
+  document.getElementById('filtro-desde').value   = ''
+  document.getElementById('filtro-hasta').value   = ''
   document.getElementById('filtro-metodo').value  = ''
   document.getElementById('filtro-cliente').value = ''
   document.getElementById('filtro-usuario').value = ''
@@ -272,11 +482,22 @@ function limpiarFiltros() {
 }
 
 // ════════════════════════════════════════════════════════════════════
-//  INICIALIZACIÓN Y EVENT LISTENERS
+//  IMPRIMIR TICKET
 // ════════════════════════════════════════════════════════════════════
+window.imprimirTicket = function(id) {
+  const url = `${API_URL}/ventas/${id}/ticket`
+  const win = window.open('', '_blank', 'width=420,height=700,scrollbars=yes')
+  win.document.write('<html><body style="font-family:sans-serif;text-align:center;padding:20px"><p>Cargando ticket...</p></body></html>')
+  fetch(url, { headers: { 'Authorization': `Bearer ${TOKEN}` } })
+    .then(r => r.text())
+    .then(html => { win.document.open(); win.document.write(html); win.document.close() })
+    .catch(err => { win.document.write(`<p style="color:red">Error: ${err.message}</p>`) })
+}
 
+// ════════════════════════════════════════════════════════════════════
+//  INICIALIZACIÓN
+// ════════════════════════════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', async () => {
-  // Fecha header
   const fechaEl = document.getElementById('fecha-actual')
   if (fechaEl) {
     fechaEl.textContent = new Date().toLocaleDateString('es-MX', {
@@ -287,69 +508,58 @@ document.addEventListener('DOMContentLoaded', async () => {
   await cargarCatalogos()
   cargarVentas()
 
-  // Búsqueda con debounce
   document.getElementById('search-input')?.addEventListener('input', () => {
     clearTimeout(debounceSearch)
     debounceSearch = setTimeout(() => { paginaActual = 1; cargarVentas() }, 400)
   })
 
-  // Filtros que disparan inmediato
   ;['filtro-desde','filtro-hasta','filtro-metodo','filtro-cliente','filtro-usuario'].forEach(id => {
     document.getElementById(id)?.addEventListener('change', () => { paginaActual = 1; cargarVentas() })
   })
 
-  // Limpiar
   document.getElementById('btn-limpiar-filtros')?.addEventListener('click', limpiarFiltros)
 
-  // Paginación
-  document.getElementById('btn-prev')?.addEventListener('click', () => {
-    if (paginaActual > 1) { paginaActual--; cargarVentas() }
-  })
-  document.getElementById('btn-next')?.addEventListener('click', () => {
-    paginaActual++; cargarVentas()
-  })
+  document.getElementById('btn-prev')?.addEventListener('click', () => { if (paginaActual > 1) { paginaActual--; cargarVentas() } })
+  document.getElementById('btn-next')?.addEventListener('click', () => { paginaActual++; cargarVentas() })
 
-  // Modal cerrar
   document.getElementById('modal-venta-close')?.addEventListener('click', () => {
     document.getElementById('modal-venta').classList.remove('active')
   })
+
+  // ── Eventos modal devolución ──────────────────────────────────
+  document.getElementById('modal-dev-close')?.addEventListener('click', cerrarModalDevolucion)
+  document.getElementById('dev-cancelar')?.addEventListener('click', cerrarModalDevolucion)
+  document.getElementById('dev-confirmar')?.addEventListener('click', confirmarDevolucion)
+
+  document.querySelectorAll('.dev-motivo-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      document.getElementById('dev-motivo').value = chip.dataset.motivo
+      document.querySelectorAll('.dev-motivo-chip').forEach(c => c.classList.remove('active'))
+      chip.classList.add('active')
+      validarFormularioDevolucion()
+    })
+  })
+
+  document.getElementById('dev-motivo')?.addEventListener('input', () => {
+    document.querySelectorAll('.dev-motivo-chip').forEach(c => c.classList.remove('active'))
+    validarFormularioDevolucion()
+  })
+
+  document.querySelectorAll('.dev-tipo-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.dev-tipo-btn').forEach(b => b.classList.remove('active'))
+      btn.classList.add('active')
+      devTipoSeleccionado = btn.dataset.tipo
+      validarFormularioDevolucion()
+    })
+  })
+
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') document.getElementById('modal-venta')?.classList.remove('active')
+    if (e.key === 'Escape') {
+      document.getElementById('modal-venta')?.classList.remove('active')
+      cerrarModalDevolucion()
+    }
   })
 })
-
-// ════════════════════════════════════════════════════════════════════
-//  IMPRIMIR TICKET
-// ════════════════════════════════════════════════════════════════════
-
-window.imprimirTicket = function(id) {
-  const token = localStorage.getItem('jesha_token')
-  const url   = `${API_URL}/ventas/${id}/ticket`
-  // Abrir en ventana nueva → el ticket se auto-imprime
-  const win = window.open('', '_blank', 'width=420,height=700,scrollbars=yes')
-  win.document.write('<html><body style="font-family:sans-serif;text-align:center;padding:20px"><p>Cargando ticket...</p></body></html>')
-  fetch(url, { headers: { 'Authorization': `Bearer ${token}` } })
-    .then(r => r.text())
-    .then(html => {
-      win.document.open()
-      win.document.write(html)
-      win.document.close()
-    })
-    .catch(err => {
-      win.document.write(`<p style="color:red">Error: ${err.message}</p>`)
-    })
-}
-
-// Fix 4: añadir botón ticket en modal de detalle
-function renderAccionesModal(v) {
-  const div = document.getElementById('det-acciones-modal')
-  if (!div) return
-  div.innerHTML = `
-    <button class="btn-ticket-hist" onclick="imprimirTicket(${v.id})" style="margin-top:12px;">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-      🖨️ Imprimir Ticket
-    </button>
-  `
-}
 
 console.log('✅ historial.js cargado')
