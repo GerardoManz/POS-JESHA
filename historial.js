@@ -665,6 +665,21 @@ document.addEventListener('DOMContentLoaded', async () => {
       document.querySelectorAll('.dev-tipo-btn').forEach(b => b.classList.remove('active'))
       btn.classList.add('active')
       devTipoSeleccionado = btn.dataset.tipo
+
+      // Al seleccionar "Cambio de producto" → marcar todos los productos disponibles
+      if (devTipoSeleccionado === 'CAMBIO_PRODUCTO') {
+        document.querySelectorAll('.dev-check').forEach(chk => {
+          if (chk.disabled) return                         // sin disponible → omitir
+          const productoId  = chk.dataset.id
+          const disponible  = parseInt(chk.dataset.disponible)
+          const cantInput   = document.getElementById(`dev-cant-${productoId}`)
+          chk.checked       = true
+          cantInput.disabled = false
+          cantInput.value    = disponible
+        })
+        recalcularMontoDevolucion()
+      }
+
       validarFormularioDevolucion()
     })
   })

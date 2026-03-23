@@ -7,7 +7,7 @@ datasource db {
 }
 
 // ══════════════════════════════════════════════════════════════════
-//  ENUMS
+// ENUMS
 // ══════════════════════════════════════════════════════════════════
 
 enum Rol {
@@ -20,6 +20,7 @@ enum Rol {
 enum EstadoVenta {
   COMPLETADA
   CANCELADA
+  DEVOLUCION
 }
 
 enum EstadoPago {
@@ -113,18 +114,16 @@ enum EstadoBitacora {
 }
 
 // ══════════════════════════════════════════════════════════════════
-//  SUCURSAL
+// SUCURSAL
 // ══════════════════════════════════════════════════════════════════
-
 model Sucursal {
-  id           Int      @id @default(autoincrement())
-  nombre       String
-  direccion    String?
-  telefono     String?
+  id          Int       @id @default(autoincrement())
+  nombre      String
+  direccion   String?
+  telefono    String?
   codigoPostal String
-  activa       Boolean  @default(true)
-  creadaEn     DateTime @default(now())
-
+  activa      Boolean   @default(true)
+  creadaEn    DateTime  @default(now())
   usuarios      Usuario[]
   inventarios   InventarioSucursal[]
   ventas        Venta[]
@@ -139,9 +138,8 @@ model Sucursal {
 }
 
 // ══════════════════════════════════════════════════════════════════
-//  USUARIO
+// USUARIO
 // ══════════════════════════════════════════════════════════════════
-
 model Usuario {
   id           Int      @id @default(autoincrement())
   nombre       String
@@ -150,91 +148,79 @@ model Usuario {
   rol          Rol
   activo       Boolean  @default(true)
   creadoEn     DateTime @default(now())
-
-  sucursalId Int?
-  sucursal   Sucursal? @relation(fields: [sucursalId], references: [id])
-
-  ventas        Venta[]
-  cotizaciones  Cotizacion[]
-  turnosCaja    TurnoCaja[]
-  pedidos       Pedido[]
-  movimientos   MovimientoInventario[]
-  devoluciones  Devolucion[]
-  auditorias    Auditoria[]
-  bitacoras      Bitacora[]
-  abonosBitacora AbonoBitacora[]
-  abonosCompra   AbonoCompra[]
-  ordenesCompra  OrdenCompra[]
+  sucursalId   Int?
+  sucursal          Sucursal?             @relation(fields: [sucursalId], references: [id])
+  ventas            Venta[]
+  cotizaciones      Cotizacion[]
+  turnosCaja        TurnoCaja[]
+  pedidos           Pedido[]
+  movimientos       MovimientoInventario[]
+  devoluciones      Devolucion[]
+  auditorias        Auditoria[]
+  bitacoras         Bitacora[]
+  abonosBitacora    AbonoBitacora[]
+  abonosCompra      AbonoCompra[]
+  ordenesCompra     OrdenCompra[]
 }
 
 // ══════════════════════════════════════════════════════════════════
-//  CLIENTE
+// CLIENTE
 // ══════════════════════════════════════════════════════════════════
-
 model Cliente {
-  id                 Int      @id @default(autoincrement())
-  nombre             String
-  apodo              String?
-  rfc                String?  @unique
-  telefono           String?
-  email              String?  @unique
+  id                Int      @id @default(autoincrement())
+  nombre            String
+  apodo             String?
+  rfc               String?  @unique
+  telefono          String?
+  email             String?  @unique
   codigoPostalFiscal String?
-  regimenFiscal      String?
-  razonSocial        String?
-  usoCfdi            String?
-  tipo               String   @default("REGULAR")
-
+  regimenFiscal     String?
+  razonSocial       String?
+  usoCfdi           String?
+  tipo              String   @default("REGULAR")
   limiteCredito     Decimal  @default(0) @db.Decimal(12,2)
   saldoPendiente    Decimal  @default(0) @db.Decimal(12,2)
   totalCreditoUsado Decimal  @default(0) @db.Decimal(12,2)
-
-  activo   Boolean  @default(true)
-  notas    String?
-  creadoEn DateTime @default(now())
-
+  activo            Boolean  @default(true)
+  notas             String?
+  creadoEn          DateTime @default(now())
   ventas       Venta[]
   cotizaciones Cotizacion[]
   pedidos      Pedido[]
   facturas     FacturaCfdi[]
   bitacoras    Bitacora[]
-
   @@index([nombre])
   @@index([rfc])
   @@index([email])
 }
 
 // ══════════════════════════════════════════════════════════════════
-//  CATÁLOGO
+// CATÁLOGO
 // ══════════════════════════════════════════════════════════════════
-
 model Departamento {
-  id       Int      @id @default(autoincrement())
-  nombre   String   @unique
-  icono    String?
-  activo   Boolean  @default(true)
-  creadoEn DateTime @default(now())
-
+  id        Int       @id @default(autoincrement())
+  nombre    String    @unique
+  icono     String?
+  activo    Boolean   @default(true)
+  creadoEn  DateTime  @default(now())
   categorias Categoria[]
 }
 
 model Categoria {
-  id             Int      @id @default(autoincrement())
+  id             Int          @id @default(autoincrement())
   departamentoId Int
   nombre         String
   descripcion    String?
-  creadoEn       DateTime @default(now())
-
-  departamento Departamento @relation(fields: [departamentoId], references: [id])
-  productos    Producto[]
-  promociones  Promocion[]
-
+  creadoEn       DateTime     @default(now())
+  departamento   Departamento @relation(fields: [departamentoId], references: [id])
+  productos      Producto[]
+  promociones    Promocion[]
   @@unique([departamentoId, nombre])
 }
 
 // ══════════════════════════════════════════════════════════════════
-//  PROVEEDORES
+// PROVEEDORES
 // ══════════════════════════════════════════════════════════════════
-
 model Proveedor {
   id            Int      @id @default(autoincrement())
   nombreOficial String   @unique
@@ -244,10 +230,8 @@ model Proveedor {
   email         String?
   activo        Boolean  @default(true)
   creadoEn      DateTime @default(now())
-
   productos     ProveedorProducto[]
   ordenesCompra OrdenCompra[]
-
   @@index([nombreOficial])
   @@index([alias])
 }
@@ -260,72 +244,59 @@ model ProveedorProducto {
   precioCosto     Decimal  @db.Decimal(10, 2)
   activo          Boolean  @default(true)
   actualizadoEn   DateTime @updatedAt
-
   proveedor Proveedor @relation(fields: [proveedorId], references: [id])
   producto  Producto  @relation(fields: [productoId], references: [id])
-
   @@unique([proveedorId, productoId])
 }
 
 // ══════════════════════════════════════════════════════════════════
-//  PRODUCTO
+// PRODUCTO
 // ══════════════════════════════════════════════════════════════════
-
 model Producto {
-  id            Int     @id @default(autoincrement())
-  nombre        String
-  codigoInterno String  @unique
-  codigoBarras  String? @unique
-  descripcion   String?
-
-  imagenUrl      String?
-  imagenOriginal String?
-
-  precioBase    Decimal  @db.Decimal(10, 2)
-  costo         Decimal? @db.Decimal(10, 2)
-  costoPromedio Decimal? @db.Decimal(10, 2)
-
-  precioMayoreo      Decimal? @db.Decimal(10, 2)
-  cantidadMinMayoreo Int?     @default(10)
-  aplicaMayoreo      Boolean  @default(false)
-
-  unidadCompra     String?
-  unidadVenta      String?
-  factorConversion Decimal? @db.Decimal(10, 4)
-
-  claveSat  String?
-  unidadSat String?
-
-  esGranel Boolean  @default(false)
-  margen   Decimal? @db.Decimal(5, 2)
-
-  categoriaId   Int
-  activo        Boolean  @default(true)
-  creadoEn      DateTime @default(now())
-  actualizadoEn DateTime @updatedAt
-
-  categoria           Categoria             @relation(fields: [categoriaId], references: [id])
-  inventarios         InventarioSucursal[]
-  detallesVenta       DetalleVenta[]
-  detallesCotizacion  DetalleCotizacion[]
-  detallesOrdenCompra DetalleOrdenCompra[]
-  detallesPedido      DetallePedido[]
-  detallesDevolucion  DetalleDevolucion[]
-  detallesBitacora    DetalleBitacora[]
-  proveedores         ProveedorProducto[]
-  promociones         Promocion[]           @relation("PromocionProducto")
-  movimientos         MovimientoInventario[]
-  alertasStock        AlertaStock[]
-
+  id                  Int      @id @default(autoincrement())
+  nombre              String
+  codigoInterno       String   @unique
+  codigoBarras        String?  @unique
+  descripcion         String?
+  imagenUrl           String?
+  imagenOriginal      String?
+  precioBase          Decimal  @db.Decimal(10, 2)
+  costo               Decimal? @db.Decimal(10, 2)
+  costoPromedio       Decimal? @db.Decimal(10, 2)
+  precioMayoreo       Decimal? @db.Decimal(10, 2)
+  cantidadMinMayoreo  Int?     @default(10)
+  aplicaMayoreo       Boolean  @default(false)
+  unidadCompra        String?
+  unidadVenta         String?
+  factorConversion    Decimal? @db.Decimal(10, 4)
+  claveSat            String?
+  unidadSat           String?
+  esGranel            Boolean  @default(false)
+  margen              Decimal? @db.Decimal(5, 2)
+  categoriaId         Int
+  activo              Boolean  @default(true)
+  creadoEn            DateTime @default(now())
+  actualizadoEn       DateTime @updatedAt
+  categoria             Categoria              @relation(fields: [categoriaId], references: [id])
+  inventarios           InventarioSucursal[]
+  detallesVenta         DetalleVenta[]
+  detallesCotizacion    DetalleCotizacion[]
+  detallesOrdenCompra   DetalleOrdenCompra[]
+  detallesPedido        DetallePedido[]
+  detallesDevolucion    DetalleDevolucion[]
+  detallesBitacora      DetalleBitacora[]
+  proveedores           ProveedorProducto[]
+  promociones           Promocion[]            @relation("PromocionProducto")
+  movimientos           MovimientoInventario[]
+  alertasStock          AlertaStock[]
   @@index([nombre])
   @@index([codigoInterno])
   @@index([codigoBarras])
 }
 
 // ══════════════════════════════════════════════════════════════════
-//  INVENTARIO
+// INVENTARIO
 // ══════════════════════════════════════════════════════════════════
-
 model InventarioSucursal {
   id                Int      @id @default(autoincrement())
   productoId        Int
@@ -334,31 +305,27 @@ model InventarioSucursal {
   stockMinimoAlerta Int      @default(5)
   stockMaximo       Int?
   actualizadoEn     DateTime @updatedAt
-
   producto Producto @relation(fields: [productoId], references: [id], onDelete: Cascade)
   sucursal Sucursal @relation(fields: [sucursalId], references: [id])
-
   @@unique([productoId, sucursalId])
   @@index([sucursalId])
   @@index([stockActual])
 }
 
 model MovimientoInventario {
-  id          Int                      @id @default(autoincrement())
-  productoId  Int
-  sucursalId  Int
-  usuarioId   Int?
-  tipo        TipoMovimientoInventario
-  cantidad    Int
-  stockAntes  Int
+  id           Int                      @id @default(autoincrement())
+  productoId   Int
+  sucursalId   Int
+  usuarioId    Int?
+  tipo         TipoMovimientoInventario
+  cantidad     Int
+  stockAntes   Int
   stockDespues Int
-  referencia  String?
-  notas       String?
-  creadoEn    DateTime                 @default(now())
-
+  referencia   String?
+  notas        String?
+  creadoEn     DateTime                 @default(now())
   producto Producto  @relation(fields: [productoId], references: [id], onDelete: Cascade)
   usuario  Usuario?  @relation(fields: [usuarioId], references: [id])
-
   @@index([productoId])
   @@index([sucursalId])
   @@index([usuarioId])
@@ -367,19 +334,17 @@ model MovimientoInventario {
 }
 
 model AlertaStock {
-  id          Int          @id @default(autoincrement())
-  productoId  Int
-  sucursalId  Int
+  id         Int          @id @default(autoincrement())
+  productoId Int
+  sucursalId Int
   stockActual Int
   stockMinimo Int
-  estado      EstadoAlerta @default(PENDIENTE)
-  creadaEn    DateTime     @default(now())
-  vistaEn     DateTime?
-  resueltaEn  DateTime?
-
+  estado     EstadoAlerta @default(PENDIENTE)
+  creadaEn   DateTime     @default(now())
+  vistaEn    DateTime?
+  resueltaEn DateTime?
   producto Producto @relation(fields: [productoId], references: [id])
   sucursal Sucursal @relation(fields: [sucursalId], references: [id])
-
   @@unique([productoId, sucursalId])
   @@index([productoId])
   @@index([sucursalId])
@@ -387,84 +352,72 @@ model AlertaStock {
 }
 
 // ══════════════════════════════════════════════════════════════════
-//  CAJA
+// CAJA
 // ══════════════════════════════════════════════════════════════════
-
 model TurnoCaja {
-  id                  Int       @id @default(autoincrement())
-  sucursalId          Int
-  usuarioId           Int
-  montoInicial        Decimal   @db.Decimal(10, 2)
-  montoFinalDeclarado Decimal?  @db.Decimal(10, 2)
-  montoCalculado      Decimal?  @db.Decimal(10, 2)
-  diferencia          Decimal?  @db.Decimal(10, 2)
-  abierto             Boolean   @default(true)
-  abiertaEn           DateTime  @default(now())
-  cerradaEn           DateTime?
-
-  sucursal    Sucursal        @relation(fields: [sucursalId], references: [id])
-  usuario     Usuario         @relation(fields: [usuarioId], references: [id])
-  ventas      Venta[]
+  id                   Int       @id @default(autoincrement())
+  sucursalId           Int
+  usuarioId            Int
+  montoInicial         Decimal   @db.Decimal(10, 2)
+  montoFinalDeclarado  Decimal?  @db.Decimal(10, 2)
+  montoCalculado       Decimal?  @db.Decimal(10, 2)
+  diferencia           Decimal?  @db.Decimal(10, 2)
+  abierto              Boolean   @default(true)
+  abiertaEn            DateTime  @default(now())
+  cerradaEn            DateTime?
+  sucursal  Sucursal @relation(fields: [sucursalId], references: [id])
+  usuario   Usuario  @relation(fields: [usuarioId], references: [id])
+  ventas    Venta[]
   movimientos MovimientoCaja[]
-
   @@index([sucursalId, abierto])
 }
 
 model MovimientoCaja {
-  id         Int                @id @default(autoincrement())
+  id         Int              @id @default(autoincrement())
   turnoId    Int
   tipo       TipoMovimientoCaja
-  monto      Decimal            @db.Decimal(10, 2)
+  monto      Decimal          @db.Decimal(10, 2)
   metodoPago MetodoPago?
   referencia String?
   notas      String?
-  creadoEn   DateTime           @default(now())
-
+  creadoEn   DateTime         @default(now())
   turno TurnoCaja @relation(fields: [turnoId], references: [id], onDelete: Cascade)
-
   @@index([turnoId])
 }
 
 // ══════════════════════════════════════════════════════════════════
-//  VENTAS
+// VENTAS
 // ══════════════════════════════════════════════════════════════════
-
 model Venta {
-  id         Int        @id @default(autoincrement())
-  folio      String     @unique
-  sucursalId Int
-  usuarioId  Int
-  clienteId  Int?
-  turnoId    Int
-  metodoPago MetodoPago
-
-  subtotal  Decimal @db.Decimal(10, 2)
-  descuento Decimal @default(0) @db.Decimal(10, 2)
-  total     Decimal @db.Decimal(10, 2)
-
-  estadoPago     EstadoPago @default(PAGADA)
-  montoAbonado   Decimal    @default(0) @db.Decimal(10, 2)
-  saldoPendiente Decimal    @default(0) @db.Decimal(10, 2)
-
-  estado        EstadoVenta   @default(COMPLETADA)
-  tokenQr       String        @unique @default(uuid())
-  facturaEstado EstadoFactura @default(DISPONIBLE)
-  facturaLimite DateTime      @default(now())
-
+  id                 Int          @id @default(autoincrement())
+  folio              String       @unique
+  sucursalId         Int
+  usuarioId          Int
+  clienteId          Int?
+  turnoId            Int
+  metodoPago         MetodoPago
+  subtotal           Decimal      @db.Decimal(10, 2)
+  descuento          Decimal      @default(0) @db.Decimal(10, 2)
+  total              Decimal      @db.Decimal(10, 2)
+  estadoPago         EstadoPago   @default(PAGADA)
+  montoAbonado       Decimal      @default(0) @db.Decimal(10, 2)
+  saldoPendiente     Decimal      @default(0) @db.Decimal(10, 2)
+  estado             EstadoVenta  @default(COMPLETADA)
+  tokenQr            String       @unique @default(uuid())
+  facturaEstado      EstadoFactura @default(DISPONIBLE)
+  facturaLimite      DateTime     @default(now())
   clienteRazonSocial String?
   clienteRFC         String?
   notas              String?
-  creadaEn           DateTime @default(now())
-
-  sucursal     Sucursal       @relation(fields: [sucursalId], references: [id])
-  usuario      Usuario        @relation(fields: [usuarioId], references: [id])
-  cliente      Cliente?       @relation(fields: [clienteId], references: [id])
-  turno        TurnoCaja      @relation(fields: [turnoId], references: [id])
-  detalles     DetalleVenta[]
+  creadaEn           DateTime     @default(now())
+  sucursal    Sucursal   @relation(fields: [sucursalId], references: [id])
+  usuario     Usuario    @relation(fields: [usuarioId], references: [id])
+  cliente     Cliente?   @relation(fields: [clienteId], references: [id])
+  turno       TurnoCaja  @relation(fields: [turnoId], references: [id])
+  detalles    DetalleVenta[]
   devoluciones Devolucion[]
-  factura      FacturaCfdi?
-  bitacora     Bitacora?
-
+  factura     FacturaCfdi?
+  bitacora    Bitacora?
   @@index([clienteId])
   @@index([usuarioId])
   @@index([sucursalId])
@@ -481,16 +434,14 @@ model DetalleVenta {
   descuento      Decimal @default(0) @db.Decimal(10, 2)
   subtotal       Decimal @db.Decimal(10, 2)
   promocionId    Int?
-
-  venta     Venta      @relation(fields: [ventaId], references: [id], onDelete: Cascade)
-  producto  Producto   @relation(fields: [productoId], references: [id])
+  venta     Venta     @relation(fields: [ventaId], references: [id], onDelete: Cascade)
+  producto  Producto  @relation(fields: [productoId], references: [id])
   promocion Promocion? @relation(fields: [promocionId], references: [id])
 }
 
 // ══════════════════════════════════════════════════════════════════
-//  DEVOLUCIONES
+// DEVOLUCIONES
 // ══════════════════════════════════════════════════════════════════
-
 model Devolucion {
   id                  Int      @id @default(autoincrement())
   ventaId             Int
@@ -502,9 +453,8 @@ model Devolucion {
   montoReembolso      Decimal  @db.Decimal(10, 2)
   notas               String?
   creadaEn            DateTime @default(now())
-
-  venta    Venta               @relation(fields: [ventaId], references: [id], onDelete: Cascade)
-  usuario  Usuario             @relation(fields: [usuarioId], references: [id])
+  venta    Venta    @relation(fields: [ventaId], references: [id], onDelete: Cascade)
+  usuario  Usuario  @relation(fields: [usuarioId], references: [id])
   detalles DetalleDevolucion[]
 }
 
@@ -515,33 +465,29 @@ model DetalleDevolucion {
   cantidad       Int
   precioUnitario Decimal  @db.Decimal(10, 2)
   creadoEn       DateTime @default(now())
-
   devolucion Devolucion @relation(fields: [devolucionId], references: [id], onDelete: Cascade)
   producto   Producto   @relation(fields: [productoId], references: [id])
 }
 
 // ══════════════════════════════════════════════════════════════════
-//  COTIZACIONES
+// COTIZACIONES
 // ══════════════════════════════════════════════════════════════════
-
 model Cotizacion {
-  id         Int              @id @default(autoincrement())
-  folio      String           @unique
+  id         Int               @id @default(autoincrement())
+  folio      String            @unique
   sucursalId Int
   usuarioId  Int
   clienteId  Int?
-  total      Decimal          @db.Decimal(10, 2)
-  estado     EstadoCotizacion @default(PENDIENTE)
-  tipo       String           @default("PRODUCTOS")
+  total      Decimal           @db.Decimal(10, 2)
+  estado     EstadoCotizacion  @default(PENDIENTE)
+  tipo       String            @default("PRODUCTOS")
   venceEn    DateTime?
   notas      String?
-  creadaEn   DateTime         @default(now())
-
-  sucursal Sucursal            @relation(fields: [sucursalId], references: [id])
-  usuario  Usuario             @relation(fields: [usuarioId], references: [id])
-  cliente  Cliente?            @relation(fields: [clienteId], references: [id])
+  creadaEn   DateTime          @default(now())
+  sucursal Sucursal    @relation(fields: [sucursalId], references: [id])
+  usuario  Usuario     @relation(fields: [usuarioId], references: [id])
+  cliente  Cliente?    @relation(fields: [clienteId], references: [id])
   detalles DetalleCotizacion[]
-
   @@index([estado])
   @@index([clienteId])
   @@index([tipo])
@@ -557,86 +503,78 @@ model DetalleCotizacion {
   precioUnitario Decimal @db.Decimal(10, 2)
   descuento      Decimal @default(0) @db.Decimal(10, 2)
   subtotal       Decimal @db.Decimal(10, 2)
-
   cotizacion Cotizacion @relation(fields: [cotizacionId], references: [id], onDelete: Cascade)
   producto   Producto?  @relation(fields: [productoId], references: [id])
 }
 
 // ══════════════════════════════════════════════════════════════════
-//  PEDIDOS
+// PEDIDOS
 // ══════════════════════════════════════════════════════════════════
-
 model Pedido {
-  id            Int          @id @default(autoincrement())
-  folio         String       @unique
-  sucursalId    Int
-  usuarioId     Int
-  clienteId     Int?
-  estado        EstadoPedido @default(BORRADOR)
-  totalEstimado Decimal      @db.Decimal(10, 2)
-  motivoBloqueo String?
-  notas         String?
-  creadoEn      DateTime     @default(now())
-  actualizadoEn DateTime     @updatedAt
-
-  sucursal Sucursal        @relation(fields: [sucursalId], references: [id])
-  usuario  Usuario         @relation(fields: [usuarioId], references: [id])
-  cliente  Cliente?        @relation(fields: [clienteId], references: [id])
+  id             Int          @id @default(autoincrement())
+  folio          String       @unique
+  sucursalId     Int
+  usuarioId      Int
+  clienteId      Int?
+  estado         EstadoPedido @default(BORRADOR)
+  totalEstimado  Decimal      @db.Decimal(10, 2)
+  motivoBloqueo  String?
+  notas          String?
+  creadoEn       DateTime     @default(now())
+  actualizadoEn  DateTime     @updatedAt
+  sucursal Sucursal @relation(fields: [sucursalId], references: [id])
+  usuario  Usuario  @relation(fields: [usuarioId], references: [id])
+  cliente  Cliente? @relation(fields: [clienteId], references: [id])
   detalles DetallePedido[]
 }
 
 model DetallePedido {
-  id             Int     @id @default(autoincrement())
-  pedidoId       Int
-  productoId     Int
-  cantidad       Int
+  id            Int     @id @default(autoincrement())
+  pedidoId      Int
+  productoId    Int
+  cantidad      Int
   precioAcordado Decimal @db.Decimal(10, 2)
-  subtotal       Decimal @db.Decimal(10, 2)
-
+  subtotal      Decimal  @db.Decimal(10, 2)
   pedido   Pedido   @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
   producto Producto @relation(fields: [productoId], references: [id])
 }
 
 // ══════════════════════════════════════════════════════════════════
-//  COMPRAS
+// COMPRAS
 // ══════════════════════════════════════════════════════════════════
-
 model OrdenCompra {
-  id            Int               @id @default(autoincrement())
-  folio         String            @unique
-  sucursalId    Int
-  proveedorId   Int
-  usuarioId     Int
-  estado        EstadoOrdenCompra @default(ENVIADO)
-  totalEstimado Decimal           @db.Decimal(10, 2)
-  totalRecibido Decimal           @default(0) @db.Decimal(10, 2)
-  pagada        Boolean           @default(false)
-  totalPagado   Decimal           @default(0) @db.Decimal(12, 2)
-  notas         String?
-  creadaEn      DateTime          @default(now())
-  recibidaEn    DateTime?
-
-  sucursal  Sucursal             @relation(fields: [sucursalId], references: [id])
-  proveedor Proveedor            @relation(fields: [proveedorId], references: [id])
-  usuario   Usuario              @relation(fields: [usuarioId], references: [id])
-  detalles  DetalleOrdenCompra[]
-  abonos    AbonoCompra[]
-
+  id             Int               @id @default(autoincrement())
+  folio          String            @unique
+  sucursalId     Int
+  proveedorId    Int
+  usuarioId      Int
+  estado         EstadoOrdenCompra @default(ENVIADO)
+  totalEstimado  Decimal           @db.Decimal(10, 2)
+  totalRecibido  Decimal           @default(0) @db.Decimal(10, 2)
+  pagada         Boolean           @default(false)
+  totalPagado    Decimal           @default(0) @db.Decimal(12, 2)
+  notas          String?
+  creadaEn       DateTime          @default(now())
+  recibidaEn     DateTime?
+  sucursal  Sucursal  @relation(fields: [sucursalId], references: [id])
+  proveedor Proveedor @relation(fields: [proveedorId], references: [id])
+  usuario   Usuario   @relation(fields: [usuarioId], references: [id])
+  detalles DetalleOrdenCompra[]
+  abonos   AbonoCompra[]
   @@index([sucursalId])
   @@index([proveedorId])
   @@index([estado])
 }
 
 model DetalleOrdenCompra {
-  id               Int     @id @default(autoincrement())
-  ordenCompraId    Int
-  productoId       Int
-  cantidadPedida   Int
-  cantidadRecibida Int     @default(0)
-  precioCosto      Decimal @db.Decimal(10, 2)
-  subtotalPedido   Decimal @db.Decimal(10, 2)
-  subtotalRecibido Decimal @default(0) @db.Decimal(10, 2)
-
+  id                Int     @id @default(autoincrement())
+  ordenCompraId     Int
+  productoId        Int
+  cantidadPedida    Int
+  cantidadRecibida  Int     @default(0)
+  precioCosto       Decimal @db.Decimal(10, 2)
+  subtotalPedido    Decimal @db.Decimal(10, 2)
+  subtotalRecibido  Decimal @default(0) @db.Decimal(10, 2)
   ordenCompra OrdenCompra @relation(fields: [ordenCompraId], references: [id], onDelete: Cascade)
   producto    Producto    @relation(fields: [productoId], references: [id])
 }
@@ -649,82 +587,72 @@ model AbonoCompra {
   metodoPago    MetodoPago @default(EFECTIVO)
   notas         String?
   creadoEn      DateTime   @default(now())
-
   ordenCompra OrdenCompra @relation(fields: [ordenCompraId], references: [id], onDelete: Cascade)
   usuario     Usuario     @relation(fields: [usuarioId], references: [id])
-
   @@index([ordenCompraId])
 }
 
 // ══════════════════════════════════════════════════════════════════
-//  BITÁCORA
+// BITÁCORA
 // ══════════════════════════════════════════════════════════════════
-
 model Bitacora {
-  id              Int            @id @default(autoincrement())
-  folio           String         @unique
-  titulo          String
-  descripcion     String?
-  clienteId       Int?
-  sucursalId      Int
-  usuarioId       Int
-  estado          EstadoBitacora @default(ABIERTA)
-  totalMateriales Decimal        @default(0) @db.Decimal(12, 2)
-  totalAbonado    Decimal        @default(0) @db.Decimal(12, 2)
-  saldoPendiente  Decimal        @default(0) @db.Decimal(12, 2)
-  ventaId         Int?           @unique
-  notas           String?
-  creadaEn        DateTime       @default(now())
-  actualizadoEn   DateTime       @updatedAt
-
-  cliente  Cliente?        @relation(fields: [clienteId], references: [id])
-  sucursal Sucursal        @relation(fields: [sucursalId], references: [id])
-  usuario  Usuario         @relation(fields: [usuarioId], references: [id])
-  venta    Venta?          @relation(fields: [ventaId], references: [id])
+  id               Int           @id @default(autoincrement())
+  folio            String        @unique
+  titulo           String
+  descripcion      String?
+  clienteId        Int?
+  sucursalId       Int
+  usuarioId        Int
+  estado           EstadoBitacora @default(ABIERTA)
+  totalMateriales  Decimal        @default(0) @db.Decimal(12, 2)
+  totalAbonado     Decimal        @default(0) @db.Decimal(12, 2)
+  saldoPendiente   Decimal        @default(0) @db.Decimal(12, 2)
+  ventaId          Int?           @unique
+  notas            String?
+  creadaEn         DateTime       @default(now())
+  actualizadoEn    DateTime       @updatedAt
+  cliente  Cliente?  @relation(fields: [clienteId], references: [id])
+  sucursal Sucursal  @relation(fields: [sucursalId], references: [id])
+  usuario  Usuario   @relation(fields: [usuarioId], references: [id])
+  venta    Venta?    @relation(fields: [ventaId], references: [id])
   detalles DetalleBitacora[]
   abonos   AbonoBitacora[]
-
   @@index([clienteId])
   @@index([sucursalId])
   @@index([estado])
 }
 
 model DetalleBitacora {
-  id                    Int      @id @default(autoincrement())
-  bitacoraId            Int
-  productoId            Int
-  cantidad              Int
-  precioUnitario        Decimal  @db.Decimal(10, 2)
-  subtotal              Decimal  @db.Decimal(10, 2)
-  inventarioDescontado  Boolean  @default(false)
-  notas                 String?
-  creadoEn              DateTime @default(now())
-
+  id                   Int      @id @default(autoincrement())
+  bitacoraId           Int
+  productoId           Int
+  cantidad             Int
+  precioUnitario       Decimal  @db.Decimal(10, 2)
+  subtotal             Decimal  @db.Decimal(10, 2)
+  inventarioDescontado Boolean  @default(false)
+  notas                String?
+  creadoEn             DateTime @default(now())
   bitacora Bitacora @relation(fields: [bitacoraId], references: [id], onDelete: Cascade)
   producto Producto @relation(fields: [productoId], references: [id])
-
   @@index([bitacoraId])
 }
 
 model AbonoBitacora {
-  id          Int        @id @default(autoincrement())
-  bitacoraId  Int
-  usuarioId   Int
-  monto       Decimal    @db.Decimal(10, 2)
-  metodoPago  MetodoPago @default(EFECTIVO)
-  notas       String?
-  creadoEn    DateTime   @default(now())
-
+  id         Int        @id @default(autoincrement())
+  bitacoraId Int
+  usuarioId  Int
+  monto      Decimal    @db.Decimal(10, 2)
+  metodoPago MetodoPago @default(EFECTIVO)
+  notas      String?
+  creadoEn   DateTime   @default(now())
   bitacora Bitacora @relation(fields: [bitacoraId], references: [id], onDelete: Cascade)
   usuario  Usuario  @relation(fields: [usuarioId], references: [id])
-
   @@index([bitacoraId])
 }
 
 // ══════════════════════════════════════════════════════════════════
-//  PROMOCIONES
+// PROMOCIONES
 // ══════════════════════════════════════════════════════════════════
-
 model Promocion {
   id          Int              @id @default(autoincrement())
   nombre      String
@@ -738,21 +666,18 @@ model Promocion {
   categoriaId Int?
   notas       String?
   creadaEn    DateTime         @default(now())
-
-  sucursal      Sucursal       @relation(fields: [sucursalId], references: [id])
-  categoria     Categoria?     @relation(fields: [categoriaId], references: [id])
+  sucursal  Sucursal   @relation(fields: [sucursalId], references: [id])
+  categoria Categoria? @relation(fields: [categoriaId], references: [id])
   productos     Producto[]     @relation("PromocionProducto")
   detallesVenta DetalleVenta[]
-
   @@index([activa])
   @@index([fechaInicio])
   @@index([fechaFin])
 }
 
 // ══════════════════════════════════════════════════════════════════
-//  FACTURACIÓN CFDI
+// FACTURACIÓN CFDI
 // ══════════════════════════════════════════════════════════════════
-
 model FacturaCfdi {
   id              Int           @id @default(autoincrement())
   ventaId         Int           @unique
@@ -772,15 +697,13 @@ model FacturaCfdi {
   estado          EstadoFactura @default(FACTURADA)
   timbradaEn      DateTime?
   creadaEn        DateTime      @default(now())
-
   venta   Venta   @relation(fields: [ventaId], references: [id], onDelete: Cascade)
   cliente Cliente @relation(fields: [clienteId], references: [id])
 }
 
 // ══════════════════════════════════════════════════════════════════
-//  AUDITORÍA
+// AUDITORÍA
 // ══════════════════════════════════════════════════════════════════
-
 model Auditoria {
   id           Int      @id @default(autoincrement())
   usuarioId    Int?
@@ -792,10 +715,8 @@ model Auditoria {
   valorDespues Json?
   ip           String?
   creadoEn     DateTime @default(now())
-
   usuario  Usuario?  @relation(fields: [usuarioId], references: [id])
   sucursal Sucursal? @relation(fields: [sucursalId], references: [id])
-
   @@index([usuarioId])
   @@index([sucursalId])
   @@index([modulo])

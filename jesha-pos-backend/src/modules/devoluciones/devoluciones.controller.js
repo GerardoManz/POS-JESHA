@@ -8,18 +8,9 @@ const prisma = require('../../lib/prisma')
 async function registrarAudit(usuarioId, sucursalId, referencia, detalleExtra) {
   try {
     await prisma.auditoria.create({
-      data: {
-        usuarioId,
-        sucursalId,
-        accion:       'CREAR_DEVOLUCION',
-        modulo:       'devoluciones',
-        referencia,
-        valorDespues: detalleExtra
-      }
+      data: { usuarioId, sucursalId, accion: 'CREAR_DEVOLUCION', modulo: 'devoluciones', referencia, valorDespues: detalleExtra }
     })
-  } catch (e) {
-    console.error('Audit error devoluciones:', e.message)
-  }
+  } catch (e) { console.error('Audit error devoluciones:', e.message) }
 }
 
 async function generarFolioDevolucion() {
@@ -41,10 +32,7 @@ exports.crear = async (req, res) => {
     const solicitante = req.usuario
 
     if (!ventaId || !motivo || !tipoReembolso || !productos?.length) {
-      return res.status(400).json({
-        error:      'Faltan campos requeridos',
-        requeridos: ['ventaId', 'motivo', 'tipoReembolso', 'productos']
-      })
+      return res.status(400).json({ error: 'Faltan campos requeridos', requeridos: ['ventaId', 'motivo', 'tipoReembolso', 'productos'] })
     }
 
     const TIPOS_VALIDOS = ['REEMBOLSO', 'CAMBIO_PRODUCTO', 'CAMBIO_PARCIAL']
@@ -54,10 +42,7 @@ exports.crear = async (req, res) => {
 
     const venta = await prisma.venta.findUnique({
       where:   { id: parseInt(ventaId) },
-      include: {
-        detalles:     true,
-        devoluciones: { include: { detalles: true } }
-      }
+      include: { detalles: true, devoluciones: { include: { detalles: true } } }
     })
 
     if (!venta) return res.status(404).json({ error: 'Venta no encontrada' })
@@ -68,6 +53,7 @@ exports.crear = async (req, res) => {
     const horasTranscurridas = (Date.now() - new Date(venta.creadaEn).getTime()) / 36e5
     const fueraDeTiempo      = horasTranscurridas > 72
 
+    // Calcular ya devuelto por producto
     const yaDevuelto = {}
     for (const dev of venta.devoluciones) {
       for (const det of dev.detalles) {
@@ -80,58 +66,49 @@ exports.crear = async (req, res) => {
 
     for (const item of productos) {
       const { productoId, cantidad } = item
-
       if (!productoId || !cantidad || cantidad <= 0) {
         return res.status(400).json({ error: 'Cada producto requiere productoId y cantidad > 0' })
       }
-
       const detalleOriginal = venta.detalles.find(d => d.productoId === parseInt(productoId))
       if (!detalleOriginal) {
         return res.status(400).json({ error: `Producto ${productoId} no pertenece a esta venta` })
       }
-
       const cantidadYaDevuelta = yaDevuelto[parseInt(productoId)] || 0
       const cantidadDisponible = detalleOriginal.cantidad - cantidadYaDevuelta
-
       if (parseInt(cantidad) > cantidadDisponible) {
-        return res.status(409).json({
-          error:       'Cantidad excede lo disponible para devolver',
-          productoId,
-          vendidos:    detalleOriginal.cantidad,
-          yaDevueltos: cantidadYaDevuelta,
-          disponibles: cantidadDisponible,
-          solicitados: parseInt(cantidad)
-        })
+        return res.status(409).json({ error: 'Cantidad excede lo disponible para devolver', productoId, vendidos: detalleOriginal.cantidad, yaDevueltos: cantidadYaDevuelta, disponibles: cantidadDisponible, solicitados: parseInt(cantidad) })
       }
-
-      const subtotalItem = parseFloat(detalleOriginal.precioUnitario) * parseInt(cantidad)
-      montoReembolso += subtotalItem
-
-      detallesValidados.push({
-        productoId:     parseInt(productoId),
-        cantidad:       parseInt(cantidad),
-        precioUnitario: parseFloat(detalleOriginal.precioUnitario),
-        sucursalId:     venta.sucursalId
-      })
+      montoReembolso += parseFloat(detalleOriginal.precioUnitario) * parseInt(cantidad)
+      detallesValidados.push({ productoId: parseInt(productoId), cantidad: parseInt(cantidad), precioUnitario: parseFloat(detalleOriginal.precioUnitario), sucursalId: venta.sucursalId })
     }
 
     montoReembolso = parseFloat(montoReembolso.toFixed(2))
     const folio    = await generarFolioDevolucion()
 
-    // ── Verificar turno activo ANTES de la transacción ────────────
+    // ── Determinar si la devolución es total o parcial ──────────
+    // Total vendido por producto
+    const totalVendido = {}
+    for (const det of venta.detalles) {
+      totalVendido[det.productoId] = det.cantidad
+    }
+    // Total devuelto INCLUYENDO esta nueva devolución
+    const totalDevueltoFinal = { ...yaDevuelto }
+    for (const det of detallesValidados) {
+      totalDevueltoFinal[det.productoId] = (totalDevueltoFinal[det.productoId] || 0) + det.cantidad
+    }
+    const nuevoEstadoVenta = 'DEVOLUCION'
+
+    // ── Verificar turno activo ───────────────────────────────────
     const turnoActivo = await prisma.turnoCaja.findFirst({
       where: { sucursalId: venta.sucursalId, abierto: true }
     })
     const sinTurno = !turnoActivo
 
     if (sinTurno) {
-      console.warn(
-        `⚠️  Devolución ${folio} procesada SIN turno activo en sucursal ${venta.sucursalId}.` +
-        ` Inventario reintegrado. Egreso de caja ($${montoReembolso}) NO registrado en turno.`
-      )
+      console.warn(`⚠️ Devolución ${folio} SIN turno activo. Egreso de caja ($${montoReembolso}) NO registrado.`)
     }
 
-    // ── Transacción atómica ───────────────────────────────────────
+    // ── Transacción atómica ─────────────────────────────────────
     const devolucion = await prisma.$transaction(async (tx) => {
 
       const devCreada = await tx.devolucion.create({
@@ -167,64 +144,44 @@ exports.crear = async (req, res) => {
         if (inv) {
           const stockAntes   = inv.stockActual
           const stockDespues = stockAntes + det.cantidad
-
           await tx.inventarioSucursal.update({
             where: { productoId_sucursalId: { productoId: det.productoId, sucursalId: det.sucursalId } },
             data:  { stockActual: stockDespues }
           })
-
           await tx.movimientoInventario.create({
-            data: {
-              productoId: det.productoId,
-              sucursalId: det.sucursalId,
-              usuarioId:  solicitante.id,
-              tipo:       'DEVOLUCION_ENTRADA',
-              cantidad:   det.cantidad,
-              stockAntes,
-              stockDespues,
-              referencia: folio,
-              notas:      `Devolución de ${venta.folio}`
-            }
+            data: { productoId: det.productoId, sucursalId: det.sucursalId, usuarioId: solicitante.id, tipo: 'DEVOLUCION_ENTRADA', cantidad: det.cantidad, stockAntes, stockDespues, referencia: folio, notas: `Devolución de ${venta.folio}` }
           })
         }
       }
 
-      // Movimiento de caja — solo si hay turno Y aplica reembolso
+      // Movimiento de caja
       if (!sinTurno && (tipoReembolso === 'REEMBOLSO' || tipoReembolso === 'CAMBIO_PARCIAL')) {
         await tx.movimientoCaja.create({
-          data: {
-            turnoId:    turnoActivo.id,
-            tipo:       'DEVOLUCION',
-            monto:      -montoReembolso,
-            metodoPago: venta.metodoPago,
-            referencia: folio,
-            notas:      `Devolución de ${venta.folio} — ${motivo}`
-          }
+          data: { turnoId: turnoActivo.id, tipo: 'DEVOLUCION', monto: -montoReembolso, metodoPago: venta.metodoPago, referencia: folio, notas: `Devolución de ${venta.folio} — ${motivo}` }
         })
       }
+
+      // ── ACTUALIZAR ESTADO DE LA VENTA ─────────────────────────
+      await tx.venta.update({
+        where: { id: parseInt(ventaId) },
+        data:  { estado: nuevoEstadoVenta }
+      })
 
       return devCreada
     })
 
-    await registrarAudit(
-      solicitante.id,
-      venta.sucursalId,
-      folio,
-      {
-        devolucionId:       devolucion.id,
-        ventaFolio:         venta.folio,
-        tipoReembolso,
-        monto:              montoReembolso,
-        productos:          detallesValidados.length,
-        fueraDeTiempo,
-        sinTurnoAlDevolver: sinTurno
-      }
-    )
+    await registrarAudit(solicitante.id, venta.sucursalId, folio, {
+      devolucionId:       devolucion.id,
+      ventaFolio:         venta.folio,
+      tipoReembolso,
+      monto:              montoReembolso,
+      productos:          detallesValidados.length,
+      fueraDeTiempo,
+      sinTurnoAlDevolver: sinTurno,
+      estadoVentaResultante: nuevoEstadoVenta
+    })
 
-    console.log(
-      `✅ Devolución ${folio} — Venta: ${venta.folio} — $${montoReembolso}` +
-      (sinTurno ? ' — ⚠️ sin turno, caja no afectada' : '')
-    )
+    console.log(`✅ Devolución ${folio} — Venta: ${venta.folio} — $${montoReembolso} — Estado venta: ${nuevoEstadoVenta}${sinTurno ? ' — ⚠️ sin turno' : ''}`)
 
     res.status(201).json({
       success:       true,
@@ -232,6 +189,7 @@ exports.crear = async (req, res) => {
       folio,
       fueraDeTiempo,
       sinTurno,
+      estadoVenta:   nuevoEstadoVenta,
       data: {
         id:             devolucion.id,
         folio,
@@ -239,13 +197,9 @@ exports.crear = async (req, res) => {
         tipoReembolso,
         motivo,
         montoReembolso,
-        productos:      devolucion.detalles.map(d => ({
-          nombre:   d.producto.nombre,
-          cantidad: d.cantidad,
-          precio:   d.precioUnitario
-        })),
-        cajero:   devolucion.usuario.nombre,
-        creadaEn: devolucion.creadaEn
+        productos:      devolucion.detalles.map(d => ({ nombre: d.producto.nombre, cantidad: d.cantidad, precio: d.precioUnitario })),
+        cajero:         devolucion.usuario.nombre,
+        creadaEn:       devolucion.creadaEn
       }
     })
 
@@ -262,20 +216,15 @@ exports.listar = async (req, res) => {
   try {
     const { skip = 0, take = 20, ventaId, desde, hasta } = req.query
     const where = {}
-
     if (ventaId) where.ventaId = parseInt(ventaId)
     if (desde || hasta) {
       where.creadaEn = {}
       if (desde) where.creadaEn.gte = new Date(desde)
       if (hasta) where.creadaEn.lte = new Date(new Date(hasta).setHours(23, 59, 59, 999))
     }
-
     const [devoluciones, total] = await Promise.all([
       prisma.devolucion.findMany({
-        where,
-        skip:    parseInt(skip),
-        take:    parseInt(take),
-        orderBy: { creadaEn: 'desc' },
+        where, skip: parseInt(skip), take: parseInt(take), orderBy: { creadaEn: 'desc' },
         include: {
           venta:    { select: { folio: true, metodoPago: true } },
           usuario:  { select: { id: true, nombre: true } },
@@ -284,23 +233,14 @@ exports.listar = async (req, res) => {
       }),
       prisma.devolucion.count({ where })
     ])
-
     res.json({
       success: true,
       data: devoluciones.map(d => ({
-        id:             d.id,
-        ventaFolio:     d.venta.folio,
-        metodoPago:     d.venta.metodoPago,
-        tipoReembolso:  d.tipoReembolso,
-        motivo:         d.motivo,
-        montoReembolso: d.montoReembolso,
-        cajero:         d.usuario.nombre,
-        productos:      d.detalles.length,
-        creadaEn:       d.creadaEn
+        id: d.id, ventaFolio: d.venta.folio, metodoPago: d.venta.metodoPago,
+        tipoReembolso: d.tipoReembolso, motivo: d.motivo, montoReembolso: d.montoReembolso,
+        cajero: d.usuario.nombre, productos: d.detalles.length, creadaEn: d.creadaEn
       })),
-      total,
-      skip: parseInt(skip),
-      take: parseInt(take)
+      total, skip: parseInt(skip), take: parseInt(take)
     })
   } catch (err) {
     console.error('❌ Error en listarDevoluciones:', err)
@@ -314,7 +254,6 @@ exports.listar = async (req, res) => {
 exports.porVenta = async (req, res) => {
   try {
     const { ventaId } = req.params
-
     const devoluciones = await prisma.devolucion.findMany({
       where:   { ventaId: parseInt(ventaId) },
       orderBy: { creadaEn: 'desc' },
@@ -323,19 +262,13 @@ exports.porVenta = async (req, res) => {
         detalles: { include: { producto: { select: { nombre: true, codigoInterno: true } } } }
       }
     })
-
     const resumenProductos = {}
     for (const dev of devoluciones) {
       for (const det of dev.detalles) {
         resumenProductos[det.productoId] = (resumenProductos[det.productoId] || 0) + det.cantidad
       }
     }
-
-    res.json({
-      success:         true,
-      data:            devoluciones,
-      resumenDevuelto: resumenProductos
-    })
+    res.json({ success: true, data: devoluciones, resumenDevuelto: resumenProductos })
   } catch (err) {
     console.error('❌ Error en porVenta:', err)
     res.status(500).json({ error: err.message })
