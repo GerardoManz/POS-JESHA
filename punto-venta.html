@@ -117,21 +117,9 @@
           </div>
         </div>
 
-        <!-- MONTO RECIBIDO (si es efectivo) -->
-        <div class="carrito-section-control" id="monto-efectivo-control" style="display: none;">
-          <label class="control-label">Monto Recibido</label>
-          <input 
-            type="number" 
-            id="monto-recibido" 
-            placeholder="0.00" 
-            step="0.01"
-            min="0"
-            class="control-input"
-          />
-          <div class="cambio-info" id="cambio-info" style="display: none;">
-            Cambio: <span id="cambio-valor">$0.00</span>
-          </div>
-        </div>
+        <!-- MONTO RECIBIDO — movido al modal de confirmación -->
+        <input type="hidden" id="monto-recibido" value="" />
+        <div id="monto-efectivo-control" style="display:none;"></div>
 
         <!-- DIVIDER -->
         <div class="carrito-divider"></div>
@@ -278,9 +266,28 @@
     <!-- Resumen de la venta -->
     <div class="modal-confirm-body">
 
+      <!-- 1. Descuento opcional — primero para que afecte el total -->
+      <div style="margin-bottom:12px;">
+        <label style="font-size:0.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;display:block;margin-bottom:6px;">
+          Descuento % <span style="font-weight:400;color:var(--muted)">(opcional)</span>
+        </label>
+        <input type="number" id="confirm-descuento-input" min="0" max="100" step="0.5"
+          placeholder="0"
+          style="width:100%;padding:8px 12px;background:rgba(255,255,255,0.04);border:1px solid var(--panel-border);border-radius:8px;color:var(--text);font-family:'Barlow',sans-serif;font-size:0.9rem;outline:none;" />
+      </div>
+
+      <!-- 2. Resumen calculado -->
       <div class="modal-confirm-resumen">
         <div class="modal-confirm-row">
-          <span class="modal-confirm-label">Total</span>
+          <span class="modal-confirm-label">Subtotal</span>
+          <span class="modal-confirm-valor" id="confirmacion-subtotal">$0.00</span>
+        </div>
+        <div class="modal-confirm-row" id="confirm-row-descuento" style="display:none;">
+          <span class="modal-confirm-label">Descuento</span>
+          <span class="modal-confirm-valor" id="confirmacion-descuento" style="color:#e8710a;">—</span>
+        </div>
+        <div class="modal-confirm-row">
+          <span class="modal-confirm-label">Total a cobrar</span>
           <span class="modal-confirm-valor total" id="confirmacion-total">$0.00</span>
         </div>
         <div class="modal-confirm-row">
@@ -291,27 +298,22 @@
           <span class="modal-confirm-label">Cliente</span>
           <span class="modal-confirm-valor" id="confirmacion-cliente">—</span>
         </div>
-        <div class="modal-confirm-row" id="confirm-row-cambio" style="display:none;">
-          <span class="modal-confirm-label">Cambio</span>
-          <span class="modal-confirm-valor cambio" id="confirmacion-cambio">$0.00</span>
-        </div>
-        <div class="modal-confirm-row" id="confirm-row-descuento" style="display:none;">
-          <span class="modal-confirm-label">Descuento</span>
-          <span class="modal-confirm-valor" id="confirmacion-descuento" style="color:#e8710a;">—</span>
-        </div>
       </div>
 
-      <!-- Descuento opcional -->
-      <div style="margin:10px 0;">
+      <!-- 3. Monto recibido (solo efectivo) -->
+      <div id="confirm-monto-efectivo-wrap" style="display:none;margin:12px 0;">
         <label style="font-size:0.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;display:block;margin-bottom:6px;">
-          Descuento % <span style="font-weight:400;color:var(--muted)">(opcional)</span>
+          Monto recibido
         </label>
-        <input type="number" id="confirm-descuento-input" min="0" max="100" step="0.5"
-          placeholder="0"
+        <input type="number" id="confirm-monto-recibido" min="0" step="0.01" placeholder="0.00"
           style="width:100%;padding:8px 12px;background:rgba(255,255,255,0.04);border:1px solid var(--panel-border);border-radius:8px;color:var(--text);font-family:'Barlow',sans-serif;font-size:0.9rem;outline:none;" />
+        <div id="confirm-cambio-wrap" style="display:none;margin-top:6px;padding:8px 12px;background:rgba(96,208,128,0.08);border:1px solid rgba(96,208,128,0.2);border-radius:8px;">
+          <span style="font-size:0.8rem;color:var(--muted);">Cambio: </span>
+          <span id="confirmacion-cambio" style="font-weight:700;color:#60d080;">$0.00</span>
+        </div>
       </div>
 
-      <!-- Selector de vendedor -->
+      <!-- 4. Selector de vendedor -->
       <div style="margin:10px 0;">
         <label style="font-size:0.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;display:block;margin-bottom:6px;">
           Vendedor que realizó la venta

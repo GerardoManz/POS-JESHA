@@ -483,19 +483,17 @@ async function completarVenta() {
     return
   }
 
-  const total = carrito.reduce((sum, item) => sum + (item.precio * item.cantidad), 0)
-  if (metodoPagoSeleccionado === 'EFECTIVO') {
-    const monto = parseFloat(montoRecibido.value) || 0
-    if (monto < total) { alert(`❌ Monto insuficiente. Total: $${total.toFixed(2)}`); return }
-  }
   mostrarModalConfirmacion()
 }
 
 function mostrarModalConfirmacion() {
-  const total = carrito.reduce((sum, item) => sum + (item.precio * item.cantidad), 0)
+  const subtotal = carrito.reduce((sum, item) => sum + (item.precio * item.cantidad), 0)
 
-  // Total y método
-  document.getElementById('confirmacion-total').textContent  = `$${total.toFixed(2)}`
+  // Subtotal bruto
+  const elSubtotal = document.getElementById('confirmacion-subtotal')
+  if (elSubtotal) elSubtotal.textContent = `$${subtotal.toFixed(2)}`
+
+  // Método de pago
   const metodoLabel = { EFECTIVO:'💵 Efectivo', CREDITO:'💳 Tarjeta', DEBITO:'💳 Tarjeta', TRANSFERENCIA:'🔄 Transferencia' }
   document.getElementById('confirmacion-metodo').textContent = metodoLabel[metodoPagoSeleccionado] || metodoPagoSeleccionado
 
@@ -510,33 +508,24 @@ function mostrarModalConfirmacion() {
     }
   }
 
-  // Cambio (solo efectivo)
-  const rowCambio = document.getElementById('confirm-row-cambio')
-  if (rowCambio) {
-    if (metodoPagoSeleccionado === 'EFECTIVO') {
-      const monto  = parseFloat(montoRecibido.value) || 0
-      const cambio = monto - total
-      if (monto > 0 && cambio >= 0) {
-        document.getElementById('confirmacion-cambio').textContent = `$${cambio.toFixed(2)}`
-        rowCambio.style.display = 'flex'
-      } else {
-        rowCambio.style.display = 'none'
-      }
-    } else {
-      rowCambio.style.display = 'none'
-    }
+  // Mostrar/ocultar monto recibido según método
+  const wrapMonto = document.getElementById('confirm-monto-efectivo-wrap')
+  if (wrapMonto) {
+    wrapMonto.style.display = metodoPagoSeleccionado === 'EFECTIVO' ? 'block' : 'none'
+    const inputMonto = document.getElementById('confirm-monto-recibido')
+    if (inputMonto) inputMonto.value = ''
+    const wrapCambio = document.getElementById('confirm-cambio-wrap')
+    if (wrapCambio) wrapCambio.style.display = 'none'
   }
 
   // Poblar selector de vendedor
   const selVendedor = document.getElementById('confirm-vendedor-select')
   if (selVendedor) {
     selVendedor.innerHTML = ''
-    // Opción: el cajero logueado
     const optPropio = document.createElement('option')
     optPropio.value = USUARIO.id
     optPropio.textContent = `${USUARIO.nombre} (tú)`
     selVendedor.appendChild(optPropio)
-    // Cargar otros usuarios activos de la sucursal
     fetch(`${API_URL}/usuarios?activo=true`, { headers: { 'Authorization': `Bearer ${TOKEN}` } })
       .then(r => r.json())
       .then(data => {
@@ -550,7 +539,6 @@ function mostrarModalConfirmacion() {
             selVendedor.appendChild(opt)
           })
       }).catch(() => {})
-    // Restaurar selección previa si existe
     if (vendedorSeleccionado) selVendedor.value = vendedorSeleccionado.id
   }
 
@@ -559,18 +547,20 @@ function mostrarModalConfirmacion() {
   if (inputDesc) inputDesc.value = descuentoManual > 0 ? descuentoManual : ''
 
   actualizarResumenConDescuento()
-
-  // Mostrar modal con el nuevo estilo (usa display flex)
   modalConfirmacion.style.display = 'flex'
 }
 
 function actualizarResumenConDescuento() {
-  const totalBruto = carrito.reduce((s, i) => s + (i.precio * i.cantidad), 0)
+  const subtotal   = carrito.reduce((s, i) => s + (i.precio * i.cantidad), 0)
   const pct        = parseFloat(document.getElementById('confirm-descuento-input')?.value) || 0
-  const descAmt    = parseFloat((totalBruto * (pct / 100)).toFixed(2))
-  const totalFinal = parseFloat((totalBruto - descAmt).toFixed(2))
-  const elTotal    = document.getElementById('confirmacion-total')
+  const descAmt    = parseFloat((subtotal * (pct / 100)).toFixed(2))
+  const totalFinal = parseFloat((subtotal - descAmt).toFixed(2))
+
+  // Actualizar total
+  const elTotal = document.getElementById('confirmacion-total')
   if (elTotal) elTotal.textContent = `$${totalFinal.toFixed(2)}`
+
+  // Mostrar/ocultar fila descuento
   const elDesc = document.getElementById('confirm-row-descuento')
   if (elDesc) {
     if (pct > 0) {
@@ -580,16 +570,19 @@ function actualizarResumenConDescuento() {
       elDesc.style.display = 'none'
     }
   }
-  // Recalcular cambio si es efectivo
-  const rowCambio = document.getElementById('confirm-row-cambio')
-  if (rowCambio && metodoPagoSeleccionado === 'EFECTIVO') {
-    const monto  = parseFloat(montoRecibido.value) || 0
-    const cambio = monto - totalFinal
-    if (monto > 0 && cambio >= 0) {
-      document.getElementById('confirmacion-cambio').textContent = `$${cambio.toFixed(2)}`
-      rowCambio.style.display = 'flex'
-    } else {
-      rowCambio.style.display = 'none'
+
+  // Recalcular cambio con el monto del modal
+  if (metodoPagoSeleccionado === 'EFECTIVO') {
+    const monto      = parseFloat(document.getElementById('confirm-monto-recibido')?.value) || 0
+    const cambio     = monto - totalFinal
+    const wrapCambio = document.getElementById('confirm-cambio-wrap')
+    if (wrapCambio) {
+      if (monto > 0 && cambio >= 0) {
+        document.getElementById('confirmacion-cambio').textContent = `$${cambio.toFixed(2)}`
+        wrapCambio.style.display = 'block'
+      } else {
+        wrapCambio.style.display = 'none'
+      }
     }
   }
 }
@@ -607,11 +600,31 @@ async function confirmarVenta() {
     }))
 
     // Leer vendedor y descuento del modal
-    const selVend   = document.getElementById('confirm-vendedor-select')
-    const vendId    = selVend ? parseInt(selVend.value) : USUARIO.id
-    const pct       = parseFloat(document.getElementById('confirm-descuento-input')?.value) || 0
-    const descAmt   = parseFloat((total * (pct / 100)).toFixed(2))
+    const selVend    = document.getElementById('confirm-vendedor-select')
+    const vendId     = selVend ? parseInt(selVend.value) : USUARIO.id
+    const pct        = parseFloat(document.getElementById('confirm-descuento-input')?.value) || 0
+    const descAmt    = parseFloat((total * (pct / 100)).toFixed(2))
     const totalFinal = parseFloat((total - descAmt).toFixed(2))
+
+    // Validar monto recibido si es efectivo
+    if (metodoPagoSeleccionado === 'EFECTIVO') {
+      const montoModal = parseFloat(document.getElementById('confirm-monto-recibido')?.value) || 0
+      if (montoModal < totalFinal) {
+        btnConfirmarVenta.disabled  = false
+        btnConfirmarVenta.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Confirmar venta`
+        ventaEnProceso = false
+        document.getElementById('confirm-monto-recibido')?.focus()
+        const wrapCambio = document.getElementById('confirm-cambio-wrap')
+        if (wrapCambio) {
+          wrapCambio.style.display = 'block'
+          wrapCambio.style.background = 'rgba(255,107,107,0.08)'
+          wrapCambio.style.borderColor = 'rgba(255,107,107,0.3)'
+          document.getElementById('confirmacion-cambio').textContent = `Monto insuficiente — faltan $${(totalFinal - montoModal).toFixed(2)}`
+          document.getElementById('confirmacion-cambio').style.color = '#ff6b6b'
+        }
+        return
+      }
+    }
 
     // Guardar para próxima vez
     vendedorSeleccionado = selVend ? { id: vendId, nombre: selVend.options[selVend.selectedIndex]?.text } : null
@@ -829,7 +842,8 @@ function configurarEventListeners() {
     })
   })
 
-  montoRecibido.addEventListener('input', actualizarCarrito)
+  // monto recibido ahora está en el modal — listener en confirm-monto-recibido
+  document.getElementById('confirm-monto-recibido')?.addEventListener('input', actualizarResumenConDescuento)
 
   // Venta
   btnCompletarVenta.addEventListener('click', completarVenta)

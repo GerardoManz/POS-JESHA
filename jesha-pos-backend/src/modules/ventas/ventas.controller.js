@@ -49,9 +49,12 @@ exports.crearVenta = async (req, res) => {
     }
     totalRecalculado = parseFloat(totalRecalculado.toFixed(2))
 
-    const diferencia = Math.abs(totalRecalculado - total)
+    // Restar descuento antes de comparar
+    const descuentoAmt  = parseFloat(parseFloat(descuento || 0).toFixed(2))
+    const totalEsperado = parseFloat((totalRecalculado - descuentoAmt).toFixed(2))
+    const diferencia    = Math.abs(totalEsperado - parseFloat(total))
     if (diferencia > 0.01) {
-      return res.status(400).json({ error: 'Total no coincide', codigo: 'TOTAL_MISMATCH', backend: totalRecalculado, frontend: total, diferencia })
+      return res.status(400).json({ error: 'Total no coincide', codigo: 'TOTAL_MISMATCH', backend: totalEsperado, frontend: total, diferencia })
     }
 
     const inventarios = await prisma.inventarioSucursal.findMany({
@@ -68,7 +71,7 @@ exports.crearVenta = async (req, res) => {
     const folio = await generarFolio()
     let facturaEstado = 'DISPONIBLE'
     let facturaLimite = new Date()
-    if (metodoPago === 'EFECTIVO' && totalRecalculado > 2000) {
+    if (metodoPago === 'EFECTIVO' && totalEsperado > 2000) {
       facturaEstado = 'BLOQUEADA'
       facturaLimite.setHours(facturaLimite.getHours() + 72)
     } else {
@@ -79,7 +82,7 @@ exports.crearVenta = async (req, res) => {
       const ventaCreada = await tx.venta.create({
         data: {
           folio, sucursalId, usuarioId, clienteId: clienteId || null, turnoId, metodoPago,
-          subtotal: totalRecalculado, descuento: parseFloat(descuento || 0), total: totalRecalculado,
+          subtotal: totalRecalculado, descuento: descuentoAmt, total: totalEsperado,
           estado: 'COMPLETADA', tokenQr: generarUUID(), facturaEstado, facturaLimite,
           detalles: {
             create: detallesValidados.map(d => ({ productoId: d.productoId, cantidad: d.cantidad, precioUnitario: d.precioUnitario, subtotal: d.subtotal, descuento: 0 }))
@@ -104,7 +107,7 @@ exports.crearVenta = async (req, res) => {
       }
 
       await tx.movimientoCaja.create({
-        data: { turnoId, tipo: 'VENTA', monto: totalRecalculado, metodoPago, referencia: folio }
+        data: { turnoId, tipo: 'VENTA', monto: totalEsperado, metodoPago, referencia: folio }
       })
       await tx.auditoria.create({
         data: { usuarioId, sucursalId, accion: 'CREAR_VENTA', modulo: 'VENTAS', referencia: folio, valorDespues: { ventaId: ventaCreada.id, total: totalRecalculado, items: detallesValidados.length } }
