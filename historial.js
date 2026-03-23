@@ -100,7 +100,7 @@ async function cargarVentas() {
         <td>${metodoBadge(v.metodoPago)}</td>
         <td style="text-align:center;color:var(--muted)">${v.productosCount}</td>
         <td><strong>${fmt(v.total)}</strong></td>
-        <td><span class="estado-badge ${v.estado.toLowerCase()}">${v.estado === 'COMPLETADA' ? 'Completada' : 'Cancelada'}</span></td>
+        <td><span class="estado-badge ${v.estado.toLowerCase()}">${{ COMPLETADA: "Completada", CANCELADA: "Cancelada", DEVOLUCION: "Devolución" }[v.estado] || v.estado}</span></td>
         <td>
           <button class="btn-ticket-hist" onclick="event.stopPropagation();imprimirTicket(${v.id})" title="Imprimir ticket">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
@@ -193,7 +193,8 @@ window.verDetalle = async function(id) {
     }[v.facturaEstado] || v.facturaEstado
 
     const badge       = document.getElementById('det-estado-badge')
-    badge.textContent = v.estado === 'COMPLETADA' ? 'Completada' : 'Cancelada'
+    const estadoLabel = { COMPLETADA: 'Completada', CANCELADA: 'Cancelada', DEVOLUCION: 'Devolución' }
+    badge.textContent = estadoLabel[v.estado] || v.estado
     badge.className   = `estado-badge ${v.estado.toLowerCase()}`
 
     document.getElementById('det-items-tbody').innerHTML = (v.detalles || []).map(d => `
@@ -222,18 +223,132 @@ function renderAccionesModal(v) {
   const div = document.getElementById('det-acciones-modal')
   if (!div) return
 
+  const esSuperAdmin    = ['SUPERADMIN', 'ADMIN_SUCURSAL'].includes(USUARIO.rol)
+  const puedeDevolver   = v.estado === 'COMPLETADA' || v.estado === 'DEVOLUCION'
+  const puedeCancelar   = v.estado === 'COMPLETADA' && esSuperAdmin
+
   const btnTicket = `
     <button class="btn-ticket-hist" onclick="imprimirTicket(${v.id})">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
       🖨️ Imprimir Ticket
     </button>`
 
-  const btnDevolver = v.estado === 'COMPLETADA' ? `
+  const btnDevolver = puedeDevolver ? `
     <button class="btn-devolver-hist" onclick="abrirModalDevolucion(${v.id})">
       ↩️ Devolver productos
     </button>` : ''
 
-  div.innerHTML = btnTicket + btnDevolver
+  const btnCancelar = puedeCancelar ? `
+    <button class="btn-cancelar-venta" onclick="cancelarVenta(${v.id}, '${v.folio}')">
+      ✕ Cancelar venta
+    </button>` : ''
+
+  div.innerHTML = btnTicket + btnDevolver + btnCancelar
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  CANCELAR VENTA
+// ════════════════════════════════════════════════════════════════════
+// ── Modal de cancelación (sin prompt/confirm nativos) ────────────────
+function abrirModalCancelacion(id, folio) {
+  // Inyectar modal si no existe
+  if (!document.getElementById('modal-cancelar-venta')) {
+    const m = document.createElement('div')
+    m.id        = 'modal-cancelar-venta'
+    m.className = 'modal'
+    m.innerHTML = `
+      <div class="modal-content" style="max-width:460px;">
+        <div class="modal-header">
+          <h3 style="color:#ff6b6b;">Cancelar venta</h3>
+          <button class="modal-close" onclick="document.getElementById('modal-cancelar-venta').classList.remove('active')">&times;</button>
+        </div>
+        <div style="padding:20px 22px;">
+          <p style="font-size:0.875rem;color:var(--muted);margin-bottom:16px;">
+            Esta acción <strong style="color:var(--text)">no se puede deshacer</strong>.
+            Se reintegrará el stock y se revertirá el movimiento de caja.
+          </p>
+          <div class="form-group" style="margin-bottom:16px;">
+            <label style="font-size:0.75rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;display:block;margin-bottom:6px;">
+              Motivo de cancelación *
+            </label>
+            <input type="text" id="cancelar-motivo-input"
+              placeholder="Ej: Cliente desistió, error en producto..."
+              style="width:100%;padding:10px 13px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.12);border-radius:9px;color:var(--text);font-family:'Barlow',sans-serif;font-size:0.9rem;outline:none;" />
+            <div id="cancelar-motivo-error" style="color:#ff6b6b;font-size:0.78rem;margin-top:4px;display:none;">El motivo es obligatorio</div>
+          </div>
+          <div id="cancelar-api-error" style="padding:10px 14px;background:rgba(255,107,107,0.08);border-left:3px solid #ff6b6b;border-radius:5px;color:#ff9999;font-size:0.85rem;display:none;margin-bottom:12px;"></div>
+          <div style="display:flex;gap:10px;justify-content:flex-end;">
+            <button class="btn-secondary" onclick="document.getElementById('modal-cancelar-venta').classList.remove('active')">
+              Cancelar
+            </button>
+            <button id="cancelar-confirmar-btn" style="display:inline-flex;align-items:center;gap:6px;padding:9px 18px;background:rgba(255,107,107,0.15);border:1px solid rgba(255,107,107,0.35);border-radius:8px;color:#ff6b6b;font-family:'Barlow',sans-serif;font-size:0.875rem;font-weight:700;cursor:pointer;">
+              ✕ Confirmar cancelación
+            </button>
+          </div>
+        </div>
+      </div>`
+    document.body.appendChild(m)
+  }
+
+  // Reset estado del modal
+  const input    = document.getElementById('cancelar-motivo-input')
+  const errMot   = document.getElementById('cancelar-motivo-error')
+  const errApi   = document.getElementById('cancelar-api-error')
+  const btnConf  = document.getElementById('cancelar-confirmar-btn')
+  input.value        = ''
+  errMot.style.display = 'none'
+  errApi.style.display = 'none'
+  btnConf.disabled     = false
+  btnConf.textContent  = '✕ Confirmar cancelación'
+
+  // Bind del botón confirmar
+  btnConf.onclick = async () => {
+    const motivo = input.value.trim()
+    if (!motivo) { errMot.style.display = 'block'; input.focus(); return }
+    errMot.style.display = 'none'
+    errApi.style.display = 'none'
+    btnConf.disabled    = true
+    btnConf.textContent = '⟳ Cancelando...'
+
+    try {
+      const res = await fetch(`${API_URL}/ventas/${id}/cancelar`, {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
+        body:    JSON.stringify({ motivo })
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Error al cancelar')
+
+      document.getElementById('modal-cancelar-venta').classList.remove('active')
+      document.getElementById('modal-venta').classList.remove('active')
+      cargarVentas()
+
+      const toast = document.createElement('div')
+      toast.textContent = `✓ Venta ${folio} cancelada`
+      Object.assign(toast.style, {
+        position:'fixed', top:'20px', right:'20px', zIndex:'9999',
+        background:'#3a1010', border:'1px solid rgba(255,107,107,0.3)',
+        color:'#ff6b6b', padding:'14px 20px', borderRadius:'8px',
+        fontSize:'0.875rem', fontWeight:'600',
+        boxShadow:'0 4px 16px rgba(0,0,0,0.4)', transition:'opacity 0.4s'
+      })
+      document.body.appendChild(toast)
+      setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 400) }, 4000)
+
+    } catch (err) {
+      errApi.textContent   = err.message
+      errApi.style.display = 'block'
+      btnConf.disabled     = false
+      btnConf.textContent  = '✕ Confirmar cancelación'
+    }
+  }
+
+  document.getElementById('modal-cancelar-venta').classList.add('active')
+  setTimeout(() => input.focus(), 150)
+}
+
+window.cancelarVenta = function(id, folio) {
+  abrirModalCancelacion(id, folio)
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -563,3 +678,29 @@ document.addEventListener('DOMContentLoaded', async () => {
 })
 
 console.log('✅ historial.js cargado')
+
+// ── Inyectar estilos de badge faltantes ────────────────────────────
+;(function() {
+  if (!document.getElementById('hist-extra-styles')) {
+    const s = document.createElement('style')
+    s.id = 'hist-extra-styles'
+    s.textContent = `
+      .estado-badge.devolucion {
+        background: rgba(232,113,10,0.15);
+        color: #e8710a;
+      }
+      .btn-cancelar-venta {
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 8px 16px;
+        background: rgba(255,107,107,0.1);
+        border: 1px solid rgba(255,107,107,0.3);
+        border-radius: 8px; color: #ff6b6b;
+        font-family: 'Barlow', sans-serif;
+        font-size: 0.85rem; font-weight: 700; cursor: pointer;
+        transition: all 0.15s;
+      }
+      .btn-cancelar-venta:hover { background: rgba(255,107,107,0.2); }
+    `
+    document.head.appendChild(s)
+  }
+})()

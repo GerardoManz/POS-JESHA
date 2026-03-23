@@ -345,13 +345,49 @@ function filtrarClientes(q) {
   return clientesLista.filter(c => c.nombre?.toLowerCase().includes(l)).slice(0, 8)
 }
 
+// ── Portal dropdown (escapa overflow:hidden del modal) ──────────────
+function obtenerPortalPed() {
+  let p = document.getElementById('ped-dd-portal')
+  if (!p) {
+    p = document.createElement('div')
+    p.id = 'ped-dd-portal'
+    Object.assign(p.style, {
+      position:'fixed', zIndex:'99999',
+      background:'#1a1d24', border:'1px solid rgba(255,255,255,0.12)',
+      borderRadius:'8px', boxShadow:'0 8px 32px rgba(0,0,0,0.5)',
+      maxHeight:'220px', overflowY:'auto', display:'none', minWidth:'240px'
+    })
+    const st = document.createElement('style')
+    st.textContent = `
+      #ped-dd-portal .dd-item {
+        padding:9px 14px;cursor:pointer;font-size:0.875rem;color:#e9edf4;
+        border-bottom:1px solid rgba(255,255,255,0.05);font-family:'Barlow',sans-serif;
+      }
+      #ped-dd-portal .dd-item:last-child { border-bottom:none; }
+      #ped-dd-portal .dd-item:hover { background:rgba(255,255,255,0.06); }
+    `
+    document.head.appendChild(st)
+    document.body.appendChild(p)
+  }
+  return p
+}
+
 function renderDropdown(res) {
-  const dd = document.getElementById('dropdown-ped-clientes')
-  if (!res.length) { dd.style.display = 'none'; return }
-  dd.style.display = 'block'
-  dd.innerHTML = res.map(c => `
-    <div class="dropdown-item" onclick="selCliente(${c.id},'${c.nombre.replace(/'/g,"\\'")}')">
-      ${c.nombre}${c.telefono ? ` <span style="color:var(--muted);font-size:0.8rem">(${c.telefono})</span>` : ''}
+  const input  = document.getElementById('ped-cliente-buscar')
+  const portal = obtenerPortalPed()
+  if (!res.length) { portal.style.display = 'none'; return }
+  const rect = input.getBoundingClientRect()
+  Object.assign(portal.style, {
+    top: (rect.bottom + 4) + 'px',
+    left: rect.left + 'px',
+    width: rect.width + 'px',
+    display: 'block'
+  })
+  portal.innerHTML = res.map(c => `
+    <div class="dd-item" onclick="window.selCliente(${c.id},'${c.nombre.replace(/'/g,"\\'")}')">
+      ${c.nombre}
+      ${c.apodo ? `<span style="color:#7a8599;font-size:0.8rem"> (${c.apodo})</span>` : ''}
+      ${c.telefono ? `<span style="color:#7a8599;font-size:0.8rem"> · ${c.telefono}</span>` : ''}
     </div>
   `).join('')
 }
@@ -359,7 +395,7 @@ function renderDropdown(res) {
 window.selCliente = (id, nombre) => {
   document.getElementById('ped-cliente-id').value     = id
   document.getElementById('ped-cliente-buscar').value = nombre
-  document.getElementById('dropdown-ped-clientes').style.display = 'none'
+  obtenerPortalPed().style.display = 'none'
 }
 
 // ── Guardar pedido ──
@@ -435,12 +471,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     clearTimeout(debounceProducto); debounceProducto = setTimeout(() => buscarProductos(e.target.value.trim()), 350)
   })
 
-  // Autocomplete cliente
+  // Autocomplete cliente — portal
   document.getElementById('ped-cliente-buscar')?.addEventListener('input', e => renderDropdown(filtrarClientes(e.target.value)))
   document.addEventListener('click', e => {
-    if (!e.target.closest('#ped-cliente-buscar') && !e.target.closest('#dropdown-ped-clientes'))
-      document.getElementById('dropdown-ped-clientes').style.display = 'none'
+    if (!e.target.closest('#ped-cliente-buscar') && !e.target.closest('#ped-dd-portal'))
+      obtenerPortalPed().style.display = 'none'
   })
+  // Cerrar portal al scroll del modal
+  document.querySelector('.modal-content')?.addEventListener('scroll', () => obtenerPortalPed().style.display = 'none')
 
   // Modal ver
   document.getElementById('ver-close-btn')?.addEventListener('click', () => document.getElementById('modal-ver').classList.remove('active'))

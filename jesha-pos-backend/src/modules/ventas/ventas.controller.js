@@ -28,7 +28,6 @@ exports.crearVenta = async (req, res) => {
     if (!usuario || !usuario.activo) {
       return res.status(403).json({ error: 'Usuario inválido o inactivo' })
     }
-
     const rolesConVenta = ['EMPLEADO', 'ADMIN_SUCURSAL', 'SUPERADMIN']
     if (!rolesConVenta.includes(usuario.rol)) {
       return res.status(403).json({ error: 'Usuario sin permiso para vender', codigo: 'SIN_PERMISO_VENTA' })
@@ -36,7 +35,6 @@ exports.crearVenta = async (req, res) => {
 
     let totalRecalculado = 0
     const detallesValidados = []
-
     for (const detalle of detalles) {
       const { productoId, cantidad, precioUnitario } = detalle
       if (!productoId || !cantidad || !precioUnitario) {
@@ -49,7 +47,6 @@ exports.crearVenta = async (req, res) => {
       totalRecalculado += subtotalDetalle
       detallesValidados.push({ productoId, cantidad: parseInt(cantidad), precioUnitario: parseFloat(precioUnitario), subtotal: subtotalDetalle })
     }
-
     totalRecalculado = parseFloat(totalRecalculado.toFixed(2))
 
     const diferencia = Math.abs(totalRecalculado - total)
@@ -60,7 +57,6 @@ exports.crearVenta = async (req, res) => {
     const inventarios = await prisma.inventarioSucursal.findMany({
       where: { sucursalId, productoId: { in: detallesValidados.map(d => d.productoId) } }
     })
-
     for (const detalle of detallesValidados) {
       const inventario = inventarios.find(i => i.productoId === detalle.productoId)
       if (!inventario || inventario.stockActual < detalle.cantidad) {
@@ -70,7 +66,6 @@ exports.crearVenta = async (req, res) => {
     }
 
     const folio = await generarFolio()
-
     let facturaEstado = 'DISPONIBLE'
     let facturaLimite = new Date()
     if (metodoPago === 'EFECTIVO' && totalRecalculado > 2000) {
@@ -97,14 +92,12 @@ exports.crearVenta = async (req, res) => {
         const inventarioAnterior = await tx.inventarioSucursal.findUnique({
           where: { productoId_sucursalId: { productoId: detalle.productoId, sucursalId } }
         })
-        const stockAntes = inventarioAnterior.stockActual
+        const stockAntes   = inventarioAnterior.stockActual
         const stockDespues = stockAntes - detalle.cantidad
-
         await tx.inventarioSucursal.update({
           where: { productoId_sucursalId: { productoId: detalle.productoId, sucursalId } },
-          data: { stockActual: stockDespues }
+          data:  { stockActual: stockDespues }
         })
-
         await tx.movimientoInventario.create({
           data: { productoId: detalle.productoId, sucursalId, usuarioId, tipo: 'SALIDA_VENTA', cantidad: detalle.cantidad, stockAntes, stockDespues, referencia: folio }
         })
@@ -113,7 +106,6 @@ exports.crearVenta = async (req, res) => {
       await tx.movimientoCaja.create({
         data: { turnoId, tipo: 'VENTA', monto: totalRecalculado, metodoPago, referencia: folio }
       })
-
       await tx.auditoria.create({
         data: { usuarioId, sucursalId, accion: 'CREAR_VENTA', modulo: 'VENTAS', referencia: folio, valorDespues: { ventaId: ventaCreada.id, total: totalRecalculado, items: detallesValidados.length } }
       })
@@ -132,20 +124,16 @@ exports.crearVenta = async (req, res) => {
 
 /**
  * GET /ventas
- * Filtros: skip, take, search, metodoPago, desde, hasta, turnoId
- * ─── turnoId filtra ventas por turno (usado en corte de caja) ───
  */
 exports.obtenerVentas = async (req, res) => {
   try {
     const { skip = 0, take = 20, search, metodoPago, desde, hasta, turnoId, clienteId, usuarioId } = req.query
-
     const where = {}
 
-    // ── FILTRO POR TURNO (corte de caja) ──────────────────────────
-    if (turnoId)  where.turnoId  = parseInt(turnoId)
+    if (turnoId)   where.turnoId  = parseInt(turnoId)
     if (usuarioId) where.usuarioId = parseInt(usuarioId)
+
     if (clienteId === 'null') {
-      // Ventas sin cliente asignado (Público general)
       where.clienteId = null
     } else if (clienteId && parseInt(clienteId) > 0) {
       where.clienteId = parseInt(clienteId)
@@ -153,34 +141,24 @@ exports.obtenerVentas = async (req, res) => {
 
     if (search) {
       where.OR = [
-        { folio:   { contains: search, mode: 'insensitive' } },
+        { folio: { contains: search, mode: 'insensitive' } },
         { cliente: { nombre: { contains: search, mode: 'insensitive' } } }
       ]
     }
-
-    if (metodoPago) {
-      where.metodoPago = metodoPago
-    }
+    if (metodoPago) where.metodoPago = metodoPago
 
     if (desde || hasta) {
       where.creadaEn = {}
       if (desde) where.creadaEn.gte = new Date(desde)
-      if (hasta) {
-        const hastaDate = new Date(hasta)
-        hastaDate.setHours(23, 59, 59, 999)
-        where.creadaEn.lte = hastaDate
-      }
+      if (hasta) { const hastaDate = new Date(hasta); hastaDate.setHours(23, 59, 59, 999); where.creadaEn.lte = hastaDate }
     }
 
     const [ventas, total] = await Promise.all([
       prisma.venta.findMany({
-        where,
-        skip: parseInt(skip),
-        take: parseInt(take),
-        orderBy: { creadaEn: 'desc' },
+        where, skip: parseInt(skip), take: parseInt(take), orderBy: { creadaEn: 'desc' },
         include: {
-          cliente:  { select: { id: true, nombre: true } },
-          usuario:  { select: { id: true, nombre: true } },
+          cliente: { select: { id: true, nombre: true } },
+          usuario: { select: { id: true, nombre: true } },
           detalles: true
         }
       }),
@@ -200,9 +178,7 @@ exports.obtenerVentas = async (req, res) => {
         productosCount: v.detalles.length,
         estado:        v.estado
       })),
-      total,
-      skip: parseInt(skip),
-      take: parseInt(take)
+      total, skip: parseInt(skip), take: parseInt(take)
     })
   } catch (error) {
     console.error('❌ Error en obtenerVentas:', error)
@@ -225,35 +201,32 @@ exports.obtenerVenta = async (req, res) => {
         detalles: { include: { producto: true } }
       }
     })
-
-    if (!venta) {
-      return res.status(404).json({ error: 'Venta no encontrada' })
-    }
+    if (!venta) return res.status(404).json({ error: 'Venta no encontrada' })
 
     res.json({
       success: true,
       data: {
-        id:            venta.id,
-        folio:         venta.folio,
-        fecha:         venta.creadaEn,
-        usuario:       venta.usuario.nombre,
-        cliente:       venta.cliente ? { id: venta.cliente.id, nombre: venta.cliente.nombre, rfc: venta.cliente.rfc } : null,
-        sucursal:      venta.sucursal.nombre,
-        metodoPago:    venta.metodoPago,
-        subtotal:      venta.subtotal,
-        iva:           venta.iva,
-        descuento:     venta.descuento,
-        total:         venta.total,
-        estado:        venta.estado,
-        tokenQr:       venta.tokenQr,
+        id:           venta.id,
+        folio:        venta.folio,
+        fecha:        venta.creadaEn,
+        usuario:      venta.usuario.nombre,
+        cliente:      venta.cliente ? { id: venta.cliente.id, nombre: venta.cliente.nombre, rfc: venta.cliente.rfc } : null,
+        sucursal:     venta.sucursal.nombre,
+        metodoPago:   venta.metodoPago,
+        subtotal:     venta.subtotal,
+        iva:          venta.iva,
+        descuento:    venta.descuento,
+        total:        venta.total,
+        estado:       venta.estado,
+        tokenQr:      venta.tokenQr,
         facturaEstado: venta.facturaEstado,
         detalles: venta.detalles.map(d => ({
-          productoId:     d.productoId,
-          nombre:         d.producto.nombre,
-          codigo:         d.producto.codigoInterno,
-          cantidad:       d.cantidad,
+          productoId:    d.productoId,
+          nombre:        d.producto.nombre,
+          codigo:        d.producto.codigoInterno,
+          cantidad:      d.cantidad,
           precioUnitario: d.precioUnitario,
-          subtotal:       d.subtotal
+          subtotal:      d.subtotal
         }))
       }
     })
@@ -271,24 +244,129 @@ exports.obtenerHistorial = async (req, res) => {
 }
 
 // ════════════════════════════════════════════════════════════════════
-//  FUNCIONES AUXILIARES
+// FUNCIONES AUXILIARES
 // ════════════════════════════════════════════════════════════════════
-
 async function generarFolio() {
-  const fecha   = new Date()
-  const año     = fecha.getFullYear()
-  const mes     = String(fecha.getMonth() + 1).padStart(2, '0')
-  const dia     = String(fecha.getDate()).padStart(2, '0')
+  const fecha  = new Date()
+  const año    = fecha.getFullYear()
+  const mes    = String(fecha.getMonth() + 1).padStart(2, '0')
+  const dia    = String(fecha.getDate()).padStart(2, '0')
   const fechaStr = `${año}${mes}${dia}`
-  const result  = await prisma.$queryRaw`SELECT nextval('folio_venta_seq') as seq`
+  const result = await prisma.$queryRaw`SELECT nextval('folio_venta_seq') as seq`
   const secuencial = String(Number(result[0].seq)).padStart(5, '0')
   return `VTA-${fechaStr}-${secuencial}`
 }
 
 function generarUUID() {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
     const r = Math.random() * 16 | 0
     const v = c === 'x' ? r : (r & 0x3 | 0x8)
     return v.toString(16)
   })
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  CANCELAR VENTA — agregar al final de ventas.controller.js
+//  PATCH /ventas/:id/cancelar
+// ════════════════════════════════════════════════════════════════════
+exports.cancelarVenta = async (req, res) => {
+  try {
+    const id       = parseInt(req.params.id)
+    const usuario  = req.usuario
+    const { motivo } = req.body
+
+    const venta = await prisma.venta.findUnique({
+      where:   { id },
+      include: { detalles: true }
+    })
+
+    if (!venta)
+      return res.status(404).json({ error: 'Venta no encontrada' })
+
+    if (venta.estado === 'CANCELADA')
+      return res.status(409).json({ error: 'La venta ya está cancelada' })
+
+    if (venta.estado === 'DEVOLUCION')
+      return res.status(409).json({ error: 'Esta venta tiene devoluciones — cancela las devoluciones primero o usa el módulo de devoluciones.' })
+
+    // Solo SUPERADMIN o ADMIN_SUCURSAL pueden cancelar
+    const rolesPermitidos = ['SUPERADMIN', 'ADMIN_SUCURSAL']
+    if (!rolesPermitidos.includes(usuario.rol))
+      return res.status(403).json({ error: 'Sin permiso para cancelar ventas' })
+
+    await prisma.$transaction(async (tx) => {
+      // 1. Marcar venta como CANCELADA
+      await tx.venta.update({
+        where: { id },
+        data:  { estado: 'CANCELADA', facturaEstado: 'BLOQUEADA' }
+      })
+
+      // 2. Reingresar stock por cada producto
+      for (const detalle of venta.detalles) {
+        const inv = await tx.inventarioSucursal.findUnique({
+          where: { productoId_sucursalId: { productoId: detalle.productoId, sucursalId: venta.sucursalId } }
+        })
+        if (inv) {
+          const stockAntes   = inv.stockActual
+          const stockDespues = stockAntes + detalle.cantidad
+          await tx.inventarioSucursal.update({
+            where: { productoId_sucursalId: { productoId: detalle.productoId, sucursalId: venta.sucursalId } },
+            data:  { stockActual: stockDespues }
+          })
+          await tx.movimientoInventario.create({
+            data: {
+              productoId:   detalle.productoId,
+              sucursalId:   venta.sucursalId,
+              usuarioId:    usuario.id,
+              tipo:         'DEVOLUCION_ENTRADA',
+              cantidad:     detalle.cantidad,
+              stockAntes,
+              stockDespues,
+              referencia:   venta.folio,
+              notas:        `Cancelación de venta ${venta.folio}`
+            }
+          })
+        }
+      }
+
+      // 3. Movimiento de caja negativo (reversión)
+      if (venta.turnoId) {
+        const turno = await tx.turnoCaja.findFirst({
+          where: { id: venta.turnoId }
+        })
+        if (turno) {
+          await tx.movimientoCaja.create({
+            data: {
+              turnoId:    turno.id,
+              tipo:       'DEVOLUCION',
+              monto:      -parseFloat(venta.total),
+              metodoPago: venta.metodoPago,
+              referencia: venta.folio,
+              notas:      motivo || `Cancelación de ${venta.folio}`
+            }
+          })
+        }
+      }
+
+      // 4. Auditoría
+      await tx.auditoria.create({
+        data: {
+          usuarioId:   usuario.id,
+          sucursalId:  venta.sucursalId,
+          accion:      'CANCELAR_VENTA',
+          modulo:      'VENTAS',
+          referencia:  venta.folio,
+          valorAntes:  { estado: 'COMPLETADA' },
+          valorDespues: { estado: 'CANCELADA', motivo: motivo || null }
+        }
+      })
+    })
+
+    console.log(`✅ Venta ${venta.folio} cancelada por ${usuario.nombre}`)
+    res.json({ success: true, message: `Venta ${venta.folio} cancelada correctamente` })
+
+  } catch (err) {
+    console.error('❌ Error en cancelarVenta:', err)
+    res.status(500).json({ error: 'Error al cancelar venta: ' + err.message })
+  }
 }

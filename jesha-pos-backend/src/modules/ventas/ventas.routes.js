@@ -3,10 +3,9 @@
 //  src/modules/ventas/ventas.routes.js
 // ════════════════════════════════════════════════════════════════════
 
-const express  = require('express')
-const router   = express.Router()
-
-const { crearVenta, obtenerVentas, obtenerVenta, obtenerHistorial } = require('./ventas.controller')
+const express = require('express')
+const router  = express.Router()
+const { crearVenta, obtenerVentas, obtenerVenta, obtenerHistorial, cancelarVenta } = require('./ventas.controller')
 const ticketController = require('./ticket.controller')
 
 // POST /ventas — Crear venta
@@ -17,6 +16,9 @@ router.get('/', obtenerVentas)
 
 // GET /ventas/historial/lista
 router.get('/historial/lista', obtenerHistorial)
+
+// PATCH /ventas/:id/cancelar — Cancelar venta
+router.patch('/:id/cancelar', cancelarVenta)
 
 // GET /ventas/:id/ticket — Ticket imprimible (desktop)
 router.get('/:id/ticket', ticketController.generarTicket)
