@@ -61,6 +61,8 @@ if (fechaActual) {
 // ══════════════════════════════════════════════════════════════════
 
 let carrito                = []
+let vendedorSeleccionado   = null   // { id, nombre } — usuario que hizo la venta
+let descuentoManual        = 0      // porcentaje de descuento aplicado
 let turnoActivo            = null
 let metodoPagoSeleccionado = null   // null = sin selección, cajero debe elegir
 let clienteSeleccionado    = null
@@ -439,12 +441,14 @@ function limpiarCarrito() {
   if (carrito.length === 0) return
   if (!confirm('¿Limpiar todo el carrito?')) return
 
-  carrito             = []
-  clienteSeleccionado = null
-  montoRecibido.value = ''
-  clienteNombre.value = ''
+  carrito                = []
+  clienteSeleccionado    = null
+  vendedorSeleccionado   = null
+  descuentoManual        = 0
+  montoRecibido.value    = ''
+  clienteNombre.value    = ''
   productoCache.clear()
-  searchProductos.value = ''
+  searchProductos.value  = ''
 
   const badge = document.getElementById('cliente-seleccionado-badge')
   if (badge) badge.style.display = 'none'
@@ -523,8 +527,71 @@ function mostrarModalConfirmacion() {
     }
   }
 
+  // Poblar selector de vendedor
+  const selVendedor = document.getElementById('confirm-vendedor-select')
+  if (selVendedor) {
+    selVendedor.innerHTML = ''
+    // Opción: el cajero logueado
+    const optPropio = document.createElement('option')
+    optPropio.value = USUARIO.id
+    optPropio.textContent = `${USUARIO.nombre} (tú)`
+    selVendedor.appendChild(optPropio)
+    // Cargar otros usuarios activos de la sucursal
+    fetch(`${API_URL}/usuarios?activo=true`, { headers: { 'Authorization': `Bearer ${TOKEN}` } })
+      .then(r => r.json())
+      .then(data => {
+        const lista = Array.isArray(data) ? data : (data.data || [])
+        lista.filter(u => u.id !== USUARIO.id && u.activo)
+          .sort((a,b) => a.nombre.localeCompare(b.nombre))
+          .forEach(u => {
+            const opt = document.createElement('option')
+            opt.value = u.id
+            opt.textContent = u.nombre
+            selVendedor.appendChild(opt)
+          })
+      }).catch(() => {})
+    // Restaurar selección previa si existe
+    if (vendedorSeleccionado) selVendedor.value = vendedorSeleccionado.id
+  }
+
+  // Resetear descuento
+  const inputDesc = document.getElementById('confirm-descuento-input')
+  if (inputDesc) inputDesc.value = descuentoManual > 0 ? descuentoManual : ''
+
+  actualizarResumenConDescuento()
+
   // Mostrar modal con el nuevo estilo (usa display flex)
   modalConfirmacion.style.display = 'flex'
+}
+
+function actualizarResumenConDescuento() {
+  const totalBruto = carrito.reduce((s, i) => s + (i.precio * i.cantidad), 0)
+  const pct        = parseFloat(document.getElementById('confirm-descuento-input')?.value) || 0
+  const descAmt    = parseFloat((totalBruto * (pct / 100)).toFixed(2))
+  const totalFinal = parseFloat((totalBruto - descAmt).toFixed(2))
+  const elTotal    = document.getElementById('confirmacion-total')
+  if (elTotal) elTotal.textContent = `$${totalFinal.toFixed(2)}`
+  const elDesc = document.getElementById('confirm-row-descuento')
+  if (elDesc) {
+    if (pct > 0) {
+      document.getElementById('confirmacion-descuento').textContent = `-$${descAmt.toFixed(2)} (${pct}%)`
+      elDesc.style.display = 'flex'
+    } else {
+      elDesc.style.display = 'none'
+    }
+  }
+  // Recalcular cambio si es efectivo
+  const rowCambio = document.getElementById('confirm-row-cambio')
+  if (rowCambio && metodoPagoSeleccionado === 'EFECTIVO') {
+    const monto  = parseFloat(montoRecibido.value) || 0
+    const cambio = monto - totalFinal
+    if (monto > 0 && cambio >= 0) {
+      document.getElementById('confirmacion-cambio').textContent = `$${cambio.toFixed(2)}`
+      rowCambio.style.display = 'flex'
+    } else {
+      rowCambio.style.display = 'none'
+    }
+  }
 }
 
 async function confirmarVenta() {
@@ -539,15 +606,26 @@ async function confirmarVenta() {
       subtotal:       parseFloat((parseFloat(item.precio) * parseInt(item.cantidad)).toFixed(2))
     }))
 
+    // Leer vendedor y descuento del modal
+    const selVend   = document.getElementById('confirm-vendedor-select')
+    const vendId    = selVend ? parseInt(selVend.value) : USUARIO.id
+    const pct       = parseFloat(document.getElementById('confirm-descuento-input')?.value) || 0
+    const descAmt   = parseFloat((total * (pct / 100)).toFixed(2))
+    const totalFinal = parseFloat((total - descAmt).toFixed(2))
+
+    // Guardar para próxima vez
+    vendedorSeleccionado = selVend ? { id: vendId, nombre: selVend.options[selVend.selectedIndex]?.text } : null
+    descuentoManual      = pct
+
     const payload = {
       sucursalId:  turnoActivo.sucursalId,
-      usuarioId:   USUARIO.id,
+      usuarioId:   vendId,
       turnoId:     turnoActivo.id,
       clienteId:   clienteSeleccionado?.id || null,
       metodoPago:  metodoPagoSeleccionado,
       subtotal:    parseFloat(total.toFixed(2)),
-      descuento:   0,
-      total:       parseFloat(total.toFixed(2)),
+      descuento:   descAmt,
+      total:       totalFinal,
       detalles
     }
 
@@ -759,6 +837,9 @@ function configurarEventListeners() {
   btnConfirmarVenta.addEventListener('click', confirmarVenta)
   btnCancelVenta.addEventListener('click', () => { modalConfirmacion.style.display = 'none' })
   btnModalConfirmacionClose.addEventListener('click', () => { modalConfirmacion.style.display = 'none' })
+
+  // Descuento en modal — recalcula en tiempo real
+  document.getElementById('confirm-descuento-input')?.addEventListener('input', actualizarResumenConDescuento)
 
   // Turno
   btnConfirmarAbrirTurno.addEventListener('click', abrirTurno)

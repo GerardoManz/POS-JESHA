@@ -232,8 +232,13 @@ window.editarUsuario = async function(usuarioId) {
   document.getElementById('f-username').value = usuarioActual.username || ''
   document.getElementById('f-rol').value = usuarioActual.rol || ''
   
+  // Esperar a que sucursales estén cargadas antes de asignar el valor
   const sucursalSelect = document.getElementById('f-sucursal')
   if (sucursalSelect && usuarioActual.sucursalId) {
+    // Si el select ya tiene opciones, asignar directo; si no, esperar
+    if (sucursalSelect.options.length <= 1) {
+      await cargarSucursales()
+    }
     sucursalSelect.value = usuarioActual.sucursalId
   }
   

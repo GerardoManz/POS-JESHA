@@ -45,13 +45,15 @@ async function cargarCompras() {
   const pagDiv = document.getElementById('pagination')
   tbody.innerHTML = `<tr><td colspan="8" class="loading-cell"><div class="spinner"></div><p>Cargando...</p></td></tr>`
 
-  const buscar = document.getElementById('search-input')?.value.trim() || ''
-  const estado = document.getElementById('filtro-estado')?.value || ''
-  const pagada = document.getElementById('filtro-pago')?.value || ''
+  const buscar     = document.getElementById('search-input')?.value.trim() || ''
+  const estado     = document.getElementById('filtro-estado')?.value || ''
+  const pagada     = document.getElementById('filtro-pago')?.value || ''
+  const proveedorId = document.getElementById('filtro-proveedor')?.value || ''
   const params = new URLSearchParams({ page: paginaActual, limit: LIMIT })
-  if (buscar) params.set('buscar', buscar)
-  if (estado) params.set('estado', estado)
+  if (buscar)        params.set('buscar', buscar)
+  if (estado)        params.set('estado', estado)
   if (pagada !== '') params.set('pagada', pagada)
+  if (proveedorId)   params.set('proveedorId', proveedorId)
 
   try {
     const data   = await apiFetch(`/compras?${params}`)
@@ -374,6 +376,18 @@ async function cargarProveedores() {
   try {
     const data = await apiFetch('/compras/proveedores')
     proveedores = data.data || []
+    // Poblar select de filtro
+    const sel = document.getElementById('filtro-proveedor')
+    if (sel) {
+      sel.innerHTML = '<option value="">Todos los proveedores</option>'
+      proveedores.sort((a,b) => (a.alias || a.nombreOficial).localeCompare(b.alias || b.nombreOficial))
+        .forEach(p => {
+          const opt = document.createElement('option')
+          opt.value = p.id
+          opt.textContent = p.alias || p.nombreOficial
+          sel.appendChild(opt)
+        })
+    }
   } catch(e) { console.warn('No se cargaron proveedores:', e.message) }
 }
 
@@ -459,7 +473,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('search-input')?.addEventListener('input', () => {
     clearTimeout(debounceSearch); debounceSearch = setTimeout(() => { paginaActual=1; cargarCompras() }, 400)
   })
-  ;['filtro-estado','filtro-pago'].forEach(id => {
+  ;['filtro-estado','filtro-pago','filtro-proveedor'].forEach(id => {
     document.getElementById(id)?.addEventListener('change', () => { paginaActual=1; cargarCompras() })
   })
   document.getElementById('btn-prev')?.addEventListener('click', () => { if(paginaActual>1){paginaActual--;cargarCompras()} })
