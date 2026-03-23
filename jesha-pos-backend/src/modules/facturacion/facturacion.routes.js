@@ -1,17 +1,17 @@
 // ════════════════════════════════════════════════════════════════════
 //  FACTURACION.ROUTES.JS
 //  src/modules/facturacion/facturacion.routes.js
-//  Rutas PÚBLICAS — sin requireAuth
+//  Rutas PÚBLICAS — sin requireAuth (portal autofactura)
 // ════════════════════════════════════════════════════════════════════
 
-const express   = require('express')
-const router    = express.Router()
-const ctrl      = require('./facturacion.controller')
+const express = require('express')
+const router  = express.Router()
+const ctrl    = require('./facturacion.controller')
 
-// GET  /facturar?token=XXX  — Obtener datos de la venta
-router.get('/',  ctrl.obtenerVentaPorToken)
+// GET  /facturar/api?token=XXX — datos de la venta para el formulario
+router.get('/api',         ctrl.obtenerVentaPorToken)
 
-// POST /facturar             — Enviar solicitud de factura
-router.post('/', ctrl.solicitarFactura)
+// POST /facturar/api — solicitar + timbrar (o guardar pendiente)
+router.post('/api',        ctrl.solicitarFactura)
 
 module.exports = router
