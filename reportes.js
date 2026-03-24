@@ -150,23 +150,61 @@ function renderProductos(ventas) {
   const el = document.getElementById('rep-productos')
   if (ventas.length === 0) { el.className = 'panel-empty'; el.textContent = 'Sin ventas en este período'; return }
 
+  // Agrupar detalles por productoId sumando cantidad e importe
+  const prodMap = {}
+  ventas.forEach(v => {
+    if (!v.detalles || v.detalles.length === 0) return
+    v.detalles.forEach(d => {
+      const key = d.productoId
+      if (!prodMap[key]) {
+        prodMap[key] = { nombre: d.nombre || '—', codigo: d.codigo || '', cantidad: 0, importe: 0 }
+      }
+      prodMap[key].cantidad += parseInt(d.cantidad || 0)
+      prodMap[key].importe  += parseFloat(d.subtotal || 0)
+    })
+  })
+
+  const top = Object.values(prodMap)
+    .sort((a, b) => b.cantidad - a.cantidad)
+    .slice(0, 10)
+
+  if (top.length === 0) {
+    el.className = 'panel-empty'
+    el.textContent = 'No hay detalles de productos disponibles'
+    return
+  }
+
+  const maxCant = top[0].cantidad || 1
+
+  const filas = top.map((p, i) => {
+    const pct = ((p.cantidad / maxCant) * 100).toFixed(0)
+    return `<tr>
+      <td style="color:var(--muted);font-size:0.78rem;text-align:center">${i + 1}</td>
+      <td style="max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${p.nombre}">
+        ${p.nombre}
+        ${p.codigo ? `<div style="font-size:0.72rem;color:var(--muted)">${p.codigo}</div>` : ''}
+      </td>
+      <td style="text-align:center"><strong>${p.cantidad}</strong></td>
+      <td><strong>${fmt(p.importe)}</strong></td>
+      <td style="min-width:100px;">
+        <div class="barra-wrap">
+          <div class="barra"><div class="barra-fill azul" style="width:${pct}%"></div></div>
+        </div>
+      </td>
+    </tr>`
+  }).join('')
+
   el.className = ''
-  el.innerHTML = `
-    <div style="padding:10px 0;">
-      <table class="rep-table">
-        <thead><tr><th>#</th><th>Métrica</th><th>Valor</th></tr></thead>
-        <tbody>
-          <tr><td>1</td><td>Total ventas período</td><td><strong>${ventas.length}</strong></td></tr>
-          <tr><td>2</td><td>Monto total</td><td><strong>${fmt(ventas.reduce((s,v)=>s+parseFloat(v.total),0))}</strong></td></tr>
-          <tr><td>3</td><td>Artículos vendidos</td><td><strong>${ventas.reduce((s,v)=>s+(v.productosCount||0),0)}</strong></td></tr>
-          <tr><td>4</td><td>Ventas canceladas</td><td><strong>${ventas.filter(v=>v.estado==='CANCELADA').length}</strong></td></tr>
-          <tr><td>5</td><td>Ventas completadas</td><td><strong>${ventas.filter(v=>v.estado==='COMPLETADA').length}</strong></td></tr>
-        </tbody>
-      </table>
-      <p style="font-size:0.75rem;color:var(--muted);padding:10px 0 0;text-align:center;">
-        Para desglose por producto, consulta el <a href="historial.html" style="color:var(--accent)">Historial de Ventas</a>
-      </p>
-    </div>`
+  el.innerHTML = `<table class="rep-table">
+    <thead><tr>
+      <th style="width:32px">#</th>
+      <th>Producto</th>
+      <th style="width:70px;text-align:center">Unidades</th>
+      <th style="width:100px">Importe</th>
+      <th>Volumen</th>
+    </tr></thead>
+    <tbody>${filas}</tbody>
+  </table>`
 }
 
 // ── Ventas por día ──

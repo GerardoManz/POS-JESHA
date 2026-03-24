@@ -114,6 +114,13 @@
             <button class="metodo-btn" data-metodo="TRANSFERENCIA">
               🔄 Transf.
             </button>
+            <button class="metodo-btn metodo-credito-cliente" data-metodo="CREDITO_CLIENTE" id="btn-metodo-credito-cliente" style="display:none;">
+              🏦 Crédito
+            </button>
+          </div>
+          <!-- Aviso crédito disponible -->
+          <div id="credito-cliente-info" style="display:none;margin-top:8px;padding:8px 12px;background:rgba(29,158,117,0.08);border:1px solid rgba(29,158,117,0.2);border-radius:8px;font-size:0.8rem;color:#1D9E75;">
+            <span id="credito-cliente-texto"></span>
           </div>
         </div>
 
@@ -313,6 +320,22 @@
         </div>
       </div>
 
+     <!-- 3b. Venta a empleado — descuento 3% automático -->
+<div id="confirm-venta-empleado-wrap" style="margin:12px 0;">
+  <label style="font-size:0.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;display:block;margin-bottom:6px;">
+    Venta a empleado <span style="font-weight:400;color:var(--muted)">(3% de descuento)</span>
+  </label>
+  <select id="confirm-empleado-select"
+    style="width:100%;padding:8px 12px;background:rgba(255,255,255,0.04);border:1px solid var(--panel-border);border-radius:8px;color:var(--text);font-family:'Barlow',sans-serif;font-size:0.875rem;outline:none;cursor:pointer;color-scheme:dark;">
+    <option value="">— Sin descuento de empleado —</option>
+  </select>
+  <div id="confirm-empleado-badge" style="display:none;margin-top:6px;padding:7px 12px;background:rgba(74,144,226,0.08);border:1px solid rgba(74,144,226,0.2);border-radius:8px;">
+    <span style="font-size:0.8rem;color:var(--muted);">Descuento empleado: </span>
+    <span id="confirm-empleado-descuento-texto" style="font-weight:700;color:#4a90e2;">—3%</span>
+  </div>
+</div> 
+
+
       <!-- 4. Selector de vendedor -->
       <div style="margin:10px 0;">
         <label style="font-size:0.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;display:block;margin-bottom:6px;">
@@ -396,7 +419,53 @@
   </div>
 </div>
 
+<!-- ══ MODAL: VENTA EXITOSA ══ -->
+<div id="modal-venta-exitosa" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.72); backdrop-filter:blur(4px); z-index:3000; align-items:center; justify-content:center; padding:20px;">
+  <div class="modal-confirm-card" style="max-width:400px;">
 
+    <!-- Header -->
+    <div class="modal-confirm-header" style="padding:28px 24px 20px; flex-direction:column; align-items:center; text-align:center; gap:16px;">
+      <div id="exito-icono-wrap" style="width:64px; height:64px; border-radius:50%; background:rgba(96,208,128,0.12); border:2px solid rgba(96,208,128,0.35); display:grid; place-items:center;">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#60d080" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="20 6 9 17 4 12"/>
+        </svg>
+      </div>
+      <div>
+        <h3 style="font-family:'Barlow Condensed',sans-serif; font-size:1.4rem; font-weight:700; letter-spacing:0.05em; text-transform:uppercase; color:#60d080; margin:0 0 4px;">¡Venta Exitosa!</h3>
+        <p id="exito-folio" style="font-size:0.8rem; color:#7a8599; margin:0;">Folio: —</p>
+      </div>
+    </div>
+
+    <div class="modal-confirm-divider"></div>
+
+    <!-- Resumen -->
+    <div class="modal-confirm-body">
+      <div class="modal-confirm-resumen">
+        <div class="modal-confirm-row">
+          <span class="modal-confirm-label">Total cobrado</span>
+          <span class="modal-confirm-valor total" id="exito-total">$0.00</span>
+        </div>
+        <div class="modal-confirm-row" id="exito-row-cambio" style="display:none;">
+          <span class="modal-confirm-label">Cambio a entregar</span>
+          <span class="modal-confirm-valor cambio" id="exito-cambio">$0.00</span>
+        </div>
+        <div class="modal-confirm-row">
+          <span class="modal-confirm-label">Método de pago</span>
+          <span class="modal-confirm-valor" id="exito-metodo">—</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Acción -->
+    <div class="modal-confirm-actions">
+      <button type="button" id="btn-cerrar-exito" class="modal-confirm-btn-confirm" style="flex:1;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+        Continuar
+      </button>
+    </div>
+
+  </div>
+</div>
 
 <script src="sidebar.js"></script>
 <script src="punto-venta.js"></script>

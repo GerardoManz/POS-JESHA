@@ -71,12 +71,13 @@ exports.generarTicket = async (req, res) => {
     const totalEfectivo      = venta.metodoPago === 'EFECTIVO'                       ? parseFloat(venta.total) : 0
     const totalTarjeta       = ['CREDITO','DEBITO'].includes(venta.metodoPago)       ? parseFloat(venta.total) : 0
     const totalTransferencia = venta.metodoPago === 'TRANSFERENCIA'                  ? parseFloat(venta.total) : 0
+    const totalCredito       = venta.metodoPago === 'CREDITO_CLIENTE'                ? parseFloat(venta.total) : 0
 
     // Fecha
     const fecha   = new Date(venta.creadaEn || venta.fecha || venta.createdAt)
     const fechaStr = `${String(fecha.getDate()).padStart(2,'0')}/${String(fecha.getMonth()+1).padStart(2,'0')}/${String(fecha.getFullYear()).slice(-2)}`
 
-    const html = generarHTMLTicket(venta, qrDataUrl, fechaStr, { totalEfectivo, totalTarjeta, totalTransferencia })
+    const html = generarHTMLTicket(venta, qrDataUrl, fechaStr, { totalEfectivo, totalTarjeta, totalTransferencia, totalCredito })
     res.setHeader('Content-Type', 'text/html; charset=utf-8')
     res.send(html)
 
@@ -101,9 +102,12 @@ function generarHTMLTicket(venta, qrDataUrl, fechaStr, pagos) {
   const filaProductos = (venta.detalles || []).map(d => {
     const subtotal = d.subtotal ?? d.importe ?? (parseFloat(d.precioUnitario || 0) * parseInt(d.cantidad || 1))
     const nombre   = d.producto?.nombre || d.descripcion || '—'
+    const codigo   = d.producto?.codigoInterno ? `<div style="font-size:9px;color:#666;">${d.producto.codigoInterno}</div>` : ''
+    const qty      = parseInt(d.cantidad || 1)
+    const precio   = parseFloat(d.precioUnitario || 0)
     return `<tr>
-      <td style="padding:3px 0;font-size:11px;word-break:break-word;">${nombre}</td>
-      <td style="padding:3px 0;font-size:11px;text-align:right;white-space:nowrap;">${fmt(subtotal)}</td>
+      <td style="padding:3px 0;font-size:11px;word-break:break-word;">${nombre}${codigo}<span style="font-size:10px;color:#555;">${qty} × ${fmt(precio)}</span></td>
+      <td style="padding:3px 0;font-size:11px;text-align:right;white-space:nowrap;vertical-align:top;">${fmt(subtotal)}</td>
     </tr>`
   }).join('')
 
@@ -222,6 +226,7 @@ function generarHTMLTicket(venta, qrDataUrl, fechaStr, pagos) {
   <div class="pago-row"><span>Efectivo:</span><span>${pagos.totalEfectivo.toFixed(2)}</span></div>
   <div class="pago-row"><span>Tarjeta:</span><span>${pagos.totalTarjeta.toFixed(2)}</span></div>
   <div class="pago-row"><span>Transferencia:</span><span>${pagos.totalTransferencia.toFixed(2)}</span></div>
+  ${pagos.totalCredito > 0 ? `<div class="pago-row" style="color:#e8710a;font-weight:600;"><span>Crédito cliente:</span><span>${pagos.totalCredito.toFixed(2)}</span></div>` : ''}
 
   <hr class="sep"/>
 

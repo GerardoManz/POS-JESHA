@@ -188,12 +188,16 @@ window.cargarEnPos = async function(id) {
 
     if (!p.detalles || p.detalles.length === 0) { alert('Este pedido no tiene productos.'); return }
 
+    // clienteId viene dentro del objeto cliente — PEDIDO_SELECT no expone clienteId directo
+    const clienteId    = p.cliente?.id    || null
+    const clienteNombre = p.cliente?.nombre || ''
+
     const payload = {
       fuente:        'pedido',
       pedFolio:      p.folio,
       pedId:         p.id,
-      clienteId:     p.clienteId || null,
-      clienteNombre: p.cliente?.nombre || '',
+      clienteId,
+      clienteNombre,
       items: p.detalles.map(d => ({
         id:       d.producto?.id ?? d.productoId,
         nombre:   d.producto?.nombre || '—',
@@ -214,12 +218,19 @@ function abrirModalNuevo() {
   pedidoActual = null
   itemsEdicion = []
   document.getElementById('modal-titulo').textContent    = 'Nuevo Pedido'
-  document.getElementById('ped-cliente-buscar').value    = ''
-  document.getElementById('ped-cliente-id').value        = ''
   document.getElementById('ped-notas').value             = ''
   document.getElementById('search-prod-modal').value     = ''
   document.getElementById('lista-prod-modal').innerHTML  = '<p class="muted-hint">Escribe para buscar...</p>'
   document.getElementById('ped-error').classList.remove('show')
+
+  // Restablecer campo cliente — habilitado para nuevo pedido
+  const clienteInput = document.getElementById('ped-cliente-buscar')
+  clienteInput.value          = ''
+  clienteInput.disabled       = false
+  clienteInput.style.opacity  = ''
+  clienteInput.style.cursor   = ''
+  document.getElementById('ped-cliente-id').value = ''
+
   renderItems()
   document.getElementById('modal-pedido').classList.add('active')
 }
@@ -232,12 +243,19 @@ window.abrirEdicion = async function(id) {
     const p = pedidoActual
 
     document.getElementById('modal-titulo').textContent    = `Editar ${p.folio}`
-    document.getElementById('ped-cliente-buscar').value    = p.cliente?.nombre || ''
-    document.getElementById('ped-cliente-id').value        = p.clienteId || ''
     document.getElementById('ped-notas').value             = p.notas || ''
     document.getElementById('search-prod-modal').value     = ''
     document.getElementById('lista-prod-modal').innerHTML  = '<p class="muted-hint">Escribe para buscar...</p>'
     document.getElementById('ped-error').classList.remove('show')
+
+    // Cliente: bloqueado en edición — ya fue asignado al crear el pedido
+    const clienteInput = document.getElementById('ped-cliente-buscar')
+    const clienteId    = p.cliente?.id || p.clienteId || ''
+    clienteInput.value    = p.cliente?.nombre || ''
+    clienteInput.disabled = true
+    clienteInput.style.opacity  = '0.6'
+    clienteInput.style.cursor   = 'not-allowed'
+    document.getElementById('ped-cliente-id').value = clienteId
 
     itemsEdicion = (p.detalles || []).map(d => ({
       productoId: d.productoId || d.producto?.id,

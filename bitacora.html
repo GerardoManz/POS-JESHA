@@ -143,6 +143,23 @@
           <div class="fin-row fin-saldo"><span>Saldo pendiente</span><span id="fin-saldo" class="fin-monto fin-naranja">$0.00</span></div>
         </div>
 
+        <!-- Crédito del cliente (visible solo en bitácoras de crédito) -->
+        <div class="det-card" id="card-credito-cliente" style="display:none;">
+          <div class="det-card-header">🏦 Crédito del cliente</div>
+          <div class="fin-row">
+            <span>Límite de crédito</span>
+            <span id="cred-limite" class="fin-monto">$0.00</span>
+          </div>
+          <div class="fin-row">
+            <span>Saldo pendiente</span>
+            <span id="cred-usado" class="fin-monto fin-naranja">$0.00</span>
+          </div>
+          <div class="fin-row fin-saldo">
+            <span>Crédito disponible</span>
+            <span id="cred-disponible" class="fin-monto fin-verde">$0.00</span>
+          </div>
+        </div>
+
         <!-- Registrar abono -->
         <div class="det-card" id="card-abono">
           <div class="det-card-header">💳 Registrar abono</div>

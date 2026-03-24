@@ -20,6 +20,8 @@ const CLIENTE_SELECT = {
   regimenFiscal: true,
   usoCfdi: true,
   limiteCredito: true,
+  saldoPendiente: true,      
+  totalCreditoUsado: true,   
   activo: true,
   notas: true,
   creadoEn: true
@@ -268,4 +270,39 @@ const obtenerAbonos = async (req, res) => {
   res.json([])
 }
 
-module.exports = { listar, obtener, crear, editar, cambiarEstado, obtenerVentas, obtenerAbonos }
+const abonarCredito = async (req, res) => {
+  try {
+    const { id }    = req.params
+    const { monto } = req.body
+ 
+    if (!monto || parseFloat(monto) <= 0)
+      return res.status(400).json({ error: 'Monto inválido' })
+ 
+    const cliente = await prisma.cliente.findUnique({ where: { id: parseInt(id) } })
+    if (!cliente) return res.status(404).json({ error: 'Cliente no encontrado' })
+    if (cliente.tipo !== 'REGISTRADO')
+      return res.status(400).json({ error: 'Cliente sin crédito habilitado' })
+ 
+    const montoAbono  = parseFloat(parseFloat(monto).toFixed(2))
+    const saldoActual = parseFloat(cliente.saldoPendiente)
+    const nuevoSaldo  = parseFloat(Math.max(0, saldoActual - montoAbono).toFixed(2))
+ 
+    const actualizado = await prisma.cliente.update({
+      where: { id: parseInt(id) },
+      data:  { saldoPendiente: nuevoSaldo }
+    })
+ 
+    res.json({
+      success: true,
+      mensaje: `Abono de $${montoAbono.toFixed(2)} aplicado al crédito`,
+      saldoAnterior: saldoActual,
+      saldoNuevo:    nuevoSaldo,
+      cliente:       { id: actualizado.id, nombre: actualizado.nombre, saldoPendiente: nuevoSaldo }
+    })
+  } catch (err) {
+    console.error('❌ Error en abonarCredito:', err)
+    res.status(500).json({ error: 'Error al procesar abono: ' + err.message })
+  }
+}
+
+module.exports = { listar, obtener, crear, editar, cambiarEstado, obtenerVentas, obtenerAbonos, abonarCredito }

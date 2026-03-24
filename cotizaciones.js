@@ -478,26 +478,87 @@ async function cargarClientes() {
   } catch (e) { console.warn('No se pudieron cargar clientes:', e.message) }
 }
 
+// Filtra en memoria — sin mínimo de caracteres para poder mostrar toda la lista
 function filtrarClientes(q) {
-  if (!q || q.length < 2) return []
-  const l = q.toLowerCase()
-  return clientesLista.filter(c => c.nombre?.toLowerCase().includes(l) || c.rfc?.toLowerCase().includes(l)).slice(0, 8)
+  const l = (q || '').toLowerCase().trim()
+  if (!l) return clientesLista.slice(0, 50)
+  return clientesLista.filter(c =>
+    c.nombre?.toLowerCase().includes(l) ||
+    c.apodo?.toLowerCase().includes(l)  ||
+    c.rfc?.toLowerCase().includes(l)    ||
+    c.telefono?.includes(l)
+  ).slice(0, 50)
 }
 
-function renderDropdownClientes(res) {
+// Renderiza items del dropdown — incluye opción de público general
+function renderDropdownClientes(lista) {
   const dd = document.getElementById('dropdown-clientes')
-  if (!res.length) { dd.style.display = 'none'; return }
-  dd.style.display = 'block'
-  dd.innerHTML = res.map(c => `
-    <div class="dropdown-item" onclick="seleccionarCliente(${c.id}, '${c.nombre.replace(/'/g, "\'")}')">
-      ${c.nombre}${c.rfc ? ` <span style="color:var(--muted);font-size:0.8rem">(${c.rfc})</span>` : ''}
+  if (!dd) return
+
+  // Construir buscador interno + lista
+  dd.innerHTML = `
+    <div style="padding:8px 10px;border-bottom:1px solid rgba(255,255,255,0.06);">
+      <input type="text" id="dd-cot-search"
+        placeholder="Buscar cliente..."
+        autocomplete="off"
+        style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);
+               border-radius:6px;padding:6px 10px;color:var(--text,#fff);font-size:0.85rem;outline:none;" />
     </div>
-  `).join('')
+    <div id="dd-cot-list" style="max-height:220px;overflow-y:auto;"></div>
+  `
+  dd.style.display = 'block'
+
+  // Render items
+  const renderItems = (items) => {
+    const listEl = document.getElementById('dd-cot-list')
+    if (!listEl) return
+    listEl.innerHTML =
+      `<div class="dropdown-item" style="color:var(--muted);font-style:italic;"
+            onclick="seleccionarCliente(null, '')">
+         👤 Público general
+       </div>` +
+      (items.length === 0
+        ? `<div style="padding:10px 12px;color:var(--muted);font-size:0.85rem;">Sin resultados</div>`
+        : items.map(c => `
+            <div class="dropdown-item" onclick="seleccionarCliente(${c.id}, '${(c.apodo || c.nombre).replace(/'/g,"\\'")}')">
+              <span>${c.apodo ? `${c.apodo} <span style="color:var(--muted);font-size:0.78rem">(${c.nombre})</span>` : c.nombre}</span>
+              ${c.telefono ? `<span style="color:var(--muted);font-size:0.75rem;">${c.telefono}</span>` : ''}
+            </div>`
+          ).join('')
+      )
+  }
+  renderItems(lista)
+
+  // Buscador interno del dropdown
+  const ddInput = document.getElementById('dd-cot-search')
+  if (ddInput) {
+    ddInput.addEventListener('input', e => renderItems(filtrarClientes(e.target.value)))
+    setTimeout(() => ddInput.focus(), 40)
+  }
 }
+
+// Abre el dropdown con toda la lista (sin filtro)
+function abrirDropdownClientesCot() {
+  const dd = document.getElementById('dropdown-clientes')
+  if (!dd) return
+  // Toggle
+  if (dd.style.display !== 'none') {
+    cerrarDropdownClientesCot()
+    return
+  }
+  renderDropdownClientes(filtrarClientes(''))
+}
+
+function cerrarDropdownClientesCot() {
+  const dd = document.getElementById('dropdown-clientes')
+  if (dd) dd.style.display = 'none'
+  document.getElementById('btn-chevron-cliente')?.classList.remove('active')
+}
+
 window.seleccionarCliente = function(id, nombre) {
-  document.getElementById('cot-cliente-id').value    = id
-  document.getElementById('cot-cliente-buscar').value = nombre
-  document.getElementById('dropdown-clientes').style.display = 'none'
+  document.getElementById('cot-cliente-id').value     = id || ''
+  document.getElementById('cot-cliente-buscar').value = nombre || ''
+  cerrarDropdownClientesCot()
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -744,11 +805,28 @@ document.addEventListener('DOMContentLoaded', async () => {
     debounceProducto = setTimeout(() => buscarProductosModal(e.target.value.trim()), 350)
   })
 
-  // Autocomplete clientes
-  document.getElementById('cot-cliente-buscar')?.addEventListener('input', e => renderDropdownClientes(filtrarClientes(e.target.value)))
+  // Autocomplete clientes — búsqueda al escribir + chevron para ver lista completa
+  document.getElementById('cot-cliente-buscar')?.addEventListener('input', e => {
+    const q = e.target.value
+    if (q.length === 0) {
+      cerrarDropdownClientesCot()
+      // Limpiar selección si se borra todo el texto
+      document.getElementById('cot-cliente-id').value = ''
+    } else {
+      renderDropdownClientes(filtrarClientes(q))
+    }
+  })
+  document.getElementById('cot-cliente-buscar')?.addEventListener('focus', () => {
+    // Al enfocar, abrir con la lista filtrada por lo que ya haya escrito
+    const q = document.getElementById('cot-cliente-buscar')?.value || ''
+    renderDropdownClientes(filtrarClientes(q))
+  })
+  document.getElementById('btn-chevron-cliente')?.addEventListener('click', abrirDropdownClientesCot)
   document.addEventListener('click', e => {
-    if (!e.target.closest('#cot-cliente-buscar') && !e.target.closest('#dropdown-clientes'))
-      document.getElementById('dropdown-clientes').style.display = 'none'
+    if (!e.target.closest('#cot-cliente-buscar') &&
+        !e.target.closest('#btn-chevron-cliente') &&
+        !e.target.closest('#dropdown-clientes'))
+      cerrarDropdownClientesCot()
   })
 
   // Modal ver
@@ -762,6 +840,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (e.key === 'Escape') {
       document.getElementById('modal-cotizacion')?.classList.remove('active')
       document.getElementById('modal-ver')?.classList.remove('active')
+      cerrarDropdownClientesCot()
     }
   })
 })

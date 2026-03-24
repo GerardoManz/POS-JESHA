@@ -96,12 +96,19 @@
         <div class="form-row" style="margin-bottom:12px;">
           <div class="form-group">
             <label>Proveedor *</label>
-            <div style="display:flex;gap:6px;">
-              <input type="text" id="prov-buscar" placeholder="Buscar proveedor..." class="search-input" autocomplete="off" style="flex:1" />
-              <button class="btn-secondary btn-sm" id="btn-nuevo-prov" title="Nuevo proveedor">+</button>
-            </div>
-            <input type="hidden" id="prov-id" />
-            <div id="dd-proveedores" class="dropdown-clientes" style="display:none;"></div>
+            <div style="position:relative;">
+  <div style="display:flex;gap:6px;">
+    <input type="text" id="prov-buscar" placeholder="Buscar proveedor..." class="search-input" autocomplete="off" style="flex:1" />
+    <button type="button" id="btn-chevron-prov"
+      style="padding:7px 10px;background:rgba(255,255,255,0.04);border:1px solid var(--border-color,#333);border-radius:6px;color:var(--muted);cursor:pointer;transition:color 0.15s;flex-shrink:0;"
+      title="Ver todos los proveedores">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+    </button>
+    <button class="btn-secondary btn-sm" id="btn-nuevo-prov" title="Nuevo proveedor">+</button>
+  </div>
+  <input type="hidden" id="prov-id" />
+  <div id="dd-proveedores" class="dropdown-clientes" style="display:none;position:absolute;z-index:300;width:100%;left:0;top:calc(100% + 4px);background:var(--panel-bg,#1a1a1a);border:1px solid var(--border-color,#333);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.4);overflow:hidden;"></div>
+</div>
           </div>
           <div class="form-group">
             <label>Notas</label>
@@ -244,6 +251,7 @@
     </div>
   </div>
 </div>
+
 
 <script src="sidebar.js"></script>
 <script src="compras.js"></script>

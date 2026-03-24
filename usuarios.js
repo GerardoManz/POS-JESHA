@@ -192,6 +192,9 @@ function renderizarTabla() {
         <td>
           <div class="actions">
             <button class="btn-icon" onclick="editarUsuario(${usuario.id})" title="Editar">✏️</button>
+            <button class="btn-icon" title="${usuario.tienePin ? 'PIN configurado ✓' : 'Sin PIN — click para asignar'}"
+              style="${usuario.tienePin ? 'color:#60d080;border-color:rgba(96,208,128,0.3)' : 'color:#e8710a;border-color:rgba(232,113,10,0.3)'}"
+              onclick="editarUsuario(${usuario.id})">🔢</button>
             <button class="btn-icon warning" onclick="abrirResetPassword(${usuario.id})" title="Reset Password">🔑</button>
             <button class="btn-icon warning" onclick="toggleEstadoUsuario(${usuario.id}, ${!usuario.activo})" 
               title="${usuario.activo ? 'Desactivar' : 'Activar'}">
@@ -218,6 +221,14 @@ function abrirModalNuevoUsuario() {
   const labelPass = document.getElementById('label-pass')
   if (labelPass) labelPass.textContent = 'Contraseña *'
   
+  // Ocultar PIN en nuevo usuario
+  const secPin = document.getElementById('seccion-pin')
+  if (secPin) secPin.style.display = 'none'
+
+  // Botón dice "Crear Usuario" en modo nuevo
+  const btnGuardar = document.getElementById('btn-guardar')
+  if (btnGuardar) btnGuardar.textContent = 'Crear Usuario'
+
   if (msgUsuario) msgUsuario.textContent = ''
   if (modalUsuario) modalUsuario.classList.add('open')
 }
@@ -232,14 +243,15 @@ window.editarUsuario = async function(usuarioId) {
   document.getElementById('f-username').value = usuarioActual.username || ''
   document.getElementById('f-rol').value = usuarioActual.rol || ''
   
-  // Esperar a que sucursales estén cargadas antes de asignar el valor
+  // Asignar sucursal — siempre recargar para garantizar opciones actualizadas
   const sucursalSelect = document.getElementById('f-sucursal')
-  if (sucursalSelect && usuarioActual.sucursalId) {
-    // Si el select ya tiene opciones, asignar directo; si no, esperar
-    if (sucursalSelect.options.length <= 1) {
-      await cargarSucursales()
+  if (sucursalSelect) {
+    // Recargar sucursales para tener opciones frescas
+    await cargarSucursales()
+    // Asignar el valor DESPUÉS de que las opciones están en el DOM
+    if (usuarioActual.sucursalId) {
+      sucursalSelect.value = String(usuarioActual.sucursalId)
     }
-    sucursalSelect.value = usuarioActual.sucursalId
   }
   
   // Mostrar metadata
@@ -266,7 +278,22 @@ window.editarUsuario = async function(usuarioId) {
   // Hacer password no requerido en edición
   document.getElementById('f-password').required = false
   document.getElementById('f-confirmar').required = false
+
+  // Mostrar sección PIN en edición
+  const secPin = document.getElementById('seccion-pin')
+  if (secPin) secPin.style.display = 'block'
+  const pinInput = document.getElementById('f-pin')
+  if (pinInput) pinInput.value = ''
+  const pinEstado = document.getElementById('pin-estado')
+  if (pinEstado) {
+    pinEstado.textContent = usuarioActual.tienePin ? '✓ PIN configurado' : '⚠ Sin PIN asignado'
+    pinEstado.style.color = usuarioActual.tienePin ? '#60d080' : '#e8710a'
+  }
   
+  // Botón dice "Actualizar Usuario" en modo edición
+  const btnGuardar = document.getElementById('btn-guardar')
+  if (btnGuardar) btnGuardar.textContent = 'Actualizar Usuario'
+
   if (msgUsuario) msgUsuario.textContent = ''
   if (modalUsuario) modalUsuario.classList.add('open')
 }
@@ -377,6 +404,30 @@ if (formUsuario) {
       if (!response.ok) {
         const error = await response.json()
         throw new Error(error.error || 'Error al guardar usuario')
+      }
+
+      // Si hay PIN y estamos editando, guardarlo
+      const pinVal = document.getElementById('f-pin')?.value.trim()
+      if (usuarioActual && pinVal) {
+        if (!/^\d{4}$/.test(pinVal)) {
+          mostrarErrorUsuario('El PIN debe ser exactamente 4 dígitos numéricos')
+          return
+        }
+        try {
+          const resPIN = await fetch(`${API_URL}/usuarios/${usuarioActual.id}/pin`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
+            body: JSON.stringify({ pin: pinVal })
+          })
+          if (!resPIN.ok) {
+            const errPin = await resPIN.json()
+            mostrarErrorUsuario(errPin.error || 'Error al guardar PIN')
+            return
+          }
+        } catch (e) {
+          mostrarErrorUsuario('Error al guardar PIN: ' + e.message)
+          return
+        }
       }
 
       cargarUsuarios()

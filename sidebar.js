@@ -33,9 +33,58 @@ function verificarAccesoPagina(pagina) {
   const rol = getRol()
   if (rol === 'SUPERADMIN') return true
 
+  // ── Bloqueo horario para EMPLEADO (8:00 – 18:00 hora CDMX) ──────
+  if (rol === 'EMPLEADO') {
+    const ahoraLocal = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Mexico_City' }))
+    const hora       = ahoraLocal.getHours()   // 0-23
+    const minutos    = ahoraLocal.getMinutes()
+    const totalMin   = hora * 60 + minutos
+    const inicio     = 8  * 60   // 08:00 → 480 min
+    const fin        = 18 * 60   // 18:00 → 1080 min
+
+    if (totalMin < inicio || totalMin >= fin) {
+      // Mostrar pantalla de bloqueo en lugar de redirigir al login
+      document.body.innerHTML = `
+        <div style="
+          min-height:100vh; display:flex; align-items:center; justify-content:center;
+          background:#0e1117; font-family:'Barlow',sans-serif; flex-direction:column; gap:16px;
+          text-align:center; padding:24px;
+        ">
+          <div style="font-size:3rem;">🔒</div>
+          <div style="
+            font-family:'Barlow Condensed',sans-serif; font-size:1.6rem; font-weight:700;
+            letter-spacing:0.06em; text-transform:uppercase; color:#e9edf4;
+          ">Sistema fuera de horario</div>
+          <div style="color:#7a8599; font-size:0.95rem; max-width:360px; line-height:1.6;">
+            El acceso para empleados está disponible<br>
+            <strong style="color:#e9edf4;">de 8:00 a 18:00 (hora de Ciudad de México)</strong>
+          </div>
+          <div style="
+            margin-top:8px; padding:12px 24px;
+            background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08);
+            border-radius:10px; color:#7a8599; font-size:0.875rem;
+          ">
+            Hora actual: <strong style="color:#e9edf4;">
+              ${ahoraLocal.toLocaleTimeString('es-MX', { hour:'2-digit', minute:'2-digit', hour12:true })}
+            </strong>
+          </div>
+          <button onclick="
+            localStorage.removeItem('jesha_token');
+            localStorage.removeItem('jesha_usuario');
+            window.location.href='login.html';
+          " style="
+            margin-top:16px; padding:10px 24px;
+            background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12);
+            border-radius:8px; color:#e9edf4; font-family:'Barlow',sans-serif;
+            font-size:0.875rem; cursor:pointer;
+          ">Cerrar sesión</button>
+        </div>`
+      return false
+    }
+  }
+
   const bloqueadas = ROL_BLOQUEADO[rol] || []
   if (bloqueadas.includes(pagina)) {
-    // Redirigir según el rol
     const destino = REDIRECCION_ROL[rol] || 'index.html'
     window.location.replace(destino)
     return false

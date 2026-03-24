@@ -487,11 +487,11 @@ async function ajustarInventario(req, res) {
           productoId:  parseInt(id),
           sucursalId,
           usuarioId:   usuario.id,
-          tipo:        diferencia > 0 ? 'AJUSTE_ENTRADA' : 'AJUSTE_SALIDA',
+          tipo:        diferencia > 0 ? 'AJUSTE_POSITIVO' : 'AJUSTE_NEGATIVO',
           cantidad:    Math.abs(diferencia),
           stockAntes:  stockAnterior,
           stockDespues: parseInt(stockActual),
-          motivo:      motivo || 'Ajuste manual de inventario',
+          notas:       motivo || 'Ajuste manual de inventario',
         }
       })
     }

@@ -193,6 +193,21 @@
       </div>
 
       <div class="divider"></div>
+
+      <!-- ── PIN DE CAJERO (solo edición) ── -->
+      <div id="seccion-pin" style="display:none; margin-bottom:18px;">
+        <h4 class="section-title">PIN de Cajero (4 dígitos)</h4>
+        <div class="form-group">
+          <label>PIN <span style="font-weight:400;color:var(--muted);text-transform:none">(dejar vacío para no cambiar)</span></label>
+          <input type="password" id="f-pin" placeholder="••••" maxlength="4" pattern="[0-9]{4}"
+            style="letter-spacing:0.3em; font-size:1.2rem; text-align:center;"
+            oninput="this.value=this.value.replace(/[^0-9]/g,'')" />
+          <div class="hint">El PIN permite identificar al cajero al realizar ventas. Exactamente 4 dígitos.</div>
+          <div id="pin-estado" style="font-size:0.78rem;margin-top:4px;"></div>
+        </div>
+      </div>
+
+      <div class="divider"></div>
       <h4 class="section-title" id="titulo-pass">Nueva Contraseña *</h4>
 
       <div class="form-group">

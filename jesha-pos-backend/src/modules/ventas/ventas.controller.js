@@ -10,7 +10,8 @@ const prisma = require('../../lib/prisma')
  */
 exports.crearVenta = async (req, res) => {
   try {
-    const { sucursalId, usuarioId, turnoId, clienteId, metodoPago, subtotal, iva, descuento, total, detalles } = req.body
+    const { sucursalId, usuarioId, turnoId, metodoPago, subtotal, iva, descuento, total, detalles } = req.body
+    const clienteId = req.body.clienteId ? parseInt(req.body.clienteId) : null
 
     if (!sucursalId || !usuarioId || !turnoId || !metodoPago) {
       return res.status(400).json({ error: 'Faltan campos requeridos', campos: ['sucursalId', 'usuarioId', 'turnoId', 'metodoPago'] })
@@ -57,17 +58,6 @@ exports.crearVenta = async (req, res) => {
       return res.status(400).json({ error: 'Total no coincide', codigo: 'TOTAL_MISMATCH', backend: totalEsperado, frontend: total, diferencia })
     }
 
-    const inventarios = await prisma.inventarioSucursal.findMany({
-      where: { sucursalId, productoId: { in: detallesValidados.map(d => d.productoId) } }
-    })
-    for (const detalle of detallesValidados) {
-      const inventario = inventarios.find(i => i.productoId === detalle.productoId)
-      if (!inventario || inventario.stockActual < detalle.cantidad) {
-        const disponibles = inventario?.stockActual || 0
-        return res.status(400).json({ error: `Stock insuficiente para producto ${detalle.productoId}`, codigo: 'STOCK_INSUFICIENTE', producto: detalle.productoId, disponibles, solicitados: detalle.cantidad })
-      }
-    }
-
     const folio = await generarFolio()
     let facturaEstado = 'DISPONIBLE'
     let facturaLimite = new Date()
@@ -78,7 +68,54 @@ exports.crearVenta = async (req, res) => {
       facturaLimite.setDate(facturaLimite.getDate() + 30)
     }
 
+    // Crédito cliente — validación previa (confirma disponibilidad antes de abrir tx)
+    const esCredito = req.body.esCreditoCliente === true || req.body.esCreditoCliente === 'true'
+                   || req.body.esCredito === true        || metodoPago === 'CREDITO_CLIENTE'
+    let clienteCredito = null
+    if (esCredito) {
+      if (!clienteId) return res.status(400).json({ error: 'Se requiere cliente para venta a crédito' })
+      clienteCredito = await prisma.cliente.findUnique({ where: { id: clienteId } })
+      if (!clienteCredito) return res.status(404).json({ error: 'Cliente no encontrado' })
+      if (clienteCredito.tipo !== 'REGISTRADO') return res.status(400).json({ error: 'Solo clientes REGISTRADO pueden comprar a crédito' })
+      const disponible = parseFloat(clienteCredito.limiteCredito) - parseFloat(clienteCredito.saldoPendiente)
+      if (disponible < totalEsperado) return res.status(400).json({ error: 'Crédito insuficiente', disponible, totalRequerido: totalEsperado })
+    }
+
     const venta = await prisma.$transaction(async (tx) => {
+      // ── Validar stock DENTRO de la transacción — acumula TODOS los productos con problema ──
+      const inventarios = await tx.inventarioSucursal.findMany({
+        where: { sucursalId, productoId: { in: detallesValidados.map(d => d.productoId) } }
+      })
+
+      // Traer nombres de productos para el mensaje de error
+      const productosInfo = await tx.producto.findMany({
+        where:  { id: { in: detallesValidados.map(d => d.productoId) } },
+        select: { id: true, nombre: true }
+      })
+      const nombreProd = Object.fromEntries(productosInfo.map(p => [p.id, p.nombre]))
+
+      const sinStock = []
+      for (const detalle of detallesValidados) {
+        const inventario = inventarios.find(i => i.productoId === detalle.productoId)
+        const disponibles = inventario?.stockActual ?? 0
+        if (!inventario || disponibles < detalle.cantidad) {
+          sinStock.push({
+            productoId: detalle.productoId,
+            nombre:     nombreProd[detalle.productoId] || `Producto ${detalle.productoId}`,
+            disponibles,
+            solicitados: detalle.cantidad
+          })
+        }
+      }
+
+      if (sinStock.length > 0) {
+        const err = new Error('Stock insuficiente')
+        err.status      = 400
+        err.codigo      = 'STOCK_INSUFICIENTE'
+        err.sinStock    = sinStock
+        throw err
+      }
+
       const ventaCreada = await tx.venta.create({
         data: {
           folio, sucursalId, usuarioId, clienteId: clienteId || null, turnoId, metodoPago,
@@ -106,11 +143,59 @@ exports.crearVenta = async (req, res) => {
         })
       }
 
-      await tx.movimientoCaja.create({
-        data: { turnoId, tipo: 'VENTA', monto: totalEsperado, metodoPago, referencia: folio }
-      })
+      // Movimiento de caja solo si NO es crédito cliente
+      if (!esCredito) {
+        await tx.movimientoCaja.create({
+          data: { turnoId, tipo: 'VENTA', monto: totalEsperado, metodoPago, referencia: folio }
+        })
+      }
+
+      // Si es crédito: actualizar saldo cliente + crear bitácora automática
+      if (esCredito && clienteId) {
+        await tx.cliente.update({
+          where: { id: clienteId },
+          data: {
+            saldoPendiente:    { increment: totalEsperado },
+            totalCreditoUsado: { increment: totalEsperado }
+          }
+        })
+        const fechaBit = new Date()
+        const countBit = await tx.bitacora.count()
+        const folioBit = `BIT-${fechaBit.getFullYear()}${String(fechaBit.getMonth()+1).padStart(2,'0')}${String(fechaBit.getDate()).padStart(2,'0')}-${String(countBit+1).padStart(5,'0')}`
+        const bitacoraCreada = await tx.bitacora.create({
+          data: {
+            folio:           folioBit,
+            titulo:          `Crédito — ${folio}`,
+            descripcion:     `Venta a crédito por $${totalEsperado.toFixed(2)}`,
+            clienteId,
+            sucursalId,
+            usuarioId,
+            estado:          'ABIERTA',
+            totalMateriales: totalEsperado,
+            totalAbonado:    0,
+            saldoPendiente:  totalEsperado,
+            ventaId:         ventaCreada.id,
+            notas:           'Generada automáticamente — crédito a cliente'
+          }
+        })
+        // Agregar los productos de la venta como detalles de la bitácora
+        for (const d of detallesValidados) {
+          await tx.detalleBitacora.create({
+            data: {
+              bitacoraId:           bitacoraCreada.id,
+              productoId:           d.productoId,
+              cantidad:             d.cantidad,
+              precioUnitario:       d.precioUnitario,
+              subtotal:             d.subtotal,
+              inventarioDescontado: false,
+              notas:                'Importado automáticamente desde venta ' + folio
+            }
+          })
+        }
+      }
+
       await tx.auditoria.create({
-        data: { usuarioId, sucursalId, accion: 'CREAR_VENTA', modulo: 'VENTAS', referencia: folio, valorDespues: { ventaId: ventaCreada.id, total: totalRecalculado, items: detallesValidados.length } }
+        data: { usuarioId, sucursalId, accion: 'CREAR_VENTA', modulo: 'VENTAS', referencia: folio, valorDespues: { ventaId: ventaCreada.id, total: totalEsperado, items: detallesValidados.length, esCredito } }
       })
 
       return ventaCreada
@@ -121,7 +206,12 @@ exports.crearVenta = async (req, res) => {
 
   } catch (error) {
     console.error('❌ Error en crearVenta:', error)
-    res.status(500).json({ error: 'Error al procesar venta: ' + error.message })
+    const status = error.status === 400 ? 400 : 500
+    res.status(status).json({
+      error:   error.message,
+      codigo:  error.codigo  || null,
+      sinStock: error.sinStock || null
+    })
   }
 }
 
@@ -372,4 +462,13 @@ exports.cancelarVenta = async (req, res) => {
     console.error('❌ Error en cancelarVenta:', err)
     res.status(500).json({ error: 'Error al cancelar venta: ' + err.message })
   }
+}
+async function generarFolioBitacora(tx) {
+  const fecha = new Date()
+  const año   = fecha.getFullYear()
+  const mes   = String(fecha.getMonth() + 1).padStart(2, '0')
+  const dia   = String(fecha.getDate()).padStart(2, '0')
+  const count = await (tx || prisma).bitacora.count()
+  const seq   = String(count + 1).padStart(4, '0')
+  return `BIT-${año}${mes}${dia}-${seq}`
 }

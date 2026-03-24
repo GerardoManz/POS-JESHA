@@ -82,8 +82,64 @@ const listar = async (req, res) => {
 // ════════════════════════════════════════════════════════════════════
 const obtener = async (req, res) => {
   try {
-    const b = await prisma.bitacora.findUnique({ where: { id: parseInt(req.params.id) }, select: BITACORA_SELECT })
+    let b = await prisma.bitacora.findUnique({ where: { id: parseInt(req.params.id) }, select: BITACORA_SELECT })
     if (!b) return res.status(404).json({ success: false, error: 'Bitácora no encontrada' })
+
+    // Auto-importar productos si la bitácora está vacía y viene de una venta a crédito
+    if (b.ventaId && (!b.detalles || b.detalles.length === 0)) {
+      try {
+        const venta = await prisma.venta.findUnique({
+          where: { id: b.ventaId },
+          include: { detalles: true }
+        })
+        if (venta && venta.detalles.length > 0) {
+          await prisma.$transaction(async tx => {
+            let sumaSubtotales = 0;
+
+            for (const d of venta.detalles) {
+              const subtotalItem = parseFloat(d.subtotal);
+              sumaSubtotales += subtotalItem;
+
+              await tx.detalleBitacora.create({
+                data: {
+                  bitacoraId:           b.id,
+                  productoId:           d.productoId,
+                  cantidad:             d.cantidad,
+                  precioUnitario:       parseFloat(d.precioUnitario),
+                  subtotal:             subtotalItem,
+                  inventarioDescontado: false,
+                  notas:                'Importado automáticamente desde venta ' + venta.folio
+                }
+              })
+            }
+
+            // Actualizar totales de la bitácora
+            await tx.bitacora.update({
+              where: { id: b.id },
+              data: {
+                totalMateriales: sumaSubtotales,
+                saldoPendiente: sumaSubtotales
+              }
+            });
+
+            // Sumar deuda al cliente
+            if (b.cliente?.id) {
+              await tx.cliente.update({
+                where: { id: b.cliente.id },
+                data: {
+                  saldoPendiente: { increment: sumaSubtotales }
+                }
+              });
+            }
+          })
+          // Recargar con productos importados
+          b = await prisma.bitacora.findUnique({ where: { id: parseInt(req.params.id) }, select: BITACORA_SELECT })
+        }
+      } catch(importErr) {
+        console.warn('⚠️ No se pudo auto-importar productos a bitácora:', importErr.message)
+      }
+    }
+
     res.json({ success: true, data: b })
   } catch (err) { res.status(500).json({ success: false, error: err.message }) }
 }
@@ -125,7 +181,10 @@ const agregarProducto = async (req, res) => {
     if (!productoId || !cantidad || cantidad <= 0)
       return res.status(400).json({ success: false, error: 'productoId y cantidad > 0 son requeridos' })
 
-    const bitacora = await prisma.bitacora.findUnique({ where: { id: parseInt(id) }, select: { id: true, folio: true, estado: true, totalMateriales: true, sucursalId: true } })
+    const bitacora = await prisma.bitacora.findUnique({ 
+      where: { id: parseInt(id) }, 
+      select: { id: true, folio: true, estado: true, totalMateriales: true, sucursalId: true, clienteId: true } 
+    })
     if (!bitacora) return res.status(404).json({ success: false, error: 'Bitácora no encontrada' })
     if (!['ABIERTA', 'PAUSADA'].includes(bitacora.estado))
       return res.status(400).json({ success: false, error: `No se pueden agregar productos en estado ${bitacora.estado}` })
@@ -169,6 +228,14 @@ const agregarProducto = async (req, res) => {
         data:  { totalMateriales: nuevoTotal, saldoPendiente: saldo }
       })
 
+      // Actualizar crédito del cliente si la bitácora está vinculada a uno
+      if (bitacora.clienteId) {
+        await tx.cliente.update({
+          where: { id: bitacora.clienteId },
+          data: { saldoPendiente: { increment: subtotal } }
+        })
+      }
+
       return detalle
     })
 
@@ -191,7 +258,10 @@ const quitarProducto = async (req, res) => {
     const detalle  = await prisma.detalleBitacora.findUnique({ where: { id: parseInt(detalleId) } })
     if (!detalle)  return res.status(404).json({ success: false, error: 'Detalle no encontrado' })
 
-    const bitacora = await prisma.bitacora.findUnique({ where: { id: parseInt(id) }, select: { id: true, folio: true, estado: true, totalMateriales: true, sucursalId: true } })
+    const bitacora = await prisma.bitacora.findUnique({ 
+      where: { id: parseInt(id) }, 
+      select: { id: true, folio: true, estado: true, totalMateriales: true, sucursalId: true, clienteId: true } 
+    })
     if (!['ABIERTA', 'PAUSADA'].includes(bitacora.estado))
       return res.status(400).json({ success: false, error: 'No se puede modificar en este estado' })
 
@@ -216,9 +286,22 @@ const quitarProducto = async (req, res) => {
 
       await tx.detalleBitacora.delete({ where: { id: parseInt(detalleId) } })
 
-      const nuevoTotal = parseFloat((parseFloat(bitacora.totalMateriales) - parseFloat(detalle.subtotal)).toFixed(2))
-      const saldo      = await calcularSaldo(tx, parseInt(id), nuevoTotal)
-      await tx.bitacora.update({ where: { id: parseInt(id) }, data: { totalMateriales: Math.max(0, nuevoTotal), saldoPendiente: saldo } })
+      const subtotalEliminado = parseFloat(detalle.subtotal)
+      const nuevoTotal = parseFloat((parseFloat(bitacora.totalMateriales) - subtotalEliminado).toFixed(2))
+      const saldo      = await calcularSaldo(tx, parseInt(id), Math.max(0, nuevoTotal))
+      
+      await tx.bitacora.update({ 
+        where: { id: parseInt(id) }, 
+        data: { totalMateriales: Math.max(0, nuevoTotal), saldoPendiente: saldo } 
+      })
+
+      // Restar del crédito del cliente si la bitácora está vinculada a uno
+      if (bitacora.clienteId) {
+        await tx.cliente.update({
+          where: { id: bitacora.clienteId },
+          data: { saldoPendiente: { decrement: subtotalEliminado } }
+        })
+      }
     })
 
     const bitacoraActualizada = await prisma.bitacora.findUnique({ where: { id: parseInt(id) }, select: BITACORA_SELECT })
@@ -241,7 +324,7 @@ const registrarAbono = async (req, res) => {
     if (!monto || parseFloat(monto) <= 0)
       return res.status(400).json({ success: false, error: 'El monto debe ser mayor a 0' })
 
-    const bitacora = await prisma.bitacora.findUnique({ where: { id: parseInt(id) }, select: { id: true, folio: true, estado: true, totalAbonado: true, totalMateriales: true } })
+    const bitacora = await prisma.bitacora.findUnique({ where: { id: parseInt(id) }, select: { id: true, folio: true, estado: true, totalAbonado: true, totalMateriales: true, clienteId: true } })
     if (!bitacora) return res.status(404).json({ success: false, error: 'Bitácora no encontrada' })
     if (!['ABIERTA', 'PAUSADA'].includes(bitacora.estado))
       return res.status(400).json({ success: false, error: `No se pueden registrar abonos en estado ${bitacora.estado}` })
@@ -259,6 +342,15 @@ const registrarAbono = async (req, res) => {
         where: { id: parseInt(id) },
         data:  { totalAbonado: nuevoAbonado, saldoPendiente: nuevoSaldo }
       })
+      // Restar el abono del saldo pendiente del cliente si la bitácora está vinculada a un cliente
+      if (bitacora.clienteId) {
+        await tx.cliente.update({
+          where: { id: bitacora.clienteId },
+          data: {
+            saldoPendiente: { decrement: montoAbono }
+          }
+        })
+      }
     })
 
     await audit(usuarioId, sucursalId, 'ABONO_BITACORA', `${bitacora.folio} +$${montoAbono}`)

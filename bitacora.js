@@ -144,6 +144,20 @@ function renderDetalle() {
   // Panel abono visible solo si está abierta/pausada
   document.getElementById('card-abono').style.display = abierta ? 'block' : 'none'
 
+  // Card de crédito del cliente (solo si viene de venta a crédito)
+  const cardCredito = document.getElementById('card-credito-cliente')
+  if (cardCredito) {
+    // Mostrar card si viene de venta a crédito — usar ventaId como señal principal
+    const esCredito = b.ventaId !== null && b.ventaId !== undefined
+    if (esCredito && b.cliente) {
+      cardCredito.style.display = 'block'
+      // Siempre cargar datos frescos del cliente al abrir
+      cargarCreditoCliente(b.cliente.id)
+    } else {
+      cardCredito.style.display = 'none'
+    }
+  }
+
   // Abonos
   const listaAbonos = document.getElementById('lista-abonos')
   if (!b.abonos || b.abonos.length === 0) {
@@ -312,6 +326,11 @@ async function registrarAbono() {
       body: JSON.stringify({ monto, metodoPago: metodo, notas })
     })
     bitacoraActual = data.data
+    // Refrescar saldo del cliente si es bitácora de crédito
+    // (el backend ya hace el decrement en Cliente al registrar el abono)
+    if (bitacoraActual.ventaId && bitacoraActual.cliente?.id) {
+      cargarCreditoCliente(bitacoraActual.cliente.id)
+    }
     document.getElementById('abono-monto').value = ''
     document.getElementById('abono-notas').value = ''
     renderDetalle()
@@ -521,6 +540,29 @@ function mostrarError(id, msg) {
 // ════════════════════════════════════════════════════════════════════
 //  INICIALIZACIÓN
 // ════════════════════════════════════════════════════════════════════
+
+// ════════════════════════════════════════════════════════════════════
+//  CRÉDITO DEL CLIENTE — mostrar en card de bitácora
+// ════════════════════════════════════════════════════════════════════
+async function cargarCreditoCliente(clienteId) {
+  try {
+    const data    = await apiFetch(`/clientes/${clienteId}`)
+    const cliente = data.data || data
+    const limite     = parseFloat(cliente.limiteCredito  || 0)
+    const saldo      = parseFloat(cliente.saldoPendiente || 0)
+    const usado      = parseFloat(cliente.totalCreditoUsado || 0)
+    const disponible = parseFloat((limite - saldo).toFixed(2))
+
+    const el = id => document.getElementById(id)
+    if (el('cred-limite'))     el('cred-limite').textContent     = fmt(limite)
+    if (el('cred-usado'))      el('cred-usado').textContent      = fmt(saldo)
+    if (el('cred-disponible')) {
+      el('cred-disponible').textContent = fmt(disponible)
+      el('cred-disponible').style.color = disponible > 0 ? 'var(--verde)' : '#e8710a'
+    }
+  } catch(e) { console.warn('Error cargando crédito:', e.message) }
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
   const fechaEl = document.getElementById('fecha-actual')
   if (fechaEl) fechaEl.textContent = new Date().toLocaleDateString('es-MX',{ weekday:'long', year:'numeric', month:'long', day:'numeric' })
