@@ -223,7 +223,12 @@ window.confirmarRecepcion = async function() {
 }
 
 window.cancelarCompra = async function(id) {
-  if (!confirm(`¿Cancelar la compra ${ocActual?.folio}?`)) return
+  const ok = await jeshaConfirm({
+    title: 'Cancelar compra',
+    message: `¿Cancelar la orden <strong>${ocActual?.folio}</strong>? Esta acción no se puede deshacer.`,
+    confirmText: 'Sí, cancelar', type: 'danger'
+  })
+  if (!ok) return
   try {
     const data = await apiFetch(`/compras/${id}/cancelar`, { method:'PATCH' })
     ocActual = data.data

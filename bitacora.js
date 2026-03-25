@@ -211,7 +211,12 @@ function renderAcciones() {
 // ════════════════════════════════════════════════════════════════════
 window.cambiarEstado = async function(estado) {
   const labels = { ABIERTA:'reactivar', CERRADA_INTERNA:'cerrar como uso interno', CERRADA_VENTA:'cerrar con venta' }
-  if (!confirm(`¿${labels[estado] || 'cambiar estado de'} la bitácora ${bitacoraActual.folio}?`)) return
+  const ok = await jeshaConfirm({
+    title: 'Cambiar estado',
+    message: `¿${labels[estado] || 'Cambiar estado de'} la bitácora <strong>${bitacoraActual.folio}</strong>?`,
+    confirmText: 'Confirmar', type: 'warning'
+  })
+  if (!ok) return
   try {
     const data = await apiFetch(`/bitacoras/${bitacoraActual.id}/estado`, { method:'PATCH', body: JSON.stringify({ estado }) })
     bitacoraActual = data.data
@@ -283,7 +288,12 @@ async function confirmarAgregarProd() {
 }
 
 window.quitarProducto = async function(detalleId) {
-  if (!confirm('¿Quitar este producto? El stock será reintegrado.')) return
+  const ok2 = await jeshaConfirm({
+    title: 'Quitar producto',
+    message: '¿Quitar este producto de la bitácora? El stock será reintegrado.',
+    confirmText: 'Quitar', type: 'danger'
+  })
+  if (!ok2) return
   try {
     const data = await apiFetch(`/bitacoras/${bitacoraActual.id}/productos/${detalleId}`, { method: 'DELETE' })
     bitacoraActual = data.data

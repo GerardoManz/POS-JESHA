@@ -584,7 +584,12 @@ window.seleccionarCliente = function(id, nombre) {
 
 async function cancelarCotizacion(id) {
   if (!cotizacionActual || cotizacionActual.id !== id) return
-  if (!confirm(`¿Cancelar la cotización ${cotizacionActual.folio}?`)) return
+  const ok = await jeshaConfirm({
+    title: 'Cancelar cotización',
+    message: `¿Cancelar la cotización <strong>${cotizacionActual.folio}</strong>?`,
+    confirmText: 'Sí, cancelar', type: 'danger'
+  })
+  if (!ok) return
   try {
     await apiFetch(`/cotizaciones/${id}/estado`, { method: 'PATCH', body: JSON.stringify({ estado: 'CANCELADA' }) })
     document.getElementById('modal-ver').classList.remove('active')

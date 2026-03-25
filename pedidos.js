@@ -161,7 +161,12 @@ window.verPedido = async function(id) {
 
 window.cambiarEstado = async function(id, estado) {
   const labels = { ACTIVO:'confirmar', EJECUTADO:'marcar como ejecutado', CANCELADO:'cancelar' }
-  if (!confirm(`¿${labels[estado] || 'cambiar estado de'} el pedido ${pedidoActual?.folio}?`)) return
+  const ok = await jeshaConfirm({
+    title: 'Cambiar estado',
+    message: `¿${labels[estado] || 'Cambiar estado de'} el pedido <strong>${pedidoActual?.folio}</strong>?`,
+    confirmText: 'Confirmar', type: 'warning'
+  })
+  if (!ok) return
   try {
     await apiFetch(`/pedidos/${id}/estado`, { method:'PATCH', body: JSON.stringify({ estado }) })
     document.getElementById('modal-ver').classList.remove('active')

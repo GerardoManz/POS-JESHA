@@ -56,7 +56,6 @@ async function cargarFacturas() {
 
   try {
     const res  = await fetch(`${API_URL}/facturas?${params}`, { headers: { 'Authorization': `Bearer ${TOKEN}` } })
-    if (window.handle401 && window.handle401(res.status)) return
     const data = await res.json()
 
     if (!res.ok) throw new Error(data.error || 'Error cargando facturas')
@@ -120,7 +119,6 @@ async function cargarFacturas() {
 window.verDetalle = async function(id) {
   try {
     const res  = await fetch(`${API_URL}/facturas/${id}`, { headers: { 'Authorization': `Bearer ${TOKEN}` } })
-    if (window.handle401 && window.handle401(res.status)) return
     const data = await res.json()
     if (!res.ok) throw new Error(data.error)
     const f = data.data
@@ -165,7 +163,12 @@ window.verDetalle = async function(id) {
 //  TIMBRAR MANUAL
 // ════════════════════════════════════════════════════════════════════
 window.timbrarManual = async function(id) {
-  if (!confirm('¿Timbrar esta factura ahora? Se enviará a Facturapi para obtener el UUID fiscal.')) return
+  const ok = await jeshaConfirm({
+    title: 'Timbrar factura',
+    message: '¿Timbrar esta factura ahora? Se enviará a Facturapi para obtener el UUID fiscal. Esta acción no se puede deshacer.',
+    confirmText: 'Sí, timbrar', type: 'primary'
+  })
+  if (!ok) return
 
   const btn = document.getElementById('det-btn-timbrar')
   if (btn) { btn.disabled = true; btn.textContent = '⟳ Timbrando...' }
@@ -175,7 +178,6 @@ window.timbrarManual = async function(id) {
       method:  'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` }
     })
-    if (window.handle401 && window.handle401(res.status)) return
     const data = await res.json()
     if (!res.ok) throw new Error(data.error)
 
@@ -204,13 +206,17 @@ window.timbrarManual = async function(id) {
 //  CANCELAR FACTURA
 // ════════════════════════════════════════════════════════════════════
 async function cancelarFactura(id) {
-  if (!confirm('¿Cancelar esta factura? Esta acción no se puede deshacer.')) return
+  const ok = await jeshaConfirm({
+    title: 'Cancelar factura',
+    message: '¿Cancelar esta factura ante el SAT? <strong>Esta acción no se puede deshacer.</strong>',
+    confirmText: 'Sí, cancelar', type: 'danger'
+  })
+  if (!ok) return
   try {
     const res  = await fetch(`${API_URL}/facturas/${id}/cancelar`, {
       method:  'PATCH',
       headers: { 'Authorization': `Bearer ${TOKEN}` }
     })
-    if (window.handle401 && window.handle401(res.status)) return
     const data = await res.json()
     if (!res.ok) throw new Error(data.error)
     document.getElementById('modal-detalle').classList.remove('active')
