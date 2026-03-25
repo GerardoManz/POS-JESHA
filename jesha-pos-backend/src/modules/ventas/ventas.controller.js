@@ -10,10 +10,13 @@ const prisma = require('../../lib/prisma')
  */
 exports.crearVenta = async (req, res) => {
   try {
-    const { sucursalId, usuarioId, turnoId, metodoPago, subtotal, iva, descuento, total, detalles } = req.body
-    const clienteId = req.body.clienteId ? parseInt(req.body.clienteId) : null
+    const sucursalId = parseInt(req.body.sucursalId)
+    const usuarioId  = parseInt(req.body.usuarioId)
+    const turnoId    = parseInt(req.body.turnoId)
+    const { metodoPago, subtotal, iva, descuento, total, detalles, notas } = req.body
+    const clienteId  = req.body.clienteId ? parseInt(req.body.clienteId) : null
 
-    if (!sucursalId || !usuarioId || !turnoId || !metodoPago) {
+    if (!sucursalId || isNaN(sucursalId) || !usuarioId || isNaN(usuarioId) || !turnoId || isNaN(turnoId) || !metodoPago) {
       return res.status(400).json({ error: 'Faltan campos requeridos', campos: ['sucursalId', 'usuarioId', 'turnoId', 'metodoPago'] })
     }
     if (!detalles || detalles.length === 0) {
@@ -46,7 +49,7 @@ exports.crearVenta = async (req, res) => {
       }
       const subtotalDetalle = parseFloat((cantidad * precioUnitario).toFixed(2))
       totalRecalculado += subtotalDetalle
-      detallesValidados.push({ productoId, cantidad: parseInt(cantidad), precioUnitario: parseFloat(precioUnitario), subtotal: subtotalDetalle })
+      detallesValidados.push({ productoId: parseInt(productoId), cantidad: parseInt(cantidad), precioUnitario: parseFloat(precioUnitario), subtotal: subtotalDetalle })
     }
     totalRecalculado = parseFloat(totalRecalculado.toFixed(2))
 
@@ -96,8 +99,9 @@ exports.crearVenta = async (req, res) => {
 
       const sinStock = []
       for (const detalle of detallesValidados) {
-        const inventario = inventarios.find(i => i.productoId === detalle.productoId)
-        const disponibles = inventario?.stockActual ?? 0
+        // parseInt en ambos lados para evitar fallo por string vs number
+        const inventario = inventarios.find(i => parseInt(i.productoId) === parseInt(detalle.productoId))
+        const disponibles = inventario ? parseInt(inventario.stockActual) : 0
         if (!inventario || disponibles < detalle.cantidad) {
           sinStock.push({
             productoId: detalle.productoId,
@@ -120,6 +124,7 @@ exports.crearVenta = async (req, res) => {
         data: {
           folio, sucursalId, usuarioId, clienteId: clienteId || null, turnoId, metodoPago,
           subtotal: totalRecalculado, descuento: descuentoAmt, total: totalEsperado,
+          notas: notas || null,
           estado: 'COMPLETADA', tokenQr: generarUUID(), facturaEstado, facturaLimite,
           detalles: {
             create: detallesValidados.map(d => ({ productoId: d.productoId, cantidad: d.cantidad, precioUnitario: d.precioUnitario, subtotal: d.subtotal, descuento: 0 }))
@@ -132,6 +137,9 @@ exports.crearVenta = async (req, res) => {
         const inventarioAnterior = await tx.inventarioSucursal.findUnique({
           where: { productoId_sucursalId: { productoId: detalle.productoId, sucursalId } }
         })
+        if (!inventarioAnterior) {
+          throw Object.assign(new Error(`Registro de inventario no encontrado para producto ${detalle.productoId}`), { status: 400, codigo: 'INV_NOT_FOUND' })
+        }
         const stockAntes   = inventarioAnterior.stockActual
         const stockDespues = stockAntes - detalle.cantidad
         await tx.inventarioSucursal.update({

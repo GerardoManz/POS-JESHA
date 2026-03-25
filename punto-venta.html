@@ -307,6 +307,17 @@
         </div>
       </div>
 
+      <!-- 3. Referencia terminal Ingenico (solo tarjeta) -->
+      <div id="confirm-tarjeta-wrap" style="display:none;margin:12px 0;">
+        <label style="font-size:0.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;display:block;margin-bottom:6px;">
+          💳 N° Autorización Ingenico <span style="font-weight:400;color:var(--muted)">(requerido)</span>
+        </label>
+        <input type="text" id="confirm-referencia-tarjeta" maxlength="20" placeholder="Ej. 123456"
+          autocomplete="off"
+          style="width:100%;padding:8px 12px;background:rgba(255,255,255,0.04);border:1px solid var(--panel-border);border-radius:8px;color:var(--text);font-family:'Barlow',sans-serif;font-size:0.9rem;outline:none;letter-spacing:0.1em;" />
+        <p style="font-size:0.72rem;color:var(--muted);margin:4px 0 0;"> Aparece en el voucher del Move/2500 como "Núm. Autorización"</p>
+      </div>
+
       <!-- 3. Monto recibido (solo efectivo) -->
       <div id="confirm-monto-efectivo-wrap" style="display:none;margin:12px 0;">
         <label style="font-size:0.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;display:block;margin-bottom:6px;">

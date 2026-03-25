@@ -180,7 +180,6 @@ async function cargarClientes() {
   }
 }
 
-// Filtra la lista en memoria
 function filtrarClientes(query) {
   const q = (query || '').toLowerCase().trim()
   if (!q) return clientesLista.slice(0, 50)
@@ -192,7 +191,6 @@ function filtrarClientes(query) {
   ).slice(0, 50)
 }
 
-// Renderiza los ítems dentro del dropdown
 function renderItemsDropdown(clientes) {
   const list = document.getElementById('dropdown-clientes-pos')
     ?.querySelector('.dropdown-clientes-pos-list')
@@ -212,12 +210,10 @@ function renderItemsDropdown(clientes) {
     ).join('')
 }
 
-// Abre el dropdown con buscador interno
 function abrirDropdownClientes() {
   const dd = document.getElementById('dropdown-clientes-pos')
   if (!dd) return
 
-  // Toggle
   if (dd.style.display !== 'none') {
     cerrarDropdownClientes()
     return
@@ -233,10 +229,8 @@ function abrirDropdownClientes() {
   dd.style.display = 'flex'
   document.getElementById('btn-lista-clientes')?.classList.add('active')
 
-  // Render inicial
   renderItemsDropdown(filtrarClientes(''))
 
-  // Buscador interno
   const ddInput = document.getElementById('dd-search-cliente')
   ddInput?.addEventListener('input', e => renderItemsDropdown(filtrarClientes(e.target.value)))
   setTimeout(() => ddInput?.focus(), 40)
@@ -248,12 +242,10 @@ function cerrarDropdownClientes() {
   document.getElementById('btn-lista-clientes')?.classList.remove('active')
 }
 
-// Selecciona un cliente desde el dropdown o desde el autocompletado antiguo
 window.seleccionarClientePOS = function(id, nombre, telefono) {
   if (id) {
     clienteSeleccionado = clientesLista.find(c => c.id === id) || { id, nombre }
     if (clienteNombre) clienteNombre.value = nombre
-    // Badge
     const badge      = document.getElementById('cliente-seleccionado-badge')
     const badgeNombre = document.getElementById('cliente-badge-nombre')
     if (badge && badgeNombre) {
@@ -267,7 +259,6 @@ window.seleccionarClientePOS = function(id, nombre, telefono) {
     if (badge) badge.style.display = 'none'
   }
   cerrarDropdownClientes()
-  // Verificar si cliente tiene crédito disponible
   if (id) {
     verificarCreditoCliente(id)
   } else {
@@ -281,7 +272,6 @@ window.seleccionarClientePOS = function(id, nombre, telefono) {
   }
 }
 
-// Compatibilidad con código antiguo que llama seleccionarCliente
 function seleccionarCliente(id, nombre) {
   seleccionarClientePOS(id, nombre, '')
 }
@@ -289,7 +279,6 @@ function seleccionarCliente(id, nombre) {
 function limpiarCliente() {
   creditoCliente = null
   ocultarCreditoCliente()
-  // Si estaba en modo CREDITO_CLIENTE, resetear método
   if (metodoPagoSeleccionado === 'CREDITO_CLIENTE') {
     metodoPagoSeleccionado = null
     document.querySelectorAll('.metodo-btn').forEach(b => b.classList.remove('active'))
@@ -300,7 +289,6 @@ function limpiarCliente() {
   if (badge) badge.style.display = 'none'
 }
 
-// Dropdown antiguo de compatibilidad (vacío — ya no se usa)
 function mostrarDropdownClientes() {}
 function ocultarDropdownClientes() { cerrarDropdownClientes() }
 
@@ -383,15 +371,26 @@ function mostrarProductos(productos) {
 // ══════════════════════════════════════════════════════════════════
 
 function agregarAlCarrito(productoId, nombre, precio) {
-  const existe = carrito.find(item => item.id === productoId)
+  const idParsed = parseInt(productoId, 10)
+  const existe = carrito.find(item => item.id === idParsed)
+  
   if (existe) {
     existe.cantidad += 1
   } else {
-    carrito.push({ id: productoId, nombre, precio: parseFloat(precio), cantidad: 1 })
+    carrito.push({ id: idParsed, nombre, precio: parseFloat(precio), cantidad: 1 })
   }
-  if (!productoCache.get(productoId)) {
-    productoCache.set(productoId, { id: productoId, nombre, precioBase: precio, stock: null })
+  
+  // Si no existe en la caché, creamos un fantasma con codigoInterno vacío para evitar el "undefined"
+  if (!productoCache.get(idParsed)) {
+    productoCache.set(idParsed, { 
+      id: idParsed, 
+      nombre, 
+      precioBase: precio, 
+      stock: null, 
+      codigoInterno: '' 
+    })
   }
+  
   actualizarCarrito()
 }
 
@@ -469,7 +468,6 @@ async function limpiarCarrito() {
   const badge = document.getElementById('cliente-seleccionado-badge')
   if (badge) badge.style.display = 'none'
 
-  // Resetear método de pago
   metodoPagoSeleccionado = null
   document.querySelectorAll('.metodo-btn').forEach(b => b.classList.remove('active'))
   if (montoEfectivoControl) montoEfectivoControl.style.display = 'none'
@@ -483,7 +481,6 @@ async function limpiarCarrito() {
 //  NOTIFICACIONES TOAST — reemplaza alert() nativo
 // ══════════════════════════════════════════════════════════════════
 
-// Toast con título + detalle multilínea (para stock insuficiente)
 function mostrarToastDetalle(titulo, detalleHtml, duracion = 7000) {
   document.getElementById('pos-toast')?.remove()
   document.getElementById('pos-toast-detalle')?.remove()
@@ -523,13 +520,13 @@ function mostrarToastDetalle(titulo, detalleHtml, duracion = 7000) {
 }
 
 function mostrarToast(mensaje, tipo = 'error', duracion = 4000) {
-  // Eliminar toast anterior si existe
   document.getElementById('pos-toast')?.remove()
 
   const colores = {
     error:   { bg: 'rgba(255,107,107,0.12)', border: 'rgba(255,107,107,0.35)', texto: '#ff6b6b', icono: '✕' },
     warning: { bg: 'rgba(232,113,10,0.12)',  border: 'rgba(232,113,10,0.35)',  texto: '#e8710a', icono: '⚠' },
-    info:    { bg: 'rgba(74,144,226,0.12)',   border: 'rgba(74,144,226,0.35)',  texto: '#4a90e2', icono: 'ℹ' }
+    info:    { bg: 'rgba(74,144,226,0.12)',  border: 'rgba(74,144,226,0.35)',  texto: '#4a90e2', icono: 'ℹ' },
+    success: { bg: 'rgba(96,208,128,0.12)',  border: 'rgba(96,208,128,0.35)',  texto: '#60d080', icono: '✓' }
   }
   const c = colores[tipo] || colores.error
 
@@ -553,7 +550,6 @@ function mostrarToast(mensaje, tipo = 'error', duracion = 4000) {
     transition: 'opacity 0.3s'
   })
 
-  // Inyectar keyframe si no existe
   if (!document.getElementById('pos-toast-style')) {
     const st = document.createElement('style')
     st.id = 'pos-toast-style'
@@ -598,12 +594,10 @@ async function completarVenta() {
 function mostrarModalConfirmacion() {
   const total = carrito.reduce((sum, item) => sum + (item.precio * item.cantidad), 0)
 
-  // Total y método
   document.getElementById('confirmacion-total').textContent  = `$${total.toFixed(2)}`
   const metodoLabel = { EFECTIVO:'💵 Efectivo', CREDITO:'💳 Tarjeta', DEBITO:'💳 Tarjeta', TRANSFERENCIA:'🔄 Transferencia' }
   document.getElementById('confirmacion-metodo').textContent = metodoLabel[metodoPagoSeleccionado] || metodoPagoSeleccionado
 
-  // Cliente
   const rowCliente = document.getElementById('confirm-row-cliente')
   if (rowCliente) {
     if (clienteSeleccionado?.nombre) {
@@ -614,18 +608,14 @@ function mostrarModalConfirmacion() {
     }
   }
 
-  // Monto recibido + cambio (solo efectivo)
   const montoWrap = document.getElementById('confirm-monto-efectivo-wrap')
   const montoInput = document.getElementById('confirm-monto-recibido')
   if (montoWrap) {
     if (metodoPagoSeleccionado === 'EFECTIVO') {
       montoWrap.style.display = 'block'
-      // Limpiar el input al abrir el modal para que el cajero ingrese el monto fresco
       if (montoInput) montoInput.value = ''
-      // Ocultar cambio hasta que se ingrese el monto
       const cambioWrap = document.getElementById('confirm-cambio-wrap')
       if (cambioWrap) cambioWrap.style.display = 'none'
-      // Conectar evento — recalcula cambio en tiempo real sobre el total con descuento
       if (montoInput) {
         montoInput.oninput = () => recalcularCambioModal()
         setTimeout(() => montoInput.focus(), 100)
@@ -635,16 +625,22 @@ function mostrarModalConfirmacion() {
     }
   }
 
-  // Poblar selector de vendedor
+  const tarjetaWrap = document.getElementById('confirm-tarjeta-wrap')
+  const refInput    = document.getElementById('confirm-referencia-tarjeta')
+  if (tarjetaWrap) {
+    const esTarjeta = ['CREDITO', 'DEBITO'].includes(metodoPagoSeleccionado)
+    tarjetaWrap.style.display = esTarjeta ? 'block' : 'none'
+    if (refInput) refInput.value = ''
+    if (esTarjeta) setTimeout(() => refInput?.focus(), 150)
+  }
+
   const selVendedor = document.getElementById('confirm-vendedor-select')
   if (selVendedor) {
     selVendedor.innerHTML = ''
-    // Opción: el cajero logueado
     const optPropio = document.createElement('option')
     optPropio.value = USUARIO.id
     optPropio.textContent = `${USUARIO.nombre} (tú)`
     selVendedor.appendChild(optPropio)
-    // Cargar vendedores activos de la sucursal — endpoint accesible por cualquier rol
     fetch(`${API_URL}/usuarios/vendedores`, { headers: { 'Authorization': `Bearer ${TOKEN}` } })
       .then(r => r.json())
       .then(data => {
@@ -658,15 +654,12 @@ function mostrarModalConfirmacion() {
             selVendedor.appendChild(opt)
           })
       }).catch(() => {})
-    // Restaurar selección previa si existe
     if (vendedorSeleccionado) selVendedor.value = vendedorSeleccionado.id
   }
 
-  // Resetear descuento manual
   const inputDesc = document.getElementById('confirm-descuento-input')
   if (inputDesc) inputDesc.value = descuentoManual > 0 ? descuentoManual : ''
 
-  // Selector de venta a empleado — solo visible para ADMIN_SUCURSAL y SUPERADMIN
   const wrapEmpleado = document.getElementById('confirm-venta-empleado-wrap')
   const selEmpReset  = document.getElementById('confirm-empleado-select')
   const badgeEmpReset = document.getElementById('confirm-empleado-badge')
@@ -678,12 +671,9 @@ function mostrarModalConfirmacion() {
   if (puedeVerDescEmpleado) cargarEmpleadosSelect()
 
   actualizarResumenConDescuento()
-
-  // Mostrar modal con el nuevo estilo (usa display flex)
   modalConfirmacion.style.display = 'flex'
 }
 
-// Devuelve el porcentaje efectivo: manual tiene prioridad; si no hay, usa 3% si hay empleado
 function getPctEfectivo() {
   const inputDesc = document.getElementById('confirm-descuento-input')
   const selEmp    = document.getElementById('confirm-empleado-select')
@@ -716,11 +706,9 @@ function actualizarResumenConDescuento() {
     }
   }
 
-  // Si es efectivo, recalcular cambio con el nuevo total
   if (metodoPagoSeleccionado === 'EFECTIVO') recalcularCambioModal()
 }
 
-// Recalcula el cambio en tiempo real usando el total con descuento ya aplicado
 function recalcularCambioModal() {
   const totalBruto = carrito.reduce((s, i) => s + (i.precio * i.cantidad), 0)
   const { pct }    = getPctEfectivo()
@@ -752,7 +740,6 @@ let pinVendedorVerificado = false
 function pedirPinVendedor(vendedorId, selectEl) {
   pinVendedorVerificado = false
 
-  // Crear o reusar el bloque de PIN
   let wrapPin = document.getElementById('confirm-pin-wrap')
   if (!wrapPin) {
     wrapPin = document.createElement('div')
@@ -837,7 +824,6 @@ function mostrarModalExito(ventaData, totalFinal) {
   const overlay = document.getElementById('modal-venta-exitosa')
   if (!overlay) return
 
-  // Llenar datos
   document.getElementById('exito-folio').textContent  = `Folio: ${ventaData.folio}`
   document.getElementById('exito-total').textContent  = `$${parseFloat(ventaData.total).toFixed(2)}`
 
@@ -851,10 +837,9 @@ function mostrarModalExito(ventaData, totalFinal) {
   document.getElementById('exito-metodo').textContent =
     metodoLabel[ventaData.metodoPago] || metodoLabel[metodoPagoSeleccionado] || ventaData.metodoPago || '—'
 
-  // Cambio — solo aplica en efectivo
   const rowCambio = document.getElementById('exito-row-cambio')
   const montoRec  = parseFloat(document.getElementById('confirm-monto-recibido')?.value) || 0
-  // El totalFinal ya llega como parámetro — usarlo directamente para el cambio
+  
   if (metodoPagoSeleccionado === 'EFECTIVO' && montoRec > 0) {
     const cambio = montoRec - totalFinal
     if (cambio >= 0) {
@@ -867,10 +852,8 @@ function mostrarModalExito(ventaData, totalFinal) {
     rowCambio.style.display = 'none'
   }
 
-  // Mostrar overlay
   overlay.style.display = 'flex'
 
-  // Botón continuar — cierra el modal y deja el sistema limpio
   document.getElementById('btn-cerrar-exito').onclick = () => {
     overlay.style.display = 'none'
   }
@@ -880,13 +863,21 @@ async function confirmarVenta() {
   if (ventaEnProceso) return
   ventaEnProceso = true
   try {
-    // Validar PIN si el vendedor es diferente al cajero logueado
     const selVendCheck = document.getElementById('confirm-vendedor-select')
     if (selVendCheck && parseInt(selVendCheck.value) !== USUARIO.id && !pinVendedorVerificado) {
       ventaEnProceso = false
       const msgPin = document.getElementById('confirm-pin-msg')
       if (msgPin) { msgPin.textContent = 'Debes verificar el PIN del vendedor primero'; msgPin.style.color = '#ff6b6b' }
       document.getElementById('confirm-pin-input')?.focus()
+      return
+    }
+
+    const esTarjetaPago = ['CREDITO', 'DEBITO'].includes(metodoPagoSeleccionado)
+    const refTarjeta    = document.getElementById('confirm-referencia-tarjeta')?.value.trim() || ''
+    if (esTarjetaPago && !refTarjeta) {
+      ventaEnProceso = false
+      mostrarToast('Ingresa el Número de Autorización del Ingenico antes de continuar', 'warning')
+      document.getElementById('confirm-referencia-tarjeta')?.focus()
       return
     }
 
@@ -898,7 +889,6 @@ async function confirmarVenta() {
       subtotal:       parseFloat((parseFloat(item.precio) * parseInt(item.cantidad)).toFixed(2))
     }))
 
-    // Leer vendedor, descuento y empleado del modal
     const selVend            = document.getElementById('confirm-vendedor-select')
     const vendId             = selVend ? parseInt(selVend.value) : USUARIO.id
     const { pct, esEmpleado } = getPctEfectivo()
@@ -907,11 +897,9 @@ async function confirmarVenta() {
     const descAmt            = parseFloat((total * (pct / 100)).toFixed(2))
     const totalFinal         = parseFloat((total - descAmt).toFixed(2))
 
-    // Guardar para próxima vez
     vendedorSeleccionado = selVend ? { id: vendId, nombre: selVend.options[selVend.selectedIndex]?.text } : null
     descuentoManual      = pct
 
-    // Validar crédito disponible si es venta a crédito
     const esCredito = metodoPagoSeleccionado === 'CREDITO_CLIENTE'
     if (esCredito) {
       if (!clienteSeleccionado?.id) {
@@ -927,17 +915,30 @@ async function confirmarVenta() {
       }
     }
 
+    // FIX: Obtener sucursalId de forma segura
+    const sucursalIdSeguro = turnoActivo?.sucursalId || turnoActivo?.sucursal?.id || USUARIO?.sucursalId || USUARIO?.sucursal;
+    
+    // Log para depuración en la consola
+    console.log(`🛒 Confirmando venta | sucursalId: ${sucursalIdSeguro} | turnoId: ${turnoActivo?.id}`);
+
+    if (!sucursalIdSeguro) {
+      ventaEnProceso = false;
+      mostrarToast('Error: No se pudo identificar la sucursal del turno.', 'error');
+      return;
+    }
+
     const payload = {
-      sucursalId:  turnoActivo.sucursalId,
+      sucursalId:  parseInt(sucursalIdSeguro, 10),
       usuarioId:   vendId,
       turnoId:     turnoActivo.id,
       clienteId:   clienteSeleccionado?.id || null,
-      empleadoId:  empleadoId,              // null si no es venta a empleado
+      empleadoId:  empleadoId,              
       metodoPago:  esCredito ? 'CREDITO_CLIENTE' : metodoPagoSeleccionado,
       subtotal:    parseFloat(total.toFixed(2)),
       descuento:   descAmt,
       total:       totalFinal,
       esCredito,
+      notas: esTarjetaPago ? `Ref. Ingenico: ${refTarjeta}` : null,
       detalles
     }
 
@@ -961,13 +962,9 @@ async function confirmarVenta() {
     const venta = await response.json()
     console.log('✅ Venta completada:', venta.data.folio)
 
-    // Cerrar modal de confirmación antes de mostrar éxito
     modalConfirmacion.style.display = 'none'
-
-    // Mostrar modal de éxito en lugar del alert genérico
     mostrarModalExito(venta.data, totalFinal)
 
-    // Resetear estado
     carrito             = []
     clienteSeleccionado = null
     montoRecibido.value = ''
@@ -978,7 +975,6 @@ async function confirmarVenta() {
     const badge = document.getElementById('cliente-seleccionado-badge')
     if (badge) badge.style.display = 'none'
 
-    // Resetear método de pago
     metodoPagoSeleccionado = null
     document.querySelectorAll('.metodo-btn').forEach(b => b.classList.remove('active'))
     if (montoEfectivoControl) montoEfectivoControl.style.display = 'none'
@@ -991,7 +987,6 @@ async function confirmarVenta() {
     console.error('❌ Error:', err)
 
     if (err.sinStock && err.sinStock.length > 0) {
-      // Construir mensaje detallado con todos los productos sin stock
       const lineas = err.sinStock.map(p =>
         `• ${p.nombre}: necesitas ${p.solicitados}, hay ${p.disponibles}`
       ).join('<br>')
@@ -1000,7 +995,6 @@ async function confirmarVenta() {
       mostrarToast(err.message, 'error')
     }
 
-    // Solo en error: reactivar botón para que el cajero pueda corregir
     ventaEnProceso              = false
     btnConfirmarVenta.disabled  = false
     btnConfirmarVenta.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Confirmar venta`
@@ -1107,7 +1101,6 @@ function cargarCotizacionDesdeStorage() {
     if (payload.clienteId && payload.clienteNombre) {
       clienteSeleccionado = { id: payload.clienteId, nombre: payload.clienteNombre }
       if (clienteNombre) clienteNombre.value = payload.clienteNombre
-      // Mostrar badge
       const badge      = document.getElementById('cliente-seleccionado-badge')
       const badgeNombre = document.getElementById('cliente-badge-nombre')
       if (badge && badgeNombre) {
@@ -1139,7 +1132,6 @@ function cargarCotizacionDesdeStorage() {
 // ══════════════════════════════════════════════════════════════════
 //  EVENT LISTENERS
 // ══════════════════════════════════════════════════════════════════
-
 
 // ════════════════════════════════════════════════════════════════════
 //  CRÉDITO A CLIENTES REGISTRADOS
@@ -1216,42 +1208,80 @@ async function cargarEmpleadosSelect() {
 
 function configurarEventListeners() {
 
-  // Búsqueda de productos
-  searchProductos.addEventListener('input', e => buscarProductos(e.target.value))
+  let _scanLastKey  = 0
+  const SCAN_MS     = 55
 
-  // Métodos de pago
+  searchProductos.addEventListener('keydown', async e => {
+    const ahora = Date.now()
+    const esRapido = (ahora - _scanLastKey) < SCAN_MS
+    _scanLastKey = ahora
+
+    if (e.key !== 'Enter') return
+    e.preventDefault()
+    const q = searchProductos.value.trim()
+    if (!q) return
+
+    if (searchTimeout) clearTimeout(searchTimeout)
+
+    try {
+      const r    = await fetch(`${API_URL}/productos?q=${encodeURIComponent(q)}&take=5`,
+                               { headers: { 'Authorization': `Bearer ${TOKEN}` } })
+      const data = await r.json()
+      const res  = data.data || []
+
+      if (res.length === 1) {
+        // ✅ FIX: Guardamos el producto COMPLETO en la caché antes de agregarlo
+        const idParsed = parseInt(res[0].id, 10);
+        productoCache.set(idParsed, res[0]);
+
+        agregarAlCarrito(res[0].id, res[0].nombre, res[0].precioBase)
+        mostrarToast(`✓ ${res[0].nombre} agregado`, 'success')
+        searchProductos.value = ''
+        buscarProductos('')
+      } else if (res.length > 1) {
+        res.forEach(p => productoCache.set(p.id, p))
+        mostrarProductos(res)
+        mostrarToast('Varios resultados — selecciona uno', 'info')
+      } else {
+        mostrarToast(`Código “${q}” no encontrado`, 'warning')
+      }
+    } catch (err) {
+      console.error('❌ Error escáner:', err)
+      mostrarToast('Error buscando producto', 'error')
+    }
+  })
+
+  searchProductos.addEventListener('input', e => {
+    const ahora = Date.now()
+    if ((ahora - _scanLastKey) >= SCAN_MS) buscarProductos(e.target.value)
+  })
+
   metodosPayButtons.forEach(btn => {
     btn.addEventListener('click', e => {
       metodosPayButtons.forEach(b => b.classList.remove('active'))
       e.target.closest('.metodo-btn').classList.add('active')
       metodoPagoSeleccionado = e.target.closest('.metodo-btn').dataset.metodo
       montoEfectivoControl.style.display = metodoPagoSeleccionado === 'EFECTIVO' ? 'block' : 'none'
-      // NOTA: cambioInfo eliminado — el cambio se gestiona solo en el modal de confirmación
       actualizarCarrito()
     })
   })
 
   montoRecibido.addEventListener('input', actualizarCarrito)
 
-  // Venta
   btnCompletarVenta.addEventListener('click', completarVenta)
   btnLimpiarCarrito.addEventListener('click', limpiarCarrito)
   btnConfirmarVenta.addEventListener('click', confirmarVenta)
   btnCancelVenta.addEventListener('click', () => { modalConfirmacion.style.display = 'none' })
   btnModalConfirmacionClose.addEventListener('click', () => { modalConfirmacion.style.display = 'none' })
 
-  // Descuento empleado — aplica/quita 3% automático
   document.getElementById('confirm-empleado-select')?.addEventListener('change', function() {
     const badge = document.getElementById('confirm-empleado-badge')
     if (badge) badge.style.display = this.value !== '' ? 'block' : 'none'
-    // Si hay descuento manual, el empleado no afecta (getPctEfectivo lo maneja)
     actualizarResumenConDescuento()
   })
 
-  // Descuento en modal — recalcula en tiempo real
   document.getElementById('confirm-descuento-input')?.addEventListener('input', actualizarResumenConDescuento)
 
-  // Vendedor — pedir PIN si selecciona alguien diferente al cajero logueado
   document.getElementById('confirm-vendedor-select')?.addEventListener('change', function() {
     const vendId = parseInt(this.value)
     if (vendId !== USUARIO.id) {
@@ -1261,22 +1291,16 @@ function configurarEventListeners() {
     }
   })
 
-  // Turno
   btnConfirmarAbrirTurno.addEventListener('click', abrirTurno)
   btnCancelTurno?.addEventListener('click', () => { modalAbrirTurno.style.display = 'none' })
   btnModalTurnoClose?.addEventListener('click', () => { modalAbrirTurno.style.display = 'none' })
 
-  // Cliente rápido
   btnCancelCliente?.addEventListener('click', () => { modalClienteRapido.style.display = 'none' })
   btnModalClienteClose?.addEventListener('click', () => { modalClienteRapido.style.display = 'none' })
 
-  // ── Selector de clientes ──────────────────────────────────────
-
-  // Botón chevron — abre/cierra lista completa
   document.getElementById('btn-lista-clientes')
     ?.addEventListener('click', abrirDropdownClientes)
 
-  // Input de texto — filtra mientras escribe (si el dropdown ya está abierto)
   clienteNombre?.addEventListener('input', e => {
     const dd = document.getElementById('dropdown-clientes-pos')
     if (dd && dd.style.display !== 'none') {
@@ -1284,12 +1308,10 @@ function configurarEventListeners() {
     }
   })
 
-  // Foco en el input — abre el dropdown automáticamente
   clienteNombre?.addEventListener('focus', () => {
     abrirDropdownClientes()
   })
 
-  // Clic fuera — cerrar dropdown
   document.addEventListener('click', e => {
     if (!e.target.closest('.cliente-input-wrap') &&
         !e.target.closest('#dropdown-clientes-pos')) {
@@ -1297,13 +1319,11 @@ function configurarEventListeners() {
     }
   })
 
-  // Botón × del badge — quitar cliente seleccionado
   document.getElementById('btn-limpiar-cliente')
     ?.addEventListener('click', () => {
       seleccionarClientePOS(null, '')
     })
 
-  // Escape
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
       cerrarDropdownClientes()
