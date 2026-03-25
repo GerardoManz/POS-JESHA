@@ -11,7 +11,7 @@ if (!TOKEN && !window.location.pathname.includes('login.html')) {
   throw new Error('Sin autenticación')
 }
 
-const API_URL = 'http://localhost:3000'
+const API_URL = window.__JESHA_API_URL__ || 'http://localhost:3000'
 console.log('✅ Punto-venta.js cargado correctamente')
 console.log('✅ Usuario:', USUARIO.nombre || 'Anónimo')
 
@@ -97,6 +97,7 @@ async function verificarTurno() {
     const response = await fetch(`${API_URL}/turnos-caja/activo`, {
       headers: { 'Authorization': `Bearer ${TOKEN}` }
     })
+    if (window.handle401 && window.handle401(response.status)) return
     if (response.ok) {
       const data = await response.json()
       turnoActivo = data.data
@@ -137,6 +138,7 @@ async function abrirTurno() {
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
       body: JSON.stringify({ montoInicial: monto })
     })
+    if (window.handle401 && window.handle401(response.status)) return
     const data = await response.json()
     if (!response.ok) {
       turnoError.textContent   = data.error || 'Error abriendo turno'
@@ -171,6 +173,7 @@ async function cargarClientes() {
     const response = await fetch(`${API_URL}/clientes?activo=true`, {
       headers: { 'Authorization': `Bearer ${TOKEN}` }
     })
+    if (window.handle401 && window.handle401(response.status)) return
     if (!response.ok) throw new Error('Error cargando clientes')
     clientesLista = await response.json()
     console.log(`✅ Clientes cargados: ${clientesLista.length}`)
@@ -344,6 +347,7 @@ async function buscarProductos(query) {
         `${API_URL}/productos?q=${encodeURIComponent(q)}&take=30`,
         { headers: { 'Authorization': `Bearer ${TOKEN}` } }
       )
+      if (window.handle401 && window.handle401(response.status)) return
       if (!response.ok) throw new Error('Error en búsqueda')
       const data      = await response.json()
       const resultados = data.data || []
@@ -804,6 +808,7 @@ async function verificarPinVendedor(vendedorId) {
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
       body:    JSON.stringify({ pin })
     })
+    if (window.handle401 && window.handle401(res.status)) return
     const data = await res.json()
 
     if (res.ok && data.success) {
@@ -944,6 +949,7 @@ async function confirmarVenta() {
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
       body:    JSON.stringify(payload)
     })
+    if (window.handle401 && window.handle401(response.status)) return
 
     if (!response.ok) {
       const errorData = await response.json()
@@ -1044,6 +1050,7 @@ async function confirmarCotizar() {
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
       body:    JSON.stringify(payload)
     })
+    if (window.handle401 && window.handle401(response.status)) return
     const data = await response.json()
     if (!response.ok) throw new Error(data.error || 'Error guardando cotización')
 
@@ -1144,6 +1151,7 @@ async function verificarCreditoCliente(clienteId) {
     const data = await fetch(`${API_URL}/clientes/${clienteId}`, {
       headers: { 'Authorization': `Bearer ${TOKEN}` }
     }).then(r => r.json())
+    if (window.handle401 && window.handle401(data.status)) return
 
     const cliente = data.data || data
     const btnCredito  = document.getElementById('btn-metodo-credito-cliente')
@@ -1194,6 +1202,7 @@ async function cargarEmpleadosSelect() {
     const res  = await fetch(`${API_URL}/usuarios?rol=EMPLEADO&activo=true`, {
       headers: { 'Authorization': `Bearer ${TOKEN}` }
     })
+    if (window.handle401 && window.handle401(res.status)) return
     const data = await res.json()
     const lista = Array.isArray(data) ? data : (data.data || [])
     lista

@@ -4,18 +4,14 @@
 
 const TOKEN   = localStorage.getItem('jesha_token')
 const USUARIO = JSON.parse(localStorage.getItem('jesha_usuario') || '{}')
-const API_URL = 'http://localhost:3000'
+const API_URL = window.__JESHA_API_URL__ || 'http://localhost:3000'
 
 if (!TOKEN) { window.location.href = 'login.html'; throw new Error('Sin auth') }
 
 const fmt = v => `$${parseFloat(v||0).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})}`
 const fmtFecha = iso => iso ? new Date(iso).toLocaleString('es-MX',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : '—'
 
-async function apiFetch(path) {
-  const res = await fetch(`${API_URL}${path}`, { headers: { 'Authorization': `Bearer ${TOKEN}` } })
-  if (!res.ok) throw new Error(`Error ${res.status}`)
-  return res.json()
-}
+// apiFetch global disponible desde sidebar.js
 
 // ════════════════════════════════════════════════════════════════════
 //  KPIs

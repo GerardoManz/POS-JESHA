@@ -15,7 +15,7 @@
 // ════════════════════════════════════════════════════════════════════
 
 const TOKEN   = localStorage.getItem('jesha_token')
-const API_URL = 'http://localhost:3000'
+const API_URL = window.__JESHA_API_URL__ || 'http://localhost:3000'
 
 if (!TOKEN) { localStorage.setItem('redirect_after_login','reportes.html'); window.location.href = 'login.html'; throw new Error() }
 
@@ -27,11 +27,7 @@ let periodoActual = 'hoy'
 let desdeCustom   = null
 let hastaCustom   = null
 
-async function apiFetch(path) {
-  const res = await fetch(`${API_URL}${path}`, { headers: { 'Authorization': `Bearer ${TOKEN}` } })
-  if (!res.ok) throw new Error(`Error ${res.status}`)
-  return res.json()
-}
+// apiFetch global disponible desde sidebar.js
 
 // ════════════════════════════════════════════════════════════════════
 //  CALCULAR RANGO DE FECHAS

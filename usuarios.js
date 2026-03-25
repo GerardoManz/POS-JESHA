@@ -29,7 +29,7 @@ if (!TOKEN) {
 }
 
 // ── API ──
-const API_URL = 'http://localhost:3000'
+const API_URL = window.__JESHA_API_URL__ || 'http://localhost:3000'
 
 console.log('✅ Usuarios.js cargado correctamente')
 console.log('✅ Token encontrado:', TOKEN.substring(0, 20) + '...')
@@ -96,6 +96,7 @@ async function cargarUsuarios() {
     const response = await fetch(`${API_URL}/usuarios?${params}`, {
       headers: { 'Authorization': `Bearer ${TOKEN}` }
     })
+    if (window.handle401 && window.handle401(response.status)) return
 
     if (!response.ok) {
       throw new Error(`Error ${response.status}: ${response.statusText}`)
@@ -132,6 +133,7 @@ async function cargarSucursales() {
     const res = await fetch(`${API_URL}/usuarios/sucursales`, {
       headers: { 'Authorization': `Bearer ${TOKEN}` }
     })
+    if (window.handle401 && window.handle401(res.status)) return
     if (!res.ok) return
     const sucursales = await res.json()
     const select = document.getElementById('f-sucursal')
@@ -336,6 +338,7 @@ window.toggleEstadoUsuario = async function(usuarioId, nuevoEstado) {
       },
       body: JSON.stringify({ activo: nuevoEstado })
     })
+    if (window.handle401 && window.handle401(response.status)) return
 
     if (!response.ok) throw new Error('Error al cambiar estado')
     await cargarUsuarios()
@@ -400,6 +403,7 @@ if (formUsuario) {
         },
         body: JSON.stringify(datos)
       })
+      if (window.handle401 && window.handle401(response.status)) return
 
       if (!response.ok) {
         const error = await response.json()
@@ -419,6 +423,7 @@ if (formUsuario) {
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
             body: JSON.stringify({ pin: pinVal })
           })
+          if (window.handle401 && window.handle401(resPIN.status)) return
           if (!resPIN.ok) {
             const errPin = await resPIN.json()
             mostrarErrorUsuario(errPin.error || 'Error al guardar PIN')
@@ -460,6 +465,7 @@ document.getElementById('btn-reset-guardar')?.addEventListener('click', async (e
       },
       body: JSON.stringify({ password, confirmarPassword: confirmar })
     })
+    if (window.handle401 && window.handle401(response.status)) return
 
     if (!response.ok) {
       const err = await response.json()

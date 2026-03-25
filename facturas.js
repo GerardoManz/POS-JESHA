@@ -4,7 +4,7 @@
 
 const TOKEN   = localStorage.getItem('jesha_token')
 const USUARIO = JSON.parse(localStorage.getItem('jesha_usuario') || '{}')
-const API_URL = 'http://localhost:3000'
+const API_URL = window.__JESHA_API_URL__ || 'http://localhost:3000'
 
 if (!TOKEN) {
   localStorage.setItem('redirect_after_login', 'facturas.html')
@@ -56,6 +56,7 @@ async function cargarFacturas() {
 
   try {
     const res  = await fetch(`${API_URL}/facturas?${params}`, { headers: { 'Authorization': `Bearer ${TOKEN}` } })
+    if (window.handle401 && window.handle401(res.status)) return
     const data = await res.json()
 
     if (!res.ok) throw new Error(data.error || 'Error cargando facturas')
@@ -119,6 +120,7 @@ async function cargarFacturas() {
 window.verDetalle = async function(id) {
   try {
     const res  = await fetch(`${API_URL}/facturas/${id}`, { headers: { 'Authorization': `Bearer ${TOKEN}` } })
+    if (window.handle401 && window.handle401(res.status)) return
     const data = await res.json()
     if (!res.ok) throw new Error(data.error)
     const f = data.data
@@ -173,6 +175,7 @@ window.timbrarManual = async function(id) {
       method:  'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` }
     })
+    if (window.handle401 && window.handle401(res.status)) return
     const data = await res.json()
     if (!res.ok) throw new Error(data.error)
 
@@ -207,6 +210,7 @@ async function cancelarFactura(id) {
       method:  'PATCH',
       headers: { 'Authorization': `Bearer ${TOKEN}` }
     })
+    if (window.handle401 && window.handle401(res.status)) return
     const data = await res.json()
     if (!res.ok) throw new Error(data.error)
     document.getElementById('modal-detalle').classList.remove('active')

@@ -26,7 +26,7 @@ if (!TOKEN) {
 }
 
 // ── API ──
-const API_URL = 'http://localhost:3000'
+const API_URL = window.__JESHA_API_URL__ || 'http://localhost:3000'
 
 console.log('✅ Clientes.js cargado correctamente')
 console.log('✅ Token encontrado:', TOKEN.substring(0, 20) + '...')
@@ -95,6 +95,7 @@ async function cargarClientes() {
     const response = await fetch(`${API_URL}/clientes?${params}`, {
       headers: { 'Authorization': `Bearer ${TOKEN}` }
     })
+    if (window.handle401 && window.handle401(response.status)) return
 
     console.log('📡 Response status:', response.status)
 
@@ -238,6 +239,7 @@ async function cargarVentas(clienteId) {
     const response = await fetch(`${API_URL}/clientes/${clienteId}/ventas`, {
       headers: { 'Authorization': `Bearer ${TOKEN}` }
     })
+    if (window.handle401 && window.handle401(response.status)) return
 
     const ventas = await response.json()
     const tbody = document.getElementById('ventas-tbody')
@@ -271,6 +273,7 @@ async function cargarAbonos(clienteId) {
     const response = await fetch(`${API_URL}/clientes/${clienteId}/abonos`, {
       headers: { 'Authorization': `Bearer ${TOKEN}` }
     })
+    if (window.handle401 && window.handle401(response.status)) return
 
     const abonos = await response.json()
     const tbody = document.getElementById('abonos-tbody')
@@ -313,6 +316,7 @@ window.toggleEstadoCliente = async function(clienteId, nuevoEstado) {
       },
       body: JSON.stringify({ activo: nuevoEstado })
     })
+    if (window.handle401 && window.handle401(response.status)) return
 
     if (!response.ok) throw new Error('Error al cambiar estado')
 
@@ -363,6 +367,7 @@ if (clienteForm) {
         },
         body: JSON.stringify(datos)
       })
+      if (window.handle401 && window.handle401(response.status)) return
 
       if (!response.ok) {
         const error = await response.json()

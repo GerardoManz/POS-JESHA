@@ -21,7 +21,7 @@ if (!TOKEN && !window.location.pathname.includes('login.html')) {
   throw new Error('Sin autenticación')
 }
 
-const API_URL = 'http://localhost:3000'
+const API_URL = window.__JESHA_API_URL__ || 'http://localhost:3000'
 
 // ── DOM ──
 const estadoSinTurno        = document.getElementById('estado-sin-turno')
@@ -85,6 +85,7 @@ async function cargarTurno() {
     const response = await fetch(`${API_URL}/turnos-caja/activo`, {
       headers: { 'Authorization': `Bearer ${TOKEN}` }
     })
+    if (window.handle401 && window.handle401(response.status)) return
     if (!response.ok) {
       estadoSinTurno.style.display = 'flex'
       contenidoCorte.style.display = 'none'
@@ -127,6 +128,7 @@ async function cargarVentas() {
       `${API_URL}/ventas?turnoId=${turnoActivo.id}&take=9999`,
       { headers: { 'Authorization': `Bearer ${TOKEN}` } }
     )
+    if (window.handle401 && window.handle401(response.status)) return
     if (!response.ok) throw new Error('Error cargando ventas')
     const data   = await response.json()
     const ventas = data.data || []
@@ -253,6 +255,7 @@ async function cerrarTurno() {
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
       body:    JSON.stringify({ montoFinalDeclarado })
     })
+    if (window.handle401 && window.handle401(response.status)) return
 
     const data = await response.json()
 

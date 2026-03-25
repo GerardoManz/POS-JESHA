@@ -6,7 +6,7 @@
 // ═══════════════════════════════════════════════════════════════════
 
 const token = localStorage.getItem('jesha_token')
-const API_BASE = 'http://localhost:3000'
+const API_BASE = window.__JESHA_API_URL__ || 'http://localhost:3000'
 
 let archivoSeleccionado = null
 

@@ -153,3 +153,44 @@ document.addEventListener('DOMContentLoaded', () => {
   if (!verificarAccesoPagina(paginaActual)) return
   cargarSidebar(paginaActual)
 })
+
+// ════════════════════════════════════════════════════════════════════
+//  apiFetch GLOBAL — manejo centralizado de peticiones + 401
+//  Disponible en todos los módulos porque sidebar.js carga primero
+// ════════════════════════════════════════════════════════════════════
+window.apiFetch = async function(path, opts = {}) {
+  const token  = localStorage.getItem('jesha_token')
+  const apiUrl = window.__JESHA_API_URL__ || 'http://localhost:3000'
+
+  const res = await fetch(`${apiUrl}${path}`, {
+    ...opts,
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+      ...(opts.headers || {})
+    }
+  })
+
+  // Token expirado o inválido — redirigir a login
+  if (res.status === 401) {
+    localStorage.removeItem('jesha_token')
+    localStorage.removeItem('jesha_usuario')
+    window.location.href = 'login.html'
+    throw new Error('Sesión expirada')
+  }
+
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error || `Error ${res.status}`)
+  return data
+}
+
+// Helper para módulos que usan fetch() directo
+window.handle401 = function(status) {
+  if (status === 401) {
+    localStorage.removeItem('jesha_token')
+    localStorage.removeItem('jesha_usuario')
+    window.location.href = 'login.html'
+    return true
+  }
+  return false
+}

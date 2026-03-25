@@ -10,7 +10,7 @@ if (!TOKEN && !window.location.pathname.includes('login.html')) {
   throw new Error('Sin autenticación')
 }
 
-const API_URL = 'http://localhost:3000'
+const API_URL = window.__JESHA_API_URL__ || 'http://localhost:3000'
 const LIMIT   = 25
 
 // ── ESTADO ──
@@ -43,6 +43,7 @@ const metodoBadge = m => {
 async function cargarCatalogos() {
   try {
     const resC = await fetch(`${API_URL}/clientes?activo=true`, { headers: { 'Authorization': `Bearer ${TOKEN}` } })
+    if (window.handle401 && window.handle401(resC.status)) return
     if (resC.ok) {
       const dataC    = await resC.json()
       const clientes = Array.isArray(dataC) ? dataC : (dataC.data || [])
@@ -61,6 +62,7 @@ async function cargarCatalogos() {
     }
 
     const resU = await fetch(`${API_URL}/usuarios`, { headers: { 'Authorization': `Bearer ${TOKEN}` } })
+    if (window.handle401 && window.handle401(resU.status)) return
     if (resU.ok) {
       const dataU    = await resU.json()
       const usuarios = Array.isArray(dataU) ? dataU : (dataU.data || [])
@@ -85,6 +87,7 @@ async function cargarVentas() {
   const params = construirParams()
   try {
     const res   = await fetch(`${API_URL}/ventas?${params}`, { headers: { 'Authorization': `Bearer ${TOKEN}` } })
+    if (window.handle401 && window.handle401(res.status)) return
     if (!res.ok) throw new Error('Error cargando ventas')
     const data  = await res.json()
     const ventas = data.data || []
@@ -184,6 +187,7 @@ function actualizarKpis(ventas, totalRegistros) {
 window.verDetalle = async function(id) {
   try {
     const res  = await fetch(`${API_URL}/ventas/${id}`, { headers: { 'Authorization': `Bearer ${TOKEN}` } })
+    if (window.handle401 && window.handle401(res.status)) return
     if (!res.ok) throw new Error('No se pudo cargar la venta')
     const data = await res.json()
     const v    = data.data
@@ -326,6 +330,7 @@ function abrirModalCancelacion(id, folio) {
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
         body:    JSON.stringify({ motivo })
       })
+      if (window.handle401 && window.handle401(res.status)) return
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Error al cancelar')
 
@@ -368,11 +373,13 @@ window.cancelarVenta = function(id, folio) {
 window.abrirModalDevolucion = async function(ventaId) {
   try {
     const resV = await fetch(`${API_URL}/ventas/${ventaId}`, { headers: { 'Authorization': `Bearer ${TOKEN}` } })
+    if (window.handle401 && window.handle401(resV.status)) return
     if (!resV.ok) throw new Error('No se pudo cargar la venta')
     const dataV  = await resV.json()
     devVentaData = dataV.data
 
     const resD = await fetch(`${API_URL}/devoluciones/venta/${ventaId}`, { headers: { 'Authorization': `Bearer ${TOKEN}` } })
+    if (window.handle401 && window.handle401(resD.status)) return
     devResumenPrevio = {}
     if (resD.ok) {
       const dataD      = await resD.json()
@@ -503,6 +510,7 @@ async function confirmarDevolucion() {
     const resTurno = await fetch(`${API_URL}/turnos-caja/activo`, {
       headers: { 'Authorization': `Bearer ${TOKEN}` }
     })
+    if (window.handle401 && window.handle401(resTurno.status)) return
     if (!resTurno.ok) {
       // Sin turno — advertir solo si el tipo implica movimiento de caja
       if (devTipoSeleccionado === 'REEMBOLSO' || devTipoSeleccionado === 'CAMBIO_PARCIAL') {
@@ -539,6 +547,7 @@ async function confirmarDevolucion() {
         notas
       })
     })
+    if (window.handle401 && window.handle401(res.status)) return
 
     const data = await res.json()
     if (!res.ok) throw new Error(data.error || 'Error al registrar devolución')

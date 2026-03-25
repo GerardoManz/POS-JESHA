@@ -4,7 +4,7 @@
 
 const TOKEN   = localStorage.getItem('jesha_token')
 const USUARIO = JSON.parse(localStorage.getItem('jesha_usuario') || '{}')
-const API_URL = 'http://localhost:3000'
+const API_URL = window.__JESHA_API_URL__ || 'http://localhost:3000'
 const LIMIT   = 25
 
 if (!TOKEN) {
@@ -29,15 +29,7 @@ const ESTADOS = {
   CERRADA_INTERNA: { label:'Cerrada interna',   cls:'cerrada_interna' }
 }
 
-async function apiFetch(path, opts={}) {
-  const res = await fetch(`${API_URL}${path}`, {
-    ...opts,
-    headers: { 'Content-Type':'application/json', 'Authorization':`Bearer ${TOKEN}`, ...(opts.headers||{}) }
-  })
-  const data = await res.json()
-  if (!res.ok) throw new Error(data.error || `Error ${res.status}`)
-  return data
-}
+// apiFetch global disponible desde sidebar.js
 
 // ════════════════════════════════════════════════════════════════════
 //  LISTAR
