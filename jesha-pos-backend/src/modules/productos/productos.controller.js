@@ -178,7 +178,7 @@ async function crear(req, res) {
     try {
         const {
             nombre, codigoInterno, codigoBarras, descripcion,
-            costo, precioBase, categoriaId,
+            costo, precioBase, precioVenta, categoriaId,
             unidadCompra, unidadVenta, factorConversion,
             claveSat, unidadSat
         } = req.body
@@ -204,6 +204,7 @@ async function crear(req, res) {
                 costo:            costo            ? parseFloat(costo)            : null,
                 costoPromedio:    costo            ? parseFloat(costo)            : null,
                 precioBase:       parseFloat(precioBase),
+                precioVenta:      precioVenta ? parseFloat(precioVenta) : null,
                 categoriaId:      parseInt(categoriaId),
                 unidadCompra:     unidadCompra     || null,
                 unidadVenta:      unidadVenta      || null,
@@ -241,7 +242,7 @@ async function editar(req, res) {
         const { id } = req.params
         const {
             nombre, codigoInterno, codigoBarras, descripcion,
-            costo, precioBase, categoriaId,
+            costo, precioBase, precioVenta, categoriaId,
             unidadCompra, unidadVenta, factorConversion,
             claveSat, unidadSat
         } = req.body
@@ -267,6 +268,7 @@ async function editar(req, res) {
                 descripcion:      descripcion      || null,
                 costo:            costo            ? parseFloat(costo)            : null,
                 precioBase:       parseFloat(precioBase),
+                precioVenta:      precioVenta ? parseFloat(precioVenta) : null,
                 categoriaId:      parseInt(categoriaId),
                 unidadCompra:     unidadCompra     || null,
                 unidadVenta:      unidadVenta      || null,

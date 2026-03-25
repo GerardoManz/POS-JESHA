@@ -264,6 +264,7 @@ model Producto {
   imagenUrl           String?
   imagenOriginal      String?
   precioBase          Decimal  @db.Decimal(10, 2)
+  precioVenta         Decimal? @db.Decimal(10, 2)
   costo               Decimal? @db.Decimal(10, 2)
   costoPromedio       Decimal? @db.Decimal(10, 2)
   precioMayoreo       Decimal? @db.Decimal(10, 2)

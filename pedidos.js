@@ -312,7 +312,7 @@ function agregarProducto(prod) {
   const existe = itemsEdicion.find(i => i.productoId === prod.id)
   if (existe) { existe.cantidad += 1 }
   else {
-    itemsEdicion.push({ productoId: prod.id, nombre: prod.nombre, unidad: prod.unidadVenta || 'PZA', cantidad: 1, precio: parseFloat(prod.precioBase) })
+    itemsEdicion.push({ productoId: prod.id, nombre: prod.nombre, unidad: prod.unidadVenta || 'PZA', cantidad: 1, precio: parseFloat(prod.precioVenta || prod.precioBase) })
   }
   renderItems()
 }
@@ -331,7 +331,7 @@ async function buscarProductos(q) {
     lista.innerHTML = prods.map(p => `
       <div class="prod-item-modal" onclick="window._addProd(${p.id})">
         <span class="prod-nombre">${p.nombre}</span>
-        <span class="prod-precio">${fmt(p.precioBase)}</span>
+        <span class="prod-precio">${fmt(p.precioVenta || p.precioBase)}</span>
       </div>
     `).join('')
   } catch (err) { lista.innerHTML = `<p class="muted-hint" style="color:#f44336">Error: ${err.message}</p>` }

@@ -127,26 +127,63 @@ const editar = async (req, res) => {
     const { proveedorId, detalles, notas } = req.body
     const { id: usuarioId, sucursalId }    = req.usuario
 
-    const existente = await prisma.ordenCompra.findUnique({ where: { id: parseInt(id) }, select: { id: true, folio: true, estado: true } })
+    const existente = await prisma.ordenCompra.findUnique({
+      where:  { id: parseInt(id) },
+      select: { id: true, folio: true, estado: true,
+                detalles: { select: { id: true, productoId: true, cantidadRecibida: true } } }
+    })
     if (!existente) return res.status(404).json({ success: false, error: 'Orden no encontrada' })
     if (!['ENVIADO','RECIBIDO_PARCIAL'].includes(existente.estado))
       return res.status(400).json({ success: false, error: 'Solo se puede editar en estado Pendiente o Recibido parcial' })
+
+    // Detalles que ya tienen mercancía recibida — NO se pueden eliminar
+    const detallesConRecepcion = existente.detalles.filter(d => d.cantidadRecibida > 0)
+    const idsProtegidos        = new Set(detallesConRecepcion.map(d => d.productoId))
 
     const updateData = {}
     if (proveedorId !== undefined) updateData.proveedorId = parseInt(proveedorId)
     if (notas       !== undefined) updateData.notas       = notas
 
     if (detalles && detalles.length > 0) {
+      // Verificar que no se está eliminando un producto ya recibido
+      const idsNuevos = new Set(detalles.map(d => parseInt(d.productoId)))
+      const eliminados = [...idsProtegidos].filter(pid => !idsNuevos.has(pid))
+
+      if (eliminados.length > 0) {
+        const nombresElim = await prisma.producto.findMany({
+          where: { id: { in: eliminados } }, select: { nombre: true }
+        })
+        return res.status(400).json({
+          success: false,
+          error: `No puedes eliminar productos que ya tienen mercancía recibida: ${nombresElim.map(p => p.nombre).join(', ')}`
+        })
+      }
+
       const rows = detalles.map(d => {
-        const costo = parseFloat(d.precioCosto || 0)
-        const qty   = parseInt(d.cantidadPedida) || 1
-        return { productoId: parseInt(d.productoId), cantidadPedida: qty, cantidadRecibida: 0, precioCosto: costo, subtotalPedido: parseFloat((costo * qty).toFixed(2)), subtotalRecibido: 0 }
+        const costo    = parseFloat(d.precioCosto || 0)
+        const qty      = parseInt(d.cantidadPedida) || 1
+        // Conservar cantidadRecibida si el producto ya tenía recepción parcial
+        const detExist = existente.detalles.find(e => e.productoId === parseInt(d.productoId))
+        const cantRec  = detExist?.cantidadRecibida || 0
+        return {
+          productoId:       parseInt(d.productoId),
+          cantidadPedida:   qty,
+          cantidadRecibida: cantRec,
+          precioCosto:      costo,
+          subtotalPedido:   parseFloat((costo * qty).toFixed(2)),
+          subtotalRecibido: parseFloat((costo * cantRec).toFixed(2))
+        }
       })
       updateData.totalEstimado = parseFloat(rows.reduce((s, r) => s + r.subtotalPedido, 0).toFixed(2))
 
       const oc = await prisma.$transaction(async tx => {
+        // Solo borrar los detalles que NO tienen recepción (los nuevos se recrean todos)
         await tx.detalleOrdenCompra.deleteMany({ where: { ordenCompraId: parseInt(id) } })
-        return tx.ordenCompra.update({ where: { id: parseInt(id) }, data: { ...updateData, detalles: { create: rows } }, select: OC_SELECT })
+        return tx.ordenCompra.update({
+          where: { id: parseInt(id) },
+          data:  { ...updateData, detalles: { create: rows } },
+          select: OC_SELECT
+        })
       })
       await audit(usuarioId, sucursalId, 'EDITAR_COMPRA', existente.folio)
       return res.json({ success: true, data: oc })
@@ -165,7 +202,7 @@ const editar = async (req, res) => {
 const recibir = async (req, res) => {
   try {
     const { id }      = req.params
-    const { detalles } = req.body  // [{ detalleId, cantidadRecibida }]
+    const { detalles } = req.body  // [{ detalleId, cantidadRecibida, precioVenta? }]
     const { id: usuarioId, sucursalId } = req.usuario
 
     if (!detalles || detalles.length === 0)
@@ -223,9 +260,15 @@ const recibir = async (req, res) => {
             data:  { stockActual: stockDespues }
           })
 
+          // Actualizar precioVenta si el usuario lo modificó al recibir
+          const nuevoPrecioVenta = item.precioVenta ? parseFloat(item.precioVenta) : undefined
           await tx.producto.update({
             where: { id: detalle.productoId },
-            data:  { costo: costoNuevo, costoPromedio: nuevoCostoPromedio }
+            data:  {
+              costo: costoNuevo,
+              costoPromedio: nuevoCostoPromedio,
+              ...(nuevoPrecioVenta && nuevoPrecioVenta > 0 ? { precioVenta: nuevoPrecioVenta } : {})
+            }
           })
 
           await tx.movimientoInventario.create({

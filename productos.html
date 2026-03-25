@@ -179,19 +179,26 @@
       <!-- Precios -->
       <div class="form-row">
         <div class="form-group">
-          <label for="producto-costo">Costo</label>
+          <label for="producto-costo">Costo (sin IVA)</label>
           <input type="number" id="producto-costo" step="0.01" min="0" placeholder="0.00" />
         </div>
         <div class="form-group">
-          <label for="producto-precioBase">Precio Venta *</label>
+          <label for="producto-precioBase">Precio base (sin IVA)</label>
           <input type="number" id="producto-precioBase" step="0.01" min="0" placeholder="0.00" required />
+          <small style="color:var(--muted);font-size:0.72rem;margin-top:3px;display:block">Base gravable para CFDI</small>
+        </div>
+        <div class="form-group">
+          <label for="producto-precioVenta">Precio venta al público</label>
+          <input type="number" id="producto-precioVenta" step="0.01" min="0" placeholder="0.00" />
+          <small style="color:var(--muted);font-size:0.72rem;margin-top:3px;display:block">Con IVA incluido — se muestra en POS</small>
         </div>
       </div>
 
-      <!-- Margen (información) -->
-      <div class="form-group full-width">
-        <div class="info-margen" id="info-margen" style="display: none;">
-          <span>Margen: <strong id="margen-valor">0%</strong></span>
+      <!-- Margen calculado automáticamente -->
+      <div class="form-group full-width" id="info-margen-wrap" style="display:none;">
+        <div style="display:flex;gap:20px;padding:8px 12px;background:rgba(255,255,255,0.03);border:1px solid var(--panel-border);border-radius:8px;font-size:0.82rem;color:var(--muted);">
+          <span>Margen sobre costo: <strong id="margen-valor" style="color:var(--text)">0%</strong></span>
+          <span>Utilidad unitaria: <strong id="utilidad-valor" style="color:#60d080">$0.00</strong></span>
         </div>
       </div>
 
@@ -378,7 +385,8 @@
 </div>
 
 <!-- ===== SCRIPTS ===== -->
-<script src="sidebar.js"></script>
+<script src="config.js"></script>
+  <script src="sidebar.js"></script>
 <script src="productos.js"></script>
 </body>
 </html>

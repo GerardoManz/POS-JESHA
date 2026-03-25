@@ -352,12 +352,12 @@ function mostrarProductos(productos) {
   }
   productosGrid.innerHTML = productos.map(p => `
     <div class="tarjeta-producto"
-         onclick="agregarAlCarrito(${p.id}, '${p.nombre.replace(/'/g,"\\'")}', ${p.precioBase})">
+         onclick="agregarAlCarrito(${p.id}, '${p.nombre.replace(/'/g,"\\'")}', ${p.precioVenta || p.precioBase})">
       ${p.imagenUrl ? `<img src="${p.imagenUrl}" alt="${p.nombre}" class="producto-imagen" />` : ''}
       <div class="producto-info">
         <h4>${p.nombre}</h4>
         <p class="producto-codigo">${p.codigoInterno}</p>
-        <p class="producto-precio">$${parseFloat(p.precioBase).toFixed(2)}</p>
+        <p class="producto-precio">$${parseFloat(p.precioVenta || p.precioBase).toFixed(2)}</p>
         <p class="producto-stock ${p.stock > 0 ? '' : 'agotado'}">
           ${p.stock > 0 ? `Stock: ${p.stock}` : 'Agotado'}
         </p>
@@ -385,7 +385,7 @@ function agregarAlCarrito(productoId, nombre, precio) {
     productoCache.set(idParsed, { 
       id: idParsed, 
       nombre, 
-      precioBase: precio, 
+      precioVenta: precio, precioBase: precio, 
       stock: null, 
       codigoInterno: '' 
     })
@@ -1095,7 +1095,7 @@ function cargarCotizacionDesdeStorage() {
 
     payload.items.forEach(item => {
       carrito.push({ id: item.id, nombre: item.nombre, precio: parseFloat(item.precio), cantidad: parseInt(item.cantidad) || 1 })
-      productoCache.set(item.id, { id: item.id, nombre: item.nombre, precioBase: item.precio, stock: null })
+      productoCache.set(item.id, { id: item.id, nombre: item.nombre, precioVenta: item.precio, precioBase: item.precio, stock: null })
     })
 
     if (payload.clienteId && payload.clienteNombre) {
@@ -1234,7 +1234,7 @@ function configurarEventListeners() {
         const idParsed = parseInt(res[0].id, 10);
         productoCache.set(idParsed, res[0]);
 
-        agregarAlCarrito(res[0].id, res[0].nombre, res[0].precioBase)
+        agregarAlCarrito(res[0].id, res[0].nombre, res[0].precioVenta || res[0].precioBase)
         mostrarToast(`✓ ${res[0].nombre} agregado`, 'success')
         searchProductos.value = ''
         buscarProductos('')

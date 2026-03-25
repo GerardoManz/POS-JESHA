@@ -141,37 +141,86 @@ function renderDetalle() {
         </div>`).join('')
 
   // Tabla de productos
-  const recibiendo = ocActual._recibiendo || false
+  const recibiendo   = ocActual._recibiendo || false
   const showRecibido = !esPendiente || recibiendo
-  document.getElementById('col-recibido-header').style.display = showRecibido ? '' : 'none'
+
+  // Mostrar/ocultar columnas según modo
+  document.getElementById('col-recibido-header').style.display      = showRecibido ? '' : 'none'
+  const colPV = document.getElementById('col-precio-venta-header')
+  if (colPV) colPV.style.display = recibiendo ? '' : 'none'
 
   const tbody = document.getElementById('det-items-tbody')
-  tbody.innerHTML = (oc.detalles || []).map(d => `
-    <tr>
-      <td>${d.producto?.nombre || '—'}</td>
+  tbody.innerHTML = (oc.detalles || []).map(d => {
+    const pendiente   = d.cantidadPedida - d.cantidadRecibida
+    const yaCompleto  = d.cantidadRecibida >= d.cantidadPedida
+    const rowStyle    = yaCompleto && recibiendo ? 'opacity:0.45;' : ''
+
+    // Badge de estado por fila
+    let estadoFila = ''
+    if (!recibiendo) {
+      if (yaCompleto)
+        estadoFila = `<span style="font-size:0.7rem;background:rgba(96,208,128,0.12);color:#60d080;border:1px solid rgba(96,208,128,0.25);border-radius:4px;padding:1px 6px;margin-left:6px;">✓ completo</span>`
+      else if (d.cantidadRecibida > 0)
+        estadoFila = `<span style="font-size:0.7rem;background:rgba(255,193,7,0.1);color:#ffc107;border:1px solid rgba(255,193,7,0.25);border-radius:4px;padding:1px 6px;margin-left:6px;">parcial ${d.cantidadRecibida}/${d.cantidadPedida}</span>`
+    }
+
+    return `
+    <tr style="${rowStyle}">
+      <td>
+        ${d.producto?.nombre || '—'}
+        ${estadoFila}
+      </td>
       <td style="text-align:center">
         <strong>${d.cantidadPedida}</strong>
         <div class="qty-pedido">${d.producto?.unidadCompra || 'pza'}</div>
       </td>
       ${showRecibido ? `<td style="text-align:center">
         ${recibiendo
-          ? `<input type="number" class="input-recibir" id="rec-${d.id}" min="0" max="${d.cantidadPedida - d.cantidadRecibida}" value="${d.cantidadPedida - d.cantidadRecibida}" />`
-          : `<span style="color:${d.cantidadRecibida >= d.cantidadPedida ? '#60d080' : '#ffc107'}">${d.cantidadRecibida}</span>`
+          ? yaCompleto
+            ? `<span style="color:#60d080;font-size:0.8rem;">✓ ya recibido</span>`
+            : `<div style="display:flex;flex-direction:column;align-items:center;gap:2px;">
+                <input type="number" class="input-recibir" id="rec-${d.id}"
+                  min="0" max="${pendiente}" value="${pendiente}"
+                  style="width:60px;text-align:center;" />
+                <span style="font-size:0.68rem;color:var(--muted);">máx ${pendiente}</span>
+               </div>`
+          : `<span style="color:${yaCompleto ? '#60d080' : d.cantidadRecibida > 0 ? '#ffc107' : 'var(--muted)'}">
+               ${d.cantidadRecibida} / ${d.cantidadPedida}
+             </span>`
         }
       </td>` : ''}
       <td>${fmt(d.precioCosto)}</td>
+      ${recibiendo ? `<td>
+        ${yaCompleto
+          ? `<span style="color:var(--muted);font-size:0.8rem;">—</span>`
+          : `<input type="number" class="input-precio-venta" id="pv-${d.id}" min="0" step="0.01"
+               value="${parseFloat(d.producto?.precioVenta || d.producto?.precioBase || 0).toFixed(2)}"
+               style="width:90px;padding:4px 6px;background:rgba(255,255,255,0.04);border:1px solid var(--panel-border);border-radius:6px;color:var(--text);font-size:0.82rem;" />`
+        }
+      </td>` : ''}
       <td>${fmt(d.subtotalPedido)}</td>
-    </tr>`).join('')
+    </tr>`
+  }).join('')
+
+  // Banner informativo cuando hay recepción parcial previa
+  if (recibiendo && oc.estado === 'RECIBIDO_PARCIAL') {
+    const pendientesCount = (oc.detalles || []).filter(d => d.cantidadRecibida < d.cantidadPedida).length
+    tbody.insertAdjacentHTML('beforebegin',
+      `<div style="margin-bottom:10px;padding:9px 14px;background:rgba(255,193,7,0.07);border:1px solid rgba(255,193,7,0.2);border-radius:8px;font-size:0.82rem;color:#ffc107;">
+        ⚠️ Recepción parcial — ${pendientesCount} producto${pendientesCount !== 1 ? 's' : ''} pendiente${pendientesCount !== 1 ? 's' : ''} de recibir. Los productos en gris ya fueron recibidos.
+       </div>`)
+  }
 
   // Botones superiores
   const btns = document.getElementById('det-botones-superiores')
   btns.innerHTML = ''
   if (esPendiente) {
-    btns.innerHTML += `<button class="btn-secondary btn-sm" onclick="abrirEdicion(${oc.id})">✏️ Editar</button>`
     if (!recibiendo) {
+      btns.innerHTML += `<button class="btn-secondary btn-sm" onclick="abrirEdicion(${oc.id})">✏️ Editar</button>`
       btns.innerHTML += `<button class="btn-warning btn-sm" onclick="iniciarRecepcion()">📦 Recibir mercancía</button>`
     } else {
-      btns.innerHTML += `<button class="btn-success btn-sm" onclick="confirmarRecepcion()">✓ Confirmar recepción</button>`
+      const pendientes = (oc.detalles || []).filter(d => d.cantidadRecibida < d.cantidadPedida).length
+      btns.innerHTML += `<button class="btn-success btn-sm" onclick="confirmarRecepcion()">✓ Confirmar recepción (${pendientes} producto${pendientes !== 1 ? 's' : ''})</button>`
       btns.innerHTML += `<button class="btn-secondary btn-sm" onclick="cancelarRecepcion()">✕ Cancelar</button>`
     }
   }
@@ -181,8 +230,11 @@ function renderDetalle() {
   accDiv.innerHTML = ''
   if (esPendiente)
     accDiv.innerHTML += `<button class="btn-danger" onclick="cancelarCompra(${oc.id})">✕ Cancelar compra</button>`
-  if (oc.estado === 'RECIBIDO_PARCIAL')
-    accDiv.innerHTML += `<span style="font-size:0.78rem;color:var(--muted);padding:4px 0;">⚠️ Recepción incompleta — puedes recibir el resto cuando llegue</span>`
+  if (oc.estado === 'RECIBIDO_PARCIAL' && !recibiendo)
+    accDiv.innerHTML += `
+      <div style="font-size:0.8rem;color:var(--muted);padding:6px 10px;background:rgba(255,193,7,0.06);border:1px solid rgba(255,193,7,0.15);border-radius:8px;line-height:1.5;">
+        ⚠️ Recepción incompleta — cuando llegue el resto da clic en <strong style="color:#ffc107">Recibir mercancía</strong>
+      </div>`
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -202,7 +254,8 @@ window.confirmarRecepcion = async function() {
     .filter(d => d.cantidadPedida > d.cantidadRecibida)  // solo los que aún faltan
     .map(d => ({
       detalleId:        d.id,
-      cantidadRecibida: parseInt(document.getElementById(`rec-${d.id}`)?.value) || 0
+      cantidadRecibida: parseInt(document.getElementById(`rec-${d.id}`)?.value) || 0,
+      precioVenta:      parseFloat(document.getElementById(`pv-${d.id}`)?.value) || null
     })).filter(d => d.cantidadRecibida > 0)
 
   if (detalles.length === 0) { alert('Ingresa al menos una cantidad recibida'); return }
@@ -290,11 +343,12 @@ window.abrirEdicion = async function(id) {
     document.getElementById('crear-error').classList.remove('show')
 
     itemsEdicion = (ocActual.detalles || []).map(d => ({
-      productoId: d.producto?.id,
-      nombre:     d.producto?.nombre || '—',
-      unidad:     d.producto?.unidadCompra || 'pza',
-      cantidad:   d.cantidadPedida,
-      costo:      parseFloat(d.precioCosto)
+      productoId:       d.producto?.id,
+      nombre:           d.producto?.nombre || '—',
+      unidad:           d.producto?.unidadCompra || 'pza',
+      cantidad:         d.cantidadPedida,
+      costo:            parseFloat(d.precioCosto),
+      cantidadRecibida: d.cantidadRecibida || 0  // para proteger en UI
     }))
     renderItemsEdicion()
     document.getElementById('modal-crear').classList.add('active')
@@ -307,15 +361,30 @@ function renderItemsEdicion() {
     tbody.innerHTML = `<tr id="comp-empty"><td colspan="6" class="empty-items">Agrega productos desde el panel izquierdo</td></tr>`
     actualizarTotalEdicion(); return
   }
-  tbody.innerHTML = itemsEdicion.map((item, i) => `
-    <tr>
-      <td style="max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${item.nombre}">${item.nombre}</td>
+  tbody.innerHTML = itemsEdicion.map((item, i) => {
+    const bloqueado = (item.cantidadRecibida || 0) > 0
+    return `
+    <tr style="${bloqueado ? 'opacity:0.6;' : ''}">
+      <td style="max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${item.nombre}">
+        ${item.nombre}
+        ${bloqueado ? `<span style="font-size:0.68rem;color:#ffc107;margin-left:4px;">recibido ${item.cantidadRecibida}</span>` : ''}
+      </td>
       <td style="color:var(--muted);font-size:0.78rem">${item.unidad}</td>
-      <td><input type="number" min="1" value="${item.cantidad}" style="width:58px" oninput="actualizarItemEdicion(${i},'cantidad',this.value)" /></td>
-      <td><input type="number" min="0" step="0.01" value="${item.costo.toFixed(2)}" style="width:88px" oninput="actualizarItemEdicion(${i},'costo',this.value)" /></td>
+      <td>${bloqueado
+        ? `<span style="color:var(--muted);font-size:0.85rem;">${item.cantidad}</span>`
+        : `<input type="number" min="1" value="${item.cantidad}" style="width:58px" oninput="actualizarItemEdicion(${i},'cantidad',this.value)" />`
+      }</td>
+      <td>${bloqueado
+        ? `<span style="color:var(--muted);font-size:0.85rem;">${fmt(item.costo)}</span>`
+        : `<input type="number" min="0" step="0.01" value="${item.costo.toFixed(2)}" style="width:88px" oninput="actualizarItemEdicion(${i},'costo',this.value)" />`
+      }</td>
       <td id="item-sub-${i}"><strong>${fmt(item.costo * item.cantidad)}</strong></td>
-      <td><button class="btn-eliminar" onclick="quitarItemEdicion(${i})">✕</button></td>
-    </tr>`).join('')
+      <td>${bloqueado
+        ? `<span title="No se puede eliminar — ya hay mercancía recibida" style="color:var(--muted);font-size:0.75rem;cursor:not-allowed;">🔒</span>`
+        : `<button class="btn-eliminar" onclick="quitarItemEdicion(${i})">✕</button>`
+      }</td>
+    </tr>`
+  }).join('')
   actualizarTotalEdicion()
 }
 
@@ -329,7 +398,11 @@ window.actualizarItemEdicion = function(i, campo, v) {
     actualizarTotalEdicion()
   }
 }
-window.quitarItemEdicion = function(i) { itemsEdicion.splice(i, 1); renderItemsEdicion() }
+window.quitarItemEdicion = function(i) {
+  if ((itemsEdicion[i]?.cantidadRecibida || 0) > 0) return  // protegido
+  itemsEdicion.splice(i, 1)
+  renderItemsEdicion()
+}
 
 function actualizarTotalEdicion() {
   const t = itemsEdicion.reduce((s, i) => s + i.costo * i.cantidad, 0)

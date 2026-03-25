@@ -346,7 +346,10 @@ function renderizarTabla(productos) {
       <td><strong>${p.nombre}</strong>${p.codigoBarras ? `<br/><small style="color:var(--muted)">${p.codigoBarras}</small>` : ''}</td>
       <td>${deptoNombre ? `<small style="color:var(--muted);display:block;font-size:0.7rem;">${deptoNombre}</small>` : ''}
           <span class="categoria-badge">${catNombre}</span></td>
-      <td>$${parseFloat(p.precioBase || 0).toFixed(2)}</td>
+      <td>
+        <div style="font-weight:600">$${parseFloat(p.precioVenta || p.precioBase || 0).toFixed(2)}</div>
+        <div style="font-size:0.72rem;color:var(--muted)">Base: $${parseFloat(p.precioBase || 0).toFixed(2)}</div>
+      </td>
       <td style="color:${stockBajo ? '#ff9999' : 'inherit'}">${stock}</td>
       <td>${minStock}</td>
       <td><span class="estado-badge ${p.activo ? 'activo' : 'inactivo'}">${p.activo ? 'Activo' : 'Inactivo'}</span></td>
@@ -381,6 +384,7 @@ window.editarProducto = async function(id) {
   document.getElementById('producto-descripcion').value       = producto.descripcion || ''
   document.getElementById('producto-costo').value             = producto.costo || ''
   document.getElementById('producto-precioBase').value        = producto.precioBase
+  document.getElementById('producto-precioVenta').value       = producto.precioVenta || ''
   document.getElementById('producto-unidadCompra').value      = producto.unidadCompra || ''
   document.getElementById('producto-unidadVenta').value       = producto.unidadVenta || ''
   document.getElementById('producto-factorConversion').value  = producto.factorConversion || ''
@@ -425,17 +429,19 @@ async function guardarProducto(e) {
   const nombre    = document.getElementById('producto-nombre').value.trim()
   const codigo    = document.getElementById('producto-codigo').value.trim()
   const categoria = modalCatSelect?.value
-  const precioBase = document.getElementById('producto-precioBase').value
+  const precioBase   = document.getElementById('producto-precioBase').value
+  const precioVenta  = document.getElementById('producto-precioVenta').value
   if (!nombre)    return mostrarError('El nombre es requerido')
   if (!codigo)    return mostrarError('El código interno es requerido')
   if (!categoria || categoria === '__NUEVA_CAT__') return mostrarError('La categoría es requerida')
-  if (!precioBase) return mostrarError('El precio de venta es requerido')
+  if (!precioBase)  return mostrarError('El precio base (sin IVA) es requerido')
   const datos = {
     nombre, codigoInterno: codigo,
     codigoBarras:     document.getElementById('producto-codigoBarras').value.trim() || null,
     descripcion:      document.getElementById('producto-descripcion').value.trim() || null,
     costo:            parseFloat(document.getElementById('producto-costo').value) || null,
     precioBase:       parseFloat(precioBase),
+    precioVenta:      precioVenta ? parseFloat(precioVenta) : null,
     categoriaId:      parseInt(categoria),
     unidadCompra:     document.getElementById('producto-unidadCompra').value.trim() || null,
     unidadVenta:      document.getElementById('producto-unidadVenta').value.trim() || null,
@@ -623,14 +629,19 @@ async function subirImagen(productoId, archivo) {
 }
 
 function calcularMargen() {
-  const costo  = parseFloat(document.getElementById('producto-costo').value) || 0
-  const precio = parseFloat(document.getElementById('producto-precioBase').value) || 0
-  const info   = document.getElementById('info-margen')
-  if (!info) return
-  if (costo > 0 && precio > 0) {
-    document.getElementById('margen-valor').textContent = (((precio - costo) / costo) * 100).toFixed(1) + '%'
-    info.style.display = 'block'
-  } else { info.style.display = 'none' }
+  const costo       = parseFloat(document.getElementById('producto-costo').value) || 0
+  const precioVenta = parseFloat(document.getElementById('producto-precioVenta').value) || 0
+  const wrap        = document.getElementById('info-margen-wrap')
+  if (!wrap) return
+  if (costo > 0 && precioVenta > 0) {
+    // Precio venta incluye IVA — calcular margen sobre base sin IVA
+    const baseVenta  = precioVenta / 1.16
+    const margen     = ((baseVenta - costo) / costo) * 100
+    const utilidad   = baseVenta - costo
+    document.getElementById('margen-valor').textContent   = margen.toFixed(1) + '%'
+    document.getElementById('utilidad-valor').textContent = '$' + utilidad.toFixed(2)
+    wrap.style.display = 'block'
+  } else { wrap.style.display = 'none' }
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -701,6 +712,8 @@ function configurarEventos() {
 
   // Margen
   const inputCosto  = document.getElementById('producto-costo')
+  const inputPrecioVenta = document.getElementById('producto-precioVenta')
+  if (inputPrecioVenta) inputPrecioVenta.addEventListener('input', calcularMargen)
   const inputPrecio = document.getElementById('producto-precioBase')
   if (inputCosto)  inputCosto.addEventListener('input', calcularMargen)
   if (inputPrecio) inputPrecio.addEventListener('input', calcularMargen)
