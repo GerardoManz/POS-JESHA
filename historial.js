@@ -27,7 +27,13 @@ const fmtFecha = iso => iso ? new Date(iso).toLocaleString('es-MX', {
   day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
 }) : '—'
 const metodoBadge = m => {
-  const map = { EFECTIVO: '💵 Efectivo', CREDITO: '💳 Tarjeta', DEBITO: '💳 Tarjeta', TRANSFERENCIA: '🔄 Transf.' }
+  const map = {
+    EFECTIVO:        '💵 Efectivo',
+    CREDITO:         '💳 Tarjeta',
+    DEBITO:          '💳 Tarjeta',
+    TRANSFERENCIA:   '🔄 Transf.',
+    CREDITO_CLIENTE: '🏦 Crédito cliente'
+  }
   return `<span class="metodo-badge">${map[m] || m}</span>`
 }
 
@@ -153,19 +159,22 @@ function construirParams() {
 //  KPIS
 // ════════════════════════════════════════════════════════════════════
 function actualizarKpis(ventas, totalRegistros) {
-  let montoTotal = 0, efectivo = 0, tarjeta = 0, transferencia = 0
+  let montoTotal = 0, efectivo = 0, tarjeta = 0, transferencia = 0, creditoCliente = 0
   ventas.forEach(v => {
     const t = parseFloat(v.total)
     montoTotal += t
     if (v.metodoPago === 'EFECTIVO')                              efectivo      += t
     if (v.metodoPago === 'CREDITO' || v.metodoPago === 'DEBITO') tarjeta        += t
     if (v.metodoPago === 'TRANSFERENCIA')                         transferencia  += t
+    if (v.metodoPago === 'CREDITO_CLIENTE')                       creditoCliente += t
   })
   document.getElementById('kpi-total-ventas').textContent  = totalRegistros
   document.getElementById('kpi-monto-total').textContent   = fmt(montoTotal)
   document.getElementById('kpi-efectivo').textContent      = fmt(efectivo)
   document.getElementById('kpi-tarjeta').textContent       = fmt(tarjeta)
   document.getElementById('kpi-transferencia').textContent = fmt(transferencia)
+  const kpiCredEl = document.getElementById('kpi-credito-cliente')
+  if (kpiCredEl) kpiCredEl.textContent = fmt(creditoCliente)
   document.getElementById('hist-kpis').style.display       = 'grid'
 }
 
@@ -185,8 +194,9 @@ window.verDetalle = async function(id) {
     document.getElementById('det-cliente').textContent  = (typeof v.cliente === 'object' ? v.cliente?.nombre : v.cliente) || 'Público general'
     document.getElementById('det-cajero').textContent   = v.usuario || '—'
     document.getElementById('det-sucursal').textContent = v.sucursal || '—'
-    document.getElementById('det-metodo').textContent   = {
-      EFECTIVO:'💵 Efectivo', CREDITO:'💳 Tarjeta', DEBITO:'💳 Tarjeta', TRANSFERENCIA:'🔄 Transferencia'
+    document.getElementById('det-metodo').textContent = {
+      EFECTIVO:'💵 Efectivo', CREDITO:'💳 Tarjeta', DEBITO:'💳 Tarjeta',
+      TRANSFERENCIA:'🔄 Transferencia', CREDITO_CLIENTE:'🏦 Crédito cliente'
     }[v.metodoPago] || v.metodoPago
     document.getElementById('det-factura').textContent  = {
       DISPONIBLE:'Disponible', BLOQUEADA:'Bloqueada', FACTURADA:'Facturada', VENCIDA:'Vencida'

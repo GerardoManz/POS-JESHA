@@ -195,7 +195,8 @@ const recibir = async (req, res) => {
         // Acumular con lo ya recibido anteriormente (recepción parcial iterativa)
         const cantTotalRecibida = detalle.cantidadRecibida + cantNueva
         const subtotalRec = parseFloat((parseFloat(detalle.precioCosto) * cantTotalRecibida).toFixed(2))
-        totalRecibidoNuevo += subtotalRec
+        const subtotalNuevo = parseFloat((parseFloat(detalle.precioCosto) * cantNueva).toFixed(2))
+        totalRecibidoNuevo += subtotalNuevo
 
         // Actualizar detalle — acumular cantidades
         await tx.detalleOrdenCompra.update({

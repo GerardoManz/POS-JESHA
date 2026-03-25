@@ -59,11 +59,18 @@ function calcularDetalle(precioUnitario, cantidad, descuento) {
   return { precioUnitario: pu, cantidad: qty, descuento: dto, subtotal }
 }
 
-async function listar({ sucursalId, rol, estado, tipo, buscar, page = 1, limit = 30 }) {
+async function listar({ sucursalId, rol, estado, excluirCanceladas, tipo, buscar, page = 1, limit = 30 }) {
   const where = {}
   if (rol !== 'SUPERADMIN' && sucursalId) where.sucursalId = sucursalId
-  if (estado) where.estado = estado
-  if (tipo)   where.tipo   = tipo
+
+  // Filtro de estado: si viene explícito úsalo, si no excluir CANCELADA
+  if (estado) {
+    where.estado = estado
+  } else if (excluirCanceladas === 'EXCLUIR') {
+    where.estado = { not: 'CANCELADA' }
+  }
+
+  if (tipo)   where.tipo = tipo
   if (buscar) {
     where.OR = [
       { folio:   { contains: buscar, mode: 'insensitive' } },

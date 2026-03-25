@@ -262,12 +262,31 @@ const obtenerVentas = async (req, res) => {
 
 // ═══════════════════════════════════════════════════════════════════
 // GET /clientes/:id/abonos
-// Tabla Abono fue eliminada en migración 20260306
-// Se retorna array vacío para no romper el frontend
+// Abonos de bitácora asociados al cliente
 // ═══════════════════════════════════════════════════════════════════
 
 const obtenerAbonos = async (req, res) => {
-  res.json([])
+  try {
+    const { id } = req.params
+    const abonos = await prisma.abonoBitacora.findMany({
+      where: { bitacora: { clienteId: parseInt(id) } },
+      select: {
+        id:         true,
+        monto:      true,
+        metodoPago: true,
+        notas:      true,
+        creadoEn:   true,
+        bitacora: { select: { folio: true, titulo: true } },
+        usuario:  { select: { nombre: true } }
+      },
+      orderBy: { creadoEn: 'desc' },
+      take: 100
+    })
+    res.json(abonos)
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Error al obtener abonos' })
+  }
 }
 
 const abonarCredito = async (req, res) => {

@@ -357,10 +357,15 @@ async function cargarClientes() {
   } catch(e) { console.warn('No se cargaron clientes:', e.message) }
 }
 
+// Sin mínimo de caracteres — devuelve toda la lista si no hay query
 function filtrarClientes(q) {
-  if (!q || q.length < 2) return []
-  const l = q.toLowerCase()
-  return clientesLista.filter(c => c.nombre?.toLowerCase().includes(l)).slice(0, 8)
+  const l = (q || '').toLowerCase().trim()
+  if (!l) return clientesLista.slice(0, 50)
+  return clientesLista.filter(c =>
+    c.nombre?.toLowerCase().includes(l) ||
+    c.apodo?.toLowerCase().includes(l)  ||
+    c.telefono?.includes(l)
+  ).slice(0, 50)
 }
 
 // ── Portal dropdown (escapa overflow:hidden del modal) ──────────────
@@ -373,7 +378,8 @@ function obtenerPortalPed() {
       position:'fixed', zIndex:'99999',
       background:'#1a1d24', border:'1px solid rgba(255,255,255,0.12)',
       borderRadius:'8px', boxShadow:'0 8px 32px rgba(0,0,0,0.5)',
-      maxHeight:'220px', overflowY:'auto', display:'none', minWidth:'240px'
+      maxHeight:'260px', display:'none', minWidth:'240px',
+      flexDirection:'column', overflow:'hidden'
     })
     const st = document.createElement('style')
     st.textContent = `
@@ -383,6 +389,7 @@ function obtenerPortalPed() {
       }
       #ped-dd-portal .dd-item:last-child { border-bottom:none; }
       #ped-dd-portal .dd-item:hover { background:rgba(255,255,255,0.06); }
+      #ped-dd-portal .dd-list { overflow-y:auto; flex:1; }
     `
     document.head.appendChild(st)
     document.body.appendChild(p)
@@ -390,30 +397,60 @@ function obtenerPortalPed() {
   return p
 }
 
-function renderDropdown(res) {
+function abrirPortalPed() {
   const input  = document.getElementById('ped-cliente-buscar')
   const portal = obtenerPortalPed()
-  if (!res.length) { portal.style.display = 'none'; return }
+  if (portal.style.display !== 'none') { cerrarPortalPed(); return }
   const rect = input.getBoundingClientRect()
   Object.assign(portal.style, {
-    top: (rect.bottom + 4) + 'px',
-    left: rect.left + 'px',
-    width: rect.width + 'px',
-    display: 'block'
+    top:     (rect.bottom + 4) + 'px',
+    left:    rect.left + 'px',
+    width:   rect.width + 'px',
+    display: 'flex'
   })
-  portal.innerHTML = res.map(c => `
-    <div class="dd-item" onclick="window.selCliente(${c.id},'${c.nombre.replace(/'/g,"\\'")}')">
-      ${c.nombre}
-      ${c.apodo ? `<span style="color:#7a8599;font-size:0.8rem"> (${c.apodo})</span>` : ''}
-      ${c.telefono ? `<span style="color:#7a8599;font-size:0.8rem"> · ${c.telefono}</span>` : ''}
+  renderDropdown(filtrarClientes(''))
+}
+
+function cerrarPortalPed() {
+  obtenerPortalPed().style.display = 'none'
+}
+
+function renderDropdown(lista) {
+  const portal = obtenerPortalPed()
+  portal.innerHTML = `
+    <div style="padding:8px 10px;border-bottom:1px solid rgba(255,255,255,0.06);flex-shrink:0;">
+      <input type="text" id="ped-dd-search" placeholder="Buscar cliente..."
+        autocomplete="off"
+        style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);
+               border-radius:6px;padding:6px 10px;color:#e9edf4;font-size:0.85rem;outline:none;" />
     </div>
-  `).join('')
+    <div class="dd-list" id="ped-dd-list"></div>
+  `
+  const renderItems = items => {
+    const listEl = document.getElementById('ped-dd-list')
+    if (!listEl) return
+    listEl.innerHTML = items.length === 0
+      ? `<div style="padding:10px 14px;color:#7a8599;font-size:0.85rem;">Sin resultados</div>`
+      : items.map(c => `
+          <div class="dd-item" onclick="window.selCliente(${c.id},'${c.nombre.replace(/'/g,"\\'")}')">
+            ${c.nombre}
+            ${c.apodo ? `<span style="color:#7a8599;font-size:0.8rem"> (${c.apodo})</span>` : ''}
+            ${c.telefono ? `<span style="color:#7a8599;font-size:0.8rem"> · ${c.telefono}</span>` : ''}
+          </div>`
+        ).join('')
+  }
+  renderItems(lista)
+  const ddInput = document.getElementById('ped-dd-search')
+  if (ddInput) {
+    ddInput.addEventListener('input', e => renderItems(filtrarClientes(e.target.value)))
+    setTimeout(() => ddInput.focus(), 40)
+  }
 }
 
 window.selCliente = (id, nombre) => {
   document.getElementById('ped-cliente-id').value     = id
   document.getElementById('ped-cliente-buscar').value = nombre
-  obtenerPortalPed().style.display = 'none'
+  cerrarPortalPed()
 }
 
 // ── Guardar pedido ──
@@ -489,14 +526,26 @@ document.addEventListener('DOMContentLoaded', async () => {
     clearTimeout(debounceProducto); debounceProducto = setTimeout(() => buscarProductos(e.target.value.trim()), 350)
   })
 
-  // Autocomplete cliente — portal
-  document.getElementById('ped-cliente-buscar')?.addEventListener('input', e => renderDropdown(filtrarClientes(e.target.value)))
+  // Autocomplete cliente — portal con lista completa + chevron
+  document.getElementById('ped-cliente-buscar')?.addEventListener('input', e => {
+    const q = e.target.value
+    if (q.length === 0) {
+      cerrarPortalPed()
+      document.getElementById('ped-cliente-id').value = ''
+    } else {
+      abrirPortalPed()
+    }
+  })
+  document.getElementById('ped-cliente-buscar')?.addEventListener('focus', () => abrirPortalPed())
+  document.getElementById('btn-chevron-ped-cliente')?.addEventListener('click', abrirPortalPed)
   document.addEventListener('click', e => {
-    if (!e.target.closest('#ped-cliente-buscar') && !e.target.closest('#ped-dd-portal'))
-      obtenerPortalPed().style.display = 'none'
+    if (!e.target.closest('#ped-cliente-buscar') &&
+        !e.target.closest('#btn-chevron-ped-cliente') &&
+        !e.target.closest('#ped-dd-portal'))
+      cerrarPortalPed()
   })
   // Cerrar portal al scroll del modal
-  document.querySelector('.modal-content')?.addEventListener('scroll', () => obtenerPortalPed().style.display = 'none')
+  document.querySelector('.modal-content')?.addEventListener('scroll', () => cerrarPortalPed())
 
   // Modal ver
   document.getElementById('ver-close-btn')?.addEventListener('click', () => document.getElementById('modal-ver').classList.remove('active'))

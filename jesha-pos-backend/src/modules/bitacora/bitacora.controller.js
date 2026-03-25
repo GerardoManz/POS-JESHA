@@ -186,7 +186,7 @@ const agregarProducto = async (req, res) => {
       select: { id: true, folio: true, estado: true, totalMateriales: true, sucursalId: true, clienteId: true } 
     })
     if (!bitacora) return res.status(404).json({ success: false, error: 'Bitácora no encontrada' })
-    if (!['ABIERTA', 'PAUSADA'].includes(bitacora.estado))
+    if (!['ABIERTA'].includes(bitacora.estado))
       return res.status(400).json({ success: false, error: `No se pueden agregar productos en estado ${bitacora.estado}` })
 
     // Verificar stock
@@ -262,7 +262,7 @@ const quitarProducto = async (req, res) => {
       where: { id: parseInt(id) }, 
       select: { id: true, folio: true, estado: true, totalMateriales: true, sucursalId: true, clienteId: true } 
     })
-    if (!['ABIERTA', 'PAUSADA'].includes(bitacora.estado))
+    if (!['ABIERTA'].includes(bitacora.estado))
       return res.status(400).json({ success: false, error: 'No se puede modificar en este estado' })
 
     await prisma.$transaction(async tx => {
@@ -326,7 +326,7 @@ const registrarAbono = async (req, res) => {
 
     const bitacora = await prisma.bitacora.findUnique({ where: { id: parseInt(id) }, select: { id: true, folio: true, estado: true, totalAbonado: true, totalMateriales: true, clienteId: true } })
     if (!bitacora) return res.status(404).json({ success: false, error: 'Bitácora no encontrada' })
-    if (!['ABIERTA', 'PAUSADA'].includes(bitacora.estado))
+    if (!['ABIERTA'].includes(bitacora.estado))
       return res.status(400).json({ success: false, error: `No se pueden registrar abonos en estado ${bitacora.estado}` })
 
     const montoAbono    = parseFloat(parseFloat(monto).toFixed(2))
@@ -371,7 +371,7 @@ const cambiarEstado = async (req, res) => {
     const { estado }  = req.body
     const { id: usuarioId, sucursalId } = req.usuario
 
-    const validos = ['ABIERTA', 'PAUSADA', 'CERRADA_VENTA', 'CERRADA_INTERNA']
+    const validos = ['ABIERTA', 'CERRADA_VENTA', 'CERRADA_INTERNA']
     if (!validos.includes(estado)) return res.status(400).json({ success: false, error: `Estado inválido: ${estado}` })
 
     const existente = await prisma.bitacora.findUnique({ where: { id: parseInt(id) }, select: { id: true, folio: true, estado: true } })

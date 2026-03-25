@@ -170,6 +170,29 @@ const verificarPin = async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ error: 'Error al verificar PIN' }) }
 }
 
+// GET /usuarios/vendedores — para el POS (cualquier rol autenticado)
+// Devuelve solo id+nombre de usuarios activos de la misma sucursal
+const listarVendedores = async (req, res) => {
+  try {
+    const { sucursalId, rol } = req.usuario
+    const where = { activo: true }
+    // SUPERADMIN ve todos; los demás ven su sucursal + SUPERADMIN
+    if (rol !== 'SUPERADMIN' && sucursalId) {
+      where.OR = [
+        { sucursalId },
+        { rol: 'SUPERADMIN' }
+      ]
+    }
+
+    const vendedores = await prisma.usuario.findMany({
+      where,
+      select: { id: true, nombre: true, rol: true },
+      orderBy: { nombre: 'asc' }
+    })
+    res.json(vendedores)
+  } catch (err) { console.error(err); res.status(500).json({ error: 'Error al obtener vendedores' }) }
+}
+
 // GET /usuarios/sucursales
 const listarSucursales = async (req, res) => {
   try {
@@ -178,4 +201,4 @@ const listarSucursales = async (req, res) => {
   } catch (err) { res.status(500).json({ error: 'Error al obtener sucursales' }) }
 }
 
-module.exports = { listar, crear, editar, cambiarEstado, resetPassword, establecerPin, verificarPin, listarSucursales }
+module.exports = { listar, crear, editar, cambiarEstado, resetPassword, establecerPin, verificarPin, listarSucursales, listarVendedores }

@@ -25,7 +25,6 @@ const fmtHora  = iso => iso ? new Date(iso).toLocaleString('es-MX',{day:'2-digit
 
 const ESTADOS = {
   ABIERTA:         { label:'Abierta',          cls:'abierta' },
-  PAUSADA:         { label:'Pausada',           cls:'pausada' },
   CERRADA_VENTA:   { label:'Cerrada c/venta',   cls:'cerrada_venta' },
   CERRADA_INTERNA: { label:'Cerrada interna',   cls:'cerrada_interna' }
 }
@@ -112,7 +111,7 @@ window.abrirDetalle = async function(id) {
 function renderDetalle() {
   const b = bitacoraActual
   const e = ESTADOS[b.estado] || { label: b.estado, cls: 'abierta' }
-  const abierta = ['ABIERTA','PAUSADA'].includes(b.estado)
+  const abierta = b.estado === 'ABIERTA'
 
   document.getElementById('det-folio').textContent         = b.folio
   document.getElementById('det-titulo-header').textContent = b.titulo
@@ -210,12 +209,6 @@ function renderAcciones() {
   accDiv.innerHTML = ''
 
   if (b.estado === 'ABIERTA') {
-    accDiv.innerHTML += `<button class="btn-warning" onclick="cambiarEstado('PAUSADA')">⏸ Pausar</button>`
-    accDiv.innerHTML += `<button class="btn-success" onclick="cambiarEstado('CERRADA_INTERNA')">✓ Cerrar (uso interno)</button>`
-    accDiv.innerHTML += `<button class="btn-danger"  onclick="cambiarEstado('CERRADA_VENTA')">🛒 Cerrar con venta</button>`
-  }
-  if (b.estado === 'PAUSADA') {
-    accDiv.innerHTML += `<button class="btn-primary" onclick="cambiarEstado('ABIERTA')">▶ Reactivar</button>`
     accDiv.innerHTML += `<button class="btn-success" onclick="cambiarEstado('CERRADA_INTERNA')">✓ Cerrar (uso interno)</button>`
     accDiv.innerHTML += `<button class="btn-danger"  onclick="cambiarEstado('CERRADA_VENTA')">🛒 Cerrar con venta</button>`
   }
@@ -225,7 +218,7 @@ function renderAcciones() {
 //  CAMBIAR ESTADO
 // ════════════════════════════════════════════════════════════════════
 window.cambiarEstado = async function(estado) {
-  const labels = { PAUSADA:'pausar', ABIERTA:'reactivar', CERRADA_INTERNA:'cerrar como uso interno', CERRADA_VENTA:'cerrar con venta' }
+  const labels = { ABIERTA:'reactivar', CERRADA_INTERNA:'cerrar como uso interno', CERRADA_VENTA:'cerrar con venta' }
   if (!confirm(`¿${labels[estado] || 'cambiar estado de'} la bitácora ${bitacoraActual.folio}?`)) return
   try {
     const data = await apiFetch(`/bitacoras/${bitacoraActual.id}/estado`, { method:'PATCH', body: JSON.stringify({ estado }) })

@@ -6,7 +6,7 @@
 // ════════════════════════════════════════════════════
 const ROL_BLOQUEADO = {
   ADMIN_SUCURSAL: ['reportes', 'usuarios'],
-  EMPLEADO:       ['reportes', 'usuarios', 'corte-caja', 'dashboard'],
+  EMPLEADO:       ['reportes', 'usuarios', 'corte-caja', 'dashboard', 'facturas'],
 }
 
 // Páginas donde el empleado es redirigido al POS en vez del dashboard

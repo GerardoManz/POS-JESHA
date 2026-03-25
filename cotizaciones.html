@@ -104,7 +104,21 @@
         <p class="panel-label">Detalle</p>
 
         <div class="form-row">
-        
+          <div class="form-group">
+            <label>Cliente</label>
+            <div style="position:relative;">
+              <div style="display:flex;gap:6px;align-items:center;">
+                <input type="text" id="cot-cliente-buscar" placeholder="Buscar cliente..." class="search-input" autocomplete="off" style="flex:1;" />
+                <button type="button" id="btn-chevron-cliente"
+                  style="padding:7px 10px;background:rgba(255,255,255,0.04);border:1px solid var(--border-color,#333);border-radius:6px;color:var(--muted);cursor:pointer;transition:color 0.15s;flex-shrink:0;"
+                  title="Ver todos los clientes">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                </button>
+              </div>
+              <input type="hidden" id="cot-cliente-id" />
+              <div id="dropdown-clientes" class="dropdown-clientes" style="display:none;position:absolute;z-index:300;width:100%;left:0;top:calc(100% + 4px);background:var(--panel-bg,#1a1a1a);border:1px solid var(--border-color,#333);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.4);overflow:hidden;"></div>
+            </div>
+          </div>
           <div class="form-group">
             <label>Vigencia</label>
             <input type="date" id="cot-vence" />

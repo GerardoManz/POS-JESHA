@@ -254,7 +254,7 @@ async function cargarVentas(clienteId) {
         <td>${venta.folio || '-'}</td>
         <td>${new Date(venta.creadaEn).toLocaleDateString('es-MX')}</td>
         <td>$${parseFloat(venta.total || 0).toFixed(2)}</td>
-        <td>${venta.metodoPago || '-'}</td>
+        <td>${{ EFECTIVO:'💵 Efectivo', CREDITO:'💳 Tarjeta', DEBITO:'💳 Tarjeta', TRANSFERENCIA:'🔄 Transferencia', CREDITO_CLIENTE:'🏦 Crédito cliente' }[venta.metodoPago] || venta.metodoPago || '—'}</td>
       </tr>
     `).join('')
   } catch (error) {
@@ -286,8 +286,8 @@ async function cargarAbonos(clienteId) {
       <tr>
         <td>${new Date(abono.creadoEn).toLocaleDateString('es-MX')}</td>
         <td>$${parseFloat(abono.monto || 0).toFixed(2)}</td>
-        <td>${abono.metodoPago || '-'}</td>
-        <td>${abono.referencia || '-'}</td>
+        <td>${{ EFECTIVO:'💵 Efectivo', TRANSFERENCIA:'🔄 Transferencia', CREDITO:'💳 Tarjeta', CREDITO_CLIENTE:'🏦 Crédito' }[abono.metodoPago] || abono.metodoPago || '—'}</td>
+        <td style="font-size:0.82rem;color:var(--muted)">${abono.bitacora?.folio || '—'}${abono.bitacora?.titulo ? ` · ${abono.bitacora.titulo}` : ''}</td>
       </tr>
     `).join('')
   } catch (error) {

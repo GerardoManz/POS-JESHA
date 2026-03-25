@@ -18,10 +18,17 @@ const service = require('./cotizaciones.service')
 
 const listar = async (req, res) => {
   try {
-    const { estado, buscar, page, limit } = req.query
+    const { estado, tipo, buscar, page, limit } = req.query
     const { sucursalId, rol } = req.usuario
 
-    const resultado = await service.listar({ sucursalId, rol, estado, buscar, page, limit })
+    // Si no se especifica estado, excluir CANCELADA por defecto
+    const estadoFiltro = estado || undefined
+    const excluirCanceladas = !estado ? 'EXCLUIR' : undefined
+
+    const resultado = await service.listar({
+      sucursalId, rol, estado: estadoFiltro,
+      excluirCanceladas, tipo, buscar, page, limit
+    })
 
     res.json({ success: true, ...resultado })
   } catch (err) {

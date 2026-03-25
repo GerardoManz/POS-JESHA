@@ -639,12 +639,12 @@ function mostrarModalConfirmacion() {
     optPropio.value = USUARIO.id
     optPropio.textContent = `${USUARIO.nombre} (tú)`
     selVendedor.appendChild(optPropio)
-    // Cargar otros usuarios activos de la sucursal
-    fetch(`${API_URL}/usuarios?activo=true`, { headers: { 'Authorization': `Bearer ${TOKEN}` } })
+    // Cargar vendedores activos de la sucursal — endpoint accesible por cualquier rol
+    fetch(`${API_URL}/usuarios/vendedores`, { headers: { 'Authorization': `Bearer ${TOKEN}` } })
       .then(r => r.json())
       .then(data => {
         const lista = Array.isArray(data) ? data : (data.data || [])
-        lista.filter(u => u.id !== USUARIO.id && u.activo)
+        lista.filter(u => u.id !== USUARIO.id)
           .sort((a,b) => a.nombre.localeCompare(b.nombre))
           .forEach(u => {
             const opt = document.createElement('option')
@@ -661,12 +661,16 @@ function mostrarModalConfirmacion() {
   const inputDesc = document.getElementById('confirm-descuento-input')
   if (inputDesc) inputDesc.value = descuentoManual > 0 ? descuentoManual : ''
 
-  // Resetear selector de empleado y cargar lista fresca
-  const selEmpReset = document.getElementById('confirm-empleado-select')
+  // Selector de venta a empleado — solo visible para ADMIN_SUCURSAL y SUPERADMIN
+  const wrapEmpleado = document.getElementById('confirm-venta-empleado-wrap')
+  const selEmpReset  = document.getElementById('confirm-empleado-select')
   const badgeEmpReset = document.getElementById('confirm-empleado-badge')
-  if (selEmpReset)    selEmpReset.value = ''
-  if (badgeEmpReset)  badgeEmpReset.style.display = 'none'
-  cargarEmpleadosSelect()
+  const puedeVerDescEmpleado = ['SUPERADMIN', 'ADMIN_SUCURSAL'].includes(USUARIO.rol)
+
+  if (wrapEmpleado) wrapEmpleado.style.display = puedeVerDescEmpleado ? 'block' : 'none'
+  if (selEmpReset)  { selEmpReset.value = ''; }
+  if (badgeEmpReset) badgeEmpReset.style.display = 'none'
+  if (puedeVerDescEmpleado) cargarEmpleadosSelect()
 
   actualizarResumenConDescuento()
 

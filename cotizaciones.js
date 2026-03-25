@@ -238,13 +238,25 @@ function abrirModalNuevo() {
   itemsEdicion     = []
   tipoActual       = 'PRODUCTOS'
   document.getElementById('modal-titulo').textContent = 'Nueva Cotización'
-  document.getElementById('cot-cliente-buscar').value = ''
-  document.getElementById('cot-cliente-id').value     = ''
   document.getElementById('cot-vence').value          = ''
   document.getElementById('cot-notas').value          = ''
   document.getElementById('search-producto-modal').value = ''
   document.getElementById('lista-productos-modal').innerHTML = '<p class="muted-hint">Escribe para buscar productos...</p>'
   ocultarError('modal-error')
+
+  // ── Cliente: habilitado para nueva cotización ──
+  const clienteInput = document.getElementById('cot-cliente-buscar')
+  clienteInput.value          = ''
+  clienteInput.disabled       = false
+  clienteInput.style.opacity  = ''
+  clienteInput.style.cursor   = ''
+  document.getElementById('cot-cliente-id').value = ''
+  const chevron = document.getElementById('btn-chevron-cliente')
+  if (chevron) chevron.style.display = ''
+
+  // ── Tabs: mostrar ambos ──
+  document.querySelectorAll('.tipo-tab').forEach(tab => { tab.style.display = '' })
+
   setTipoModal('PRODUCTOS')
   renderItems()
   document.getElementById('modal-cotizacion').classList.add('active')
@@ -258,14 +270,27 @@ window.abrirEdicion = async function(id) {
     const c = cotizacionActual
     tipoActual = c.tipo || 'PRODUCTOS'
 
-    document.getElementById('modal-titulo').textContent    = `Editar ${c.folio}`
-    document.getElementById('cot-cliente-buscar').value    = c.cliente?.nombre || ''
-    document.getElementById('cot-cliente-id').value        = c.clienteId || ''
-    document.getElementById('cot-vence').value             = c.venceEn ? c.venceEn.split('T')[0] : ''
-    document.getElementById('cot-notas').value             = c.notas || ''
+    document.getElementById('modal-titulo').textContent = `Editar ${c.folio}`
+    document.getElementById('cot-vence').value          = c.venceEn ? c.venceEn.split('T')[0] : ''
+    document.getElementById('cot-notas').value          = c.notas || ''
     document.getElementById('search-producto-modal').value = ''
     document.getElementById('lista-productos-modal').innerHTML = '<p class="muted-hint">Escribe para buscar...</p>'
     ocultarError('modal-error')
+
+    // ── Cliente: bloqueado en edición ──
+    const clienteInput = document.getElementById('cot-cliente-buscar')
+    const clienteId    = c.cliente?.id || c.clienteId || ''
+    clienteInput.value          = c.cliente?.nombre || ''
+    clienteInput.disabled       = true
+    clienteInput.style.opacity  = '0.6'
+    clienteInput.style.cursor   = 'not-allowed'
+    document.getElementById('cot-cliente-id').value    = clienteId
+    document.getElementById('btn-chevron-cliente').style.display = 'none'
+
+    // ── Tabs de tipo: ocultar el que no corresponde ──
+    document.querySelectorAll('.tipo-tab').forEach(tab => {
+      tab.style.display = tab.dataset.tipo === tipoActual ? '' : 'none'
+    })
 
     itemsEdicion = (c.detalles || []).map(d => ({
       productoId: d.productoId,
