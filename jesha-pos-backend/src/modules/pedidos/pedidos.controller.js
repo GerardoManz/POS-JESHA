@@ -10,13 +10,9 @@ const prisma = require('../../lib/prisma')
 async function generarFolio() {
   const d   = new Date()
   const str = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`
-  const ultimo = await prisma.pedido.findFirst({
-    where:   { folio: { startsWith: `PED-${str}` } },
-    orderBy: { id: 'desc' },
-    select:  { folio: true }
-  })
-  const sec = ultimo ? parseInt(ultimo.folio.split('-').pop()) + 1 : 1
-  return `PED-${str}-${String(sec).padStart(5,'0')}`
+  const result = await prisma.$queryRaw`SELECT nextval('folio_pedido_seq') as seq`
+  const sec = String(Number(result[0].seq)).padStart(5, '0')
+  return `PED-${str}-${sec}`
 }
 
 // ── Auditoría ──

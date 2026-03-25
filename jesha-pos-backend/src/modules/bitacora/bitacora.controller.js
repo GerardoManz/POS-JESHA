@@ -9,11 +9,9 @@ const prisma = require('../../lib/prisma')
 async function generarFolio() {
   const d   = new Date()
   const str = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`
-  const ultima = await prisma.bitacora.findFirst({
-    where: { folio: { startsWith: `BIT-${str}` } }, orderBy: { id: 'desc' }, select: { folio: true }
-  })
-  const sec = ultima ? parseInt(ultima.folio.split('-').pop()) + 1 : 1
-  return `BIT-${str}-${String(sec).padStart(5,'0')}`
+  const result = await prisma.$queryRaw`SELECT nextval('folio_bitacora_seq') as seq`
+  const sec = String(Number(result[0].seq)).padStart(5, '0')
+  return `BIT-${str}-${sec}`
 }
 
 async function audit(usuarioId, sucursalId, accion, ref) {
@@ -196,8 +194,8 @@ const agregarProducto = async (req, res) => {
     if (!inventario || inventario.stockActual < parseInt(cantidad))
       return res.status(400).json({ success: false, error: `Stock insuficiente. Disponible: ${inventario?.stockActual || 0}` })
 
-    const producto = await prisma.producto.findUnique({ where: { id: parseInt(productoId) }, select: { id: true, precioBase: true } })
-    const precio   = parseFloat(precioUnitario ?? producto.precioBase)
+    const producto = await prisma.producto.findUnique({ where: { id: parseInt(productoId) }, select: { id: true, precioBase: true, precioVenta: true } })
+    const precio   = parseFloat(precioUnitario ?? producto.precioVenta ?? producto.precioBase)
     const qty      = parseInt(cantidad)
     const subtotal = parseFloat((precio * qty).toFixed(2))
 

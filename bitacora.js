@@ -244,7 +244,7 @@ async function buscarProductosDet(q) {
       return `<div class="prod-item-inline" onclick="seleccionarProd(${p.id})">
         <span class="pi-nombre">${p.nombre}</span>
         <span style="display:flex;flex-direction:column;align-items:flex-end;gap:2px">
-          <span class="pi-precio">${fmt(p.precioBase)}</span>
+          <span class="pi-precio">${fmt(p.precioVenta || p.precioBase)}</span>
           <span class="${cls}">Stock: ${stock}</span>
         </span>
       </div>`
@@ -255,8 +255,8 @@ async function buscarProductosDet(q) {
 window.seleccionarProd = function(id) {
   prodSeleccionado = window._prodDetCache?.[id]
   if (!prodSeleccionado) return
-  document.getElementById('prod-seleccionado-nombre').textContent = `${prodSeleccionado.nombre} — ${fmt(prodSeleccionado.precioBase)}`
-  document.getElementById('prod-precio').value   = parseFloat(prodSeleccionado.precioBase).toFixed(2)
+  document.getElementById('prod-seleccionado-nombre').textContent = `${prodSeleccionado.nombre} — ${fmt(prodSeleccionado.precioVenta || prodSeleccionado.precioBase)}`
+  document.getElementById('prod-precio').value   = parseFloat(prodSeleccionado.precioVenta || prodSeleccionado.precioBase).toFixed(2)
   document.getElementById('prod-cantidad').value = 1
   document.getElementById('form-cantidad-prod').style.display = 'block'
   document.getElementById('prod-error').classList.remove('show')

@@ -8,11 +8,9 @@ const prisma = require('../../lib/prisma')
 async function generarFolio() {
   const d   = new Date()
   const str = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`
-  const ultima = await prisma.ordenCompra.findFirst({
-    where: { folio: { startsWith: `OC-${str}` } }, orderBy: { id: 'desc' }, select: { folio: true }
-  })
-  const sec = ultima ? parseInt(ultima.folio.split('-').pop()) + 1 : 1
-  return `OC-${str}-${String(sec).padStart(5,'0')}`
+  const result = await prisma.$queryRaw`SELECT nextval('folio_compra_seq') as seq`
+  const sec = String(Number(result[0].seq)).padStart(5, '0')
+  return `OC-${str}-${sec}`
 }
 
 async function audit(usuarioId, sucursalId, accion, ref) {
@@ -146,7 +144,7 @@ const editar = async (req, res) => {
 
     if (detalles && detalles.length > 0) {
       // Verificar que no se está eliminando un producto ya recibido
-      const idsNuevos = new Set(detalles.map(d => parseInt(d.productoId)))
+      const idsNuevos  = new Set(detalles.map(d => parseInt(d.productoId)))
       const eliminados = [...idsProtegidos].filter(pid => !idsNuevos.has(pid))
 
       if (eliminados.length > 0) {
@@ -162,7 +160,6 @@ const editar = async (req, res) => {
       const rows = detalles.map(d => {
         const costo    = parseFloat(d.precioCosto || 0)
         const qty      = parseInt(d.cantidadPedida) || 1
-        // Conservar cantidadRecibida si el producto ya tenía recepción parcial
         const detExist = existente.detalles.find(e => e.productoId === parseInt(d.productoId))
         const cantRec  = detExist?.cantidadRecibida || 0
         return {
@@ -177,7 +174,6 @@ const editar = async (req, res) => {
       updateData.totalEstimado = parseFloat(rows.reduce((s, r) => s + r.subtotalPedido, 0).toFixed(2))
 
       const oc = await prisma.$transaction(async tx => {
-        // Solo borrar los detalles que NO tienen recepción (los nuevos se recrean todos)
         await tx.detalleOrdenCompra.deleteMany({ where: { ordenCompraId: parseInt(id) } })
         return tx.ordenCompra.update({
           where: { id: parseInt(id) },

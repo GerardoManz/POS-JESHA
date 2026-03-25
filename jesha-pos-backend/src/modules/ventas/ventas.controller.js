@@ -167,9 +167,9 @@ exports.crearVenta = async (req, res) => {
             totalCreditoUsado: { increment: totalEsperado }
           }
         })
-        const fechaBit = new Date()
-        const countBit = await tx.bitacora.count()
-        const folioBit = `BIT-${fechaBit.getFullYear()}${String(fechaBit.getMonth()+1).padStart(2,'0')}${String(fechaBit.getDate()).padStart(2,'0')}-${String(countBit+1).padStart(5,'0')}`
+        const fechaBit  = new Date()
+        const seqBitRes = await tx.$queryRaw`SELECT nextval('folio_bitacora_seq') as seq`
+        const folioBit  = `BIT-${fechaBit.getFullYear()}${String(fechaBit.getMonth()+1).padStart(2,'0')}${String(fechaBit.getDate()).padStart(2,'0')}-${String(Number(seqBitRes[0].seq)).padStart(5,'0')}`
         const bitacoraCreada = await tx.bitacora.create({
           data: {
             folio:           folioBit,
@@ -471,12 +471,4 @@ exports.cancelarVenta = async (req, res) => {
     res.status(500).json({ error: 'Error al cancelar venta: ' + err.message })
   }
 }
-async function generarFolioBitacora(tx) {
-  const fecha = new Date()
-  const año   = fecha.getFullYear()
-  const mes   = String(fecha.getMonth() + 1).padStart(2, '0')
-  const dia   = String(fecha.getDate()).padStart(2, '0')
-  const count = await (tx || prisma).bitacora.count()
-  const seq   = String(count + 1).padStart(4, '0')
-  return `BIT-${año}${mes}${dia}-${seq}`
-}
+// generarFolioBitacora eliminada — usa folio_bitacora_seq directamente

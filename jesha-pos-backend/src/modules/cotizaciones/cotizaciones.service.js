@@ -10,17 +10,9 @@ async function generarFolio() {
   const año   = fecha.getFullYear()
   const mes   = String(fecha.getMonth() + 1).padStart(2, '0')
   const dia   = String(fecha.getDate()).padStart(2, '0')
-  const ultima = await prisma.cotizacion.findFirst({
-    where:   { folio: { startsWith: `COT-${año}${mes}${dia}` } },
-    orderBy: { id: 'desc' },
-    select:  { folio: true }
-  })
-  let secuencial = 1
-  if (ultima) {
-    const partes = ultima.folio.split('-')
-    secuencial = parseInt(partes[partes.length - 1]) + 1
-  }
-  return `COT-${año}${mes}${dia}-${String(secuencial).padStart(5, '0')}`
+  const result = await prisma.$queryRaw`SELECT nextval('folio_cotizacion_seq') as seq`
+  const sec = String(Number(result[0].seq)).padStart(5, '0')
+  return `COT-${año}${mes}${dia}-${sec}`
 }
 
 async function audit(usuarioId, sucursalId, accion, referencia) {
