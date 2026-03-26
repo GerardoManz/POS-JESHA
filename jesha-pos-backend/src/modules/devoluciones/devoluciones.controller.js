@@ -14,13 +14,13 @@ async function registrarAudit(usuarioId, sucursalId, referencia, detalleExtra) {
 }
 
 async function generarFolioDevolucion() {
-  const fecha = new Date()
-  const año   = fecha.getFullYear()
-  const mes   = String(fecha.getMonth() + 1).padStart(2, '0')
-  const dia   = String(fecha.getDate()).padStart(2, '0')
-  const count = await prisma.devolucion.count()
-  const seq   = String(count + 1).padStart(5, '0')
-  return `DEV-${año}${mes}${dia}-${seq}`
+  const fecha  = new Date()
+  const año    = fecha.getFullYear()
+  const mes    = String(fecha.getMonth() + 1).padStart(2, '0')
+  const dia    = String(fecha.getDate()).padStart(2, '0')
+  const result = await prisma.$queryRaw`SELECT nextval('folio_devolucion_seq') as seq`
+  const sec    = String(Number(result[0].seq)).padStart(5, '0')
+  return `DEV-${año}${mes}${dia}-${sec}`
 }
 
 // ════════════════════════════════════════════════════════════════════

@@ -23,7 +23,8 @@ let tipoActual       = 'PRODUCTOS'
 let clientesLista    = []
 let paginaActual     = 1
 const LIMIT          = 20
-const IVA            = 0.16
+const IVA        = window.__JESHA_IVA__        || 0.16
+const IVA_FACTOR = window.__JESHA_IVA_FACTOR__ || 1.16
 
 // ════════════════════════════════════════════════════════════════════
 //  HELPERS
@@ -198,7 +199,7 @@ window.verCotizacion = async function(id) {
 
       // Calcular desglose IVA (precios con IVA → desglose hacia atrás)
       const totalConIva   = parseFloat(c.total)
-      const baseGravable  = parseFloat((totalConIva / 1.16).toFixed(2))
+      const baseGravable  = parseFloat((totalConIva / IVA_FACTOR).toFixed(2))
       const ivaAmount     = parseFloat((totalConIva - baseGravable).toFixed(2))
       const descTotal     = (c.detalles || []).reduce((s, d) => s + parseFloat(d.descuento || 0), 0)
 
@@ -398,7 +399,7 @@ function agregarProductoAItems(prod) {
       nombre:     prod.nombre,
       unidad:     prod.unidadVenta || 'PZA',
       cantidad:   1,
-      precio:     parseFloat(prod.precioBase),
+      precio:     parseFloat(prod.precioVenta || prod.precioBase),
       descuento:  0
     })
   }
@@ -477,7 +478,7 @@ async function buscarProductosModal(q) {
     lista.innerHTML = productos.map(p => `
       <div class="producto-item-modal" onclick="window._addProd(${p.id})">
         <span class="prod-nombre">${p.nombre}</span>
-        <span class="prod-precio">${fmt(p.precioBase)}</span>
+        <span class="prod-precio">${fmt(p.precioVenta || p.precioBase)}</span>
       </div>
     `).join('')
   } catch (err) { lista.innerHTML = `<p class="muted-hint" style="color:#f44336">Error: ${err.message}</p>` }
@@ -667,7 +668,7 @@ function generarPdf(c) {
     }).join('')
 
     const totalConIva  = parseFloat(c.total)
-    const baseGravable = parseFloat((totalConIva / 1.16).toFixed(2))
+    const baseGravable = parseFloat((totalConIva / IVA_FACTOR).toFixed(2))
     const ivaAmount    = parseFloat((totalConIva - baseGravable).toFixed(2))
     const descTotal    = (c.detalles || []).reduce((s, d) => s + parseFloat(d.descuento || 0), 0)
 

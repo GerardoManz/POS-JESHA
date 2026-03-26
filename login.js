@@ -1,4 +1,4 @@
-const API_URL = 'http://localhost:3000'
+const API_URL = (typeof CONFIG !== 'undefined' ? CONFIG.API_URL : null) || window.__JESHA_API_URL__ || 'http://localhost:3000'
 const DASHBOARD_PAGE = 'index.html'
 
 // Si ya hay sesión activa, redirige al dashboard

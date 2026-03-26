@@ -43,6 +43,7 @@ const metodoBadge = m => {
 async function cargarCatalogos() {
   try {
     const resC = await fetch(`${API_URL}/clientes?activo=true`, { headers: { 'Authorization': `Bearer ${TOKEN}` } })
+    if (window.handle401 && window.handle401(resC.status)) return
     if (resC.ok) {
       const dataC    = await resC.json()
       const clientes = Array.isArray(dataC) ? dataC : (dataC.data || [])
@@ -61,6 +62,7 @@ async function cargarCatalogos() {
     }
 
     const resU = await fetch(`${API_URL}/usuarios`, { headers: { 'Authorization': `Bearer ${TOKEN}` } })
+    if (window.handle401 && window.handle401(resU.status)) return
     if (resU.ok) {
       const dataU    = await resU.json()
       const usuarios = Array.isArray(dataU) ? dataU : (dataU.data || [])
@@ -326,6 +328,7 @@ function abrirModalCancelacion(id, folio) {
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
         body:    JSON.stringify({ motivo })
       })
+      if (window.handle401 && window.handle401(res.status)) return
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Error al cancelar')
 
@@ -373,6 +376,7 @@ window.abrirModalDevolucion = async function(ventaId) {
     devVentaData = dataV.data
 
     const resD = await fetch(`${API_URL}/devoluciones/venta/${ventaId}`, { headers: { 'Authorization': `Bearer ${TOKEN}` } })
+    devResumenPrevio = {}
     devResumenPrevio = {}
     if (resD.ok) {
       const dataD      = await resD.json()
@@ -503,6 +507,7 @@ async function confirmarDevolucion() {
     const resTurno = await fetch(`${API_URL}/turnos-caja/activo`, {
       headers: { 'Authorization': `Bearer ${TOKEN}` }
     })
+    if (window.handle401 && window.handle401(resTurno.status)) return
     if (!resTurno.ok) {
       // Sin turno — advertir solo si el tipo implica movimiento de caja
       if (devTipoSeleccionado === 'REEMBOLSO' || devTipoSeleccionado === 'CAMBIO_PARCIAL') {
@@ -537,6 +542,7 @@ async function confirmarDevolucion() {
         notas
       })
     })
+    if (window.handle401 && window.handle401(res.status)) return
 
     const data = await res.json()
     if (!res.ok) throw new Error(data.error || 'Error al registrar devolución')

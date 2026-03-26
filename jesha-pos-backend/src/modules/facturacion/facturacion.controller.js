@@ -17,6 +17,10 @@ function getFacturapi() {
     return null
   }
   const Facturapi = require('facturapi')
+
+// Tasa IVA — configurable vía .env (TASA_IVA=0.16)
+const TASA_IVA   = parseFloat(process.env.TASA_IVA || '0.16')
+const IVA_FACTOR = 1 + TASA_IVA
   facturapi = new Facturapi(key)
   return facturapi
 }
@@ -202,7 +206,7 @@ exports.solicitarFactura = async (req, res) => {
     }
 
     const total    = parseFloat(venta.total)
-    const subtotal = parseFloat((total / 1.16).toFixed(2))
+    const subtotal = parseFloat((total / IVA_FACTOR).toFixed(2))
     const iva      = parseFloat((total - subtotal).toFixed(2))
     const rfcUpper = rfc.trim().toUpperCase()
 
@@ -221,7 +225,7 @@ exports.solicitarFactura = async (req, res) => {
             unit_key:      d.producto?.unidadSat || 'H87',
             price:         parseFloat(d.precioUnitario),
             tax_included:  true,
-            taxes: [{ type: 'IVA', rate: 0.16, factor: 'Tasa', withholding: false }]
+            taxes: [{ type: 'IVA', rate: TASA_IVA, factor: 'Tasa', withholding: false }]
           }
         }))
 
@@ -371,7 +375,7 @@ exports.timbrarManual = async (req, res) => {
         unit_key:     d.producto?.unidadSat || 'H87',
         price:        parseFloat(d.precioUnitario),
         tax_included: true,
-        taxes: [{ type: 'IVA', rate: 0.16, factor: 'Tasa', withholding: false }]
+        taxes: [{ type: 'IVA', rate: TASA_IVA, factor: 'Tasa', withholding: false }]
       }
     }))
 
