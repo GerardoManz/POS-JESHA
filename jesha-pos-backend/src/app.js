@@ -8,8 +8,23 @@ const cors    = require('cors')
 const path    = require('path')
 const app     = express()
 
+// Orígenes permitidos — agrega tu URL de ngrok aquí si la necesitas
+const ALLOWED_ORIGINS = [
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+  'http://localhost:5500',
+  'http://127.0.0.1:5500',
+  process.env.NGROK_URL,        // ej: https://tu-url.ngrok-free.dev
+  process.env.FRONTEND_URL,     // para producción futura
+].filter(Boolean)
+
 app.use(cors({
-  origin:         '*',
+  origin: (origin, callback) => {
+    // Permitir requests sin origin (Postman, apps nativas, mismo servidor)
+    if (!origin) return callback(null, true)
+    if (ALLOWED_ORIGINS.includes(origin)) return callback(null, true)
+    callback(new Error(`CORS bloqueado: ${origin}`))
+  },
   methods:        ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
   allowedHeaders: ['Content-Type','Authorization']
 }))

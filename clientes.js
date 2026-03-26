@@ -323,7 +323,7 @@ window.toggleEstadoCliente = async function(clienteId, nuevoEstado) {
     cargarClientes()
   } catch (error) {
     console.error(error)
-    alert('Error: ' + error.message)
+    jeshaToast('Error: ' + error.message, 'error')
   }
 }
 

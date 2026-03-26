@@ -152,7 +152,7 @@ window.verPedido = async function(id) {
     }
 
     document.getElementById('modal-ver').classList.add('active')
-  } catch (err) { alert('Error: ' + err.message) }
+  } catch (err) { jeshaToast('Error: ' + err.message, 'error') }
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -171,7 +171,7 @@ window.cambiarEstado = async function(id, estado) {
     await apiFetch(`/pedidos/${id}/estado`, { method:'PATCH', body: JSON.stringify({ estado }) })
     document.getElementById('modal-ver').classList.remove('active')
     cargarPedidos()
-  } catch (err) { alert('Error: ' + err.message) }
+  } catch (err) { jeshaToast('Error: ' + err.message, 'error') }
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -183,7 +183,7 @@ window.cargarEnPos = async function(id) {
     let p = pedidoActual?.id === id ? pedidoActual : null
     if (!p) { const d = await apiFetch(`/pedidos/${id}`); p = d.data }
 
-    if (!p.detalles || p.detalles.length === 0) { alert('Este pedido no tiene productos.'); return }
+    if (!p.detalles || p.detalles.length === 0) { jeshaToast('Este pedido no tiene productos', 'warning'); return }
 
     // clienteId viene dentro del objeto cliente — PEDIDO_SELECT no expone clienteId directo
     const clienteId    = p.cliente?.id    || null
@@ -204,7 +204,7 @@ window.cargarEnPos = async function(id) {
     }
     localStorage.setItem('pos_cotizacion', JSON.stringify(payload))
     window.location.href = 'punto-venta.html'
-  } catch (err) { alert('Error: ' + err.message) }
+  } catch (err) { jeshaToast('Error: ' + err.message, 'error') }
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -264,7 +264,7 @@ window.abrirEdicion = async function(id) {
 
     renderItems()
     document.getElementById('modal-pedido').classList.add('active')
-  } catch (err) { alert('Error: ' + err.message) }
+  } catch (err) { jeshaToast('Error: ' + err.message, 'error') }
 }
 
 // ── Render tabla de ítems ──

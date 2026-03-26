@@ -95,7 +95,7 @@ window.abrirDetalle = async function(id) {
     ocActual = data.data
     renderDetalle()
     document.getElementById('modal-detalle').classList.add('active')
-  } catch (err) { alert('Error: ' + err.message) }
+  } catch (err) { jeshaToast('Error: ' + err.message, 'error') }
 }
 
 function renderDetalle() {
@@ -258,7 +258,7 @@ window.confirmarRecepcion = async function() {
       precioVenta:      parseFloat(document.getElementById(`pv-${d.id}`)?.value) || null
     })).filter(d => d.cantidadRecibida > 0)
 
-  if (detalles.length === 0) { alert('Ingresa al menos una cantidad recibida'); return }
+  if (detalles.length === 0) { jeshaToast('Ingresa al menos una cantidad recibida', 'warning'); return }
 
   const btn = document.querySelector('#det-botones-superiores .btn-success')
   if (btn) { btn.disabled = true; btn.textContent = '⟳ Procesando...' }
@@ -270,7 +270,7 @@ window.confirmarRecepcion = async function() {
     renderDetalle()
     cargarCompras()
   } catch (err) {
-    alert('Error: ' + err.message)
+    jeshaToast('Error: ' + err.message, 'error')
     if (btn) { btn.disabled = false; btn.textContent = '✓ Confirmar recepción' }
   }
 }
@@ -287,7 +287,7 @@ window.cancelarCompra = async function(id) {
     ocActual = data.data
     renderDetalle()
     cargarCompras()
-  } catch (err) { alert('Error: ' + err.message) }
+  } catch (err) { jeshaToast('Error: ' + err.message, 'error') }
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -297,7 +297,7 @@ async function registrarAbono() {
   const monto  = parseFloat(document.getElementById('abono-monto').value)
   const metodo = document.getElementById('abono-metodo').value
   const notas  = document.getElementById('abono-notas').value.trim() || null
-  if (!monto || monto <= 0) { alert('Monto inválido'); return }
+  if (!monto || monto <= 0) { jeshaToast('Monto inválido', 'warning'); return }
 
   const btn = document.getElementById('btn-abonar')
   btn.disabled = true; btn.textContent = 'Registrando...'
@@ -308,7 +308,7 @@ async function registrarAbono() {
     document.getElementById('abono-notas').value = ''
     renderDetalle()
     cargarCompras()
-  } catch (err) { alert('Error: ' + err.message) }
+  } catch (err) { jeshaToast('Error: ' + err.message, 'error') }
   finally { btn.disabled = false; btn.textContent = '+ Registrar pago' }
 }
 
@@ -352,7 +352,7 @@ window.abrirEdicion = async function(id) {
     }))
     renderItemsEdicion()
     document.getElementById('modal-crear').classList.add('active')
-  } catch (err) { alert('Error: ' + err.message) }
+  } catch (err) { jeshaToast('Error: ' + err.message, 'error') }
 }
 
 function renderItemsEdicion() {

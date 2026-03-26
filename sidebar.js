@@ -397,3 +397,59 @@ window.handle401 = function(status) {
     })
   }
 })()
+
+// ════════════════════════════════════════════════════════════════════
+//  jeshaToast — reemplaza alert() nativo en todos los módulos
+//  Uso: jeshaToast('Mensaje')                    → error (rojo)
+//       jeshaToast('Guardado', 'success')         → verde
+//       jeshaToast('Atención', 'warning')         → naranja
+//       jeshaToast('Información', 'info')         → azul
+// ════════════════════════════════════════════════════════════════════
+window.jeshaToast = function(mensaje, tipo = 'error', duracion = 4000) {
+  document.getElementById('jesha-toast')?.remove()
+
+  const colores = {
+    error:   { bg: 'rgba(255,107,107,0.12)', border: 'rgba(255,107,107,0.35)', texto: '#ff6b6b', icono: '✕' },
+    warning: { bg: 'rgba(232,113,10,0.12)',  border: 'rgba(232,113,10,0.35)',  texto: '#e8710a', icono: '⚠' },
+    info:    { bg: 'rgba(74,144,226,0.12)',  border: 'rgba(74,144,226,0.35)',  texto: '#4a90e2', icono: 'ℹ' },
+    success: { bg: 'rgba(96,208,128,0.12)',  border: 'rgba(96,208,128,0.35)',  texto: '#60d080', icono: '✓' }
+  }
+  const col = colores[tipo] || colores.error
+
+  if (!document.getElementById('jesha-toast-style')) {
+    const st = document.createElement('style')
+    st.id = 'jesha-toast-style'
+    st.textContent = `@keyframes jeshaToastIn { from { opacity:0; transform:translateY(-8px) } to { opacity:1; transform:translateY(0) } }`
+    document.head.appendChild(st)
+  }
+
+  const toast = document.createElement('div')
+  toast.id = 'jesha-toast'
+  Object.assign(toast.style, {
+    position: 'fixed', top: '20px', right: '20px', zIndex: '9999',
+    display: 'flex', alignItems: 'center', gap: '10px',
+    padding: '13px 18px',
+    background: col.bg,
+    border: `1px solid ${col.border}`,
+    borderRadius: '10px',
+    color: col.texto,
+    fontFamily: "'Barlow', sans-serif",
+    fontSize: '0.9rem', fontWeight: '600',
+    boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+    maxWidth: '400px', lineHeight: '1.4',
+    animation: 'jeshaToastIn 0.2s ease',
+    transition: 'opacity 0.3s'
+  })
+  toast.innerHTML = `
+    <span style="font-size:1rem;flex-shrink:0;">${col.icono}</span>
+    <span>${mensaje}</span>
+    <button onclick="this.parentElement.remove()" style="background:none;border:none;color:${col.texto};font-size:1.1rem;cursor:pointer;padding:0 0 0 6px;opacity:0.7;line-height:1;">&times;</button>
+  `
+  document.body.appendChild(toast)
+  setTimeout(() => {
+    if (toast.parentElement) {
+      toast.style.opacity = '0'
+      setTimeout(() => toast.remove(), 300)
+    }
+  }, duracion)
+}

@@ -84,7 +84,6 @@ async function cargarDepartamentos() {
     const response = await fetch(`${API_URL}/productos/departamentos`, {
       headers: { 'Authorization': `Bearer ${TOKEN}` }
     })
-    if (window.handle401 && window.handle401(response.status)) return
     if (!response.ok) throw new Error(`Error ${response.status}`)
     const resultado = await response.json()
     departamentosLista = resultado.data || resultado
@@ -98,7 +97,6 @@ async function cargarCategorias() {
     const response = await fetch(`${API_URL}/productos/categorias`, {
       headers: { 'Authorization': `Bearer ${TOKEN}` }
     })
-    if (window.handle401 && window.handle401(response.status)) return
     if (!response.ok) throw new Error(`Error ${response.status}`)
     const resultado = await response.json()
     categoriasLista = resultado.data || resultado
@@ -118,7 +116,6 @@ async function cargarProductos() {
     const response = await fetch(`${API_URL}/productos?${params}`, {
       headers: { 'Authorization': `Bearer ${TOKEN}` }
     })
-    if (window.handle401 && window.handle401(response.status)) return
     if (!response.ok) throw new Error(`Error ${response.status}`)
     const resultado = await response.json()
     productosLista = resultado.data || resultado
@@ -250,7 +247,6 @@ async function crearNuevoDepartamento() {
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
       body: JSON.stringify({ nombre: nombre.trim() })
     })
-    if (window.handle401 && window.handle401(response.status)) return
     const json = await response.json()
     if (json.success) {
       const nuevoDepto = json.data
@@ -282,7 +278,6 @@ async function crearNuevaCategoria() {
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
       body: JSON.stringify({ nombre: nombre.trim(), departamentoId: parseInt(departamentoId) })
     })
-    if (window.handle401 && window.handle401(response.status)) return
     const json = await response.json()
     if (json.success) {
       const nuevaCat = json.data
@@ -399,7 +394,7 @@ window.editarProducto = async function(id) {
   llenarModalDepartamentos(deptoId)
   if (deptoId) actualizarModalCategorias(deptoId, producto.categoriaId)
   if (producto.imagenUrl) {
-    if (imagenPreview) imagenPreview.src = producto.imagenUrl
+    if (imagenPreview) imagenPreview.src = producto.imagenUrl.startsWith('http') ? producto.imagenUrl : API_URL + producto.imagenUrl
     if (imagenPreviewContainer) imagenPreviewContainer.style.display = 'block'
   } else {
     if (imagenPreviewContainer) imagenPreviewContainer.style.display = 'none'
@@ -462,7 +457,6 @@ async function guardarProducto(e) {
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
       body: JSON.stringify(datos)
     })
-    if (window.handle401 && window.handle401(response.status)) return
     if (!response.ok) { const err = await response.json(); throw new Error(err.error || `Error ${response.status}`) }
     const resultado = await response.json()
     const productoGuardado = resultado.data || resultado
@@ -493,7 +487,6 @@ async function ejecutarToggleEstado(id, nuevoEstado) {
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
       body: JSON.stringify({ activo: nuevoEstado })
     })
-    if (window.handle401 && window.handle401(response.status)) return
     if (!response.ok) throw new Error(`Error ${response.status}`)
     await cargarProductos()
   } catch (error) {
@@ -630,7 +623,6 @@ async function subirImagen(productoId, archivo) {
     const response = await fetch(`${API_URL}/productos/${productoId}/imagen`, {
       method: 'POST', headers: { 'Authorization': `Bearer ${TOKEN}` }, body: formData
     })
-    if (window.handle401 && window.handle401(response.status)) return
     if (!response.ok) throw new Error(`Error ${response.status}`)
     console.log('✅ Imagen subida')
   } catch (error) { console.error('❌ Error subiendo imagen:', error) }
@@ -735,7 +727,7 @@ function configurarEventos() {
 //  Y llama initImportacion() dentro de DOMContentLoaded
 // ════════════════════════════════════════════════════════════════════
 
-const API_URL_IMPORT = window.__JESHA_API_URL__ || 'http://localhost:3000'
+const API_URL_IMPORT = 'http://localhost:3000'
 
 // ── Estado ──
 let importArchivoSeleccionado = null
@@ -964,7 +956,6 @@ async function ejecutarImportacion() {
       headers: { 'Authorization': `Bearer ${token}` },
       body: formData
     })
-    if (window.handle401 && window.handle401(response.status)) return
 
     progresoFill.style.width = '90%'
     const resultado = await response.json()
@@ -1133,7 +1124,6 @@ async function guardarAjuste() {
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
       body:    JSON.stringify(body)
     })
-    if (window.handle401 && window.handle401(response.status)) return
 
     const data = await response.json()
     if (!response.ok) throw new Error(data.error || 'Error al ajustar inventario')

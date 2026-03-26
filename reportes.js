@@ -317,7 +317,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-aplicar')?.addEventListener('click', () => {
     desdeCustom = document.getElementById('rep-desde').value
     hastaCustom = document.getElementById('rep-hasta').value
-    if (!desdeCustom || !hastaCustom) { alert('Selecciona ambas fechas'); return }
+    if (!desdeCustom || !hastaCustom) { jeshaToast('Selecciona ambas fechas', 'warning'); return }
     cargarReportes()
   })
 

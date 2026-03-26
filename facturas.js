@@ -155,7 +155,7 @@ window.verDetalle = async function(id) {
 
     document.getElementById('modal-detalle').classList.add('active')
   } catch (err) {
-    alert('Error: ' + err.message)
+    jeshaToast('Error: ' + err.message, 'error')
   }
 }
 
@@ -197,7 +197,7 @@ window.timbrarManual = async function(id) {
     setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 400) }, 6000)
 
   } catch (err) {
-    alert('Error al timbrar: ' + err.message)
+    jeshaToast('Error al timbrar: ' + err.message, 'error')
     if (btn) { btn.disabled = false; btn.textContent = '⚡ Timbrar ahora' }
   }
 }
@@ -222,7 +222,7 @@ async function cancelarFactura(id) {
     document.getElementById('modal-detalle').classList.remove('active')
     cargarFacturas()
   } catch (err) {
-    alert('Error: ' + err.message)
+    jeshaToast('Error: ' + err.message, 'error')
   }
 }
 
@@ -230,7 +230,7 @@ async function cancelarFactura(id) {
 //  DESCARGAR XML / PDF
 // ════════════════════════════════════════════════════════════════════
 window.descargar = function(url, tipo) {
-  if (!url) { alert('URL no disponible'); return }
+  if (!url) { jeshaToast('URL de factura no disponible', 'warning'); return }
   const a = document.createElement('a')
   a.href = url
   a.target = '_blank'

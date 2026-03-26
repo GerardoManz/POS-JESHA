@@ -353,7 +353,7 @@ function mostrarProductos(productos) {
   productosGrid.innerHTML = productos.map(p => `
     <div class="tarjeta-producto"
          onclick="agregarAlCarrito(${p.id}, '${p.nombre.replace(/'/g,"\\'")}', ${p.precioVenta || p.precioBase})">
-      ${p.imagenUrl ? `<img src="${p.imagenUrl}" alt="${p.nombre}" class="producto-imagen" />` : ''}
+      ${p.imagenUrl ? `<img src="${p.imagenUrl.startsWith('http') ? p.imagenUrl : API_URL + p.imagenUrl}" alt="${p.nombre}" class="producto-imagen" />` : ''}
       <div class="producto-info">
         <h4>${p.nombre}</h4>
         <p class="producto-codigo">${p.codigoInterno}</p>

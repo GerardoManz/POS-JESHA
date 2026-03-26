@@ -97,7 +97,7 @@ window.abrirDetalle = async function(id) {
     bitacoraActual = data.data
     renderDetalle()
     document.getElementById('modal-detalle').classList.add('active')
-  } catch (err) { alert('Error: ' + err.message) }
+  } catch (err) { jeshaToast('Error: ' + err.message, 'error') }
 }
 
 function renderDetalle() {
@@ -222,7 +222,7 @@ window.cambiarEstado = async function(estado) {
     bitacoraActual = data.data
     renderDetalle()
     cargarBitacoras()
-  } catch (err) { alert('Error: ' + err.message) }
+  } catch (err) { jeshaToast('Error: ' + err.message, 'error') }
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -299,7 +299,7 @@ window.quitarProducto = async function(detalleId) {
     bitacoraActual = data.data
     renderDetalle()
     cargarBitacoras()
-  } catch (err) { alert('Error: ' + err.message) }
+  } catch (err) { jeshaToast('Error: ' + err.message, 'error') }
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -310,7 +310,7 @@ async function registrarAbono() {
   const metodo   = document.getElementById('abono-metodo').value
   const notas    = document.getElementById('abono-notas').value.trim() || null
 
-  if (!monto || monto <= 0) { alert('Ingresa un monto válido'); return }
+  if (!monto || monto <= 0) { jeshaToast('Ingresa un monto válido', 'warning'); return }
 
   const btn = document.getElementById('btn-abonar')
   btn.disabled = true; btn.textContent = 'Registrando...'
@@ -330,7 +330,7 @@ async function registrarAbono() {
     document.getElementById('abono-notas').value = ''
     renderDetalle()
     cargarBitacoras()
-  } catch (err) { alert('Error: ' + err.message) } 
+  } catch (err) { jeshaToast('Error: ' + err.message, 'error') } 
   finally { btn.disabled = false; btn.textContent = '+ Registrar abono' }
 }
 

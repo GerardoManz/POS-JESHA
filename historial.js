@@ -87,6 +87,7 @@ async function cargarVentas() {
   const params = construirParams()
   try {
     const res   = await fetch(`${API_URL}/ventas?${params}`, { headers: { 'Authorization': `Bearer ${TOKEN}` } })
+    if (window.handle401 && window.handle401(res.status)) return
     if (!res.ok) throw new Error('Error cargando ventas')
     const data  = await res.json()
     const ventas = data.data || []
@@ -186,6 +187,7 @@ function actualizarKpis(ventas, totalRegistros) {
 window.verDetalle = async function(id) {
   try {
     const res  = await fetch(`${API_URL}/ventas/${id}`, { headers: { 'Authorization': `Bearer ${TOKEN}` } })
+    if (window.handle401 && window.handle401(res.status)) return
     if (!res.ok) throw new Error('No se pudo cargar la venta')
     const data = await res.json()
     const v    = data.data
@@ -225,7 +227,7 @@ window.verDetalle = async function(id) {
 
     renderAccionesModal(v)
     document.getElementById('modal-venta').classList.add('active')
-  } catch (err) { alert('Error cargando detalle: ' + err.message) }
+  } catch (err) { jeshaToast('Error cargando detalle: ' + err.message, 'error') }
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -371,12 +373,13 @@ window.cancelarVenta = function(id, folio) {
 window.abrirModalDevolucion = async function(ventaId) {
   try {
     const resV = await fetch(`${API_URL}/ventas/${ventaId}`, { headers: { 'Authorization': `Bearer ${TOKEN}` } })
+    if (window.handle401 && window.handle401(resV.status)) return
     if (!resV.ok) throw new Error('No se pudo cargar la venta')
     const dataV  = await resV.json()
     devVentaData = dataV.data
 
     const resD = await fetch(`${API_URL}/devoluciones/venta/${ventaId}`, { headers: { 'Authorization': `Bearer ${TOKEN}` } })
-    devResumenPrevio = {}
+    if (window.handle401 && window.handle401(resD.status)) return
     devResumenPrevio = {}
     if (resD.ok) {
       const dataD      = await resD.json()
@@ -401,7 +404,7 @@ window.abrirModalDevolucion = async function(ventaId) {
     document.getElementById('modal-venta').classList.remove('active')
     document.getElementById('modal-devolucion').classList.add('active')
   } catch (err) {
-    alert('Error abriendo devolución: ' + err.message)
+    jeshaToast('Error al abrir devolución: ' + err.message, 'error')
   }
 }
 
@@ -571,7 +574,7 @@ async function confirmarDevolucion() {
     setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 400) }, 6000)
 
     if (devVentaData.facturaEstado === 'FACTURADA') {
-      setTimeout(() => alert('Recuerda emitir la nota de crédito CFDI con tu contador.'), 600)
+      setTimeout(() => jeshaToast('Recuerda emitir la nota de crédito CFDI con tu contador', 'info', 7000), 600)
     }
 
   } catch (err) {
