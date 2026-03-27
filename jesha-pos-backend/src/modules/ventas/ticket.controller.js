@@ -100,13 +100,14 @@ function generarHTMLTicket(venta, qrDataUrl, fechaStr, pagos) {
 
   // Productos — usar precioUnitario * cantidad si subtotal no existe
   const filaProductos = (venta.detalles || []).map(d => {
-    const subtotal = d.subtotal ?? d.importe ?? (parseFloat(d.precioUnitario || 0) * parseInt(d.cantidad || 1))
+    const subtotal = d.subtotal ?? d.importe ?? (parseFloat(d.precioUnitario || 0) * parseFloat(d.cantidad || 1))
     const nombre   = d.producto?.nombre || d.descripcion || '—'
     const codigo   = d.producto?.codigoInterno ? `<div style="font-size:9px;color:#666;">${d.producto.codigoInterno}</div>` : ''
-    const qty      = parseInt(d.cantidad || 1)
+    const qty      = parseFloat(d.cantidad || 1)
+    const qtyStr   = Number.isInteger(qty) ? qty.toString() : qty.toFixed(3).replace(/\.?0+$/, '')
     const precio   = parseFloat(d.precioUnitario || 0)
     return `<tr>
-      <td style="padding:3px 0;font-size:11px;word-break:break-word;">${nombre}${codigo}<span style="font-size:10px;color:#555;">${qty} × ${fmt(precio)}</span></td>
+      <td style="padding:3px 0;font-size:11px;word-break:break-word;">${nombre}${codigo}<span style="font-size:10px;color:#555;">${qtyStr} × ${fmt(precio)}</span></td>
       <td style="padding:3px 0;font-size:11px;text-align:right;white-space:nowrap;vertical-align:top;">${fmt(subtotal)}</td>
     </tr>`
   }).join('')

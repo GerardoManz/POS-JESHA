@@ -23,7 +23,8 @@ let tipoActual       = 'PRODUCTOS'
 let clientesLista    = []
 let paginaActual     = 1
 const LIMIT          = 20
-const IVA            = 0.16
+const IVA        = window.__JESHA_IVA__        || 0.16
+const IVA_FACTOR = window.__JESHA_IVA_FACTOR__ || 1.16
 
 // ════════════════════════════════════════════════════════════════════
 //  HELPERS
@@ -182,7 +183,7 @@ window.verCotizacion = async function(id) {
           ? `<img src="${d.producto.imagenUrl}" class="img-producto-ver" alt="${d.producto.nombre}" />`
           : `<div class="img-placeholder">📦</div>`
         const clave = d.producto?.codigoInterno || '—'
-        const importe = parseFloat(d.precioUnitario) * parseInt(d.cantidad)
+        const importe = parseFloat(d.precioUnitario) * parseFloat(d.cantidad)
         return `
           <tr>
             <td style="text-align:center">${imgHtml}<div style="font-size:0.7rem;color:var(--muted);margin-top:2px">${clave}</div></td>
@@ -198,7 +199,7 @@ window.verCotizacion = async function(id) {
 
       // Calcular desglose IVA (precios con IVA → desglose hacia atrás)
       const totalConIva   = parseFloat(c.total)
-      const baseGravable  = parseFloat((totalConIva / 1.16).toFixed(2))
+      const baseGravable  = parseFloat((totalConIva / IVA_FACTOR).toFixed(2))
       const ivaAmount     = parseFloat((totalConIva - baseGravable).toFixed(2))
       const descTotal     = (c.detalles || []).reduce((s, d) => s + parseFloat(d.descuento || 0), 0)
 
@@ -331,7 +332,7 @@ function renderItemsProductos() {
     <tr>
       <td style="max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${item.nombre}">${item.nombre}</td>
       <td><input type="text" value="${item.unidad || 'PZA'}" style="width:50px" oninput="itemsEdicion[${i}].unidad=this.value" /></td>
-      <td><input type="number" min="1" value="${item.cantidad}" style="width:52px" oninput="actualizarCantidadItem(${i},this.value)" /></td>
+      <td><input type="number" min="1" value="${item.cantidad}" style="width:52px" oninput="actualizarCantidadItem(${i},this.value)" min="${item.esGranel ? 0.001 : 1}" step="${item.esGranel ? 0.001 : 1}" /></td>
       <td><input type="number" min="0" step="0.01" value="${item.precio.toFixed(2)}" style="width:82px" oninput="actualizarPrecioItem(${i},this.value)" /></td>
       <td><input type="number" min="0" step="0.01" value="${(item.descuento || 0).toFixed(2)}" style="width:82px" oninput="actualizarDescuentoItem(${i},this.value)" /></td>
       <td id="prod-total-${i}"><strong>${fmt((item.precio * item.cantidad) - item.descuento)}</strong></td>
@@ -352,7 +353,7 @@ function renderItemsServicios() {
     <tr>
       <td><input type="text" value="${item.concepto || ''}" placeholder="Descripción del servicio" style="width:100%;min-width:180px" oninput="itemsEdicion[${i}].concepto=this.value" /></td>
       <td><input type="text" value="${item.unidad || ''}" placeholder="m2" style="width:60px" oninput="itemsEdicion[${i}].unidad=this.value" /></td>
-      <td><input type="number" min="1" value="${item.cantidad}" style="width:52px" oninput="actualizarCantidadItem(${i},this.value)" /></td>
+      <td><input type="number" min="1" value="${item.cantidad}" style="width:52px" oninput="actualizarCantidadItem(${i},this.value)" min="${item.esGranel ? 0.001 : 1}" step="${item.esGranel ? 0.001 : 1}" /></td>
       <td><input type="number" min="0" step="0.01" value="${item.precio.toFixed(2)}" style="width:82px" oninput="actualizarPrecioItem(${i},this.value)" /></td>
       <td id="srv-total-${i}"><strong>${fmt(item.precio * item.cantidad)}</strong></td>
       <td><button class="btn-icon" onclick="quitarItem(${i})" style="color:#f44336">✕</button></td>
@@ -362,7 +363,7 @@ function renderItemsServicios() {
 }
 
 window.actualizarCantidadItem = function(i, v) {
-  const n = parseInt(v)
+  const n = parseFloat(parseFloat(v).toFixed(3))
   if (!isNaN(n) && n > 0) { itemsEdicion[i].cantidad = n; actualizarFilaTotal(i) }
 }
 window.actualizarPrecioItem = function(i, v) {
@@ -397,9 +398,10 @@ function agregarProductoAItems(prod) {
       productoId: prod.id,
       nombre:     prod.nombre,
       unidad:     prod.unidadVenta || 'PZA',
-      cantidad:   1,
-      precio:     parseFloat(prod.precioBase),
-      descuento:  0
+      cantidad:   prod.esGranel ? 0.1 : 1,
+      precio:     parseFloat(prod.precioVenta || prod.precioBase),
+      descuento:  0,
+      esGranel:   prod.esGranel || false
     })
   }
   renderItems()
@@ -477,7 +479,7 @@ async function buscarProductosModal(q) {
     lista.innerHTML = productos.map(p => `
       <div class="producto-item-modal" onclick="window._addProd(${p.id})">
         <span class="prod-nombre">${p.nombre}</span>
-        <span class="prod-precio">${fmt(p.precioBase)}</span>
+        <span class="prod-precio">${fmt(p.precioVenta || p.precioBase)}</span>
       </div>
     `).join('')
   } catch (err) { lista.innerHTML = `<p class="muted-hint" style="color:#f44336">Error: ${err.message}</p>` }
@@ -613,7 +615,7 @@ window.cargarEnPos = async function(id) {
         id:       d.producto?.id ?? d.productoId,
         nombre:   d.producto?.nombre || '—',
         precio:   parseFloat(d.precioUnitario),
-        cantidad: parseInt(d.cantidad) || 1
+        cantidad: parseFloat(d.cantidad) || 1
       }))
     }
     localStorage.setItem('pos_cotizacion', JSON.stringify(posPayload))
@@ -646,7 +648,7 @@ function generarPdf(c) {
   if (esProductos) {
     // Tabla con imagen + clave + descuento + IVA desglosado
     const lineas = (c.detalles || []).map(d => {
-      const importe  = parseFloat(d.precioUnitario) * parseInt(d.cantidad)
+      const importe  = parseFloat(d.precioUnitario) * parseFloat(d.cantidad)
       const descuento = parseFloat(d.descuento || 0)
       const neto     = importe - descuento
       const imgHtml  = d.producto?.imagenUrl
@@ -657,7 +659,7 @@ function generarPdf(c) {
       return `
         <tr>
           <td style="text-align:center;padding:8px">${imgHtml}<div style="font-size:10px;color:#888;margin-top:2px">${clave}</div></td>
-          <td style="text-align:center">${parseInt(d.cantidad)}</td>
+          <td style="text-align:center">${parseFloat(d.cantidad)}</td>
           <td style="text-align:center">${unidad}</td>
           <td>${d.producto?.nombre || d.concepto || '—'}</td>
           <td style="text-align:right">$${parseFloat(d.precioUnitario).toFixed(2)}</td>
@@ -667,7 +669,7 @@ function generarPdf(c) {
     }).join('')
 
     const totalConIva  = parseFloat(c.total)
-    const baseGravable = parseFloat((totalConIva / 1.16).toFixed(2))
+    const baseGravable = parseFloat((totalConIva / IVA_FACTOR).toFixed(2))
     const ivaAmount    = parseFloat((totalConIva - baseGravable).toFixed(2))
     const descTotal    = (c.detalles || []).reduce((s, d) => s + parseFloat(d.descuento || 0), 0)
 

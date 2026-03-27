@@ -44,7 +44,7 @@ const COTIZACION_SELECT = {
 
 function calcularDetalle(precioUnitario, cantidad, descuento) {
   const pu  = parseFloat(precioUnitario)
-  const qty = parseInt(cantidad)
+  const qty = parseFloat(cantidad)
   const dto = parseFloat(descuento || 0)
   const importe  = parseFloat((pu * qty).toFixed(2))
   const subtotal = parseFloat((importe - dto).toFixed(2))

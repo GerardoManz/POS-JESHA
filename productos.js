@@ -9,6 +9,14 @@
    - Botón "Subir Inventario" integrado con modal de importación CSV
    ═══════════════════════════════════════════════════════════════════ */
 
+
+// Formatea stock: entero si no tiene decimales, decimal si los tiene
+function fmtStock(val) {
+  if (val === '-' || val === null || val === undefined) return '-'
+  const n = parseFloat(val)
+  if (isNaN(n)) return '-'
+  return Number.isInteger(n) ? n.toString() : n.toFixed(3).replace(/\.?0+$/, '')
+}
 const API_URL = window.__JESHA_API_URL__ || 'http://localhost:3000'
 let TOKEN = localStorage.getItem('jesha_token')
 let productosLista     = []
@@ -258,13 +266,13 @@ async function crearNuevoDepartamento() {
       llenarModalDepartamentos(nuevoDepto.id)
       actualizarModalCategorias(nuevoDepto.id)
       console.log(`✅ Departamento creado: ${nuevoDepto.nombre}`)
-    } else { alert('Error: ' + json.error); modalDeptoSelect.value = '' }
-  } catch (err) { console.error('❌ Error creando departamento:', err); alert('Error de conexión'); modalDeptoSelect.value = '' }
+    } else { jeshaToast('Error: ' + json.error, 'error'); modalDeptoSelect.value = '' }
+  } catch (err) { console.error('❌ Error creando departamento:', err); jeshaToast('Error de conexión', 'error'); modalDeptoSelect.value = '' }
 }
 
 async function crearNuevaCategoria() {
   const departamentoId = modalDeptoSelect.value
-  if (!departamentoId || departamentoId === '__NUEVO_DEPTO__') { alert('Selecciona un departamento primero'); modalCatSelect.value = ''; return }
+  if (!departamentoId || departamentoId === '__NUEVO_DEPTO__') { jeshaToast('Selecciona un departamento primero', 'error'); modalCatSelect.value = ''; return }
   const nombre = await jeshaPrompt({
     title: 'Nueva categoría',
     label: 'Ingresa el nombre de la categoría',
@@ -284,8 +292,8 @@ async function crearNuevaCategoria() {
       if (!categoriasLista.find(c => c.id === nuevaCat.id)) categoriasLista.push(nuevaCat)
       actualizarModalCategorias(departamentoId, nuevaCat.id)
       console.log(`✅ Categoría creada: ${nuevaCat.nombre}`)
-    } else { alert('Error: ' + json.error); modalCatSelect.value = '' }
-  } catch (err) { console.error('❌ Error creando categoría:', err); alert('Error de conexión'); modalCatSelect.value = '' }
+    } else { jeshaToast('Error: ' + json.error, 'error'); modalCatSelect.value = '' }
+  } catch (err) { console.error('❌ Error creando categoría:', err); jeshaToast('Error de conexión', 'error'); modalCatSelect.value = '' }
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -350,8 +358,8 @@ function renderizarTabla(productos) {
         <div style="font-weight:600">$${parseFloat(p.precioVenta || p.precioBase || 0).toFixed(2)}</div>
         <div style="font-size:0.72rem;color:var(--muted)">Base: $${parseFloat(p.precioBase || 0).toFixed(2)}</div>
       </td>
-      <td style="color:${stockBajo ? '#ff9999' : 'inherit'}">${stock}</td>
-      <td>${minStock}</td>
+      <td style="color:${stockBajo ? '#ff9999' : 'inherit'}">${fmtStock(stock)}</td>
+      <td>${fmtStock(minStock)}</td>
       <td><span class="estado-badge ${p.activo ? 'activo' : 'inactivo'}">${p.activo ? 'Activo' : 'Inactivo'}</span></td>
       <td><div class="actions-cell">
         <button class="btn-icon" onclick="editarProducto(${p.id})" title="Editar">✏️</button>
@@ -491,7 +499,7 @@ async function ejecutarToggleEstado(id, nuevoEstado) {
     await cargarProductos()
   } catch (error) {
     console.error('❌ Error cambiando estado:', error)
-    alert('Error al cambiar estado del producto')
+    jeshaToast('Error al cambiar estado del producto', 'error')
   }
 }
 
@@ -727,7 +735,7 @@ function configurarEventos() {
 //  Y llama initImportacion() dentro de DOMContentLoaded
 // ════════════════════════════════════════════════════════════════════
 
-const API_URL_IMPORT = 'http://localhost:3000'
+const API_URL_IMPORT = window.__JESHA_API_URL__ || 'http://localhost:3000'
 
 // ── Estado ──
 let importArchivoSeleccionado = null
@@ -1067,7 +1075,7 @@ function initAjusteInventario() {
 window.abrirAjusteInventario = function(id) {
   const usuario = JSON.parse(localStorage.getItem('jesha_usuario') || '{}')
   if (!ROLES_AJUSTE.includes(usuario.rol)) {
-    alert('No tienes permisos para ajustar inventario.')
+    jeshaToast('No tienes permisos para ajustar inventario.', 'error')
     return
   }
 

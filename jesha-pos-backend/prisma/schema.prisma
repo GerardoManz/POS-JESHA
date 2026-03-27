@@ -305,9 +305,9 @@ model InventarioSucursal {
   id                Int      @id @default(autoincrement())
   productoId        Int
   sucursalId        Int
-  stockActual       Int      @default(0)
-  stockMinimoAlerta Int      @default(5)
-  stockMaximo       Int?
+  stockActual       Decimal  @default(0) @db.Decimal(10,3)
+  stockMinimoAlerta Decimal  @default(5) @db.Decimal(10,3)
+  stockMaximo       Decimal? @db.Decimal(10,3)
   actualizadoEn     DateTime @updatedAt
   producto Producto @relation(fields: [productoId], references: [id], onDelete: Cascade)
   sucursal Sucursal @relation(fields: [sucursalId], references: [id])
@@ -322,9 +322,9 @@ model MovimientoInventario {
   sucursalId   Int
   usuarioId    Int?
   tipo         TipoMovimientoInventario
-  cantidad     Int
-  stockAntes   Int
-  stockDespues Int
+  cantidad     Decimal @db.Decimal(10,3)
+  stockAntes   Decimal @db.Decimal(10,3)
+  stockDespues Decimal @db.Decimal(10,3)
   referencia   String?
   notas        String?
   creadoEn     DateTime                 @default(now())
@@ -433,7 +433,7 @@ model DetalleVenta {
   id             Int     @id @default(autoincrement())
   ventaId        Int
   productoId     Int
-  cantidad       Int
+  cantidad       Decimal @db.Decimal(10,3)
   precioUnitario Decimal @db.Decimal(10, 2)
   descuento      Decimal @default(0) @db.Decimal(10, 2)
   subtotal       Decimal @db.Decimal(10, 2)
@@ -503,7 +503,7 @@ model DetalleCotizacion {
   productoId     Int?
   concepto       String?
   unidad         String?
-  cantidad       Int
+  cantidad       Decimal @db.Decimal(10,3)
   precioUnitario Decimal @db.Decimal(10, 2)
   descuento      Decimal @default(0) @db.Decimal(10, 2)
   subtotal       Decimal @db.Decimal(10, 2)

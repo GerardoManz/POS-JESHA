@@ -352,14 +352,17 @@ function mostrarProductos(productos) {
   }
   productosGrid.innerHTML = productos.map(p => `
     <div class="tarjeta-producto"
-         onclick="agregarAlCarrito(${p.id}, '${p.nombre.replace(/'/g,"\\'")}', ${p.precioVenta || p.precioBase})">
+         onclick="agregarAlCarrito(${p.id}, '${p.nombre.replace(/'/g,"\\'")}', ${p.precioVenta || p.precioBase}, ${p.esGranel || false}, '${p.unidadVenta || ''}')">
       ${p.imagenUrl ? `<img src="${p.imagenUrl.startsWith('http') ? p.imagenUrl : API_URL + p.imagenUrl}" alt="${p.nombre}" class="producto-imagen" />` : ''}
       <div class="producto-info">
         <h4>${p.nombre}</h4>
         <p class="producto-codigo">${p.codigoInterno}</p>
         <p class="producto-precio">$${parseFloat(p.precioVenta || p.precioBase).toFixed(2)}</p>
         <p class="producto-stock ${p.stock > 0 ? '' : 'agotado'}">
-          ${p.stock > 0 ? `Stock: ${p.stock}` : 'Agotado'}
+          ${p.stock > 0 ? `Stock: ${(() => {
+            const s = parseFloat(p.stock)
+            return Number.isInteger(s) ? s : s.toFixed(3).replace(/\.?0+$/, '')
+          })()}` : 'Agotado'}
         </p>
       </div>
     </div>
@@ -370,27 +373,25 @@ function mostrarProductos(productos) {
 //  CARRITO
 // ══════════════════════════════════════════════════════════════════
 
-function agregarAlCarrito(productoId, nombre, precio) {
+function agregarAlCarrito(productoId, nombre, precio, esGranel = false, unidadVenta = '') {
   const idParsed = parseInt(productoId, 10)
   const existe = carrito.find(item => item.id === idParsed)
-  
+
   if (existe) {
-    existe.cantidad += 1
+    existe.cantidad = parseFloat((existe.cantidad + (esGranel ? 0.1 : 1)).toFixed(3))
   } else {
-    carrito.push({ id: idParsed, nombre, precio: parseFloat(precio), cantidad: 1 })
+    carrito.push({ id: idParsed, nombre, precio: parseFloat(precio), cantidad: esGranel ? 0.1 : 1, esGranel, unidadVenta })
   }
-  
-  // Si no existe en la caché, creamos un fantasma con codigoInterno vacío para evitar el "undefined"
+
   if (!productoCache.get(idParsed)) {
-    productoCache.set(idParsed, { 
-      id: idParsed, 
-      nombre, 
-      precioVenta: precio, precioBase: precio, 
-      stock: null, 
-      codigoInterno: '' 
+    productoCache.set(idParsed, {
+      id: idParsed, nombre,
+      precioVenta: precio, precioBase: precio,
+      stock: null, codigoInterno: '',
+      esGranel, unidadVenta
     })
   }
-  
+
   actualizarCarrito()
 }
 
@@ -405,7 +406,7 @@ function actualizarCantidad(productoId, cantidad) {
     if (cantidad <= 0) {
       eliminarDelCarrito(productoId)
     } else {
-      item.cantidad = parseInt(cantidad)
+      item.cantidad = parseFloat(parseFloat(cantidad).toFixed(3))
       actualizarCarrito()
     }
   }
@@ -424,9 +425,11 @@ function actualizarCarrito() {
       <tr>
         <td>${item.nombre.substring(0, 20)}</td>
         <td style="text-align:center;">
-          <input type="number" value="${item.cantidad}" min="1"
-                 style="width:50px;padding:4px;text-align:center;"
+          <input type="number" value="${item.cantidad}"
+                 min="${item.esGranel ? 0.001 : 1}" step="${item.esGranel ? 0.001 : 1}"
+                 style="width:55px;padding:4px;text-align:center;"
                  onchange="actualizarCantidad(${item.id}, this.value)" />
+          ${item.unidadVenta ? `<span style="font-size:0.7rem;color:var(--muted);display:block;">${item.unidadVenta}</span>` : ""}
         </td>
         <td style="text-align:right;">$${(item.precio * item.cantidad).toFixed(2)}</td>
         <td style="text-align:center;">
@@ -881,12 +884,30 @@ async function confirmarVenta() {
       return
     }
 
+    if (metodoPagoSeleccionado === 'EFECTIVO') {
+      const montoInput = document.getElementById('confirm-monto-recibido')
+      const totalVenta = carrito.reduce((sum, item) => sum + (item.precio * item.cantidad), 0)
+      const montoVal   = parseFloat(montoInput?.value) || 0
+      if (!montoVal || montoVal <= 0) {
+        ventaEnProceso = false
+        mostrarToast('Ingresa el monto recibido en efectivo', 'warning')
+        montoInput?.focus()
+        return
+      }
+      if (montoVal < totalVenta) {
+        ventaEnProceso = false
+        mostrarToast(`El monto recibido ($${montoVal.toFixed(2)}) es menor al total ($${totalVenta.toFixed(2)})`, 'warning')
+        montoInput?.focus()
+        return
+      }
+    }
+
     const total    = carrito.reduce((sum, item) => sum + (item.precio * item.cantidad), 0)
     const detalles = carrito.map(item => ({
       productoId:     parseInt(item.id),
-      cantidad:       parseInt(item.cantidad),
+      cantidad:       parseFloat(item.cantidad),
       precioUnitario: parseFloat(item.precio),
-      subtotal:       parseFloat((parseFloat(item.precio) * parseInt(item.cantidad)).toFixed(2))
+      subtotal:       parseFloat((parseFloat(item.precio) * parseFloat(item.cantidad)).toFixed(2))
     }))
 
     const selVend            = document.getElementById('confirm-vendedor-select')
@@ -1033,7 +1054,7 @@ async function confirmarCotizar() {
   try {
     const detalles = carrito.map(item => ({
       productoId:     parseInt(item.id),
-      cantidad:       parseInt(item.cantidad),
+      cantidad:       parseFloat(item.cantidad),
       precioUnitario: parseFloat(item.precio)
     }))
     const payload = { clienteId: clienteSeleccionado?.id || null, detalles, notas, venceEn: venceEn || null }
@@ -1094,7 +1115,7 @@ function cargarCotizacionDesdeStorage() {
         !Array.isArray(payload.items) || payload.items.length === 0) return
 
     payload.items.forEach(item => {
-      carrito.push({ id: item.id, nombre: item.nombre, precio: parseFloat(item.precio), cantidad: parseInt(item.cantidad) || 1 })
+      carrito.push({ id: item.id, nombre: item.nombre, precio: parseFloat(item.precio), cantidad: parseFloat(item.cantidad) || 1 })
       productoCache.set(item.id, { id: item.id, nombre: item.nombre, precioVenta: item.precio, precioBase: item.precio, stock: null })
     })
 
@@ -1234,10 +1255,15 @@ function configurarEventListeners() {
         const idParsed = parseInt(res[0].id, 10);
         productoCache.set(idParsed, res[0]);
 
-        agregarAlCarrito(res[0].id, res[0].nombre, res[0].precioVenta || res[0].precioBase)
-        mostrarToast(`✓ ${res[0].nombre} agregado`, 'success')
-        searchProductos.value = ''
-        buscarProductos('')
+        const esBusquedaCodigo = !q.includes(' ') && q.length <= 20
+        if (esBusquedaCodigo) {
+          agregarAlCarrito(res[0].id, res[0].nombre, res[0].precioVenta || res[0].precioBase, res[0].esGranel || false, res[0].unidadVenta || '')
+          mostrarToast(`✓ ${res[0].nombre} agregado`, 'success')
+          searchProductos.value = ''
+          buscarProductos('')
+        } else {
+          mostrarProductos(res)
+        }
       } else if (res.length > 1) {
         res.forEach(p => productoCache.set(p.id, p))
         mostrarProductos(res)

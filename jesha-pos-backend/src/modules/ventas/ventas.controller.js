@@ -101,7 +101,7 @@ exports.crearVenta = async (req, res) => {
       for (const detalle of detallesValidados) {
         // parseInt en ambos lados para evitar fallo por string vs number
         const inventario = inventarios.find(i => parseInt(i.productoId) === parseInt(detalle.productoId))
-        const disponibles = inventario ? parseInt(inventario.stockActual) : 0
+        const disponibles = inventario ? parseFloat(inventario.stockActual) : 0
         if (!inventario || disponibles < detalle.cantidad) {
           sinStock.push({
             productoId: detalle.productoId,
@@ -140,8 +140,8 @@ exports.crearVenta = async (req, res) => {
         if (!inventarioAnterior) {
           throw Object.assign(new Error(`Registro de inventario no encontrado para producto ${detalle.productoId}`), { status: 400, codigo: 'INV_NOT_FOUND' })
         }
-        const stockAntes   = inventarioAnterior.stockActual
-        const stockDespues = stockAntes - detalle.cantidad
+        const stockAntes   = parseFloat(inventarioAnterior.stockActual)
+        const stockDespues = parseFloat((stockAntes - detalle.cantidad).toFixed(3))
         await tx.inventarioSucursal.update({
           where: { productoId_sucursalId: { productoId: detalle.productoId, sucursalId } },
           data:  { stockActual: stockDespues }
@@ -408,8 +408,8 @@ exports.cancelarVenta = async (req, res) => {
           where: { productoId_sucursalId: { productoId: detalle.productoId, sucursalId: venta.sucursalId } }
         })
         if (inv) {
-          const stockAntes   = inv.stockActual
-          const stockDespues = stockAntes + detalle.cantidad
+          const stockAntes   = parseFloat(inv.stockActual)
+          const stockDespues = parseFloat((stockAntes + detalle.cantidad).toFixed(3))
           await tx.inventarioSucursal.update({
             where: { productoId_sucursalId: { productoId: detalle.productoId, sucursalId: venta.sucursalId } },
             data:  { stockActual: stockDespues }

@@ -58,11 +58,22 @@ async function listar(req, res) {
         const where = { activo: true }
 
         if (terminoBusqueda) {
-            where.OR = [
-                { nombre:        { contains: terminoBusqueda, mode: 'insensitive' } },
-                { codigoInterno: { contains: terminoBusqueda, mode: 'insensitive' } },
-                { codigoBarras:  { contains: terminoBusqueda, mode: 'insensitive' } }
-            ]
+            const palabras = terminoBusqueda.trim().split(/\s+/).filter(Boolean)
+
+            if (palabras.length <= 1) {
+                // Búsqueda simple — una sola palabra o código
+                where.OR = [
+                    { nombre:        { contains: terminoBusqueda, mode: 'insensitive' } },
+                    { codigoInterno: { contains: terminoBusqueda, mode: 'insensitive' } },
+                    { codigoBarras:  { contains: terminoBusqueda, mode: 'insensitive' } }
+                ]
+            } else {
+                // Búsqueda multi-palabra — cada palabra debe aparecer en el nombre
+                // Ej: "cable negro 14" → contiene "cable" AND "negro" AND "14"
+                where.AND = palabras.map(palabra => ({
+                    nombre: { contains: palabra, mode: 'insensitive' }
+                }))
+            }
         }
 
         if (categoriaId) {
@@ -111,8 +122,13 @@ async function listar(req, res) {
 
         const data = productos.map(prod => ({
             ...prod,
-            stock: prod.inventarios?.length > 0 ? prod.inventarios[0].stockActual : 0,
-            inventario: prod.inventarios?.length > 0 ? prod.inventarios[0] : null
+            stock: prod.inventarios?.length > 0 ? parseFloat(prod.inventarios[0].stockActual) : 0,
+            inventario: prod.inventarios?.length > 0 ? {
+              ...prod.inventarios[0],
+              stockActual:       parseFloat(prod.inventarios[0].stockActual),
+              stockMinimoAlerta: parseFloat(prod.inventarios[0].stockMinimoAlerta),
+              stockMaximo:       prod.inventarios[0].stockMaximo ? parseFloat(prod.inventarios[0].stockMaximo) : null
+            } : null
         }))
 
         console.log(`✅ Productos: ${data.length} de ${total} | stock: ${conStock} con, ${sinStock} sin, ${bajoStock} bajo`)

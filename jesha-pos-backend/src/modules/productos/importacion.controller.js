@@ -116,6 +116,26 @@ function validarFila(fila, idx) {
 // MAPEO CSV → PRISMA
 // ═══════════════════════════════════════════════════════════════════
 
+
+// ═══════════════════════════════════════════════════════════════════
+// INFERIR UNIDAD DE VENTA desde descripción del producto
+// ═══════════════════════════════════════════════════════════════════
+
+function inferirUnidadVenta(descripcion, esGranel) {
+    if (!esGranel) return null
+    const desc = (descripcion || '').toUpperCase()
+
+    if (/X METRO|XM$|POR METRO|X MTS| XM |X M /.test(desc))  return 'm'
+    if (/X KG|X KILO|POR KG|POR KILO|X GR|POR GR/.test(desc)) return 'kg'
+    if (/POR LITRO|X LITRO|X LT/.test(desc))                   return 'l'
+    if (/METRO CUBICO|METRO CÚB/.test(desc))                   return 'm³'
+    if (/VIAJE/.test(desc))                                     return 'vje'
+    if (/ROLLO/.test(desc))                                     return 'rollo'
+    if (/BOTE/.test(desc))                                      return 'bote'
+
+    return 'pza' // default para granel sin unidad clara
+}
+
 function mapearProducto(fila) {
     let codigoBarras = fila['CLAVE ALTERNA'] || null
     if (codigoBarras && esNotacionCientifica(codigoBarras)) {
@@ -139,6 +159,7 @@ function mapearProducto(fila) {
         claveSat:  fila['CLAVE SAT']  || '31162800',
         unidadSat: fila['UNIDAD SAT'] || 'H87',
         esGranel,
+        unidadVenta: inferirUnidadVenta(fila['DESCRIPCION'], esGranel),
         activo: true,
         // Campos auxiliares no en BD directa — los usamos para el inventario
         _stockInicial: stockInicial,
@@ -309,6 +330,7 @@ exports.importarCSV = async (req, res) => {
                                 claveSat:     dataSinAux.claveSat,
                                 unidadSat:    dataSinAux.unidadSat,
                                 esGranel:     dataSinAux.esGranel,
+                                unidadVenta:  dataSinAux.unidadVenta,
                                 categoriaId,
                             }
                         })
