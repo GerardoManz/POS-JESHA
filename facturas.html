@@ -57,6 +57,7 @@
       <input type="date" id="filtro-desde" class="filter-select" />
       <input type="date" id="filtro-hasta" class="filter-select" />
       <button id="btn-limpiar" class="btn-secondary">✕ Limpiar</button>
+      <button id="btn-nueva-factura" class="btn-primary">+ Nueva Factura</button>
     </section>
 
     <!-- ── TABLA ── -->
@@ -133,9 +134,80 @@
       <!-- Acciones -->
       <div style="display:flex;gap:10px;flex-wrap:wrap;padding-top:12px;border-top:1px solid var(--panel-border);">
         <button id="det-btn-timbrar" class="btn-primary" style="display:none;">⚡ Timbrar ahora</button>
-        <button id="det-btn-xml" class="btn-secondary" style="display:none;">📄 Descargar XML</button>
         <button id="det-btn-pdf" class="btn-secondary" style="display:none;">🖨️ Descargar PDF</button>
+        <button id="det-btn-xml" class="btn-secondary" style="display:none;">📄 Descargar XML</button>
+        <button id="det-btn-email" class="btn-secondary" style="display:none;">📧 Enviar email</button>
         <button id="det-btn-cancelar" class="btn-danger" style="display:none;">✕ Cancelar factura</button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL FACTURA MANUAL ══ -->
+<div id="modal-manual" class="modal">
+  <div class="modal-content" style="max-width:620px;">
+    <div class="modal-header">
+      <h3>Crear Factura Manual</h3>
+      <button class="modal-close" id="manual-close">&times;</button>
+    </div>
+    <div class="fact-manual-form" id="manual-form">
+
+      <!-- Buscar venta -->
+      <div class="fact-field">
+        <label>Buscar venta por folio <span>*</span></label>
+        <div style="display:flex;gap:8px;">
+          <input type="text" id="m-folio" placeholder="VTA-20260327-00065" style="flex:1;" />
+          <button type="button" id="btn-buscar-venta" class="btn-primary" style="white-space:nowrap;">Buscar</button>
+        </div>
+        <div id="venta-result" class="venta-search-result"></div>
+      </div>
+
+      <!-- Datos fiscales -->
+      <div id="manual-fiscal-fields" style="display:none;">
+        <div style="display:flex;flex-direction:column;gap:14px;">
+
+          <div class="fact-field">
+            <label>RFC <span>*</span></label>
+            <input type="text" id="m-rfc" placeholder="XAXX010101000" maxlength="13" style="text-transform:uppercase;" />
+          </div>
+
+          <div class="fact-field">
+            <label>Nombre / Razón Social <span>*</span></label>
+            <input type="text" id="m-razon" placeholder="Como aparece en constancia fiscal" />
+          </div>
+
+          <div class="fact-form-row">
+            <div class="fact-field">
+              <label>Régimen Fiscal <span>*</span></label>
+              <select id="m-regimen">
+                <option value="">Selecciona...</option>
+              </select>
+            </div>
+            <div class="fact-field">
+              <label>C.P. Fiscal <span>*</span></label>
+              <input type="text" id="m-cp" placeholder="00000" maxlength="5" />
+            </div>
+          </div>
+
+          <div class="fact-field">
+            <label>Uso del CFDI <span>*</span></label>
+            <select id="m-uso">
+              <option value="">Selecciona...</option>
+            </select>
+          </div>
+
+          <div class="fact-field">
+            <label>Correo electrónico <span>*</span></label>
+            <input type="email" id="m-email" placeholder="cliente@correo.com" />
+          </div>
+
+          <div id="manual-error" class="venta-search-result error" style="display:none;"></div>
+
+          <button type="button" id="btn-facturar-manual" class="btn-primary" style="width:100%;justify-content:center;padding:12px;">
+            ⚡ Timbrar Factura
+          </button>
+        </div>
       </div>
 
     </div>

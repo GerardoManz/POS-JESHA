@@ -90,8 +90,8 @@ async function cargarFacturas() {
         <td>
           <div class="actions-cell" onclick="event.stopPropagation()">
             <button class="btn-icon" onclick="verDetalle(${f.id})" title="Ver detalle">👁</button>
-            ${f.xmlUrl ? `<button class="btn-icon" onclick="descargar('${f.xmlUrl}','xml')" title="Descargar XML">📄</button>` : ''}
-            ${f.pdfUrl ? `<button class="btn-icon" onclick="descargar('${f.pdfUrl}','pdf')" title="Descargar PDF">🖨️</button>` : ''}
+            ${f.facturapiId ? `<button class="btn-icon" onclick="descargarFactura(${f.id},'pdf')" title="Descargar PDF">🖨️</button>` : ''}
+            ${f.facturapiId ? `<button class="btn-icon" onclick="descargarFactura(${f.id},'xml')" title="Descargar XML">📄</button>` : ''}
             ${f.estado === 'PENDIENTE_TIMBRADO' ? `<button class="btn-icon btn-timbrar" onclick="timbrarManual(${f.id})" title="Timbrar ahora">⚡</button>` : ''}
           </div>
         </td>
@@ -145,13 +145,20 @@ window.verDetalle = async function(id) {
 
     btnTimbrar.style.display  = f.estado === 'PENDIENTE_TIMBRADO' ? 'flex' : 'none'
     btnCancelar.style.display = ['TIMBRADA','FACTURADA'].includes(f.estado) ? 'flex' : 'none'
-    btnXml.style.display      = f.xmlUrl ? 'flex' : 'none'
-    btnPdf.style.display      = f.pdfUrl ? 'flex' : 'none'
+    btnXml.style.display      = f.facturapiId ? 'flex' : 'none'
+    btnPdf.style.display      = f.facturapiId ? 'flex' : 'none'
 
     btnTimbrar.onclick  = () => timbrarManual(f.id)
     btnCancelar.onclick = () => cancelarFactura(f.id)
-    btnXml.onclick      = () => descargar(f.xmlUrl, 'xml')
-    btnPdf.onclick      = () => descargar(f.pdfUrl, 'pdf')
+    btnXml.onclick      = () => descargarFactura(f.id, 'xml')
+    btnPdf.onclick      = () => descargarFactura(f.id, 'pdf')
+
+    // Botón enviar email (si existe)
+    const btnEmail = document.getElementById('det-btn-email')
+    if (btnEmail) {
+      btnEmail.style.display = f.facturapiId ? 'flex' : 'none'
+      btnEmail.onclick = () => reenviarEmail(f.id)
+    }
 
     document.getElementById('modal-detalle').classList.add('active')
   } catch (err) {
@@ -160,7 +167,7 @@ window.verDetalle = async function(id) {
 }
 
 // ════════════════════════════════════════════════════════════════════
-//  TIMBRAR MANUAL
+//  TIMBRAR MANUAL (desde detalle — factura PENDIENTE existente)
 // ════════════════════════════════════════════════════════════════════
 window.timbrarManual = async function(id) {
   const ok = await jeshaConfirm({
@@ -221,23 +228,257 @@ async function cancelarFactura(id) {
     if (!res.ok) throw new Error(data.error)
     document.getElementById('modal-detalle').classList.remove('active')
     cargarFacturas()
+    jeshaToast('Factura cancelada', 'success')
   } catch (err) {
     jeshaToast('Error: ' + err.message, 'error')
   }
 }
 
 // ════════════════════════════════════════════════════════════════════
-//  DESCARGAR XML / PDF
+//  DESCARGAR PDF / XML (proxy por el backend)
 // ════════════════════════════════════════════════════════════════════
+window.descargarFactura = async function(facturaId, tipo) {
+  try {
+    const res = await fetch(`${API_URL}/facturas/${facturaId}/descargar/${tipo}`, {
+      headers: { 'Authorization': `Bearer ${TOKEN}` }
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Error desconocido' }))
+      throw new Error(err.error || 'Error al descargar')
+    }
+    const blob = await res.blob()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `factura.${tipo}`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  } catch (err) {
+    jeshaToast('Error al descargar: ' + err.message, 'error')
+  }
+}
+
+// Legacy — por si quedan referencias viejas con URLs directas
 window.descargar = function(url, tipo) {
   if (!url) { jeshaToast('URL de factura no disponible', 'warning'); return }
   const a = document.createElement('a')
-  a.href = url
-  a.target = '_blank'
-  a.download = `factura.${tipo}`
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
+  a.href = url; a.target = '_blank'; a.download = `factura.${tipo}`
+  document.body.appendChild(a); a.click(); document.body.removeChild(a)
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  REENVIAR EMAIL
+// ════════════════════════════════════════════════════════════════════
+async function reenviarEmail(facturaId) {
+  const ok = await jeshaConfirm({
+    title: 'Reenviar factura por email',
+    message: '¿Enviar el PDF y XML de esta factura al correo del cliente?',
+    confirmText: 'Enviar', type: 'primary'
+  })
+  if (!ok) return
+  try {
+    const res = await fetch(`${API_URL}/facturas/${facturaId}/enviar-email`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${TOKEN}` }
+    })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.error)
+    jeshaToast(data.mensaje || 'Email enviado', 'success')
+  } catch (err) {
+    jeshaToast('Error: ' + err.message, 'error')
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  FACTURACIÓN MANUAL — buscar venta y timbrar desde el panel admin
+// ════════════════════════════════════════════════════════════════════
+let ventaParaFacturar = null
+
+async function buscarVentaParaFactura() {
+  const folio = document.getElementById('m-folio').value.trim()
+  const resultDiv = document.getElementById('venta-result')
+  if (!folio) { resultDiv.className = 'venta-search-result error show'; resultDiv.textContent = 'Ingresa un folio de venta'; return }
+
+  resultDiv.className = 'venta-search-result show'
+  resultDiv.textContent = 'Buscando...'
+  document.getElementById('manual-fiscal-fields').style.display = 'none'
+  ventaParaFacturar = null
+
+  try {
+    // Buscar por folio en el listado de ventas
+    const res = await fetch(`${API_URL}/ventas?q=${encodeURIComponent(folio)}&take=5`, {
+      headers: { 'Authorization': `Bearer ${TOKEN}` }
+    })
+    const data = await res.json()
+    const ventas = data.data || []
+
+    if (ventas.length === 0) {
+      resultDiv.className = 'venta-search-result error show'
+      resultDiv.textContent = 'No se encontró venta con ese folio'
+      return
+    }
+
+    // Tomar la primera coincidencia y cargar detalle completo
+    const v = ventas[0]
+    const res2 = await fetch(`${API_URL}/ventas/${v.id}`, {
+      headers: { 'Authorization': `Bearer ${TOKEN}` }
+    })
+    const d2 = await res2.json()
+    const venta = d2.data
+
+    // Validaciones
+    if (venta.facturaEstado === 'FACTURADA') {
+      resultDiv.className = 'venta-search-result error show'
+      resultDiv.textContent = 'Esta venta ya fue facturada'
+      return
+    }
+    if (venta.facturaEstado === 'BLOQUEADA') {
+      resultDiv.className = 'venta-search-result error show'
+      resultDiv.textContent = 'Venta bloqueada — efectivo mayor a $2,000'
+      return
+    }
+
+    ventaParaFacturar = venta
+    resultDiv.className = 'venta-search-result show'
+    resultDiv.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <strong>${venta.folio}</strong> · ${fmt(venta.total)} · ${venta.metodoPago}
+          <br><span style="font-size:0.78rem;color:var(--muted)">Cliente: ${venta.cliente?.nombre || 'Público general'} · ${venta.estado}</span>
+        </div>
+        <span style="color:#60d080;font-size:0.8rem;font-weight:600;">✓ Disponible</span>
+      </div>
+    `
+
+    // Mostrar campos fiscales
+    document.getElementById('manual-fiscal-fields').style.display = 'block'
+    llenarCatalogosManual()
+
+    // Limpiar campos previos
+    document.getElementById('m-rfc').value = ''
+    document.getElementById('m-razon').value = ''
+    document.getElementById('m-regimen').value = ''
+    document.getElementById('m-cp').value = ''
+    document.getElementById('m-uso').value = ''
+    document.getElementById('m-email').value = ''
+    document.getElementById('manual-error').style.display = 'none'
+
+    // Autocompletar si hay datos del cliente
+    if (venta.cliente) {
+      if (venta.cliente.rfc)    document.getElementById('m-rfc').value   = venta.cliente.rfc
+      if (venta.cliente.nombre) document.getElementById('m-razon').value = venta.cliente.nombre
+    }
+
+    // Focus al RFC
+    setTimeout(() => document.getElementById('m-rfc')?.focus(), 100)
+
+  } catch (e) {
+    resultDiv.className = 'venta-search-result error show'
+    resultDiv.textContent = 'Error: ' + e.message
+  }
+}
+
+function llenarCatalogosManual() {
+  const regimenes = [
+    { c: '601', d: 'General de Ley Personas Morales' },
+    { c: '603', d: 'Personas Morales con Fines no Lucrativos' },
+    { c: '605', d: 'Sueldos y Salarios' },
+    { c: '606', d: 'Arrendamiento' },
+    { c: '608', d: 'Demás Ingresos' },
+    { c: '612', d: 'Actividades Empresariales y Profesionales' },
+    { c: '616', d: 'Sin obligaciones fiscales' },
+    { c: '621', d: 'Incorporación Fiscal' },
+    { c: '625', d: 'Plataformas Tecnológicas' },
+    { c: '626', d: 'Régimen Simplificado de Confianza' },
+  ]
+  const usos = [
+    { c: 'G01', d: 'Adquisición de mercancías' },
+    { c: 'G02', d: 'Devoluciones, descuentos o bonificaciones' },
+    { c: 'G03', d: 'Gastos en general' },
+    { c: 'I01', d: 'Construcciones' },
+    { c: 'I04', d: 'Equipo de cómputo y accesorios' },
+    { c: 'I08', d: 'Otra maquinaria y equipo' },
+    { c: 'S01', d: 'Sin efectos fiscales' },
+  ]
+  const selR = document.getElementById('m-regimen')
+  const selU = document.getElementById('m-uso')
+  // Solo llenar si están vacíos
+  if (selR.options.length <= 1) {
+    regimenes.forEach(r => { selR.add(new Option(`${r.c} — ${r.d}`, r.c)) })
+  }
+  if (selU.options.length <= 1) {
+    usos.forEach(u => { selU.add(new Option(`${u.c} — ${u.d}`, u.c)) })
+  }
+}
+
+async function facturarManualDesdeModal() {
+  if (!ventaParaFacturar) return
+
+  const errDiv = document.getElementById('manual-error')
+  const btn    = document.getElementById('btn-facturar-manual')
+
+  const body = {
+    token:         ventaParaFacturar.tokenQr,
+    rfc:           document.getElementById('m-rfc').value.trim().toUpperCase(),
+    razonSocial:   document.getElementById('m-razon').value.trim(),
+    regimenFiscal: document.getElementById('m-regimen').value,
+    codigoPostal:  document.getElementById('m-cp').value.trim(),
+    usoCfdi:       document.getElementById('m-uso').value,
+    email:         document.getElementById('m-email').value.trim()
+  }
+
+  // Validar campos
+  const validaciones = [
+    [body.rfc,           'RFC requerido'],
+    [body.razonSocial,   'Razón social requerida'],
+    [body.regimenFiscal, 'Selecciona el régimen fiscal'],
+    [body.codigoPostal,  'Código postal requerido'],
+    [body.usoCfdi,       'Selecciona el uso del CFDI'],
+    [body.email,         'Correo electrónico requerido'],
+  ]
+  for (const [val, msg] of validaciones) {
+    if (!val) {
+      errDiv.style.display = 'block'
+      errDiv.textContent = msg
+      return
+    }
+  }
+  if (body.codigoPostal.length !== 5) {
+    errDiv.style.display = 'block'
+    errDiv.textContent = 'El código postal debe tener 5 dígitos'
+    return
+  }
+
+  btn.disabled = true
+  btn.textContent = '⟳ Timbrando...'
+  errDiv.style.display = 'none'
+
+  try {
+    const res = await fetch(`${API_URL}/facturar/api`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(body)
+    })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.error || 'Error al facturar')
+
+    document.getElementById('modal-manual').classList.remove('active')
+    cargarFacturas()
+
+    if (data.timbrado) {
+      jeshaToast(`Factura timbrada — UUID: ${data.uuid}`, 'success')
+    } else {
+      jeshaToast(data.mensaje || 'Solicitud guardada como pendiente', 'warning')
+    }
+
+  } catch (e) {
+    errDiv.style.display = 'block'
+    errDiv.textContent = e.message
+    btn.disabled = false
+    btn.textContent = '⚡ Timbrar Factura'
+  }
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -276,13 +517,49 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-prev')?.addEventListener('click', () => { if (paginaActual > 1) { paginaActual--; cargarFacturas() } })
   document.getElementById('btn-next')?.addEventListener('click', () => { paginaActual++; cargarFacturas() })
 
-  // Modal detalle cerrar
+  // Modal detalle — cerrar
   document.getElementById('det-close')?.addEventListener('click', () => {
     document.getElementById('modal-detalle').classList.remove('active')
   })
 
+  // Modal manual — abrir
+  document.getElementById('btn-nueva-factura')?.addEventListener('click', () => {
+    document.getElementById('m-folio').value = ''
+    document.getElementById('venta-result').className = 'venta-search-result'
+    document.getElementById('venta-result').innerHTML = ''
+    document.getElementById('manual-fiscal-fields').style.display = 'none'
+    ventaParaFacturar = null
+    document.getElementById('modal-manual').classList.add('active')
+    setTimeout(() => document.getElementById('m-folio')?.focus(), 200)
+  })
+
+  // Modal manual — cerrar
+  document.getElementById('manual-close')?.addEventListener('click', () => {
+    document.getElementById('modal-manual').classList.remove('active')
+  })
+
+  // Modal manual — buscar venta
+  document.getElementById('btn-buscar-venta')?.addEventListener('click', buscarVentaParaFactura)
+
+  // Modal manual — Enter en folio dispara búsqueda
+  document.getElementById('m-folio')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); buscarVentaParaFactura() }
+  })
+
+  // Modal manual — solo números en CP
+  document.getElementById('m-cp')?.addEventListener('input', function() {
+    this.value = this.value.replace(/\D/g, '').substring(0, 5)
+  })
+
+  // Modal manual — timbrar
+  document.getElementById('btn-facturar-manual')?.addEventListener('click', facturarManualDesdeModal)
+
+  // Escape cierra cualquier modal abierto
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') document.getElementById('modal-detalle')?.classList.remove('active')
+    if (e.key === 'Escape') {
+      document.getElementById('modal-detalle')?.classList.remove('active')
+      document.getElementById('modal-manual')?.classList.remove('active')
+    }
   })
 })
 

@@ -759,7 +759,7 @@ function generarPdf(c) {
     <div class="empresa">
       <img src="data:image/png;base64,${LOGO_B64}" alt="JESHA" style="height:60px;width:auto;display:block;margin-bottom:4px;" />
       <p>Av. Vialidad San Simón 3, La Toma de Zacatecas, C.P. 98660</p>
-      <p>Guadalupe, Zacatecas · Tel: 492 194 1703 · jeshadelgado544@gmail.com</p>
+      <p>Guadalupe, Zacatecas · Tel: 492 101 6879 · jeshadelgado544@gmail.com</p>
     </div>
     <div class="folio-box">
       <div class="folio">${c.folio}</div>

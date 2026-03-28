@@ -9,9 +9,9 @@ const router  = express.Router()
 const ctrl    = require('./facturacion.controller')
 
 // GET  /facturar/api?token=XXX — datos de la venta para el formulario
-router.get('/api',         ctrl.obtenerVentaPorToken)
+router.get('/',         ctrl.obtenerVentaPorToken)
 
 // POST /facturar/api — solicitar + timbrar (o guardar pendiente)
-router.post('/api',        ctrl.solicitarFactura)
+router.post('/',        ctrl.solicitarFactura)
 
 module.exports = router

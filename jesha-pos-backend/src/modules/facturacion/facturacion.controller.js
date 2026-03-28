@@ -7,7 +7,9 @@
 
 const prisma = require('../../lib/prisma')
 
-// ── Facturapi — se inicializa solo si la key está configurada ────────
+const TASA_IVA   = parseFloat(process.env.TASA_IVA || '0.16')
+const IVA_FACTOR = 1 + TASA_IVA
+
 let facturapi = null
 function getFacturapi() {
   if (facturapi) return facturapi
@@ -16,16 +18,11 @@ function getFacturapi() {
     console.warn('⚠️  FACTURAPI_KEY no configurada — timbrado desactivado')
     return null
   }
-  const Facturapi = require('facturapi')
-
-// Tasa IVA — configurable vía .env (TASA_IVA=0.16)
-const TASA_IVA   = parseFloat(process.env.TASA_IVA || '0.16')
-const IVA_FACTOR = 1 + TASA_IVA
+  const Facturapi = require('facturapi').default
   facturapi = new Facturapi(key)
   return facturapi
 }
 
-// ── Mapeo método de pago JESHA → clave SAT ──────────────────────────
 const FORMA_PAGO_SAT = {
   EFECTIVO:      '01',
   DEBITO:        '28',
@@ -33,7 +30,6 @@ const FORMA_PAGO_SAT = {
   TRANSFERENCIA: '03'
 }
 
-// ── Catálogos SAT ────────────────────────────────────────────────────
 const REGIMENES_FISCALES = [
   { clave: '601', descripcion: 'General de Ley Personas Morales' },
   { clave: '603', descripcion: 'Personas Morales con Fines no Lucrativos' },
@@ -83,7 +79,7 @@ const USOS_CFDI = [
 ]
 
 // ════════════════════════════════════════════════════════════════════
-//  GET /facturar/api?token=XXX — datos de la venta para el formulario
+//  GET /facturar/api?token=XXX
 // ════════════════════════════════════════════════════════════════════
 exports.obtenerVentaPorToken = async (req, res) => {
   try {
@@ -106,50 +102,31 @@ exports.obtenerVentaPorToken = async (req, res) => {
 
     if (!venta) return res.status(404).json({ error: 'Venta no encontrada. Verifica el QR.' })
 
-    const ahora     = new Date()
-    const fechaVenta = new Date(venta.creadaEn)
-    const horas     = (ahora - fechaVenta) / (1000 * 60 * 60)
+    const ahora      = new Date()
+    const fechaVenta  = new Date(venta.creadaEn)
+    const horas      = (ahora - fechaVenta) / (1000 * 60 * 60)
 
-    if (venta.factura) {
-      return res.status(409).json({ error: 'Esta venta ya fue facturada.', uuid: venta.factura.folioFiscal || null })
-    }
-    if (venta.estado === 'CANCELADA') {
-      return res.status(400).json({ error: 'Esta venta fue cancelada y no puede facturarse.' })
-    }
-    if (horas > 72) {
-      return res.status(400).json({
-        error: `El plazo para solicitar factura venció. Solo tienes 72 horas desde la compra (${Math.floor(horas)}h transcurridas).`
-      })
-    }
-    if (venta.metodoPago === 'EFECTIVO' && parseFloat(venta.total) > 2000) {
-      return res.status(400).json({
-        error: `Las ventas en efectivo mayores a $2,000 no pueden facturarse (total: $${parseFloat(venta.total).toFixed(2)}).`
-      })
-    }
+    if (venta.factura) return res.status(409).json({ error: 'Esta venta ya fue facturada.', uuid: venta.factura.folioFiscal || null })
+    if (venta.estado === 'CANCELADA') return res.status(400).json({ error: 'Esta venta fue cancelada y no puede facturarse.' })
+    if (venta.facturaEstado === 'BLOQUEADA') return res.status(400).json({ error: 'Esta venta no puede facturarse en línea (efectivo mayor a $2,000). Solicita tu factura directamente en sucursal.' })
+    if (venta.facturaEstado === 'VENCIDA' || ahora > new Date(venta.facturaLimite)) return res.status(400).json({ error: 'El plazo para solicitar factura venció. Contacta a la sucursal si necesitas ayuda.' })
 
     res.json({
       success: true,
       venta: {
-        id:          venta.id,
-        folio:       venta.folio,
-        fecha:       fechaVenta,
-        total:       parseFloat(venta.total),
-        metodoPago:  venta.metodoPago,
+        id: venta.id, folio: venta.folio, fecha: fechaVenta,
+        total: parseFloat(venta.total), metodoPago: venta.metodoPago,
         horasTranscurridas: Math.floor(horas),
-        productos:   venta.detalles.map(d => ({
-          nombre:    d.producto?.nombre || '—',
-          cantidad:  d.cantidad,
-          precio:    parseFloat(d.precioUnitario),
-          subtotal:  parseFloat(d.subtotal || (d.precioUnitario * d.cantidad))
+        productos: venta.detalles.map(d => ({
+          nombre: d.producto?.nombre || '—', cantidad: d.cantidad,
+          precio: parseFloat(d.precioUnitario),
+          subtotal: parseFloat(d.subtotal || (d.precioUnitario * d.cantidad))
         }))
       },
       clienteDatos: venta.cliente ? {
-        rfc:          venta.cliente.rfc || '',
-        razonSocial:  venta.cliente.razonSocial || venta.cliente.nombre || '',
-        regimenFiscal: venta.cliente.regimenFiscal || '',
-        codigoPostal: venta.cliente.codigoPostalFiscal || '',
-        usoCfdi:      venta.cliente.usoCfdi || 'G03',
-        email:        venta.cliente.email || '',
+        rfc: venta.cliente.rfc || '', razonSocial: venta.cliente.razonSocial || venta.cliente.nombre || '',
+        regimenFiscal: venta.cliente.regimenFiscal || '', codigoPostal: venta.cliente.codigoPostalFiscal || '',
+        usoCfdi: venta.cliente.usoCfdi || 'G03', email: venta.cliente.email || '',
       } : null,
       catalogos: { regimenes: REGIMENES_FISCALES, usosCfdi: USOS_CFDI }
     })
@@ -161,183 +138,135 @@ exports.obtenerVentaPorToken = async (req, res) => {
 
 // ════════════════════════════════════════════════════════════════════
 //  POST /facturar/api — solicitar + timbrar
-//  Si Facturapi está configurada: timbra en el momento
-//  Si no: guarda como PENDIENTE_TIMBRADO para procesar después
 // ════════════════════════════════════════════════════════════════════
 exports.solicitarFactura = async (req, res) => {
   try {
     const { token, rfc, razonSocial, regimenFiscal, codigoPostal, usoCfdi, email } = req.body
 
-    // ── Validaciones ──────────────────────────────────────────────
-    if (!token)        return res.status(400).json({ error: 'Token requerido' })
-    if (!rfc)          return res.status(400).json({ error: 'RFC requerido' })
-    if (!razonSocial)  return res.status(400).json({ error: 'Nombre o razón social requerida' })
+    if (!token)         return res.status(400).json({ error: 'Token requerido' })
+    if (!rfc)           return res.status(400).json({ error: 'RFC requerido' })
+    if (!razonSocial)   return res.status(400).json({ error: 'Nombre o razón social requerida' })
     if (!regimenFiscal) return res.status(400).json({ error: 'Régimen fiscal requerido' })
-    if (!codigoPostal) return res.status(400).json({ error: 'Código postal fiscal requerido' })
-    if (!usoCfdi)      return res.status(400).json({ error: 'Uso CFDI requerido' })
-    if (!email)        return res.status(400).json({ error: 'Email requerido' })
+    if (!codigoPostal)  return res.status(400).json({ error: 'Código postal fiscal requerido' })
+    if (!usoCfdi)       return res.status(400).json({ error: 'Uso CFDI requerido' })
+    if (!email)         return res.status(400).json({ error: 'Email requerido' })
 
-    const rfcRegex = /^[A-ZÑ&]{3,4}\d{6}[A-Z0-9]{3}$/i
-    if (!rfcRegex.test(rfc.trim())) {
-      return res.status(400).json({ error: 'RFC inválido. Verifica el formato.' })
-    }
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-    if (!emailRegex.test(email.trim())) {
-      return res.status(400).json({ error: 'Email inválido.' })
-    }
+    if (!/^[A-ZÑ&]{3,4}\d{6}[A-Z0-9]{3}$/i.test(rfc.trim())) return res.status(400).json({ error: 'RFC inválido.' })
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return res.status(400).json({ error: 'Email inválido.' })
 
-    // ── Cargar venta ──────────────────────────────────────────────
     const venta = await prisma.venta.findFirst({
-      where:   { tokenQr: token },
-      include: {
-        factura:  true,
-        detalles: { include: { producto: true } }
-      }
+      where: { tokenQr: token },
+      include: { factura: true, detalles: { include: { producto: true } } }
     })
 
-    if (!venta)          return res.status(404).json({ error: 'Venta no encontrada' })
-    if (venta.factura)   return res.status(409).json({ error: 'Esta venta ya fue facturada.' })
+    if (!venta)        return res.status(404).json({ error: 'Venta no encontrada' })
+    if (venta.factura) return res.status(409).json({ error: 'Esta venta ya fue facturada.' })
     if (venta.estado === 'CANCELADA') return res.status(400).json({ error: 'Venta cancelada.' })
+    if (venta.facturaEstado === 'BLOQUEADA') return res.status(400).json({ error: 'Venta no facturable en línea.' })
+    if (new Date() > new Date(venta.facturaLimite)) return res.status(400).json({ error: 'Plazo de facturación vencido.' })
 
-    const horas = (new Date() - new Date(venta.creadaEn)) / (1000 * 60 * 60)
-    if (horas > 72) return res.status(400).json({ error: 'Plazo de 72 horas vencido.' })
-    if (venta.metodoPago === 'EFECTIVO' && parseFloat(venta.total) > 2000) {
-      return res.status(400).json({ error: 'Ventas en efectivo mayores a $2,000 no facturables.' })
-    }
+    const total        = parseFloat(venta.total)
+    const subtotal     = parseFloat((total / IVA_FACTOR).toFixed(2))
+    const iva          = parseFloat((total - subtotal).toFixed(2))
+    const rfcUpper     = rfc.trim().toUpperCase()
+    const emailTrimmed = email.trim()
 
-    const total    = parseFloat(venta.total)
-    const subtotal = parseFloat((total / IVA_FACTOR).toFixed(2))
-    const iva      = parseFloat((total - subtotal).toFixed(2))
-    const rfcUpper = rfc.trim().toUpperCase()
-
-    // ── Intentar timbrado inmediato si Facturapi está configurada ──
     const fp = getFacturapi()
 
     if (fp) {
       try {
-        // Armar conceptos desde los detalles de la venta
-        const items = venta.detalles.map(d => ({
-          quantity:     d.cantidad,
-          product: {
-            description:   d.producto?.nombre || 'Mercancía',
-            // Usar clave SAT del producto si existe, sino clave genérica ferretería
-            product_key:   d.producto?.claveSat || '31161500',
-            unit_key:      d.producto?.unidadSat || 'H87',
-            price:         parseFloat(d.precioUnitario),
-            tax_included:  true,
-            taxes: [{ type: 'IVA', rate: TASA_IVA, factor: 'Tasa', withholding: false }]
+        const items = venta.detalles.map(d => {
+          // Usar clave SAT del producto solo si tiene 8 dígitos válidos, sino default ferretería
+          let productKey = '31161500'
+          if (d.producto?.claveSat && /^\d{8}$/.test(d.producto.claveSat)) {
+            productKey = d.producto.claveSat
           }
-        }))
+          return {
+            quantity: d.cantidad,
+            product: {
+              description:  d.producto?.nombre || 'Mercancía',
+              product_key:  productKey,
+              unit_key:     d.producto?.unidadSat || 'H87',
+              price:        parseFloat(d.precioUnitario),
+              tax_included: true,
+              taxes: [{ type: 'IVA', rate: TASA_IVA, factor: 'Tasa', withholding: false }]
+            }
+          }
+        })
 
         const invoice = await fp.invoices.create({
           customer: {
-            legal_name: razonSocial.trim(),
-            tax_id:     rfcUpper,
-            tax_system: regimenFiscal,
-            address:    { zip: codigoPostal.trim() }
+            legal_name: razonSocial.trim(), tax_id: rfcUpper,
+            tax_system: regimenFiscal, email: emailTrimmed || undefined,
+            address: { zip: codigoPostal.trim() }
           },
-          use:          usoCfdi,
+          use: usoCfdi,
           payment_form: FORMA_PAGO_SAT[venta.metodoPago] || '01',
           payment_method: 'PUE',
-          items,
-          ...(email && { email })
+          items
         })
 
-        // Guardar factura timbrada en BD
+        // Guardar con facturapiId para poder descargar PDF/XML después
         const factura = await prisma.facturaCfdi.create({
           data: {
-            ventaId:       venta.id,
-            clienteId:     venta.clienteId || null,
-            rfcReceptor:   rfcUpper,
-            nombreReceptor: razonSocial.trim(),
-            cpReceptor:    codigoPostal.trim(),
-            regimenFiscal,
-            usoCfdi,
+            ventaId: venta.id, clienteId: venta.clienteId || null,
+            rfcReceptor: rfcUpper, nombreReceptor: razonSocial.trim(),
+            cpReceptor: codigoPostal.trim(), regimenFiscal, usoCfdi,
+            emailReceptor: emailTrimmed,
             lugarExpedicion: process.env.JESHA_CP_EMISOR || '98660',
-            subtotal,
-            iva,
-            total,
+            subtotal, iva, total,
             folioFiscal: invoice.uuid,
-            xmlUrl:      invoice.xml_url  || null,
-            pdfUrl:      invoice.pdf_url  || null,
-            estado:      'TIMBRADA',
-            timbradaEn:  new Date()
+            facturapiId: invoice.id,
+            estado: 'TIMBRADA', timbradaEn: new Date()
           }
         })
 
-        // Actualizar estado de la venta
-        await prisma.venta.update({
-          where: { id: venta.id },
-          data:  { facturaEstado: 'FACTURADA' }
-        })
+        await prisma.venta.update({ where: { id: venta.id }, data: { facturaEstado: 'FACTURADA' } })
+
+        // Enviar email con PDF+XML automáticamente
+        try { await fp.invoices.sendByEmail(invoice.id) } catch (e) { console.warn('⚠️  No se pudo enviar email:', e.message) }
 
         console.log(`✅ CFDI timbrado: ${invoice.uuid} | ${venta.folio} | ${rfcUpper}`)
 
         return res.json({
-          success:  true,
-          timbrado: true,
-          mensaje:  `Tu factura fue emitida exitosamente. Te enviaremos el XML y PDF a ${email}.`,
-          uuid:     invoice.uuid,
-          facturaId: factura.id
+          success: true, timbrado: true,
+          mensaje: `Tu factura fue emitida exitosamente. Te enviaremos el XML y PDF a ${emailTrimmed}.`,
+          uuid: invoice.uuid, facturaId: factura.id
         })
 
       } catch (fpErr) {
-        // Si Facturapi falla, guardar pendiente y avisar
         console.error('❌ Error Facturapi:', fpErr.message)
-
         await prisma.facturaCfdi.create({
           data: {
-            ventaId:       venta.id,
-            clienteId:     venta.clienteId || null,
-            rfcReceptor:   rfcUpper,
-            nombreReceptor: razonSocial.trim(),
-            cpReceptor:    codigoPostal.trim(),
-            regimenFiscal,
-            usoCfdi,
+            ventaId: venta.id, clienteId: venta.clienteId || null,
+            rfcReceptor: rfcUpper, nombreReceptor: razonSocial.trim(),
+            cpReceptor: codigoPostal.trim(), regimenFiscal, usoCfdi,
+            emailReceptor: emailTrimmed,
             lugarExpedicion: process.env.JESHA_CP_EMISOR || '98660',
-            subtotal,
-            iva,
-            total,
-            estado: 'PENDIENTE_TIMBRADO'
+            subtotal, iva, total, estado: 'PENDIENTE_TIMBRADO'
           }
         })
-
         return res.status(202).json({
-          success:  true,
-          timbrado: false,
-          mensaje:  'Solicitud recibida. Hubo un problema al timbrar en este momento — procesaremos tu factura manualmente y te la enviaremos a ' + email + ' a la brevedad.',
+          success: true, timbrado: false,
+          mensaje: `Solicitud recibida. Hubo un problema al timbrar — procesaremos tu factura manualmente y te la enviaremos a ${emailTrimmed} a la brevedad.`,
           error_tecnico: fpErr.message
         })
       }
     }
 
-    // ── Sin Facturapi configurada: guardar PENDIENTE ───────────────
+    // Sin Facturapi configurada
     const factura = await prisma.facturaCfdi.create({
       data: {
-        ventaId:       venta.id,
-        clienteId:     venta.clienteId || null,
-        rfcReceptor:   rfcUpper,
-        nombreReceptor: razonSocial.trim(),
-        cpReceptor:    codigoPostal.trim(),
-        regimenFiscal,
-        usoCfdi,
+        ventaId: venta.id, clienteId: venta.clienteId || null,
+        rfcReceptor: rfcUpper, nombreReceptor: razonSocial.trim(),
+        cpReceptor: codigoPostal.trim(), regimenFiscal, usoCfdi,
+        emailReceptor: emailTrimmed,
         lugarExpedicion: process.env.JESHA_CP_EMISOR || '98660',
-        subtotal,
-        iva,
-        total,
-        estado: 'PENDIENTE_TIMBRADO'
+        subtotal, iva, total, estado: 'PENDIENTE_TIMBRADO'
       }
     })
-
     console.log(`📋 Factura PENDIENTE_TIMBRADO creada: ${factura.id} | ${venta.folio} | ${rfcUpper}`)
-
-    res.json({
-      success:  true,
-      timbrado: false,
-      mensaje:  `Solicitud de factura recibida correctamente. Te enviaremos la factura a ${email} cuando sea procesada.`,
-      facturaId: factura.id
-    })
-
+    res.json({ success: true, timbrado: false, mensaje: `Solicitud de factura recibida. Te enviaremos la factura a ${emailTrimmed} cuando sea procesada.`, facturaId: factura.id })
   } catch (err) {
     console.error('❌ Error solicitarFactura:', err)
     res.status(500).json({ error: 'Error al procesar la solicitud: ' + err.message })
@@ -346,48 +275,48 @@ exports.solicitarFactura = async (req, res) => {
 
 // ════════════════════════════════════════════════════════════════════
 //  POST /facturas/:id/timbrar — timbrar manualmente una PENDIENTE
-//  Llamado desde el panel interno de admins
 // ════════════════════════════════════════════════════════════════════
 exports.timbrarManual = async (req, res) => {
   try {
-    const id      = parseInt(req.params.id)
+    const id = parseInt(req.params.id)
     const factura = await prisma.facturaCfdi.findUnique({
-      where:   { id },
+      where: { id },
       include: { venta: { include: { detalles: { include: { producto: true } } } } }
     })
 
     if (!factura) return res.status(404).json({ error: 'Factura no encontrada' })
-    if (factura.estado !== 'PENDIENTE_TIMBRADO') {
-      return res.status(400).json({ error: `Estado actual: ${factura.estado}. Solo se pueden timbrar facturas PENDIENTE_TIMBRADO.` })
-    }
+    if (factura.estado !== 'PENDIENTE_TIMBRADO') return res.status(400).json({ error: `Estado actual: ${factura.estado}. Solo PENDIENTE_TIMBRADO.` })
 
     const fp = getFacturapi()
-    if (!fp) {
-      return res.status(503).json({ error: 'Facturapi no está configurada. Agrega FACTURAPI_KEY al .env' })
-    }
+    if (!fp) return res.status(503).json({ error: 'Facturapi no configurada. Agrega FACTURAPI_KEY al .env' })
 
     const venta = factura.venta
-    const items = venta.detalles.map(d => ({
-      quantity: d.cantidad,
-      product: {
-        description:  d.producto?.nombre || 'Mercancía',
-        product_key:  d.producto?.claveSat || '31161500',
-        unit_key:     d.producto?.unidadSat || 'H87',
-        price:        parseFloat(d.precioUnitario),
-        tax_included: true,
-        taxes: [{ type: 'IVA', rate: TASA_IVA, factor: 'Tasa', withholding: false }]
+    const items = venta.detalles.map(d => {
+      let productKey = '31161500'
+      if (d.producto?.claveSat && /^\d{8}$/.test(d.producto.claveSat)) {
+        productKey = d.producto.claveSat
       }
-    }))
+      return {
+        quantity: d.cantidad,
+        product: {
+          description: d.producto?.nombre || 'Mercancía',
+          product_key: productKey,
+          unit_key:    d.producto?.unidadSat || 'H87',
+          price:       parseFloat(d.precioUnitario),
+          tax_included: true,
+          taxes: [{ type: 'IVA', rate: TASA_IVA, factor: 'Tasa', withholding: false }]
+        }
+      }
+    })
 
     const invoice = await fp.invoices.create({
       customer: {
-        legal_name: factura.nombreReceptor,
-        tax_id:     factura.rfcReceptor,
-        tax_system: factura.regimenFiscal,
-        address:    { zip: factura.cpReceptor }
+        legal_name: factura.nombreReceptor, tax_id: factura.rfcReceptor,
+        tax_system: factura.regimenFiscal, email: factura.emailReceptor || undefined,
+        address: { zip: factura.cpReceptor }
       },
-      use:            factura.usoCfdi,
-      payment_form:   FORMA_PAGO_SAT[venta.metodoPago] || '01',
+      use: factura.usoCfdi,
+      payment_form: FORMA_PAGO_SAT[venta.metodoPago] || '01',
       payment_method: 'PUE',
       items
     })
@@ -395,25 +324,84 @@ exports.timbrarManual = async (req, res) => {
     const actualizada = await prisma.facturaCfdi.update({
       where: { id },
       data: {
-        folioFiscal: invoice.uuid,
-        xmlUrl:      invoice.xml_url  || null,
-        pdfUrl:      invoice.pdf_url  || null,
-        estado:      'TIMBRADA',
-        timbradaEn:  new Date()
+        folioFiscal: invoice.uuid, facturapiId: invoice.id,
+        estado: 'TIMBRADA', timbradaEn: new Date()
       }
     })
+    await prisma.venta.update({ where: { id: venta.id }, data: { facturaEstado: 'FACTURADA' } })
 
-    await prisma.venta.update({
-      where: { id: venta.id },
-      data:  { facturaEstado: 'FACTURADA' }
-    })
+    // Enviar email
+    try { await fp.invoices.sendByEmail(invoice.id) } catch (e) { console.warn('⚠️  No se pudo enviar email:', e.message) }
 
     console.log(`✅ Timbrado manual: ${invoice.uuid} | factura ${id}`)
-
     res.json({ success: true, uuid: invoice.uuid, data: actualizada })
-
   } catch (err) {
     console.error('❌ Error timbrarManual:', err)
     res.status(500).json({ error: 'Error al timbrar: ' + err.message })
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  GET /facturas/:id/descargar/pdf — proxy para descargar PDF
+// ════════════════════════════════════════════════════════════════════
+exports.descargarPdf = async (req, res) => {
+  try {
+    const factura = await prisma.facturaCfdi.findUnique({ where: { id: parseInt(req.params.id) } })
+    if (!factura) return res.status(404).json({ error: 'Factura no encontrada' })
+    if (!factura.facturapiId) return res.status(400).json({ error: 'Factura sin ID de Facturapi — no se puede descargar' })
+
+    const fp = getFacturapi()
+    if (!fp) return res.status(503).json({ error: 'Facturapi no configurada' })
+
+    const stream = await fp.invoices.downloadPdf(factura.facturapiId)
+    res.setHeader('Content-Type', 'application/pdf')
+    res.setHeader('Content-Disposition', `inline; filename="factura_${factura.folioFiscal || factura.id}.pdf"`)
+    stream.pipe(res)
+  } catch (err) {
+    console.error('❌ Error descargar PDF:', err)
+    res.status(500).json({ error: 'Error al descargar PDF: ' + err.message })
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  GET /facturas/:id/descargar/xml — proxy para descargar XML
+// ════════════════════════════════════════════════════════════════════
+exports.descargarXml = async (req, res) => {
+  try {
+    const factura = await prisma.facturaCfdi.findUnique({ where: { id: parseInt(req.params.id) } })
+    if (!factura) return res.status(404).json({ error: 'Factura no encontrada' })
+    if (!factura.facturapiId) return res.status(400).json({ error: 'Factura sin ID de Facturapi' })
+
+    const fp = getFacturapi()
+    if (!fp) return res.status(503).json({ error: 'Facturapi no configurada' })
+
+    const stream = await fp.invoices.downloadXml(factura.facturapiId)
+    res.setHeader('Content-Type', 'application/xml')
+    res.setHeader('Content-Disposition', `attachment; filename="factura_${factura.folioFiscal || factura.id}.xml"`)
+    stream.pipe(res)
+  } catch (err) {
+    console.error('❌ Error descargar XML:', err)
+    res.status(500).json({ error: 'Error al descargar XML: ' + err.message })
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  POST /facturas/:id/enviar-email — reenviar email con PDF+XML
+// ════════════════════════════════════════════════════════════════════
+exports.enviarEmail = async (req, res) => {
+  try {
+    const factura = await prisma.facturaCfdi.findUnique({ where: { id: parseInt(req.params.id) } })
+    if (!factura) return res.status(404).json({ error: 'Factura no encontrada' })
+    if (!factura.facturapiId) return res.status(400).json({ error: 'Factura sin ID de Facturapi' })
+
+    const fp = getFacturapi()
+    if (!fp) return res.status(503).json({ error: 'Facturapi no configurada' })
+
+    await fp.invoices.sendByEmail(factura.facturapiId)
+    console.log(`📧 Email reenviado: factura ${factura.id} → ${factura.emailReceptor}`)
+    res.json({ success: true, mensaje: `Email enviado a ${factura.emailReceptor || 'el correo registrado'}` })
+  } catch (err) {
+    console.error('❌ Error enviar email:', err)
+    res.status(500).json({ error: 'Error al enviar email: ' + err.message })
   }
 }

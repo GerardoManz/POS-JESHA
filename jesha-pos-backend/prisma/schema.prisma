@@ -685,24 +685,26 @@ model Promocion {
 model FacturaCfdi {
   id              Int           @id @default(autoincrement())
   ventaId         Int           @unique
-  clienteId       Int
+  clienteId       Int?
   rfcReceptor     String
   nombreReceptor  String
   cpReceptor      String
   regimenFiscal   String
   usoCfdi         String
+  emailReceptor   String?
   lugarExpedicion String
   subtotal        Decimal       @db.Decimal(10, 2)
   iva             Decimal       @db.Decimal(10, 2)
   total           Decimal       @db.Decimal(10, 2)
   folioFiscal     String?
+  facturapiId     String?
   xmlUrl          String?
   pdfUrl          String?
   estado          EstadoFactura @default(FACTURADA)
   timbradaEn      DateTime?
   creadaEn        DateTime      @default(now())
-  venta   Venta   @relation(fields: [ventaId], references: [id], onDelete: Cascade)
-  cliente Cliente @relation(fields: [clienteId], references: [id])
+  venta   Venta    @relation(fields: [ventaId], references: [id], onDelete: Cascade)
+  cliente Cliente? @relation(fields: [clienteId], references: [id])
 }
 
 // ══════════════════════════════════════════════════════════════════

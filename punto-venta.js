@@ -857,6 +857,18 @@ function mostrarModalExito(ventaData, totalFinal) {
 
   overlay.style.display = 'flex'
 
+  // Botón imprimir ticket — abre la ventana del ticket con el QR de facturación
+  const btnImprimir = document.getElementById('btn-imprimir-ticket-exito')
+  if (btnImprimir) {
+    btnImprimir.onclick = () => {
+      const ventaId = ventaData.id
+      if (!ventaId) { mostrarToast('ID de venta no disponible', 'warning'); return }
+      const url = `${API_URL}/ventas/${ventaId}/ticket`
+      const win = window.open(url, '_blank', 'width=380,height=700')
+      if (!win) mostrarToast('Permite las ventanas emergentes para imprimir el ticket', 'warning')
+    }
+  }
+
   document.getElementById('btn-cerrar-exito').onclick = () => {
     overlay.style.display = 'none'
   }
