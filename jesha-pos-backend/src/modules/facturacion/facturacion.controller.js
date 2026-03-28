@@ -30,6 +30,85 @@ const FORMA_PAGO_SAT = {
   TRANSFERENCIA: '03'
 }
 
+// ════════════════════════════════════════════════════════════════════
+//  RFC PÚBLICO EN GENERAL — reglas del SAT para CFDI 4.0
+//
+//  RFC XAXX010101000 + nombre "PUBLICO EN GENERAL" = factura GLOBAL
+//  → requiere nodo InformacionGlobal (Facturapi no lo soporta en invoices)
+//
+//  RFC XAXX010101000 + nombre DIFERENTE = factura individual sin RFC
+//  → NO requiere InformacionGlobal, funciona normal en Facturapi
+//
+//  Solución: cuando el RFC es genérico, forzar que el nombre NO sea
+//  exactamente "PUBLICO EN GENERAL" para que sea factura individual.
+//  También forzar régimen 616, uso S01, y CP del emisor.
+// ════════════════════════════════════════════════════════════════════
+const RFC_PUBLICO_GENERAL = 'XAXX010101000'
+
+function esRfcGenerico(rfc) {
+  return rfc && rfc.trim().toUpperCase() === RFC_PUBLICO_GENERAL
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  Construir objeto de invoice para Facturapi (DRY)
+//  Usado tanto en solicitarFactura como en timbrarManual
+// ════════════════════════════════════════════════════════════════════
+function buildInvoicePayload({ rfc, razonSocial, regimenFiscal, codigoPostal, usoCfdi, email, metodoPago, detalles }) {
+  const rfcUpper = rfc.trim().toUpperCase()
+
+  const items = detalles.map(d => {
+    let productKey = '31161500'
+    if (d.producto?.claveSat && /^\d{8}$/.test(d.producto.claveSat)) {
+      productKey = d.producto.claveSat
+    }
+    return {
+      quantity: parseFloat(d.cantidad),
+      product: {
+        description:  d.producto?.nombre || 'Mercancía',
+        product_key:  productKey,
+        unit_key:     d.producto?.unidadSat || 'H87',
+        price:        parseFloat(d.precioUnitario),
+        tax_included: true,
+        taxes: [{ type: 'IVA', rate: TASA_IVA, factor: 'Tasa', withholding: false }]
+      }
+    }
+  })
+
+  // Nombre para el customer
+  let nombreFinal = razonSocial.trim()
+
+  // ── FIX: Si es RFC genérico, asegurar que NO diga "PUBLICO EN GENERAL" ──
+  // porque eso dispara la regla SAT de factura global (InformacionGlobal)
+  // que Facturapi no soporta en invoices. Usamos "VENTA AL PUBLICO" en su lugar.
+  if (esRfcGenerico(rfcUpper)) {
+    const nombreNorm = nombreFinal.toUpperCase().replace(/\s+/g, ' ').trim()
+    if (nombreNorm === 'PUBLICO EN GENERAL' || nombreNorm === 'PÚBLICO EN GENERAL') {
+      nombreFinal = 'VENTA AL PUBLICO'
+    }
+    // Forzar datos correctos del SAT para RFC genérico
+    regimenFiscal = '616'
+    usoCfdi       = 'S01'
+    codigoPostal  = process.env.JESHA_CP_EMISOR || '98660'
+    console.log(`📋 RFC genérico detectado — nombre: "${nombreFinal}", régimen: 616, uso: S01`)
+  }
+
+  const payload = {
+    customer: {
+      legal_name: nombreFinal,
+      tax_id:     rfcUpper,
+      tax_system: regimenFiscal,
+      email:      email || undefined,
+      address:    { zip: codigoPostal.trim() }
+    },
+    use:            usoCfdi,
+    payment_form:   FORMA_PAGO_SAT[metodoPago] || '01',
+    payment_method: 'PUE',
+    items
+  }
+
+  return payload
+}
+
 const REGIMENES_FISCALES = [
   { clave: '601', descripcion: 'General de Ley Personas Morales' },
   { clave: '603', descripcion: 'Personas Morales con Fines no Lucrativos' },
@@ -175,38 +254,20 @@ exports.solicitarFactura = async (req, res) => {
 
     if (fp) {
       try {
-        const items = venta.detalles.map(d => {
-          // Usar clave SAT del producto solo si tiene 8 dígitos válidos, sino default ferretería
-          let productKey = '31161500'
-          if (d.producto?.claveSat && /^\d{8}$/.test(d.producto.claveSat)) {
-            productKey = d.producto.claveSat
-          }
-          return {
-            quantity: d.cantidad,
-            product: {
-              description:  d.producto?.nombre || 'Mercancía',
-              product_key:  productKey,
-              unit_key:     d.producto?.unidadSat || 'H87',
-              price:        parseFloat(d.precioUnitario),
-              tax_included: true,
-              taxes: [{ type: 'IVA', rate: TASA_IVA, factor: 'Tasa', withholding: false }]
-            }
-          }
+        // ── Usar helper centralizado que incluye global_information si aplica ──
+        const invoicePayload = buildInvoicePayload({
+          rfc: rfcUpper,
+          razonSocial,
+          regimenFiscal,
+          codigoPostal,
+          usoCfdi,
+          email: emailTrimmed,
+          metodoPago: venta.metodoPago,
+          detalles: venta.detalles
         })
 
-        const invoice = await fp.invoices.create({
-          customer: {
-            legal_name: razonSocial.trim(), tax_id: rfcUpper,
-            tax_system: regimenFiscal, email: emailTrimmed || undefined,
-            address: { zip: codigoPostal.trim() }
-          },
-          use: usoCfdi,
-          payment_form: FORMA_PAGO_SAT[venta.metodoPago] || '01',
-          payment_method: 'PUE',
-          items
-        })
+        const invoice = await fp.invoices.create(invoicePayload)
 
-        // Guardar con facturapiId para poder descargar PDF/XML después
         const factura = await prisma.facturaCfdi.create({
           data: {
             ventaId: venta.id, clienteId: venta.clienteId || null,
@@ -291,35 +352,20 @@ exports.timbrarManual = async (req, res) => {
     if (!fp) return res.status(503).json({ error: 'Facturapi no configurada. Agrega FACTURAPI_KEY al .env' })
 
     const venta = factura.venta
-    const items = venta.detalles.map(d => {
-      let productKey = '31161500'
-      if (d.producto?.claveSat && /^\d{8}$/.test(d.producto.claveSat)) {
-        productKey = d.producto.claveSat
-      }
-      return {
-        quantity: d.cantidad,
-        product: {
-          description: d.producto?.nombre || 'Mercancía',
-          product_key: productKey,
-          unit_key:    d.producto?.unidadSat || 'H87',
-          price:       parseFloat(d.precioUnitario),
-          tax_included: true,
-          taxes: [{ type: 'IVA', rate: TASA_IVA, factor: 'Tasa', withholding: false }]
-        }
-      }
+
+    // ── Usar helper centralizado que incluye global_information si aplica ──
+    const invoicePayload = buildInvoicePayload({
+      rfc:           factura.rfcReceptor,
+      razonSocial:   factura.nombreReceptor,
+      regimenFiscal: factura.regimenFiscal,
+      codigoPostal:  factura.cpReceptor,
+      usoCfdi:       factura.usoCfdi,
+      email:         factura.emailReceptor,
+      metodoPago:    venta.metodoPago,
+      detalles:      venta.detalles
     })
 
-    const invoice = await fp.invoices.create({
-      customer: {
-        legal_name: factura.nombreReceptor, tax_id: factura.rfcReceptor,
-        tax_system: factura.regimenFiscal, email: factura.emailReceptor || undefined,
-        address: { zip: factura.cpReceptor }
-      },
-      use: factura.usoCfdi,
-      payment_form: FORMA_PAGO_SAT[venta.metodoPago] || '01',
-      payment_method: 'PUE',
-      items
-    })
+    const invoice = await fp.invoices.create(invoicePayload)
 
     const actualizada = await prisma.facturaCfdi.update({
       where: { id },

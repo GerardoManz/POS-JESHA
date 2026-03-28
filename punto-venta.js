@@ -857,15 +857,20 @@ function mostrarModalExito(ventaData, totalFinal) {
 
   overlay.style.display = 'flex'
 
-  // Botón imprimir ticket — abre la ventana del ticket con el QR de facturación
+  // Botón imprimir ticket — usa fetch con auth header y escribe HTML en popup
   const btnImprimir = document.getElementById('btn-imprimir-ticket-exito')
   if (btnImprimir) {
     btnImprimir.onclick = () => {
       const ventaId = ventaData.id
       if (!ventaId) { mostrarToast('ID de venta no disponible', 'warning'); return }
       const url = `${API_URL}/ventas/${ventaId}/ticket`
-      const win = window.open(url, '_blank', 'width=380,height=700')
-      if (!win) mostrarToast('Permite las ventanas emergentes para imprimir el ticket', 'warning')
+      const win = window.open('', '_blank', 'width=380,height=700,scrollbars=yes')
+      if (!win) { mostrarToast('Permite las ventanas emergentes para imprimir el ticket', 'warning'); return }
+      win.document.write('<html><body style="font-family:sans-serif;text-align:center;padding:20px;background:#fff"><p>Cargando ticket...</p></body></html>')
+      fetch(url, { headers: { 'Authorization': `Bearer ${TOKEN}` } })
+        .then(r => { if (!r.ok) throw new Error('Error al cargar ticket'); return r.text() })
+        .then(html => { win.document.open(); win.document.write(html); win.document.close() })
+        .catch(err => { win.document.write(`<p style="color:red">Error: ${err.message}</p>`) })
     }
   }
 

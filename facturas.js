@@ -160,6 +160,50 @@ window.verDetalle = async function(id) {
       btnEmail.onclick = () => reenviarEmail(f.id)
     }
 
+    // ── Preview PDF embebido ──
+    const pdfPreview = document.getElementById('det-pdf-preview')
+    const pdfIframe  = document.getElementById('det-pdf-iframe')
+    const btnToggle  = document.getElementById('det-btn-toggle-pdf')
+
+    if (f.facturapiId) {
+      pdfPreview.style.display = 'block'
+      pdfIframe.style.display  = 'none'
+      pdfIframe.src = ''
+      btnToggle.textContent = '▼ Mostrar PDF'
+
+      btnToggle.onclick = () => {
+        if (pdfIframe.style.display === 'none') {
+          // Cargar PDF vía blob para enviar el token de auth
+          pdfIframe.style.display = 'block'
+          btnToggle.textContent = '▲ Ocultar PDF'
+          // Usar blob URL para que el iframe cargue con autenticación
+          fetch(`${API_URL}/facturas/${f.id}/descargar/pdf`, {
+            headers: { 'Authorization': `Bearer ${TOKEN}` }
+          })
+            .then(r => {
+              if (!r.ok) throw new Error('No se pudo cargar PDF')
+              return r.blob()
+            })
+            .then(blob => {
+              const blobUrl = URL.createObjectURL(blob)
+              pdfIframe.src = blobUrl
+            })
+            .catch(err => {
+              pdfIframe.style.display = 'none'
+              btnToggle.textContent = '▼ Mostrar PDF'
+              jeshaToast('Error cargando PDF: ' + err.message, 'error')
+            })
+        } else {
+          pdfIframe.style.display = 'none'
+          btnToggle.textContent = '▼ Mostrar PDF'
+          if (pdfIframe.src.startsWith('blob:')) URL.revokeObjectURL(pdfIframe.src)
+          pdfIframe.src = ''
+        }
+      }
+    } else {
+      pdfPreview.style.display = 'none'
+    }
+
     document.getElementById('modal-detalle').classList.add('active')
   } catch (err) {
     jeshaToast('Error: ' + err.message, 'error')
@@ -189,6 +233,7 @@ window.timbrarManual = async function(id) {
     if (!res.ok) throw new Error(data.error)
 
     document.getElementById('modal-detalle').classList.remove('active')
+    limpiarPdfPreview()
     cargarFacturas()
 
     const toast = document.createElement('div')
@@ -227,6 +272,7 @@ async function cancelarFactura(id) {
     const data = await res.json()
     if (!res.ok) throw new Error(data.error)
     document.getElementById('modal-detalle').classList.remove('active')
+    limpiarPdfPreview()
     cargarFacturas()
     jeshaToast('Factura cancelada', 'success')
   } catch (err) {
@@ -482,6 +528,20 @@ async function facturarManualDesdeModal() {
 }
 
 // ════════════════════════════════════════════════════════════════════
+//  LIMPIAR PDF PREVIEW al cerrar modal
+// ════════════════════════════════════════════════════════════════════
+function limpiarPdfPreview() {
+  const iframe = document.getElementById('det-pdf-iframe')
+  if (iframe) {
+    if (iframe.src && iframe.src.startsWith('blob:')) URL.revokeObjectURL(iframe.src)
+    iframe.src = ''
+    iframe.style.display = 'none'
+  }
+  const btn = document.getElementById('det-btn-toggle-pdf')
+  if (btn) btn.textContent = '▼ Mostrar PDF'
+}
+
+// ════════════════════════════════════════════════════════════════════
 //  INICIALIZACIÓN
 // ════════════════════════════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', () => {
@@ -520,6 +580,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Modal detalle — cerrar
   document.getElementById('det-close')?.addEventListener('click', () => {
     document.getElementById('modal-detalle').classList.remove('active')
+    limpiarPdfPreview()
   })
 
   // Modal manual — abrir
@@ -559,6 +620,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.key === 'Escape') {
       document.getElementById('modal-detalle')?.classList.remove('active')
       document.getElementById('modal-manual')?.classList.remove('active')
+      limpiarPdfPreview()
     }
   })
 })
