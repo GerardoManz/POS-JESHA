@@ -37,6 +37,12 @@ exports.crearVenta = async (req, res) => {
       return res.status(403).json({ error: 'Usuario sin permiso para vender', codigo: 'SIN_PERMISO_VENTA' })
     }
 
+    // ── Validar descuento por rol ──────────────────────────────────
+    const descuentoAmt = parseFloat(parseFloat(descuento || 0).toFixed(2))
+    if (descuentoAmt > 0 && usuario.rol === 'EMPLEADO') {
+      return res.status(403).json({ error: 'Sin permiso para aplicar descuentos', codigo: 'SIN_PERMISO_DESCUENTO' })
+    }
+
     let totalRecalculado = 0
     const detallesValidados = []
     for (const detalle of detalles) {
@@ -47,14 +53,20 @@ exports.crearVenta = async (req, res) => {
       if (cantidad <= 0) {
         return res.status(400).json({ error: 'Cantidad debe ser > 0', producto: productoId })
       }
-      const subtotalDetalle = parseFloat((cantidad * precioUnitario).toFixed(2))
+      // FIX: parseFloat para soportar cantidades decimales (productos granel)
+      const cantidadFloat   = parseFloat(cantidad)
+      const subtotalDetalle = parseFloat((cantidadFloat * precioUnitario).toFixed(2))
       totalRecalculado += subtotalDetalle
-      detallesValidados.push({ productoId: parseInt(productoId), cantidad: parseInt(cantidad), precioUnitario: parseFloat(precioUnitario), subtotal: subtotalDetalle })
+      detallesValidados.push({
+        productoId:     parseInt(productoId),
+        cantidad:       cantidadFloat,           // ← era parseInt, rompía granel
+        precioUnitario: parseFloat(precioUnitario),
+        subtotal:       subtotalDetalle
+      })
     }
     totalRecalculado = parseFloat(totalRecalculado.toFixed(2))
 
     // Restar descuento antes de comparar
-    const descuentoAmt  = parseFloat(parseFloat(descuento || 0).toFixed(2))
     const totalEsperado = parseFloat((totalRecalculado - descuentoAmt).toFixed(2))
     const diferencia    = Math.abs(totalEsperado - parseFloat(total))
     if (diferencia > 0.01) {
@@ -85,12 +97,11 @@ exports.crearVenta = async (req, res) => {
     }
 
     const venta = await prisma.$transaction(async (tx) => {
-      // ── Validar stock DENTRO de la transacción — acumula TODOS los productos con problema ──
+      // ── Validar stock DENTRO de la transacción ──
       const inventarios = await tx.inventarioSucursal.findMany({
         where: { sucursalId, productoId: { in: detallesValidados.map(d => d.productoId) } }
       })
 
-      // Traer nombres de productos para el mensaje de error
       const productosInfo = await tx.producto.findMany({
         where:  { id: { in: detallesValidados.map(d => d.productoId) } },
         select: { id: true, nombre: true }
@@ -99,13 +110,12 @@ exports.crearVenta = async (req, res) => {
 
       const sinStock = []
       for (const detalle of detallesValidados) {
-        // parseInt en ambos lados para evitar fallo por string vs number
-        const inventario = inventarios.find(i => parseInt(i.productoId) === parseInt(detalle.productoId))
+        const inventario  = inventarios.find(i => parseInt(i.productoId) === parseInt(detalle.productoId))
         const disponibles = inventario ? parseFloat(inventario.stockActual) : 0
         if (!inventario || disponibles < detalle.cantidad) {
           sinStock.push({
-            productoId: detalle.productoId,
-            nombre:     nombreProd[detalle.productoId] || `Producto ${detalle.productoId}`,
+            productoId:  detalle.productoId,
+            nombre:      nombreProd[detalle.productoId] || `Producto ${detalle.productoId}`,
             disponibles,
             solicitados: detalle.cantidad
           })
@@ -114,9 +124,9 @@ exports.crearVenta = async (req, res) => {
 
       if (sinStock.length > 0) {
         const err = new Error('Stock insuficiente')
-        err.status      = 400
-        err.codigo      = 'STOCK_INSUFICIENTE'
-        err.sinStock    = sinStock
+        err.status   = 400
+        err.codigo   = 'STOCK_INSUFICIENTE'
+        err.sinStock = sinStock
         throw err
       }
 
@@ -135,7 +145,13 @@ exports.crearVenta = async (req, res) => {
           notas: notas || null,
           estado: 'COMPLETADA', tokenQr: generarUUID(), facturaEstado, facturaLimite,
           detalles: {
-            create: detallesValidados.map(d => ({ productoId: d.productoId, cantidad: d.cantidad, precioUnitario: d.precioUnitario, subtotal: d.subtotal, descuento: 0 }))
+            create: detallesValidados.map(d => ({
+              productoId:     d.productoId,
+              cantidad:       d.cantidad,
+              precioUnitario: d.precioUnitario,
+              subtotal:       d.subtotal,
+              descuento:      0
+            }))
           }
         },
         include: { detalles: { include: { producto: true } } }
@@ -146,7 +162,10 @@ exports.crearVenta = async (req, res) => {
           where: { productoId_sucursalId: { productoId: detalle.productoId, sucursalId } }
         })
         if (!inventarioAnterior) {
-          throw Object.assign(new Error(`Registro de inventario no encontrado para producto ${detalle.productoId}`), { status: 400, codigo: 'INV_NOT_FOUND' })
+          throw Object.assign(
+            new Error(`Registro de inventario no encontrado para producto ${detalle.productoId}`),
+            { status: 400, codigo: 'INV_NOT_FOUND' }
+          )
         }
         const stockAntes   = parseFloat(inventarioAnterior.stockActual)
         const stockDespues = parseFloat((stockAntes - detalle.cantidad).toFixed(3))
@@ -155,7 +174,16 @@ exports.crearVenta = async (req, res) => {
           data:  { stockActual: stockDespues }
         })
         await tx.movimientoInventario.create({
-          data: { productoId: detalle.productoId, sucursalId, usuarioId, tipo: 'SALIDA_VENTA', cantidad: detalle.cantidad, stockAntes, stockDespues, referencia: folio }
+          data: {
+            productoId:   detalle.productoId,
+            sucursalId,
+            usuarioId,
+            tipo:         'SALIDA_VENTA',
+            cantidad:     detalle.cantidad,
+            stockAntes,
+            stockDespues,
+            referencia:   folio
+          }
         })
       }
 
@@ -194,7 +222,6 @@ exports.crearVenta = async (req, res) => {
             notas:           'Generada automáticamente — crédito a cliente'
           }
         })
-        // Agregar los productos de la venta como detalles de la bitácora
         for (const d of detallesValidados) {
           await tx.detalleBitacora.create({
             data: {
@@ -211,7 +238,14 @@ exports.crearVenta = async (req, res) => {
       }
 
       await tx.auditoria.create({
-        data: { usuarioId, sucursalId, accion: 'CREAR_VENTA', modulo: 'VENTAS', referencia: folio, valorDespues: { ventaId: ventaCreada.id, total: totalEsperado, items: detallesValidados.length, esCredito } }
+        data: {
+          usuarioId,
+          sucursalId,
+          accion:      'CREAR_VENTA',
+          modulo:      'VENTAS',
+          referencia:  folio,
+          valorDespues: { ventaId: ventaCreada.id, total: totalEsperado, items: detallesValidados.length, esCredito }
+        }
       })
 
       return ventaCreada
@@ -224,8 +258,8 @@ exports.crearVenta = async (req, res) => {
     console.error('❌ Error en crearVenta:', error)
     const status = error.status === 400 ? 400 : 500
     res.status(status).json({
-      error:   error.message,
-      codigo:  error.codigo  || null,
+      error:    error.message,
+      codigo:   error.codigo   || null,
       sinStock: error.sinStock || null
     })
   }
@@ -239,7 +273,7 @@ exports.obtenerVentas = async (req, res) => {
     const { skip = 0, take = 20, search, metodoPago, desde, hasta, turnoId, clienteId, usuarioId } = req.query
     const where = {}
 
-    if (turnoId)   where.turnoId  = parseInt(turnoId)
+    if (turnoId)   where.turnoId   = parseInt(turnoId)
     if (usuarioId) where.usuarioId = parseInt(usuarioId)
 
     if (clienteId === 'null') {
@@ -250,7 +284,7 @@ exports.obtenerVentas = async (req, res) => {
 
     if (search) {
       where.OR = [
-        { folio: { contains: search, mode: 'insensitive' } },
+        { folio:   { contains: search, mode: 'insensitive' } },
         { cliente: { nombre: { contains: search, mode: 'insensitive' } } }
       ]
     }
@@ -259,7 +293,11 @@ exports.obtenerVentas = async (req, res) => {
     if (desde || hasta) {
       where.creadaEn = {}
       if (desde) where.creadaEn.gte = new Date(desde)
-      if (hasta) { const hastaDate = new Date(hasta); hastaDate.setHours(23, 59, 59, 999); where.creadaEn.lte = hastaDate }
+      if (hasta) {
+        const hastaDate = new Date(hasta)
+        hastaDate.setHours(23, 59, 59, 999)
+        where.creadaEn.lte = hastaDate
+      }
     }
 
     const [ventas, total] = await Promise.all([
@@ -277,15 +315,15 @@ exports.obtenerVentas = async (req, res) => {
     res.json({
       success: true,
       data: ventas.map(v => ({
-        id:            v.id,
-        folio:         v.folio,
-        fecha:         v.creadaEn,
-        cliente:       v.cliente ? v.cliente.nombre : 'Público general',
-        usuario:       v.usuario.nombre,
-        metodoPago:    v.metodoPago,
-        total:         v.total,
+        id:             v.id,
+        folio:          v.folio,
+        fecha:          v.creadaEn,
+        cliente:        v.cliente ? v.cliente.nombre : 'Público general',
+        usuario:        v.usuario.nombre,
+        metodoPago:     v.metodoPago,
+        total:          v.total,
         productosCount: v.detalles.length,
-        estado:        v.estado
+        estado:         v.estado
       })),
       total, skip: parseInt(skip), take: parseInt(take)
     })
@@ -315,29 +353,29 @@ exports.obtenerVenta = async (req, res) => {
     res.json({
       success: true,
       data: {
-        id:           venta.id,
-        folio:        venta.folio,
-        fecha:        venta.creadaEn,
-        usuario:      venta.usuario.nombre,
-        cliente:      venta.cliente ? { id: venta.cliente.id, nombre: venta.cliente.nombre, rfc: venta.cliente.rfc } : null,
-        sucursal:     venta.sucursal.nombre,
-        metodoPago:   venta.metodoPago,
-        subtotal:     venta.subtotal,
-        iva:          venta.iva,
-        descuento:    venta.descuento,
-        total:        venta.total,
-        montoPagado:  venta.montoPagado,
-        cambio:       venta.cambio,
-        estado:       venta.estado,
-        tokenQr:      venta.tokenQr,
+        id:            venta.id,
+        folio:         venta.folio,
+        fecha:         venta.creadaEn,
+        usuario:       venta.usuario.nombre,
+        cliente:       venta.cliente ? { id: venta.cliente.id, nombre: venta.cliente.nombre, rfc: venta.cliente.rfc } : null,
+        sucursal:      venta.sucursal.nombre,
+        metodoPago:    venta.metodoPago,
+        subtotal:      venta.subtotal,
+        iva:           venta.iva,
+        descuento:     venta.descuento,
+        total:         venta.total,
+        montoPagado:   venta.montoPagado,
+        cambio:        venta.cambio,
+        estado:        venta.estado,
+        tokenQr:       venta.tokenQr,
         facturaEstado: venta.facturaEstado,
         detalles: venta.detalles.map(d => ({
-          productoId:    d.productoId,
-          nombre:        d.producto.nombre,
-          codigo:        d.producto.codigoInterno,
-          cantidad:      d.cantidad,
+          productoId:     d.productoId,
+          nombre:         d.producto.nombre,
+          codigo:         d.producto.codigoInterno,
+          cantidad:       d.cantidad,
           precioUnitario: d.precioUnitario,
-          subtotal:      d.subtotal
+          subtotal:       d.subtotal
         }))
       }
     })
@@ -358,12 +396,12 @@ exports.obtenerHistorial = async (req, res) => {
 // FUNCIONES AUXILIARES
 // ════════════════════════════════════════════════════════════════════
 async function generarFolio() {
-  const fecha  = new Date()
-  const año    = fecha.getFullYear()
-  const mes    = String(fecha.getMonth() + 1).padStart(2, '0')
-  const dia    = String(fecha.getDate()).padStart(2, '0')
+  const fecha    = new Date()
+  const año      = fecha.getFullYear()
+  const mes      = String(fecha.getMonth() + 1).padStart(2, '0')
+  const dia      = String(fecha.getDate()).padStart(2, '0')
   const fechaStr = `${año}${mes}${dia}`
-  const result = await prisma.$queryRaw`SELECT nextval('folio_venta_seq') as seq`
+  const result   = await prisma.$queryRaw`SELECT nextval('folio_venta_seq') as seq`
   const secuencial = String(Number(result[0].seq)).padStart(5, '0')
   return `VTA-${fechaStr}-${secuencial}`
 }
@@ -377,13 +415,13 @@ function generarUUID() {
 }
 
 // ════════════════════════════════════════════════════════════════════
-//  CANCELAR VENTA — agregar al final de ventas.controller.js
+//  CANCELAR VENTA
 //  PATCH /ventas/:id/cancelar
 // ════════════════════════════════════════════════════════════════════
 exports.cancelarVenta = async (req, res) => {
   try {
-    const id       = parseInt(req.params.id)
-    const usuario  = req.usuario
+    const id      = parseInt(req.params.id)
+    const usuario = req.usuario
     const { motivo } = req.body
 
     const venta = await prisma.venta.findUnique({
@@ -400,26 +438,23 @@ exports.cancelarVenta = async (req, res) => {
     if (venta.estado === 'DEVOLUCION')
       return res.status(409).json({ error: 'Esta venta tiene devoluciones — cancela las devoluciones primero o usa el módulo de devoluciones.' })
 
-    // Solo SUPERADMIN o ADMIN_SUCURSAL pueden cancelar
     const rolesPermitidos = ['SUPERADMIN', 'ADMIN_SUCURSAL']
     if (!rolesPermitidos.includes(usuario.rol))
       return res.status(403).json({ error: 'Sin permiso para cancelar ventas' })
 
     await prisma.$transaction(async (tx) => {
-      // 1. Marcar venta como CANCELADA
       await tx.venta.update({
         where: { id },
         data:  { estado: 'CANCELADA', facturaEstado: 'BLOQUEADA' }
       })
 
-      // 2. Reingresar stock por cada producto
       for (const detalle of venta.detalles) {
         const inv = await tx.inventarioSucursal.findUnique({
           where: { productoId_sucursalId: { productoId: detalle.productoId, sucursalId: venta.sucursalId } }
         })
         if (inv) {
           const stockAntes   = parseFloat(inv.stockActual)
-          const stockDespues = parseFloat((stockAntes + detalle.cantidad).toFixed(3))
+          const stockDespues = parseFloat((stockAntes + parseFloat(detalle.cantidad)).toFixed(3))
           await tx.inventarioSucursal.update({
             where: { productoId_sucursalId: { productoId: detalle.productoId, sucursalId: venta.sucursalId } },
             data:  { stockActual: stockDespues }
@@ -430,7 +465,7 @@ exports.cancelarVenta = async (req, res) => {
               sucursalId:   venta.sucursalId,
               usuarioId:    usuario.id,
               tipo:         'DEVOLUCION_ENTRADA',
-              cantidad:     detalle.cantidad,
+              cantidad:     parseFloat(detalle.cantidad),
               stockAntes,
               stockDespues,
               referencia:   venta.folio,
@@ -440,11 +475,8 @@ exports.cancelarVenta = async (req, res) => {
         }
       }
 
-      // 3. Movimiento de caja negativo (reversión)
       if (venta.turnoId) {
-        const turno = await tx.turnoCaja.findFirst({
-          where: { id: venta.turnoId }
-        })
+        const turno = await tx.turnoCaja.findFirst({ where: { id: venta.turnoId } })
         if (turno) {
           await tx.movimientoCaja.create({
             data: {
@@ -459,15 +491,14 @@ exports.cancelarVenta = async (req, res) => {
         }
       }
 
-      // 4. Auditoría
       await tx.auditoria.create({
         data: {
-          usuarioId:   usuario.id,
-          sucursalId:  venta.sucursalId,
-          accion:      'CANCELAR_VENTA',
-          modulo:      'VENTAS',
-          referencia:  venta.folio,
-          valorAntes:  { estado: 'COMPLETADA' },
+          usuarioId:    usuario.id,
+          sucursalId:   venta.sucursalId,
+          accion:       'CANCELAR_VENTA',
+          modulo:       'VENTAS',
+          referencia:   venta.folio,
+          valorAntes:   { estado: 'COMPLETADA' },
           valorDespues: { estado: 'CANCELADA', motivo: motivo || null }
         }
       })

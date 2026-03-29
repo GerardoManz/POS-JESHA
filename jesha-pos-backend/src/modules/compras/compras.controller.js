@@ -49,7 +49,7 @@ const listar = async (req, res) => {
     const where = {}
 
     if (rol !== 'SUPERADMIN' && sucursalId) where.sucursalId = sucursalId
-    if (estado)     where.estado      = estado
+    if (estado)      where.estado      = estado
     if (proveedorId) where.proveedorId = parseInt(proveedorId)
     if (pagada !== undefined) where.pagada = pagada === 'true'
     if (buscar) {
@@ -85,7 +85,8 @@ const obtener = async (req, res) => {
 const crear = async (req, res) => {
   try {
     const { proveedorId, detalles, notas } = req.body
-    const { id: usuarioId, sucursalId }    = req.usuario
+    const { id: usuarioId, sucursalId: sucursalIdToken } = req.usuario
+    const sucursalId = sucursalIdToken || parseInt(req.body.sucursalId) || 1
 
     if (!proveedorId) return res.status(400).json({ success: false, error: 'Proveedor requerido' })
     if (!detalles || detalles.length === 0)
@@ -98,8 +99,16 @@ const crear = async (req, res) => {
 
     const rows = detalles.map(d => {
       const costo    = parseFloat(d.precioCosto || 0)
-      const cantidad = parseInt(d.cantidadPedida) || 1
-      return { productoId: parseInt(d.productoId), cantidadPedida: cantidad, cantidadRecibida: 0, precioCosto: costo, subtotalPedido: parseFloat((costo * cantidad).toFixed(2)), subtotalRecibido: 0 }
+      // FIX: parseFloat para soportar cantidades decimales (ej. 1.5 metros de alambre)
+      const cantidad = parseFloat(d.cantidadPedida) || 1
+      return {
+        productoId:       parseInt(d.productoId),
+        cantidadPedida:   cantidad,
+        cantidadRecibida: 0,
+        precioCosto:      costo,
+        subtotalPedido:   parseFloat((costo * cantidad).toFixed(2)),
+        subtotalRecibido: 0
+      }
     })
 
     const totalEstimado = parseFloat(rows.reduce((s, r) => s + r.subtotalPedido, 0).toFixed(2))
@@ -123,7 +132,8 @@ const editar = async (req, res) => {
   try {
     const { id } = req.params
     const { proveedorId, detalles, notas } = req.body
-    const { id: usuarioId, sucursalId }    = req.usuario
+    const { id: usuarioId, sucursalId: sucursalIdToken } = req.usuario
+    const sucursalId = sucursalIdToken || parseInt(req.body.sucursalId) || 1
 
     const existente = await prisma.ordenCompra.findUnique({
       where:  { id: parseInt(id) },
@@ -134,8 +144,7 @@ const editar = async (req, res) => {
     if (!['ENVIADO','RECIBIDO_PARCIAL'].includes(existente.estado))
       return res.status(400).json({ success: false, error: 'Solo se puede editar en estado Pendiente o Recibido parcial' })
 
-    // Detalles que ya tienen mercancía recibida — NO se pueden eliminar
-    const detallesConRecepcion = existente.detalles.filter(d => d.cantidadRecibida > 0)
+    const detallesConRecepcion = existente.detalles.filter(d => parseFloat(d.cantidadRecibida) > 0)
     const idsProtegidos        = new Set(detallesConRecepcion.map(d => d.productoId))
 
     const updateData = {}
@@ -143,7 +152,6 @@ const editar = async (req, res) => {
     if (notas       !== undefined) updateData.notas       = notas
 
     if (detalles && detalles.length > 0) {
-      // Verificar que no se está eliminando un producto ya recibido
       const idsNuevos  = new Set(detalles.map(d => parseInt(d.productoId)))
       const eliminados = [...idsProtegidos].filter(pid => !idsNuevos.has(pid))
 
@@ -159,9 +167,11 @@ const editar = async (req, res) => {
 
       const rows = detalles.map(d => {
         const costo    = parseFloat(d.precioCosto || 0)
-        const qty      = parseInt(d.cantidadPedida) || 1
+        // FIX: parseFloat para soportar cantidades decimales
+        const qty      = parseFloat(d.cantidadPedida) || 1
         const detExist = existente.detalles.find(e => e.productoId === parseInt(d.productoId))
-        const cantRec  = detExist?.cantidadRecibida || 0
+        // FIX: parseFloat en cantidadRecibida que viene de Prisma como Decimal
+        const cantRec  = parseFloat(detExist?.cantidadRecibida || 0)
         return {
           productoId:       parseInt(d.productoId),
           cantidadPedida:   qty,
@@ -197,19 +207,25 @@ const editar = async (req, res) => {
 // ── POST /compras/:id/recibir ── (recepción por producto)
 const recibir = async (req, res) => {
   try {
-    const { id }      = req.params
+    const { id }       = req.params
     const { detalles } = req.body  // [{ detalleId, cantidadRecibida, precioVenta? }]
-    const { id: usuarioId, sucursalId } = req.usuario
+    const { id: usuarioId, sucursalId: sucursalIdToken } = req.usuario
+    const sucursalId = sucursalIdToken || 1
 
     if (!detalles || detalles.length === 0)
       return res.status(400).json({ success: false, error: 'Detalles de recepción requeridos' })
 
-    const oc = await prisma.ordenCompra.findUnique({ where: { id: parseInt(id) }, select: { id: true, folio: true, estado: true, sucursalId: true, detalles: { select: { id: true, productoId: true, cantidadPedida: true, cantidadRecibida: true, precioCosto: true } } } })
-    if (!oc) return res.status(404).json({ success: false, error: 'Orden no encontrada' })
-    if (oc.estado === 'CANCELADO') return res.status(400).json({ success: false, error: 'Orden cancelada' })
-    if (oc.estado === 'RECIBIDO')   return res.status(400).json({ success: false, error: 'Orden ya recibida completamente' })
+    const oc = await prisma.ordenCompra.findUnique({
+      where:  { id: parseInt(id) },
+      select: {
+        id: true, folio: true, estado: true, sucursalId: true, proveedorId: true,
+        detalles: { select: { id: true, productoId: true, cantidadPedida: true, cantidadRecibida: true, precioCosto: true } }
+      }
+    })
+    if (!oc)                         return res.status(404).json({ success: false, error: 'Orden no encontrada' })
+    if (oc.estado === 'CANCELADO')   return res.status(400).json({ success: false, error: 'Orden cancelada' })
+    if (oc.estado === 'RECIBIDO')    return res.status(400).json({ success: false, error: 'Orden ya recibida completamente' })
 
-    // Verificar roles
     const roles = ['ADMIN_SUCURSAL','SUPERADMIN']
     const usuario = await prisma.usuario.findUnique({ where: { id: usuarioId }, select: { rol: true } })
     if (!roles.includes(usuario.rol))
@@ -222,19 +238,25 @@ const recibir = async (req, res) => {
         const detalle = oc.detalles.find(d => d.id === parseInt(item.detalleId))
         if (!detalle) continue
 
-        const cantNueva    = parseInt(item.cantidadRecibida) || 0
+        // FIX: parseFloat para soportar recepciones parciales decimales (ej. 0.5 kg)
+        const cantNueva = parseFloat(item.cantidadRecibida) || 0
         if (cantNueva <= 0) continue
 
-        // Acumular con lo ya recibido anteriormente (recepción parcial iterativa)
-        const cantTotalRecibida = detalle.cantidadRecibida + cantNueva
-        const subtotalRec = parseFloat((parseFloat(detalle.precioCosto) * cantTotalRecibida).toFixed(2))
-        const subtotalNuevo = parseFloat((parseFloat(detalle.precioCosto) * cantNueva).toFixed(2))
+        // FIX: parseFloat en cantidadRecibida que viene de Prisma como tipo Decimal
+        const cantYaRecibida    = parseFloat(detalle.cantidadRecibida)
+        const cantTotalRecibida = parseFloat((cantYaRecibida + cantNueva).toFixed(3))
+        const costoUnit         = parseFloat(detalle.precioCosto)
+
+        const subtotalNuevo = parseFloat((costoUnit * cantNueva).toFixed(2))
         totalRecibidoNuevo += subtotalNuevo
 
         // Actualizar detalle — acumular cantidades
         await tx.detalleOrdenCompra.update({
           where: { id: detalle.id },
-          data:  { cantidadRecibida: cantTotalRecibida, subtotalRecibido: parseFloat((parseFloat(detalle.precioCosto) * cantTotalRecibida).toFixed(2)) }
+          data:  {
+            cantidadRecibida: cantTotalRecibida,
+            subtotalRecibido: parseFloat((costoUnit * cantTotalRecibida).toFixed(2))
+          }
         })
 
         // Actualizar stock
@@ -243,53 +265,63 @@ const recibir = async (req, res) => {
         })
 
         if (inv) {
-          const stockAntes   = inv.stockActual
-          const stockDespues = stockAntes + cantNueva
+          const stockAntes   = parseFloat(inv.stockActual)
+          const stockDespues = parseFloat((stockAntes + cantNueva).toFixed(3))
 
           // Calcular costo promedio ponderado
-          const costoNuevo = parseFloat(detalle.precioCosto)
-          const costoActual = parseFloat((await tx.producto.findUnique({ where: { id: detalle.productoId }, select: { costoPromedio: true } }))?.costoPromedio || costoNuevo)
-          const nuevoCostoPromedio = parseFloat(((stockAntes * costoActual + cantNueva * costoNuevo) / (stockAntes + cantNueva)).toFixed(4))
+          const costoActual        = parseFloat((await tx.producto.findUnique({ where: { id: detalle.productoId }, select: { costoPromedio: true } }))?.costoPromedio || costoUnit)
+          const nuevoCostoPromedio = stockAntes + cantNueva > 0
+            ? parseFloat(((stockAntes * costoActual + cantNueva * costoUnit) / (stockAntes + cantNueva)).toFixed(4))
+            : costoUnit
 
           await tx.inventarioSucursal.update({
             where: { productoId_sucursalId: { productoId: detalle.productoId, sucursalId: oc.sucursalId } },
             data:  { stockActual: stockDespues }
           })
 
-          // Actualizar precioVenta si el usuario lo modificó al recibir
           const nuevoPrecioVenta = item.precioVenta ? parseFloat(item.precioVenta) : undefined
           await tx.producto.update({
             where: { id: detalle.productoId },
             data:  {
-              costo: costoNuevo,
+              costo:         costoUnit,
               costoPromedio: nuevoCostoPromedio,
               ...(nuevoPrecioVenta && nuevoPrecioVenta > 0 ? { precioVenta: nuevoPrecioVenta } : {})
             }
           })
 
+          // Actualizar precioCosto en ProveedorProducto (precio vigente por proveedor)
+          await tx.proveedorProducto.updateMany({
+            where: { proveedorId: oc.proveedorId, productoId: detalle.productoId },
+            data:  { precioCosto: costoUnit }
+          })
+
           await tx.movimientoInventario.create({
-            data: { productoId: detalle.productoId, sucursalId: oc.sucursalId, usuarioId,
-                    tipo: 'ENTRADA_COMPRA', cantidad: cantNueva, stockAntes, stockDespues: stockAntes + cantNueva, referencia: oc.folio }
+            data: {
+              productoId:   detalle.productoId,
+              sucursalId:   oc.sucursalId,
+              usuarioId,
+              tipo:         'ENTRADA_COMPRA',
+              cantidad:     cantNueva,
+              stockAntes,
+              stockDespues,
+              referencia:   oc.folio
+            }
           })
         }
       }
 
-      // Determinar nuevo estado
-      const ocActualizada = await tx.ordenCompra.findUnique({
-        where: { id: parseInt(id) },
-        select: { detalles: { select: { cantidadPedida: true, cantidadRecibida: true } } }
-      })
-      // Recargamos con los nuevos valores sumando los items recién actualizados
-      // Calcular si todos los productos están completamente recibidos
-      const totalRecibMap = Object.fromEntries(detalles.map(d => [d.detalleId, parseInt(d.cantidadRecibida) || 0]))
-      const todoCompleto  = oc.detalles.every(d => {
-        const yaRecibido  = d.cantidadRecibida
-        const nuevaRec    = totalRecibMap[d.id] || 0
-        return (yaRecibido + nuevaRec) >= d.cantidadPedida
+      // Determinar nuevo estado comparando con cantidadPedida
+      // FIX: parseFloat en ambos lados de la comparación
+      const totalRecibMap = Object.fromEntries(
+        detalles.map(d => [d.detalleId, parseFloat(d.cantidadRecibida) || 0])
+      )
+      const todoCompleto = oc.detalles.every(d => {
+        const yaRecibido = parseFloat(d.cantidadRecibida)
+        const nuevaRec   = totalRecibMap[d.id] || 0
+        return (yaRecibido + nuevaRec) >= parseFloat(d.cantidadPedida)
       })
       const nuevoEstado = todoCompleto ? 'RECIBIDO' : 'RECIBIDO_PARCIAL'
 
-      // Acumular sobre totalRecibido existente (para recepciones parciales sucesivas)
       const ocConTotal = await tx.ordenCompra.findUnique({ where: { id: parseInt(id) }, select: { totalRecibido: true } })
       const totalRecibidoAcumulado = parseFloat((parseFloat(ocConTotal.totalRecibido || 0) + totalRecibidoNuevo).toFixed(2))
 
@@ -313,7 +345,8 @@ const registrarAbono = async (req, res) => {
   try {
     const { id }                        = req.params
     const { monto, metodoPago, notas }  = req.body
-    const { id: usuarioId, sucursalId } = req.usuario
+    const { id: usuarioId, sucursalId: sucursalIdToken } = req.usuario
+    const sucursalId = sucursalIdToken || 1
 
     if (!monto || parseFloat(monto) <= 0)
       return res.status(400).json({ success: false, error: 'Monto debe ser mayor a 0' })
@@ -321,9 +354,9 @@ const registrarAbono = async (req, res) => {
     const oc = await prisma.ordenCompra.findUnique({ where: { id: parseInt(id) }, select: { id: true, folio: true, totalPagado: true, totalEstimado: true } })
     if (!oc) return res.status(404).json({ success: false, error: 'Orden no encontrada' })
 
-    const montoAbono    = parseFloat(parseFloat(monto).toFixed(2))
-    const nuevoTotal    = parseFloat((parseFloat(oc.totalPagado) + montoAbono).toFixed(2))
-    const pagada        = nuevoTotal >= parseFloat(oc.totalEstimado)
+    const montoAbono = parseFloat(parseFloat(monto).toFixed(2))
+    const nuevoTotal = parseFloat((parseFloat(oc.totalPagado) + montoAbono).toFixed(2))
+    const pagada     = nuevoTotal >= parseFloat(oc.totalEstimado)
 
     await prisma.$transaction(async tx => {
       await tx.abonoCompra.create({
@@ -348,11 +381,13 @@ const registrarAbono = async (req, res) => {
 const cancelar = async (req, res) => {
   try {
     const { id } = req.params
-    const { id: usuarioId, sucursalId } = req.usuario
+    const { id: usuarioId, sucursalId: sucursalIdToken } = req.usuario
+    const sucursalId = sucursalIdToken || 1
 
     const oc = await prisma.ordenCompra.findUnique({ where: { id: parseInt(id) }, select: { id: true, folio: true, estado: true } })
     if (!oc) return res.status(404).json({ success: false, error: 'Orden no encontrada' })
-    if (!['ENVIADO','RECIBIDO_PARCIAL'].includes(oc.estado)) return res.status(400).json({ success: false, error: 'Solo se puede cancelar antes de recibir completamente' })
+    if (!['ENVIADO','RECIBIDO_PARCIAL'].includes(oc.estado))
+      return res.status(400).json({ success: false, error: 'Solo se puede cancelar antes de recibir completamente' })
 
     const ocActualizada = await prisma.ordenCompra.update({ where: { id: parseInt(id) }, data: { estado: 'CANCELADO' }, select: OC_SELECT })
     await audit(usuarioId, sucursalId, 'CANCELAR_COMPRA', oc.folio)
@@ -360,7 +395,7 @@ const cancelar = async (req, res) => {
   } catch (err) { res.status(500).json({ success: false, error: err.message }) }
 }
 
-// ── GET /compras/proveedores ── (listar proveedores)
+// ── GET /compras/proveedores ──
 const listarProveedores = async (req, res) => {
   try {
     const { buscar } = req.query
@@ -376,7 +411,7 @@ const listarProveedores = async (req, res) => {
   } catch (err) { res.status(500).json({ success: false, error: err.message }) }
 }
 
-// ── POST /compras/proveedores ── (crear proveedor)
+// ── POST /compras/proveedores ──
 const crearProveedor = async (req, res) => {
   try {
     const { nombreOficial, alias, telefono, celular, email } = req.body

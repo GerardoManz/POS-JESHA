@@ -145,24 +145,84 @@ function renderDetalle() {
   const showRecibido = !esPendiente || recibiendo
 
   // Mostrar/ocultar columnas según modo
-  document.getElementById('col-recibido-header').style.display      = showRecibido ? '' : 'none'
+  document.getElementById('col-recibido-header').style.display = showRecibido ? '' : 'none'
+  const colPend = document.getElementById('col-pendiente-header')
+  if (colPend) colPend.style.display = recibiendo ? '' : 'none'
   const colPV = document.getElementById('col-precio-venta-header')
   if (colPV) colPV.style.display = recibiendo ? '' : 'none'
 
   const tbody = document.getElementById('det-items-tbody')
   tbody.innerHTML = (oc.detalles || []).map(d => {
-    const pendiente   = d.cantidadPedida - d.cantidadRecibida
-    const yaCompleto  = d.cantidadRecibida >= d.cantidadPedida
-    const rowStyle    = yaCompleto && recibiendo ? 'opacity:0.45;' : ''
+    const cantPedida   = parseFloat(d.cantidadPedida)
+    const cantRecibida = parseFloat(d.cantidadRecibida)
+    const pendiente    = parseFloat((cantPedida - cantRecibida).toFixed(3))
+    const yaCompleto   = cantRecibida >= cantPedida
+    const rowStyle     = yaCompleto && recibiendo ? 'opacity:0.45;' : ''
+    const unidad       = d.producto?.unidadCompra || 'pza'
 
-    // Badge de estado por fila
+    // Costo anterior vs nuevo
+    const costoOrden    = parseFloat(d.precioCosto)
+    const costoAnterior = parseFloat(d.producto?.costo || costoOrden)
+    const costoSubio    = costoOrden > costoAnterior
+    const costoBajo     = costoOrden < costoAnterior
+    const costoColor    = costoSubio ? '#f87171' : costoBajo ? '#60d080' : 'inherit'
+    const costoAntLabel = recibiendo && costoOrden !== costoAnterior
+      ? `<div style="font-size:0.68rem;color:var(--muted);margin-top:2px;">ant: ${fmt(costoAnterior)}</div>`
+      : ''
+
+    // Badge de estado por fila (solo en modo vista)
     let estadoFila = ''
     if (!recibiendo) {
       if (yaCompleto)
         estadoFila = `<span style="font-size:0.7rem;background:rgba(96,208,128,0.12);color:#60d080;border:1px solid rgba(96,208,128,0.25);border-radius:4px;padding:1px 6px;margin-left:6px;">✓ completo</span>`
-      else if (d.cantidadRecibida > 0)
-        estadoFila = `<span style="font-size:0.7rem;background:rgba(255,193,7,0.1);color:#ffc107;border:1px solid rgba(255,193,7,0.25);border-radius:4px;padding:1px 6px;margin-left:6px;">parcial ${d.cantidadRecibida}/${d.cantidadPedida}</span>`
+      else if (cantRecibida > 0)
+        estadoFila = `<span style="font-size:0.7rem;background:rgba(255,193,7,0.1);color:#ffc107;border:1px solid rgba(255,193,7,0.25);border-radius:4px;padding:1px 6px;margin-left:6px;">parcial ${cantRecibida}/${cantPedida}</span>`
     }
+
+    // Celda de recibir (input decimal) / vista
+    const celdaRecibido = showRecibido ? `<td style="text-align:center">
+      ${recibiendo
+        ? yaCompleto
+          ? `<span style="color:#60d080;font-size:0.8rem;">✓ ya recibido</span>`
+          : `<div style="display:flex;flex-direction:column;align-items:center;gap:2px;">
+               <input type="number" class="input-recibir" id="rec-${d.id}"
+                 min="0" max="${pendiente}" step="0.001" value="${pendiente}"
+                 style="width:64px;text-align:center;" />
+               <span style="font-size:0.68rem;color:var(--muted);">máx ${pendiente} ${unidad}</span>
+             </div>`
+        : `<span style="color:${yaCompleto ? '#60d080' : cantRecibida > 0 ? '#ffc107' : 'var(--muted)'}">
+             ${cantRecibida} / ${cantPedida}
+           </span>`
+      }
+    </td>` : ''
+
+    // Celda pendiente (solo en modo recibir, solo si no está completo)
+    const celdaPendiente = recibiendo ? `<td style="text-align:center">
+      ${yaCompleto
+        ? `<span style="color:#60d080;font-size:0.78rem;">—</span>`
+        : `<span style="color:#ffc107;font-size:0.82rem;font-weight:500;">${pendiente} ${unidad}</span>`
+      }
+    </td>` : ''
+
+    // Celda margen + precio venta calculado (por producto)
+    const precioVentaActual = parseFloat(d.producto?.precioVenta || d.producto?.precioBase || 0)
+    const celdaMargen = recibiendo ? `<td>
+      ${yaCompleto
+        ? `<span style="color:var(--muted);font-size:0.8rem;">—</span>`
+        : `<div style="display:flex;flex-direction:column;gap:4px;">
+             <div style="display:flex;align-items:center;gap:4px;">
+               <input type="number" id="mg-${d.id}" min="0" max="999" step="0.1" placeholder="%" value=""
+                 style="width:52px;padding:3px 5px;background:rgba(255,255,255,0.05);border:1px solid var(--panel-border);border-radius:5px;color:var(--text);font-size:0.8rem;text-align:center;"
+                 oninput="calcPrecioVenta(${d.id}, ${costoOrden})" />
+               <span style="font-size:0.75rem;color:var(--muted);">%</span>
+             </div>
+             <div style="font-size:0.78rem;color:var(--muted);">
+               act: ${fmt(precioVentaActual)}
+             </div>
+             <div id="pv-calc-${d.id}" style="font-size:0.82rem;color:#60d080;font-weight:500;min-height:16px;"></div>
+           </div>`
+      }
+    </td>` : ''
 
     return `
     <tr style="${rowStyle}">
@@ -171,33 +231,16 @@ function renderDetalle() {
         ${estadoFila}
       </td>
       <td style="text-align:center">
-        <strong>${d.cantidadPedida}</strong>
-        <div class="qty-pedido">${d.producto?.unidadCompra || 'pza'}</div>
+        <strong>${cantPedida}</strong>
+        <div class="qty-pedido">${unidad}</div>
       </td>
-      ${showRecibido ? `<td style="text-align:center">
-        ${recibiendo
-          ? yaCompleto
-            ? `<span style="color:#60d080;font-size:0.8rem;">✓ ya recibido</span>`
-            : `<div style="display:flex;flex-direction:column;align-items:center;gap:2px;">
-                <input type="number" class="input-recibir" id="rec-${d.id}"
-                  min="0" max="${pendiente}" value="${pendiente}"
-                  style="width:60px;text-align:center;" />
-                <span style="font-size:0.68rem;color:var(--muted);">máx ${pendiente}</span>
-               </div>`
-          : `<span style="color:${yaCompleto ? '#60d080' : d.cantidadRecibida > 0 ? '#ffc107' : 'var(--muted)'}">
-               ${d.cantidadRecibida} / ${d.cantidadPedida}
-             </span>`
-        }
-      </td>` : ''}
-      <td>${fmt(d.precioCosto)}</td>
-      ${recibiendo ? `<td>
-        ${yaCompleto
-          ? `<span style="color:var(--muted);font-size:0.8rem;">—</span>`
-          : `<input type="number" class="input-precio-venta" id="pv-${d.id}" min="0" step="0.01"
-               value="${parseFloat(d.producto?.precioVenta || d.producto?.precioBase || 0).toFixed(2)}"
-               style="width:90px;padding:4px 6px;background:rgba(255,255,255,0.04);border:1px solid var(--panel-border);border-radius:6px;color:var(--text);font-size:0.82rem;" />`
-        }
-      </td>` : ''}
+      ${celdaRecibido}
+      ${celdaPendiente}
+      <td>
+        <span style="color:${costoColor}">${fmt(costoOrden)}</span>
+        ${costoAntLabel}
+      </td>
+      ${celdaMargen}
       <td>${fmt(d.subtotalPedido)}</td>
     </tr>`
   }).join('')
@@ -237,6 +280,17 @@ function renderDetalle() {
       </div>`
 }
 
+// Calcula y muestra el precio de venta en base al margen % ingresado
+window.calcPrecioVenta = function(detalleId, costoOrden) {
+  const mgInput = document.getElementById(`mg-${detalleId}`)
+  const pvCalc  = document.getElementById(`pv-calc-${detalleId}`)
+  if (!mgInput || !pvCalc) return
+  const mg = parseFloat(mgInput.value) || 0
+  if (mg <= 0) { pvCalc.textContent = ''; return }
+  const pv = costoOrden * (1 + mg / 100)
+  pvCalc.textContent = `→ ${fmt(pv)}`
+}
+
 // ════════════════════════════════════════════════════════════════════
 //  RECEPCIÓN
 // ════════════════════════════════════════════════════════════════════
@@ -249,14 +303,16 @@ window.cancelarRecepcion = function() {
   renderDetalle()
 }
 window.confirmarRecepcion = async function() {
-  // Solo enviamos los que tienen cantidad nueva > 0 (los faltantes)
   const detalles = (ocActual.detalles || [])
-    .filter(d => d.cantidadPedida > d.cantidadRecibida)  // solo los que aún faltan
-    .map(d => ({
-      detalleId:        d.id,
-      cantidadRecibida: parseInt(document.getElementById(`rec-${d.id}`)?.value) || 0,
-      precioVenta:      parseFloat(document.getElementById(`pv-${d.id}`)?.value) || null
-    })).filter(d => d.cantidadRecibida > 0)
+    .filter(d => parseFloat(d.cantidadPedida) > parseFloat(d.cantidadRecibida))
+    .map(d => {
+      const cantNueva = parseFloat(document.getElementById(`rec-${d.id}`)?.value) || 0
+      if (cantNueva <= 0) return null
+      const costoUnit = parseFloat(d.precioCosto)
+      const mg        = parseFloat(document.getElementById(`mg-${d.id}`)?.value) || 0
+      const precioVenta = mg > 0 ? parseFloat((costoUnit * (1 + mg / 100)).toFixed(2)) : null
+      return { detalleId: d.id, cantidadRecibida: cantNueva, precioVenta }
+    }).filter(Boolean).filter(d => d.cantidadRecibida > 0)
 
   if (detalles.length === 0) { jeshaToast('Ingresa al menos una cantidad recibida', 'warning'); return }
 
@@ -372,7 +428,7 @@ function renderItemsEdicion() {
       <td style="color:var(--muted);font-size:0.78rem">${item.unidad}</td>
       <td>${bloqueado
         ? `<span style="color:var(--muted);font-size:0.85rem;">${item.cantidad}</span>`
-        : `<input type="number" min="1" value="${item.cantidad}" style="width:58px" oninput="actualizarItemEdicion(${i},'cantidad',this.value)" />`
+        : `<input type="number" min="0.001" step="0.01" value="${item.cantidad}" style="width:58px" oninput="actualizarItemEdicion(${i},'cantidad',this.value)" />`
       }</td>
       <td>${bloqueado
         ? `<span style="color:var(--muted);font-size:0.85rem;">${fmt(item.costo)}</span>`
@@ -391,7 +447,7 @@ function renderItemsEdicion() {
 window.actualizarItemEdicion = function(i, campo, v) {
   const n = parseFloat(v)
   if (!isNaN(n) && n >= 0) {
-    if (campo === 'cantidad') itemsEdicion[i].cantidad = parseInt(v) || 1
+    if (campo === 'cantidad') itemsEdicion[i].cantidad = parseFloat(v) || 0.001
     else itemsEdicion[i].costo = n
     const cel = document.getElementById(`item-sub-${i}`)
     if (cel) cel.innerHTML = `<strong>${fmt(itemsEdicion[i].costo * itemsEdicion[i].cantidad)}</strong>`
