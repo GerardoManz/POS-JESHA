@@ -406,6 +406,8 @@ model Venta {
   estadoPago         EstadoPago   @default(PAGADA)
   montoAbonado       Decimal      @default(0) @db.Decimal(10, 2)
   saldoPendiente     Decimal      @default(0) @db.Decimal(10, 2)
+  montoPagado        Decimal      @default(0) @db.Decimal(10, 2)
+  cambio             Decimal      @default(0) @db.Decimal(10, 2)
   estado             EstadoVenta  @default(COMPLETADA)
   tokenQr            String       @unique @default(uuid())
   facturaEstado      EstadoFactura @default(DISPONIBLE)

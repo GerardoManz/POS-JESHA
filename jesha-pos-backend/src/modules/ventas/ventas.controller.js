@@ -13,7 +13,7 @@ exports.crearVenta = async (req, res) => {
     const sucursalId = parseInt(req.body.sucursalId)
     const usuarioId  = parseInt(req.body.usuarioId)
     const turnoId    = parseInt(req.body.turnoId)
-    const { metodoPago, subtotal, iva, descuento, total, detalles, notas } = req.body
+    const { metodoPago, subtotal, iva, descuento, total, detalles, notas, montoPagado: montoPagadoRaw } = req.body
     const clienteId  = req.body.clienteId ? parseInt(req.body.clienteId) : null
 
     if (!sucursalId || isNaN(sucursalId) || !usuarioId || isNaN(usuarioId) || !turnoId || isNaN(turnoId) || !metodoPago) {
@@ -120,10 +120,18 @@ exports.crearVenta = async (req, res) => {
         throw err
       }
 
+      const montoPagadoFinal = metodoPago === 'EFECTIVO'
+        ? parseFloat(parseFloat(montoPagadoRaw || 0).toFixed(2))
+        : totalEsperado
+      const cambioFinal = metodoPago === 'EFECTIVO' && montoPagadoFinal > totalEsperado
+        ? parseFloat((montoPagadoFinal - totalEsperado).toFixed(2))
+        : 0
+
       const ventaCreada = await tx.venta.create({
         data: {
           folio, sucursalId, usuarioId, clienteId: clienteId || null, turnoId, metodoPago,
           subtotal: totalRecalculado, descuento: descuentoAmt, total: totalEsperado,
+          montoPagado: montoPagadoFinal, cambio: cambioFinal,
           notas: notas || null,
           estado: 'COMPLETADA', tokenQr: generarUUID(), facturaEstado, facturaLimite,
           detalles: {
@@ -318,6 +326,8 @@ exports.obtenerVenta = async (req, res) => {
         iva:          venta.iva,
         descuento:    venta.descuento,
         total:        venta.total,
+        montoPagado:  venta.montoPagado,
+        cambio:       venta.cambio,
         estado:       venta.estado,
         tokenQr:      venta.tokenQr,
         facturaEstado: venta.facturaEstado,

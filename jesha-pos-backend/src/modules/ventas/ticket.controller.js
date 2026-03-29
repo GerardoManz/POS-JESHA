@@ -98,7 +98,7 @@ exports.generarTicketThermal = async (req, res) => {
 function generarHTMLTicket(venta, qrDataUrl, fechaStr, pagos) {
   const fmt = v => `$${parseFloat(v||0).toFixed(2)}`
 
-  // Productos — usar precioUnitario * cantidad si subtotal no existe
+  // Productos
   const filaProductos = (venta.detalles || []).map(d => {
     const subtotal = d.subtotal ?? d.importe ?? (parseFloat(d.precioUnitario || 0) * parseFloat(d.cantidad || 1))
     const nombre   = d.producto?.nombre || d.descripcion || '—'
@@ -107,14 +107,38 @@ function generarHTMLTicket(venta, qrDataUrl, fechaStr, pagos) {
     const qtyStr   = Number.isInteger(qty) ? qty.toString() : qty.toFixed(3).replace(/\.?0+$/, '')
     const precio   = parseFloat(d.precioUnitario || 0)
     return `<tr>
-      <td style="padding:3px 0;font-size:11px;word-break:break-word;">${nombre}${codigo}<span style="font-size:10px;color:#555;">${qtyStr} × ${fmt(precio)}</span></td>
-      <td style="padding:3px 0;font-size:11px;text-align:right;white-space:nowrap;vertical-align:top;">${fmt(subtotal)}</td>
+      <td style="padding:4px 0;font-size:11px;word-break:break-word;">
+        <div style="font-weight:600;line-height:1.3;">${nombre}</div>
+        ${codigo}
+        <span style="font-size:10px;color:#555;">${qtyStr} × ${fmt(precio)}</span>
+      </td>
+      <td style="padding:4px 0;font-size:11px;text-align:right;white-space:nowrap;vertical-align:top;font-weight:600;">${fmt(subtotal)}</td>
     </tr>`
   }).join('')
 
   const folioCorto = venta.folio?.split('-').pop() || venta.folio
+  const cajero     = venta.usuario?.nombre || '—'
+  const descuento  = parseFloat(venta.descuento || 0)
+  const subtotalV  = parseFloat(venta.subtotal || 0)
 
-  // Logo — embebido en base64, filtro invert para logo blanco sobre fondo blanco
+  // Método de pago — etiqueta legible
+  const metodoLabel = {
+    EFECTIVO:        'Efectivo',
+    CREDITO:         'Tarjeta crédito',
+    DEBITO:          'Tarjeta débito',
+    TRANSFERENCIA:   'Transferencia',
+    CREDITO_CLIENTE: 'Crédito cliente'
+  }[venta.metodoPago] || venta.metodoPago
+
+  // Sección de pago según método
+  const montoPagado  = parseFloat(venta.montoPagado || 0)
+  const cambio       = parseFloat(venta.cambio || 0)
+  const seccionPago  = venta.metodoPago === 'EFECTIVO'
+    ? `<div class="pago-row"><span>Recibido:</span><span>${fmt(montoPagado)}</span></div>
+       <div class="pago-row cambio-row"><span><strong>Cambio:</strong></span><span><strong>${fmt(cambio)}</strong></span></div>`
+    : ''
+
+  // Logo
   const logoHTML = LOGO_BASE64
     ? `<img src="${LOGO_BASE64}" alt="JESHA" style="width:55mm;filter:invert(1);" />`
     : `<div style="font-size:18px;font-weight:900;letter-spacing:2px;">JESHA</div>`
@@ -132,43 +156,44 @@ function generarHTMLTicket(venta, qrDataUrl, fechaStr, pagos) {
       font-family: 'Courier New', Courier, monospace;
       width: 72mm;
       margin: 0 auto;
-      padding: 4mm 3mm;
+      padding: 3mm 3mm;
       font-size: 11px;
       color: #000;
       background: #fff;
     }
 
-    .header       { text-align:center; margin-bottom:6px; }
-    .logo-wrap    { margin-bottom:6px; }
-    .empresa-nombre { font-size:13px; font-weight:bold; text-transform:uppercase; letter-spacing:0.5px; }
+    .header         { text-align:center; margin-bottom:4px; }
+    .logo-wrap      { margin-bottom:3px; }
+    .empresa-nombre { font-size:12px; font-weight:bold; text-transform:uppercase; letter-spacing:0.5px; }
     .empresa-slogan { font-size:9px; letter-spacing:0.3px; margin-top:1px; }
-    .empresa-dir    { font-size:10px; margin-top:3px; }
+    .empresa-dir    { font-size:9px; margin-top:2px; }
 
-    .sep       { border:none; border-top:1px dashed #000; margin:5px 0; }
-    .sep-doble { border:none; border-top:2px solid #000; margin:5px 0; }
+    .sep       { border:none; border-top:1px dashed #000; margin:4px 0; }
+    .sep-doble { border:none; border-top:2px solid #000; margin:4px 0; }
 
-    .info-row { display:flex; justify-content:space-between; font-size:10px; padding:2px 0; }
-    .tel-row  { display:flex; justify-content:center; gap:20px; font-size:12px; font-weight:bold; margin:4px 0; }
-    .cliente-row { font-size:10px; margin:3px 0; }
+    .info-row    { display:flex; justify-content:space-between; font-size:10px; padding:2px 0; }
+    .info-label  { font-size:10px; padding:1px 0; }
+    .tel-row     { text-align:center; font-size:12px; font-weight:bold; margin:3px 0; }
 
-    .productos-header { display:flex; justify-content:space-between; font-weight:bold; font-size:11px; padding:3px 0; }
+    .productos-header { display:flex; justify-content:space-between; font-weight:bold; font-size:10px; padding:2px 0; }
     .productos-tabla  { width:100%; border-collapse:collapse; }
 
-    .total-row { display:flex; justify-content:space-between; font-size:14px; font-weight:bold; padding:4px 0; }
+    .resumen-row  { display:flex; justify-content:space-between; font-size:10px; padding:1px 0; }
+    .total-row    { display:flex; justify-content:space-between; font-size:14px; font-weight:bold; padding:5px 0; }
 
-    .pago-row { display:flex; justify-content:space-between; font-size:10px; padding:1px 0; }
+    .pago-row     { display:flex; justify-content:space-between; font-size:10px; padding:1px 0; }
+    .cambio-row   { font-size:12px; padding:3px 0; }
 
-    .qr-section { text-align:center; margin:6px 0 4px; }
-    .qr-section img { width:32mm; height:32mm; }
+    .qr-section { text-align:center; margin:5px 0 3px; }
+    .qr-section img { width:30mm; height:30mm; }
     .qr-label { font-size:8px; color:#444; margin-top:2px; }
 
     .footer { text-align:center; font-size:9px; color:#555; margin-top:4px; }
 
     .btn-print {
-      display:block; margin:14px auto 0; padding:10px 32px;
+      display:block; margin:12px auto 0; padding:9px 28px;
       background:#1f3a66; color:#fff; border:none; border-radius:8px;
-      font-size:14px; font-weight:700; cursor:pointer; font-family:sans-serif;
-      letter-spacing:0.5px;
+      font-size:13px; font-weight:700; cursor:pointer; font-family:sans-serif;
     }
     @media print {
       .btn-print { display:none; }
@@ -178,7 +203,7 @@ function generarHTMLTicket(venta, qrDataUrl, fechaStr, pagos) {
 </head>
 <body>
 
-  <!-- ENCABEZADO -->
+  <!-- ── ENCABEZADO ── -->
   <div class="header">
     <div class="logo-wrap">${logoHTML}</div>
     <div class="empresa-nombre">${EMPRESA.nombre}</div>
@@ -190,23 +215,20 @@ function generarHTMLTicket(venta, qrDataUrl, fechaStr, pagos) {
   <hr class="sep"/>
 
   <div class="info-row">
-    <span>Fecha:${fechaStr}</span>
-    <span>Folio:${folioCorto}</span>
+    <span>Fecha: ${fechaStr}</span>
+    <span>Folio: ${folioCorto}</span>
   </div>
+  <div class="info-label">Cajero: ${cajero}</div>
+  ${venta.cliente ? `<div class="info-label">Cliente: ${venta.cliente.nombre}</div>` : ''}
 
-  <div style="text-align:center;font-size:10px;margin:2px 0;">Números de contacto:</div>
-  <div class="tel-row">
-    <span>${EMPRESA.tel1}</span>
-  </div>
-
-  ${venta.cliente ? `<div class="cliente-row">Cliente: ${venta.cliente.nombre}</div>` : ''}
+  <div class="tel-row">${EMPRESA.tel1}</div>
 
   <hr class="sep-doble"/>
-  <hr class="sep-doble"/>
 
+  <!-- ── PRODUCTOS ── -->
   <div class="productos-header">
     <span>Descripción</span>
-    <span>Precio</span>
+    <span>Importe</span>
   </div>
   <hr class="sep"/>
 
@@ -214,7 +236,15 @@ function generarHTMLTicket(venta, qrDataUrl, fechaStr, pagos) {
     <tbody>${filaProductos || '<tr><td colspan="2" style="text-align:center;color:#999;padding:4px 0;">Sin productos</td></tr>'}</tbody>
   </table>
 
-  <hr class="sep-doble"/>
+  <hr class="sep"/>
+
+  <!-- ── RESUMEN ── -->
+  <div class="resumen-row">
+    <span>Subtotal:</span>
+    <span>${fmt(subtotalV)}</span>
+  </div>
+  ${descuento > 0 ? `<div class="resumen-row"><span>Descuento:</span><span>-${fmt(descuento)}</span></div>` : ''}
+
   <hr class="sep-doble"/>
 
   <div class="total-row">
@@ -222,20 +252,25 @@ function generarHTMLTicket(venta, qrDataUrl, fechaStr, pagos) {
     <span>${fmt(venta.total)}</span>
   </div>
 
+  <hr class="sep-doble"/>
+
+  <!-- ── PAGO ── -->
+  <div class="pago-row">
+    <span>Método de pago:</span>
+    <span>${metodoLabel}</span>
+  </div>
+  ${seccionPago}
+  ${pagos.totalCredito > 0 ? `<div class="pago-row" style="color:#c47000;font-weight:600;"><span>Saldo a crédito:</span><span>${fmt(pagos.totalCredito)}</span></div>` : ''}
+
   <hr class="sep"/>
 
-  <div class="pago-row"><span>Efectivo:</span><span>${pagos.totalEfectivo.toFixed(2)}</span></div>
-  <div class="pago-row"><span>Tarjeta:</span><span>${pagos.totalTarjeta.toFixed(2)}</span></div>
-  <div class="pago-row"><span>Transferencia:</span><span>${pagos.totalTransferencia.toFixed(2)}</span></div>
-  ${pagos.totalCredito > 0 ? `<div class="pago-row" style="color:#e8710a;font-weight:600;"><span>Crédito cliente:</span><span>${pagos.totalCredito.toFixed(2)}</span></div>` : ''}
-
-  <hr class="sep"/>
-
+  <!-- ── QR FACTURACIÓN ── -->
   <div class="qr-section">
     <img src="${qrDataUrl}" alt="QR Facturación" />
     <div class="qr-label">Escanea para solicitar factura electrónica</div>
   </div>
 
+  <!-- ── PIE ── -->
   <div class="footer">
     Gracias por su compra<br/>
     Conserve su ticket para cualquier aclaración<br/><br/>

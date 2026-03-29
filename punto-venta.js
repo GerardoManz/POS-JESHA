@@ -965,6 +965,8 @@ async function confirmarVenta() {
       return;
     }
 
+    const montoInputVal = parseFloat(document.getElementById('confirm-monto-recibido')?.value) || 0
+
     const payload = {
       sucursalId:  parseInt(sucursalIdSeguro, 10),
       usuarioId:   vendId,
@@ -975,6 +977,7 @@ async function confirmarVenta() {
       subtotal:    parseFloat(total.toFixed(2)),
       descuento:   descAmt,
       total:       totalFinal,
+      montoPagado: metodoPagoSeleccionado === 'EFECTIVO' ? montoInputVal : totalFinal,
       esCredito,
       notas: esTarjetaPago ? `Ref. Ingenico: ${refTarjeta}` : null,
       detalles
