@@ -663,6 +663,12 @@ function mostrarModalConfirmacion() {
   const inputDesc = document.getElementById('confirm-descuento-input')
   if (inputDesc) inputDesc.value = descuentoManual > 0 ? descuentoManual : ''
 
+  // Ocultar bloque de descuento manual para EMPLEADO
+  const puedeDescuento = ['SUPERADMIN', 'ADMIN_SUCURSAL'].includes(USUARIO.rol)
+  const wrapDesc = document.getElementById('confirm-descuento-wrap')
+  if (wrapDesc) wrapDesc.style.display = puedeDescuento ? '' : 'none'
+  if (!puedeDescuento && inputDesc) inputDesc.value = ''
+
   const wrapEmpleado = document.getElementById('confirm-venta-empleado-wrap')
   const selEmpReset  = document.getElementById('confirm-empleado-select')
   const badgeEmpReset = document.getElementById('confirm-empleado-badge')

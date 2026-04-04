@@ -6,10 +6,8 @@ const prisma = require('../../lib/prisma')
 
 const obtenerActivo = async (req, res) => {
   try {
-    const { sucursalId } = req.usuario
-    if (!sucursalId) {
-      return res.status(400).json({ error: 'Usuario sin sucursal asignada' })
-    }
+    const { sucursalId: sucursalIdToken } = req.usuario
+    const sucursalId = sucursalIdToken || parseInt(req.query.sucursalId) || 1
 
     const turno = await prisma.turnoCaja.findFirst({
       where: { sucursalId, abierto: true },
@@ -37,11 +35,9 @@ const obtenerActivo = async (req, res) => {
 const abrirTurno = async (req, res) => {
   try {
     const { montoInicial } = req.body
-    const { id: usuarioId, sucursalId } = req.usuario
+    const { id: usuarioId, sucursalId: sucursalIdToken } = req.usuario
+    const sucursalId = sucursalIdToken || parseInt(req.body.sucursalId) || 1
 
-    if (!sucursalId) {
-      return res.status(400).json({ error: 'Usuario sin sucursal asignada' })
-    }
     if (montoInicial === undefined || montoInicial < 0) {
       return res.status(400).json({ error: 'Monto inicial requerido y debe ser >= 0' })
     }
@@ -87,11 +83,9 @@ const abrirTurno = async (req, res) => {
 const cerrarTurno = async (req, res) => {
   try {
     const { montoFinalDeclarado } = req.body
-    const { id: usuarioId, sucursalId } = req.usuario
+    const { id: usuarioId, sucursalId: sucursalIdToken } = req.usuario
+    const sucursalId = sucursalIdToken || parseInt(req.body.sucursalId) || 1
 
-    if (!sucursalId) {
-      return res.status(400).json({ error: 'Usuario sin sucursal asignada' })
-    }
     if (montoFinalDeclarado === undefined || montoFinalDeclarado < 0) {
       return res.status(400).json({ error: 'Monto final declarado requerido' })
     }

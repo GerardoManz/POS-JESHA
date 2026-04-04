@@ -136,6 +136,23 @@ function inferirUnidadVenta(descripcion, esGranel) {
     return 'pza' // default para granel sin unidad clara
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// NORMALIZAR NOMBRE DE PROVEEDOR
+// Limpia: trim, mayúsculas, sin acentos, sin comillas, espacios simples
+// ═══════════════════════════════════════════════════════════════════
+
+function normalizarNombreProveedor(nombre) {
+    if (!nombre) return null
+    const result = nombre
+        .trim()
+        .toUpperCase()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // quitar acentos
+        .replace(/["""'']/g, '')                           // quitar comillas
+        .replace(/\s+/g, ' ')                              // colapsar espacios
+        .trim()
+    return result || null
+}
+
 function mapearProducto(fila) {
     let codigoBarras = fila['CLAVE ALTERNA'] || null
     if (codigoBarras && esNotacionCientifica(codigoBarras)) {
@@ -148,6 +165,22 @@ function mapearProducto(fila) {
     const stockMaximo  = parseInt(fila['INV_MAX']) || null
     const esGranel     = (fila['GRANEL (S/N)'] || '').toUpperCase().trim() === 'S'
 
+    // TIPO DE GRANEL tiene prioridad sobre inferirUnidadVenta si viene con valor
+    const MAPA_UNIDADES = {
+        'kg': 'kg', 'kilo': 'kg', 'kilos': 'kg', 'k': 'kg',
+        'm': 'm', 'metro': 'm', 'metros': 'm', 'mts': 'm', 'mt': 'm',
+        'l': 'l', 'litro': 'l', 'litros': 'l', 'lt': 'l',
+        'g': 'g', 'gramo': 'g', 'gramos': 'g',
+        'rollo': 'rollo', 'bote': 'bote', 'pza': 'pza', 'pieza': 'pza'
+    }
+    const tipoGranelCSV = (fila['TIPO DE GRANEL'] || '').trim().toLowerCase()
+    const unidadVenta   = esGranel && tipoGranelCSV
+        ? (MAPA_UNIDADES[tipoGranelCSV] || tipoGranelCSV)
+        : inferirUnidadVenta(fila['DESCRIPCION'], esGranel)
+
+    // Proveedor — se normaliza y se pasa como campo auxiliar
+    const _proveedorNombre = normalizarNombreProveedor(fila['PROVEEDOR'])
+
     return {
         codigoInterno: fila['CLAVE'].trim(),
         codigoBarras,
@@ -159,12 +192,13 @@ function mapearProducto(fila) {
         claveSat:  fila['CLAVE SAT']  || '31162800',
         unidadSat: fila['UNIDAD SAT'] || 'H87',
         esGranel,
-        unidadVenta: inferirUnidadVenta(fila['DESCRIPCION'], esGranel),
+        unidadVenta,
         activo: true,
-        // Campos auxiliares no en BD directa — los usamos para el inventario
-        _stockInicial: stockInicial,
-        _stockMinimo:  stockMinimo,
-        _stockMaximo:  stockMaximo,
+        // Campos auxiliares — no van a BD directamente
+        _stockInicial:     stockInicial,
+        _stockMinimo:      stockMinimo,
+        _stockMaximo:      stockMaximo,
+        _proveedorNombre,  // nombre normalizado para buscar/crear en ProveedorProducto
     }
 }
 
@@ -232,6 +266,71 @@ async function preSeedDepartamentosYCategorias(filas) {
     return cacheCats  // devuelve el mapa "DEPTO|cat" → categoriaId
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// PRE-CREAR PROVEEDORES (Opción A: auto-crear si no existe)
+// ═══════════════════════════════════════════════════════════════════
+
+async function preSeedProveedores(filas) {
+    // 1. Extraer nombres únicos normalizados del CSV
+    const nombresUnicos = new Set()
+    for (const fila of filas) {
+        const nombre = normalizarNombreProveedor(fila['PROVEEDOR'])
+        if (nombre) nombresUnicos.add(nombre)
+    }
+
+    if (nombresUnicos.size === 0) {
+        console.log('ℹ️  Sin proveedores en el CSV')
+        return new Map()
+    }
+
+    console.log(`🏭 Procesando ${nombresUnicos.size} proveedores únicos del CSV...`)
+
+    // 2. Cargar todos los proveedores existentes en BD
+    const todosEnBD = await prisma.proveedor.findMany({
+        where: { activo: true },
+        select: { id: true, nombreOficial: true, alias: true }
+    })
+
+    // 3. Construir mapa nombre_normalizado → id (busca en alias Y nombreOficial)
+    const cacheProveedores = new Map()
+    for (const p of todosEnBD) {
+        const normOficial = normalizarNombreProveedor(p.nombreOficial)
+        const normAlias   = normalizarNombreProveedor(p.alias)
+        if (normOficial) cacheProveedores.set(normOficial, p.id)
+        if (normAlias)   cacheProveedores.set(normAlias,   p.id)
+    }
+
+    // 4. Crear los que no existen
+    for (const nombre of nombresUnicos) {
+        if (cacheProveedores.has(nombre)) continue
+        try {
+            const prov = await prisma.proveedor.create({
+                data: { nombreOficial: nombre, alias: nombre, activo: true }
+            })
+            cacheProveedores.set(nombre, prov.id)
+            console.log(`   + Proveedor creado: ${nombre}`)
+        } catch (err) {
+            if (err.code === 'P2002') {
+                // Ya existe con ese nombre — recargar y mapear
+                const existente = await prisma.proveedor.findFirst({
+                    where: {
+                        OR: [
+                            { nombreOficial: { equals: nombre, mode: 'insensitive' } },
+                            { alias:         { equals: nombre, mode: 'insensitive' } }
+                        ]
+                    }
+                })
+                if (existente) cacheProveedores.set(nombre, existente.id)
+            } else {
+                console.warn(`   ⚠️  No se pudo crear proveedor "${nombre}": ${err.message}`)
+            }
+        }
+    }
+
+    console.log(`✅ Proveedores listos (${cacheProveedores.size} en cache)`)
+    return cacheProveedores
+}
+
 /**
  * Busca categoriaId en el cache ya poblado (sin queries, sin race condition)
  */
@@ -290,9 +389,13 @@ exports.importarCSV = async (req, res) => {
         // ── Pre-crear departamentos y categorías (secuencial, sin race condition) ──
         const cacheCats = await preSeedDepartamentosYCategorias(filasValidas)
 
+        // ── Pre-crear proveedores (auto-crear si no existe) ──
+        const cacheProveedores = await preSeedProveedores(filasValidas)
+
         // ── Procesar productos en lotes ──
         let creados = 0
         let actualizados = 0
+        let vinculaciones = 0
         const erroresInsert = []
         const BATCH_SIZE = 50
 
@@ -317,7 +420,7 @@ exports.importarCSV = async (req, res) => {
                     })
 
                     if (existente) {
-                        const { _stockInicial, _stockMinimo, _stockMaximo, ...dataSinAux } = data
+                        const { _stockInicial, _stockMinimo, _stockMaximo, _proveedorNombre, ...dataSinAux } = data
                         await prisma.producto.update({
                             where: { codigoInterno: dataSinAux.codigoInterno },
                             data: {
@@ -353,10 +456,22 @@ exports.importarCSV = async (req, res) => {
                                 }
                             })
                         }
+                        // Vincular proveedor si viene en el CSV
+                        if (_proveedorNombre) {
+                            const proveedorId = cacheProveedores.get(_proveedorNombre)
+                            if (proveedorId) {
+                                await prisma.proveedorProducto.upsert({
+                                    where:  { proveedorId_productoId: { proveedorId, productoId: existente.id } },
+                                    update: { precioCosto: dataSinAux.costo || 0, activo: true },
+                                    create: { proveedorId, productoId: existente.id, precioCosto: dataSinAux.costo || 0, activo: true }
+                                })
+                                vinculaciones++
+                            }
+                        }
                         actualizados++
                     } else {
                         // Extraer campos auxiliares antes de insertar
-                        const { _stockInicial, _stockMinimo, _stockMaximo, ...dataSinAux } = data
+                        const { _stockInicial, _stockMinimo, _stockMaximo, _proveedorNombre, ...dataSinAux } = data
 
                         let productoCreado
                         try {
@@ -386,6 +501,18 @@ exports.importarCSV = async (req, res) => {
                                 ..._stockMaximo && { stockMaximo: _stockMaximo }
                             }
                         })
+                        // Vincular proveedor si viene en el CSV
+                        if (_proveedorNombre) {
+                            const proveedorId = cacheProveedores.get(_proveedorNombre)
+                            if (proveedorId) {
+                                await prisma.proveedorProducto.upsert({
+                                    where:  { proveedorId_productoId: { proveedorId, productoId: productoCreado.id } },
+                                    update: { precioCosto: dataSinAux.costo || 0, activo: true },
+                                    create: { proveedorId, productoId: productoCreado.id, precioCosto: dataSinAux.costo || 0, activo: true }
+                                })
+                                vinculaciones++
+                            }
+                        }
                         creados++
                     }
 
@@ -418,6 +545,7 @@ exports.importarCSV = async (req, res) => {
             total: filas.length,
             creados,
             actualizados,
+            vinculaciones,
             omitidos: erroresValidacion.length,
             errores: erroresInsert.length,
             detalleErrores: todosErrores.slice(0, 30)

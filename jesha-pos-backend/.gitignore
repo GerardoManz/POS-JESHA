@@ -1,5 +1,30 @@
-node_modules
-# Keep environment variables out of version control
-.env
+﻿node_modules/
 
+# Variables de entorno — NUNCA subir a GitHub
+.env
+.env.production
+.env.local
+
+# Prisma generado
 /generated/prisma
+
+# Imágenes subidas por usuarios (no van al repo)
+src/public/imagenes/productos/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Archivos de respaldo
+*.backup
+*.bak
+*.rar
+*.zip
+src.rar
+
+# Sistema operativo
+Thumbs.db
+.DS_Store
+
+# IDE
+.vscode/

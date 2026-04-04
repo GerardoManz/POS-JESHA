@@ -216,8 +216,9 @@ function renderDetalle() {
                  oninput="calcPrecioVenta(${d.id}, ${costoOrden})" />
                <span style="font-size:0.75rem;color:var(--muted);">%</span>
              </div>
-             <div style="font-size:0.78rem;color:var(--muted);">
-               act: ${fmt(precioVentaActual)}
+             <div style="font-size:0.75rem;display:flex;gap:4px;align-items:center;">
+               <span style="color:var(--muted);">actual:</span>
+               <span style="color:var(--text);font-weight:500;">${precioVentaActual > 0 ? fmt(precioVentaActual) : '<span style="color:#f87171">sin precio</span>'}</span>
              </div>
              <div id="pv-calc-${d.id}" style="font-size:0.82rem;color:#60d080;font-weight:500;min-height:16px;"></div>
            </div>`
@@ -286,9 +287,83 @@ window.calcPrecioVenta = function(detalleId, costoOrden) {
   const pvCalc  = document.getElementById(`pv-calc-${detalleId}`)
   if (!mgInput || !pvCalc) return
   const mg = parseFloat(mgInput.value) || 0
-  if (mg <= 0) { pvCalc.textContent = ''; return }
+  if (mg <= 0) {
+    pvCalc.textContent = ''
+    // Resetear en panel resumen
+    const resumenPv = document.getElementById(`resumen-pvnuevo-${detalleId}`)
+    if (resumenPv) { resumenPv.textContent = 'sin cambio'; resumenPv.style.color = 'var(--muted)'; resumenPv.style.fontStyle = 'italic'; resumenPv.style.fontWeight = 'normal' }
+    return
+  }
   const pv = costoOrden * (1 + mg / 100)
   pvCalc.textContent = `→ ${fmt(pv)}`
+  // Actualizar panel resumen en tiempo real
+  const resumenPv = document.getElementById(`resumen-pvnuevo-${detalleId}`)
+  if (resumenPv) {
+    resumenPv.textContent = fmt(pv)
+    resumenPv.style.color = '#60d080'
+    resumenPv.style.fontStyle = 'normal'
+    resumenPv.style.fontWeight = '500'
+  }
+}
+
+function renderPanelResumen() {
+  const existing = document.getElementById('panel-resumen-precios')
+  if (existing) existing.remove()
+
+  const oc = ocActual
+  const pendientes = (oc.detalles || []).filter(d =>
+    parseFloat(d.cantidadPedida) > parseFloat(d.cantidadRecibida)
+  )
+  if (pendientes.length === 0) return
+
+  const panel = document.createElement('div')
+  panel.id    = 'panel-resumen-precios'
+  panel.className = 'det-card'
+  panel.style.marginTop = '12px'
+
+  panel.innerHTML = `
+    <div class="det-card-header" style="display:flex;justify-content:space-between;align-items:center;">
+      <span>Comparación de precios</span>
+      <span style="font-size:0.7rem;color:var(--muted);font-weight:400">Se actualiza al ingresar el margen</span>
+    </div>
+    <div style="overflow-x:auto;">
+      <table style="width:100%;font-size:0.76rem;border-collapse:collapse;min-width:420px;">
+        <thead>
+          <tr style="color:var(--muted);border-bottom:1px solid rgba(255,255,255,0.07);">
+            <th style="text-align:left;padding:5px 8px;font-weight:500;">Producto</th>
+            <th style="text-align:right;padding:5px 8px;font-weight:500;">Costo ant.</th>
+            <th style="text-align:right;padding:5px 8px;font-weight:500;">Costo nuevo</th>
+            <th style="text-align:right;padding:5px 8px;font-weight:500;">P. venta ant.</th>
+            <th style="text-align:right;padding:5px 8px;font-weight:500;">P. venta nuevo</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${pendientes.map(d => {
+            const costoAnt  = parseFloat(d.producto?.costo || d.precioCosto)
+            const costoNuevo = parseFloat(d.precioCosto)
+            const pvAnt     = parseFloat(d.producto?.precioVenta || d.producto?.precioBase || 0)
+            const subio     = costoNuevo > costoAnt + 0.001
+            const bajo      = costoNuevo < costoAnt - 0.001
+            const costoColor = subio ? '#f87171' : bajo ? '#60d080' : 'var(--text)'
+            const costoSufijo = subio ? ' ▲' : bajo ? ' ▼' : ''
+            const costoTachado = subio || bajo
+            return `
+              <tr style="border-top:0.5px solid rgba(255,255,255,0.05);">
+                <td style="padding:6px 8px;color:var(--text);max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${d.producto?.nombre || ''}">
+                  ${d.producto?.nombre || '—'}
+                </td>
+                <td style="text-align:right;padding:6px 8px;color:var(--muted);${costoTachado ? 'text-decoration:line-through;' : ''}">${fmt(costoAnt)}</td>
+                <td style="text-align:right;padding:6px 8px;color:${costoColor};font-weight:500;">${fmt(costoNuevo)}${costoSufijo}</td>
+                <td style="text-align:right;padding:6px 8px;color:var(--muted);text-decoration:line-through;" id="resumen-pvant-${d.id}">${fmt(pvAnt)}</td>
+                <td style="text-align:right;padding:6px 8px;color:var(--muted);font-style:italic;" id="resumen-pvnuevo-${d.id}">sin cambio</td>
+              </tr>`
+          }).join('')}
+        </tbody>
+      </table>
+    </div>`
+
+  const panelDer = document.querySelector('.det-panel-der')
+  if (panelDer) panelDer.appendChild(panel)
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -297,9 +372,12 @@ window.calcPrecioVenta = function(detalleId, costoOrden) {
 window.iniciarRecepcion = function() {
   ocActual._recibiendo = true
   renderDetalle()
+  renderPanelResumen()
 }
 window.cancelarRecepcion = function() {
   ocActual._recibiendo = false
+  const panel = document.getElementById('panel-resumen-precios')
+  if (panel) panel.remove()
   renderDetalle()
 }
 window.confirmarRecepcion = async function() {
@@ -323,6 +401,8 @@ window.confirmarRecepcion = async function() {
     const data = await apiFetch(`/compras/${ocActual.id}/recibir`, { method:'POST', body: JSON.stringify({ detalles }) })
     ocActual = data.data
     ocActual._recibiendo = false
+    const panel = document.getElementById('panel-resumen-precios')
+    if (panel) panel.remove()
     renderDetalle()
     cargarCompras()
   } catch (err) {
@@ -379,8 +459,11 @@ function abrirModalCrear() {
   document.getElementById('prov-id').value     = ''
   document.getElementById('comp-notas').value  = ''
   document.getElementById('search-prod-modal').value = ''
-  document.getElementById('lista-prod-modal').innerHTML = '<p class="muted-hint">Escribe para buscar...</p>'
+  document.getElementById('lista-prod-modal').innerHTML = '<p class="muted-hint">Selecciona un proveedor primero...</p>'
   document.getElementById('crear-error').classList.remove('show')
+  // Bloquear búsqueda hasta que se seleccione proveedor
+  const searchProd = document.getElementById('search-prod-modal')
+  if (searchProd) { searchProd.disabled = true; searchProd.placeholder = 'Selecciona un proveedor primero...' }
   renderItemsEdicion()
   document.getElementById('modal-crear').classList.add('active')
 }
@@ -586,6 +669,14 @@ window.selProv = (id, alias, nombre) => {
   document.getElementById('prov-id').value     = id
   document.getElementById('prov-buscar').value = alias
   cerrarDDProv()
+  // Habilitar búsqueda de productos filtrada por este proveedor
+  const searchProd = document.getElementById('search-prod-modal')
+  if (searchProd) {
+    searchProd.disabled    = false
+    searchProd.placeholder = 'Nombre o código...'
+    searchProd.focus()
+  }
+  document.getElementById('lista-prod-modal').innerHTML = '<p class="muted-hint">Escribe para buscar productos de este proveedor...</p>'
 }
 
 async function guardarProveedor() {
@@ -616,7 +707,10 @@ async function buscarProductosModal(q) {
   if (!q || q.length < 2) { lista.innerHTML = '<p class="muted-hint">Escribe para buscar...</p>'; return }
   lista.innerHTML = '<p class="muted-hint">Buscando...</p>'
   try {
-    const data = await apiFetch(`/productos?buscar=${encodeURIComponent(q)}&take=30`)
+    const provId = document.getElementById('prov-id').value
+    const params = new URLSearchParams({ buscar: q, take: 30 })
+    if (provId) params.set('proveedorId', provId)
+    const data = await apiFetch(`/productos?${params}`)
     const prods = data.data || data
     if (!prods?.length) { lista.innerHTML = '<p class="muted-hint">Sin resultados</p>'; return }
     window._prodCache = {}
@@ -668,6 +762,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (q.length === 0) {
       cerrarDDProv()
       document.getElementById('prov-id').value = ''
+      // Bloquear búsqueda de productos si se borra el proveedor
+      const searchProd = document.getElementById('search-prod-modal')
+      if (searchProd) {
+        searchProd.disabled    = true
+        searchProd.placeholder = 'Selecciona un proveedor primero...'
+        searchProd.value       = ''
+      }
+      document.getElementById('lista-prod-modal').innerHTML = '<p class="muted-hint">Selecciona un proveedor primero...</p>'
     } else {
       renderDDProv(filtrarProveedores(q))
     }

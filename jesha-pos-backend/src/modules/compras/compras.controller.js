@@ -29,7 +29,7 @@ const OC_SELECT = {
     select: {
       id: true, cantidadPedida: true, cantidadRecibida: true,
       precioCosto: true, subtotalPedido: true, subtotalRecibido: true,
-      producto: { select: { id: true, nombre: true, codigoInterno: true, unidadCompra: true, costo: true, costoPromedio: true } }
+      producto: { select: { id: true, nombre: true, codigoInterno: true, unidadCompra: true, costo: true, costoPromedio: true, precioVenta: true, precioBase: true } }
     }
   },
   abonos: {

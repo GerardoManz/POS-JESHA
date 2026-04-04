@@ -49,13 +49,18 @@ async function listar(req, res) {
     try {
         console.log('🔍 Iniciando query de productos...')
 
-        const { buscar, q, enStock, categoriaId, skip = 0, take = 9999 } = req.query
+        const { buscar, q, enStock, categoriaId, proveedorId, skip = 0, take = 9999 } = req.query
 
         const terminoBusqueda = buscar || q
         const skipNum = parseInt(skip)
         const takeNum = parseInt(take)
 
         const where = { activo: true }
+
+        // Filtro por proveedor — solo productos vinculados a ese proveedor
+        if (proveedorId) {
+            where.proveedores = { some: { proveedorId: parseInt(proveedorId), activo: true } }
+        }
 
         if (terminoBusqueda) {
             const palabras = terminoBusqueda.trim().split(/\s+/).filter(Boolean)
