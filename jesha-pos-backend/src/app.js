@@ -16,7 +16,8 @@ const ALLOWED_ORIGINS = [
   'http://127.0.0.1:5500',
   'http://192.168.0.190:3000',
   process.env.NGROK_URL,        // ej: https://tu-url.ngrok-free.dev
-  process.env.FRONTEND_URL,     // para producción futura
+  process.env.FRONTEND_URL,     // ej: https://jesha-pos.netlify.app
+  process.env.RENDER_EXTERNAL_URL, // ej: https://jesha-pos-api.onrender.com
 ].filter(Boolean)
 
 app.use(cors({
