@@ -15,7 +15,7 @@ const CONFIG = (() => {
   //  Cambia esta URL por la de tu API en producción
   //  Ejemplo: 'https://jesha-pos-api.up.railway.app'
   // ══════════════════════════════════════════════════════════════════
-  const PRODUCTION_API_URL = 'https://TU-API-EN-PRODUCCION.up.railway.app'
+  const PRODUCTION_API_URL = 'https://jesha-pos-api.onrender.com'
 
   const API_URL = isLocal
     ? 'http://localhost:3000'
