@@ -197,17 +197,34 @@ function renderItemsDropdown(clientes) {
   if (!list) return
 
   list.innerHTML =
-    `<div class="dropdown-cliente-item publico"
-          onclick="seleccionarClientePOS(null,'')">
+    `<div class="dropdown-cliente-item publico" data-cliente-id="0">
        <span>👤 Público general</span>
      </div>` +
-    clientes.map(c => `
-      <div class="dropdown-cliente-item"
-           onclick="seleccionarClientePOS(${c.id},'${(c.apodo||c.nombre).replace(/'/g,"\\'")}','${(c.telefono||'').replace(/'/g,"\\'")}')">
-        <span>${c.apodo ? `${c.apodo} <span style="color:var(--muted);font-size:0.78rem">(${c.nombre})</span>` : c.nombre}</span>
-        ${c.telefono ? `<span class="dropdown-cliente-tel">${c.telefono}</span>` : ''}
+    clientes.map(c => {
+      const nombreSeguro = (c.apodo || c.nombre).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;')
+      const nombreReal   = c.nombre.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;')
+      const tel          = (c.telefono || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;')
+      return `
+      <div class="dropdown-cliente-item" data-cliente-id="${c.id}">
+        <span>${c.apodo ? `${nombreSeguro} <span style="color:var(--muted);font-size:0.78rem">(${nombreReal})</span>` : nombreReal}</span>
+        ${c.telefono ? `<span class="dropdown-cliente-tel">${tel}</span>` : ''}
       </div>`
-    ).join('')
+    }).join('')
+
+  // Event delegation para items del dropdown
+  list.onclick = (e) => {
+    const item = e.target.closest('[data-cliente-id]')
+    if (!item) return
+    const id = parseInt(item.dataset.clienteId, 10)
+    if (id === 0) {
+      seleccionarClientePOS(null, '')
+    } else {
+      const cliente = clientesLista.find(c => c.id === id)
+      if (cliente) {
+        seleccionarClientePOS(cliente.id, cliente.apodo || cliente.nombre, cliente.telefono || '')
+      }
+    }
+  }
 }
 
 function abrirDropdownClientes() {
@@ -350,12 +367,19 @@ function mostrarProductos(productos) {
     productosGrid.innerHTML = `<div class="sin-resultados">No se encontraron productos</div>`
     return
   }
-  productosGrid.innerHTML = productos.map(p => `
-    <div class="tarjeta-producto"
-         onclick="agregarAlCarrito(${p.id}, '${p.nombre.replace(/'/g,"\\'")}', ${p.precioVenta || p.precioBase}, ${p.esGranel || false}, '${p.unidadVenta || ''}')">
-      ${p.imagenUrl ? `<img src="${p.imagenUrl.startsWith('http') ? p.imagenUrl : API_URL + p.imagenUrl}" alt="${p.nombre}" class="producto-imagen" />` : ''}
+  productosGrid.innerHTML = productos.map(p => {
+    // Escapar nombre para atributos HTML (alt, etc.) sin romper nada
+    const nombreSeguro = p.nombre
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+
+    return `
+    <div class="tarjeta-producto" data-producto-id="${p.id}" style="cursor:pointer;">
+      ${p.imagenUrl ? `<img src="${p.imagenUrl.startsWith('http') ? p.imagenUrl : API_URL + p.imagenUrl}" alt="${nombreSeguro}" class="producto-imagen" />` : ''}
       <div class="producto-info">
-        <h4>${p.nombre}</h4>
+        <h4>${nombreSeguro}</h4>
         <p class="producto-codigo">${p.codigoInterno}</p>
         <p class="producto-precio">$${parseFloat(p.precioVenta || p.precioBase).toFixed(2)}</p>
         <p class="producto-stock ${p.stock > 0 ? '' : 'agotado'}">
@@ -365,8 +389,8 @@ function mostrarProductos(productos) {
           })()}` : 'Agotado'}
         </p>
       </div>
-    </div>
-  `).join('')
+    </div>`
+  }).join('')
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -1265,6 +1289,28 @@ async function cargarEmpleadosSelect() {
 }
 
 function configurarEventListeners() {
+
+  // ── EVENT DELEGATION: click en tarjetas de producto ──
+  // Un solo listener para TODAS las tarjetas (presentes y futuras).
+  // Los datos se leen del productoCache, NUNCA del HTML.
+  // Esto elimina problemas con comillas, acentos, XSS, etc.
+  productosGrid.addEventListener('click', (e) => {
+    const card = e.target.closest('[data-producto-id]')
+    if (!card) return
+    const id = parseInt(card.dataset.productoId, 10)
+    const producto = productoCache.get(id)
+    if (!producto) {
+      console.warn('⚠ Producto no encontrado en caché:', id)
+      return
+    }
+    agregarAlCarrito(
+      producto.id,
+      producto.nombre,
+      producto.precioVenta || producto.precioBase,
+      producto.esGranel || false,
+      producto.unidadVenta || ''
+    )
+  })
 
   let _scanLastKey  = 0
   const SCAN_MS     = 55
