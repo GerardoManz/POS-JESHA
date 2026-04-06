@@ -64,7 +64,7 @@ exports.generarTicket = async (req, res) => {
     const urlFacturacion = `${FACTURACION_URL}${facturarPath}?token=${venta.tokenQr}`
 
     const qrDataUrl = await QRCode.toDataURL(urlFacturacion, {
-      width: 100, margin: 0,
+      width: 150, margin: 1,
       color: { dark: '#000000', light: '#ffffff' }
     })
 
@@ -91,7 +91,8 @@ exports.generarTicketThermal = async (req, res) => {
 }
 
 // ════════════════════════════════════════════════════════════════════
-//  GENERADOR HTML — Optimizado para GHIA GTP582 (58mm / 48mm útiles)
+//  GENERADOR HTML — Optimizado para GHIA GTP582 (58mm)
+//  NITIDEZ: Todo negro puro, sin grises, fuentes grandes y gruesas
 // ════════════════════════════════════════════════════════════════════
 
 function generarHTMLTicket(venta, qrDataUrl, fechaStr, pagos) {
@@ -104,7 +105,7 @@ function generarHTMLTicket(venta, qrDataUrl, fechaStr, pagos) {
     const qtyStr   = Number.isInteger(qty) ? qty.toString() : qty.toFixed(3).replace(/\.?0+$/, '')
     const precio   = parseFloat(d.precioUnitario || 0)
     return `<tr>
-      <td class="td-prod">${nombre}<br><span class="sub">${qtyStr} × ${fmt(precio)}</span></td>
+      <td class="td-prod"><strong>${nombre}</strong><br>${qtyStr} x ${fmt(precio)}</td>
       <td class="td-imp">${fmt(subtotal)}</td>
     </tr>`
   }).join('')
@@ -116,22 +117,22 @@ function generarHTMLTicket(venta, qrDataUrl, fechaStr, pagos) {
 
   const metodoLabel = {
     EFECTIVO:        'Efectivo',
-    CREDITO:         'T. crédito',
-    DEBITO:          'T. débito',
+    CREDITO:         'T. credito',
+    DEBITO:          'T. debito',
     TRANSFERENCIA:   'Transferencia',
-    CREDITO_CLIENTE: 'Crédito cliente'
+    CREDITO_CLIENTE: 'Credito cliente'
   }[venta.metodoPago] || venta.metodoPago
 
   const montoPagado  = parseFloat(venta.montoPagado || 0)
   const cambio       = parseFloat(venta.cambio || 0)
   const seccionPago  = venta.metodoPago === 'EFECTIVO'
-    ? `<div class="row"><span>Recibido:</span><span>${fmt(montoPagado)}</span></div>
-       <div class="row bold"><span>Cambio:</span><span>${fmt(cambio)}</span></div>`
+    ? `<div class="row">Recibido:<span>${fmt(montoPagado)}</span></div>
+       <div class="row"><strong>Cambio:</strong><span><strong>${fmt(cambio)}</strong></span></div>`
     : ''
 
   const logoHTML = LOGO_BASE64
-    ? `<img src="${LOGO_BASE64}" alt="JESHA" style="width:38mm;filter:invert(1);" />`
-    : `<div style="font-size:14px;font-weight:900;letter-spacing:2px;">JESHA</div>`
+    ? `<img src="${LOGO_BASE64}" alt="JESHA" style="width:40mm;" />`
+    : `<div style="font-size:18px;font-weight:900;letter-spacing:2px;">JESHA</div>`
 
   return `<!DOCTYPE html>
 <html lang="es">
@@ -140,30 +141,42 @@ function generarHTMLTicket(venta, qrDataUrl, fechaStr, pagos) {
 <title>Ticket ${venta.folio}</title>
 <style>
 @page{margin:0;size:58mm auto;}
-*{margin:0;padding:0;box-sizing:border-box;}
-html,body{width:48mm;margin:0 auto;padding:1mm 0 0;font-family:'Courier New',Courier,monospace;font-size:9px;color:#000;background:#fff;line-height:1.3;}
-.hdr{text-align:center;margin-bottom:2px;}
-.hdr img{display:block;margin:0 auto 1px;}
-.emp{font-size:9px;font-weight:bold;text-transform:uppercase;}
-.slg{font-size:7px;margin-top:1px;}
-.dir{font-size:7px;}
-.sep{border:0;border-top:1px dashed #000;margin:2px 0;}
-.sep2{border:0;border-top:1.5px solid #000;margin:2px 0;}
-.row{display:flex;justify-content:space-between;font-size:8px;padding:1px 0;}
-.row.bold{font-weight:bold;font-size:9px;}
-.tel{text-align:center;font-size:10px;font-weight:bold;margin:2px 0;}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+html,body{
+  width:54mm;
+  margin:0 auto;
+  padding:2mm 1mm 0;
+  font-family:'Lucida Console','Courier New',Courier,monospace;
+  font-size:11px;
+  color:#000;
+  background:#fff;
+  line-height:1.4;
+  -webkit-font-smoothing:none;
+  text-rendering:optimizeLegibility;
+}
+.hdr{text-align:center;margin-bottom:3px;}
+.hdr img{display:block;margin:0 auto 2px;}
+.emp{font-size:11px;font-weight:bold;text-transform:uppercase;color:#000;}
+.slg{font-size:9px;color:#000;}
+.dir{font-size:9px;color:#000;}
+.sep{border:0;border-top:1px dashed #000;margin:3px 0;}
+.sep2{border:0;border-top:2px solid #000;margin:3px 0;}
+.row{display:flex;justify-content:space-between;font-size:10px;color:#000;padding:1px 0;}
+.tel{text-align:center;font-size:12px;font-weight:bold;color:#000;margin:3px 0;}
 .tbl{width:100%;border-collapse:collapse;}
-.td-prod{padding:2px 0;font-size:8px;word-break:break-word;line-height:1.2;}
-.td-prod .sub{font-size:7px;color:#555;}
-.td-imp{padding:2px 0;font-size:8px;text-align:right;white-space:nowrap;vertical-align:top;font-weight:bold;}
-.total{display:flex;justify-content:space-between;font-size:12px;font-weight:bold;padding:2px 0;}
-.qr{text-align:center;margin:3px 0 1px;}
-.qr img{width:22mm;height:22mm;}
-.qr-lbl{font-size:6px;color:#444;margin-top:1px;}
-.pie{text-align:center;font-size:7px;color:#555;margin-top:2px;line-height:1.3;}
-.pie2{font-size:6px;color:#333;margin-top:1px;}
-.no-print{display:block;margin:8px auto 4px;padding:6px 16px;background:#1f3a66;color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;font-family:sans-serif;}
-@media print{.no-print{display:none!important;}html,body{width:48mm;padding:0;}}
+.td-prod{padding:3px 0;font-size:10px;color:#000;word-break:break-word;line-height:1.3;}
+.td-imp{padding:3px 0;font-size:10px;color:#000;text-align:right;white-space:nowrap;vertical-align:top;font-weight:bold;}
+.total{display:flex;justify-content:space-between;font-size:14px;font-weight:bold;color:#000;padding:3px 0;}
+.qr{text-align:center;margin:4px 0 2px;}
+.qr img{width:25mm;height:25mm;}
+.qr-lbl{font-size:8px;color:#000;margin-top:2px;}
+.pie{text-align:center;font-size:8px;color:#000;margin-top:3px;line-height:1.4;}
+.pie2{text-align:center;font-size:7px;color:#000;margin-top:2px;line-height:1.3;}
+.no-print{display:block;margin:10px auto 4px;padding:8px 20px;background:#1f3a66;color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;font-family:sans-serif;}
+@media print{
+  .no-print{display:none!important;}
+  html,body{width:54mm;padding:1mm 0 0;}
+}
 </style>
 </head>
 <body>
@@ -178,34 +191,34 @@ ${logoHTML}
 
 <hr class="sep"/>
 <div class="row"><span>${fechaStr}</span><span>F:${folioCorto}</span></div>
-<div class="row"><span>Cajero: ${cajero}</span></div>
-${venta.cliente ? `<div class="row"><span>Cliente: ${venta.cliente.nombre}</span></div>` : ''}
+<div class="row">Cajero: ${cajero}</div>
+${venta.cliente ? `<div class="row">Cliente: ${venta.cliente.nombre}</div>` : ''}
 <div class="tel">${EMPRESA.tel1}</div>
 <hr class="sep2"/>
 
-<div class="row bold"><span>Descripción</span><span>Imp.</span></div>
+<div class="row"><strong>Descripcion</strong><span><strong>Importe</strong></span></div>
 <hr class="sep"/>
-<table class="tbl"><tbody>${filaProductos || '<tr><td colspan="2" style="text-align:center;color:#999;padding:2px 0;">Sin productos</td></tr>'}</tbody></table>
+<table class="tbl"><tbody>${filaProductos || '<tr><td colspan="2" style="text-align:center;color:#000;padding:3px 0;">Sin productos</td></tr>'}</tbody></table>
 <hr class="sep"/>
 
-<div class="row"><span>Subtotal:</span><span>${fmt(subtotalV)}</span></div>
-${descuento > 0 ? `<div class="row"><span>Desc:</span><span>-${fmt(descuento)}</span></div>` : ''}
+<div class="row">Subtotal:<span>${fmt(subtotalV)}</span></div>
+${descuento > 0 ? `<div class="row">Descuento:<span>-${fmt(descuento)}</span></div>` : ''}
 <hr class="sep2"/>
 <div class="total"><span>TOTAL</span><span>${fmt(venta.total)}</span></div>
 <hr class="sep2"/>
 
-<div class="row"><span>Pago:</span><span>${metodoLabel}</span></div>
+<div class="row">Pago:<span>${metodoLabel}</span></div>
 ${seccionPago}
-${pagos.totalCredito > 0 ? `<div class="row bold" style="color:#c47000;"><span>A crédito:</span><span>${fmt(pagos.totalCredito)}</span></div>` : ''}
+${pagos.totalCredito > 0 ? `<div class="row"><strong>A credito:</strong><span><strong>${fmt(pagos.totalCredito)}</strong></span></div>` : ''}
 
 <hr class="sep"/>
 <div class="qr">
 <img src="${qrDataUrl}" alt="QR"/>
-<div class="qr-lbl">Escanea para factura electrónica</div>
+<div class="qr-lbl">Escanea para factura electronica</div>
 </div>
 
 <div class="pie">Gracias por su compra<br/>Conserve su ticket para aclaraciones</div>
-<div class="pie2">3 días para solicitar factura.<br/>Pasado el plazo, JESHA no se hace responsable.<br/>No se aceptan devoluciones por mal uso.</div>
+<div class="pie2">3 dias para solicitar factura.<br/>Pasado el plazo, JESHA no se hace responsable.<br/>No se aceptan devoluciones por mal uso.</div>
 
 <button class="no-print" onclick="window.print()">Imprimir</button>
 <script>window.addEventListener('load',()=>{setTimeout(()=>window.print(),400)})</script>

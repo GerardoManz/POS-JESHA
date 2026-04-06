@@ -864,85 +864,20 @@ function mostrarModalExito(ventaData, totalFinal) {
 
   overlay.style.display = 'flex'
 
-// Botón imprimir ticket — impresión directa vía micro-servidor ESC/POS
+// Botón imprimir ticket — abre ventana con HTML del ticket
   const btnImprimir = document.getElementById('btn-imprimir-ticket-exito')
   if (btnImprimir) {
-    btnImprimir.onclick = async () => {
+    btnImprimir.onclick = () => {
       const ventaId = ventaData.id
       if (!ventaId) { mostrarToast('ID de venta no disponible', 'warning'); return }
-
-      // Obtener datos completos de la venta del backend
-      try {
-        btnImprimir.disabled = true
-        btnImprimir.textContent = '⟳ Imprimiendo...'
-
-        const r = await fetch(`${API_URL}/ventas/${ventaId}`, {
-          headers: { 'Authorization': `Bearer ${TOKEN}` }
-        })
-        if (!r.ok) throw new Error('Error obteniendo datos de venta')
-        const ventaCompleta = await r.json()
-        const v = ventaCompleta.data
-
-        const metodoTexto = {
-          EFECTIVO: 'Efectivo', CREDITO: 'T. credito', DEBITO: 'T. debito',
-          TRANSFERENCIA: 'Transferencia', CREDITO_CLIENTE: 'Credito cliente'
-        }
-
-        const ticketData = {
-          folio:         v.folio?.split('-').pop() || v.folio,
-          fecha:         new Date(v.fecha).toLocaleDateString('es-MX', {day:'2-digit',month:'2-digit',year:'2-digit'}),
-          cajero:        v.usuario || '—',
-          cliente:       v.cliente?.nombre || null,
-          productos:     (v.detalles || []).map(d => ({
-            nombre:   d.nombre,
-            cantidad: parseFloat(d.cantidad),
-            precio:   parseFloat(d.precioUnitario),
-            subtotal: parseFloat(d.subtotal)
-          })),
-          subtotal:      parseFloat(v.subtotal),
-          descuento:     parseFloat(v.descuento || 0),
-          total:         parseFloat(v.total),
-          metodoPago:    metodoTexto[v.metodoPago] || v.metodoPago,
-          metodoPagoRaw: v.metodoPago,
-          montoPagado:   parseFloat(v.montoPagado || 0),
-          cambio:        parseFloat(v.cambio || 0),
-          esCredito:     v.metodoPago === 'CREDITO_CLIENTE',
-          qrUrl:         v.facturaEstado !== 'BLOQUEADA' && v.tokenQr
-                           ? `${window.location.origin}/facturar.html?token=${v.tokenQr}`
-                           : null,
-          abrirCajon:    true
-        }
-
-        // Enviar al micro-servidor local
-        const printRes = await fetch('http://localhost:9100/imprimir', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(ticketData)
-        })
-        const printData = await printRes.json()
-
-        if (printRes.ok) {
-          mostrarToast('Ticket impreso correctamente', 'success')
-        } else {
-          throw new Error(printData.error || 'Error al imprimir')
-        }
-      } catch (err) {
-        console.error('❌ Error imprimiendo ticket:', err)
-        // Fallback: abrir en ventana para imprimir manualmente
-        mostrarToast('Error impresión directa — abriendo vista previa', 'warning')
-        const url = `${API_URL}/ventas/${ventaId}/ticket`
-        const win = window.open('', '_blank', 'width=380,height=700,scrollbars=yes')
-        if (win) {
-          win.document.write('<html><body style="font-family:sans-serif;text-align:center;padding:20px;background:#fff"><p>Cargando ticket...</p></body></html>')
-          fetch(url, { headers: { 'Authorization': `Bearer ${TOKEN}` } })
-            .then(r => r.text())
-            .then(html => { win.document.open(); win.document.write(html); win.document.close() })
-            .catch(e => { win.document.write(`<p style="color:red">Error: ${e.message}</p>`) })
-        }
-      } finally {
-        btnImprimir.disabled = false
-        btnImprimir.textContent = '🖨️ Imprimir Ticket'
-      }
+      const url = `${API_URL}/ventas/${ventaId}/ticket`
+      const win = window.open('', '_blank', 'width=380,height=700,scrollbars=yes')
+      if (!win) { mostrarToast('Permite las ventanas emergentes para imprimir el ticket', 'warning'); return }
+      win.document.write('<html><body style="font-family:sans-serif;text-align:center;padding:20px;background:#fff"><p>Cargando ticket...</p></body></html>')
+      fetch(url, { headers: { 'Authorization': `Bearer ${TOKEN}` } })
+        .then(r => { if (!r.ok) throw new Error('Error al cargar ticket'); return r.text() })
+        .then(html => { win.document.open(); win.document.write(html); win.document.close() })
+        .catch(err => { win.document.write(`<p style="color:red">Error: ${err.message}</p>`) })
     }
   }
 
