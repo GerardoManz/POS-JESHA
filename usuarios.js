@@ -443,22 +443,26 @@ if (formUsuario) {
     }
   })
 }
-
 // ── RESET PASSWORD ──
-// FIX #3: URL corregida a /reset-password, método POST, body incluye confirmarPassword
-document.getElementById('btn-reset-guardar')?.addEventListener('click', async (e) => {
+// FIX: Usar evento delegado para que funcione aunque el modal se cargue después
+document.addEventListener('click', async (e) => {
+  const btn = e.target.closest('#btn-reset-guardar')
+  if (!btn) return
   e.preventDefault()
-  
+
   const password = document.getElementById('r-password').value.trim()
   const confirmar = document.getElementById('r-confirmar').value.trim()
-  
-  console.log('🔑 Reset password:', { usuarioResetId, password: password.length + ' chars', confirmar: confirmar.length + ' chars' })
-  
+
+  console.log('🔑 Reset password:', { usuarioResetId, password: password.length + ' chars' })
+
   if (!password) return mostrarErrorReset('La contraseña es requerida')
   if (password.length < 6) return mostrarErrorReset('Mínimo 6 caracteres')
   if (password !== confirmar) return mostrarErrorReset('Las contraseñas no coinciden')
-  
+
   try {
+    btn.disabled = true
+    btn.textContent = 'Guardando...'
+
     const response = await fetch(`${API_URL}/usuarios/${usuarioResetId}/reset-password`, {
       method: 'POST',
       headers: {
@@ -476,9 +480,13 @@ document.getElementById('btn-reset-guardar')?.addEventListener('click', async (e
 
     cerrarModalReset()
     cargarUsuarios()
+    console.log('✅ Contraseña reseteada correctamente')
   } catch (error) {
     console.error(error)
     mostrarErrorReset(error.message)
+  } finally {
+    btn.disabled = false
+    btn.textContent = 'Actualizar Contraseña'
   }
 })
 
