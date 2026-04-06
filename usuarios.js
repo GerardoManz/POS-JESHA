@@ -449,8 +449,10 @@ if (formUsuario) {
 document.getElementById('btn-reset-guardar')?.addEventListener('click', async (e) => {
   e.preventDefault()
   
-  const password = document.getElementById('r-password').value
-  const confirmar = document.getElementById('r-confirmar').value
+  const password = document.getElementById('r-password').value.trim()
+  const confirmar = document.getElementById('r-confirmar').value.trim()
+  
+  console.log('🔑 Reset password:', { usuarioResetId, password: password.length + ' chars', confirmar: confirmar.length + ' chars' })
   
   if (!password) return mostrarErrorReset('La contraseña es requerida')
   if (password.length < 6) return mostrarErrorReset('Mínimo 6 caracteres')
