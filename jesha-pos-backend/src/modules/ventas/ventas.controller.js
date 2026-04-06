@@ -74,9 +74,12 @@ exports.crearVenta = async (req, res) => {
     }
 
     const folio = await generarFolio()
-    let facturaEstado = 'DISPONIBLE'
+   let facturaEstado = 'DISPONIBLE'
     let facturaLimite = new Date()
-    if (metodoPago === 'EFECTIVO' && totalEsperado > 2000) {
+    if (metodoPago === 'CREDITO_CLIENTE') {
+      facturaEstado = 'BLOQUEADA'
+      facturaLimite = null
+    } else if (metodoPago === 'EFECTIVO' && totalEsperado > 2000) {
       facturaEstado = 'BLOQUEADA'
       facturaLimite.setHours(facturaLimite.getHours() + 72)
     } else {

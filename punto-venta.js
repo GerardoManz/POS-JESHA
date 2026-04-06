@@ -689,7 +689,7 @@ function getPctEfectivo() {
   const selEmp    = document.getElementById('confirm-empleado-select')
   const pctManual = parseFloat(inputDesc?.value) || 0
   const hayEmp    = selEmp?.value !== '' && selEmp?.value !== undefined && selEmp?.value !== null
-  if (pctManual > 0) return { pct: Math.min(100, pctManual), esEmpleado: false }
+  if (pctManual > 0) return { pct: Math.min(10, pctManual), esEmpleado: false }
   if (hayEmp)        return { pct: 3, esEmpleado: true }
   return { pct: 0, esEmpleado: false }
 }
