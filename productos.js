@@ -22,6 +22,7 @@ let TOKEN = localStorage.getItem('jesha_token')
 let productosLista     = []
 let departamentosLista = []
 let categoriasLista    = []
+let proveedoresLista   = []
 let productoActual     = null
 
 // Total global
@@ -36,7 +37,7 @@ let imagenPreviewContainer, imagenPreview, btnCambiarPreview
 let btnLimpiarFiltros
 
 // Selects del modal (separados del toolbar)
-let modalDeptoSelect, modalCatSelect
+let modalDeptoSelect, modalCatSelect, modalProveedorSelect
 
 // ═══════════════════════════════════════════════════════════════════
 // INICIALIZACIÓN
@@ -67,10 +68,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   btnCambiarPreview  = document.getElementById('btn-cambiar-preview')
   modalDeptoSelect   = document.getElementById('producto-departamento')
   modalCatSelect     = document.getElementById('producto-categoria')
+  modalProveedorSelect = document.getElementById('producto-proveedor')
 
   console.log('✅ Token encontrado')
   await cargarDepartamentos()
   await cargarCategorias()
+  await cargarProveedores()
   await cargarProductos()
   configurarEventos()
   actualizarFecha()
@@ -110,6 +113,19 @@ async function cargarCategorias() {
     categoriasLista = resultado.data || resultado
     console.log('✅ Categorías:', categoriasLista.length)
   } catch (error) { console.error('❌ Error cargando categorías:', error) }
+}
+
+async function cargarProveedores() {
+  try {
+    const response = await fetch(`${API_URL}/compras/proveedores`, {
+      headers: { 'Authorization': `Bearer ${TOKEN}` }
+    })
+    if (!response.ok) throw new Error(`Error ${response.status}`)
+    const resultado = await response.json()
+    proveedoresLista = resultado.data || resultado
+    console.log('✅ Proveedores:', proveedoresLista.length)
+    llenarSelectProveedores()
+  } catch (error) { console.error('❌ Error cargando proveedores:', error) }
 }
 
 async function cargarProductos() {
@@ -199,6 +215,22 @@ function actualizarCategoriasFiltroToolbar() {
     filtroCat.disabled = false
   } else {
     filtroCat.disabled = true; filtroCat.value = ''
+  }
+}
+
+function llenarSelectProveedores() {
+  if (modalProveedorSelect) {
+    while (modalProveedorSelect.options.length > 1) modalProveedorSelect.remove(1)
+    proveedoresLista.forEach(prov => {
+      const opt = document.createElement('option')
+      opt.value = prov.id
+      // Formato: NOMBREOFICIAL (APODO) o solo NOMBREOFICIAL si apodo es igual
+      const displayName = prov.alias && prov.alias !== prov.nombreOficial 
+        ? `${prov.nombreOficial} (${prov.alias})`
+        : prov.nombreOficial
+      opt.textContent = displayName
+      modalProveedorSelect.appendChild(opt)
+    })
   }
 }
 
@@ -401,6 +433,11 @@ window.editarProducto = async function(id) {
   const deptoId = producto.categoria?.departamento?.id || ''
   llenarModalDepartamentos(deptoId)
   if (deptoId) actualizarModalCategorias(deptoId, producto.categoriaId)
+  // Cargar proveedor si existe
+  if (modalProveedorSelect) {
+    const proveedorId = producto.proveedorProducto?.[0]?.proveedorId || ''
+    modalProveedorSelect.value = proveedorId
+  }
   if (producto.imagenUrl) {
     if (imagenPreview) imagenPreview.src = producto.imagenUrl.startsWith('http') ? producto.imagenUrl : API_URL + producto.imagenUrl
     if (imagenPreviewContainer) imagenPreviewContainer.style.display = 'block'
@@ -418,6 +455,7 @@ function abrirModalNuevo() {
   if (formulario) formulario.reset()
   llenarModalDepartamentos()
   if (modalCatSelect) { modalCatSelect.innerHTML = '<option value="">Seleccionar categoría...</option>'; modalCatSelect.disabled = true }
+  if (modalProveedorSelect) { modalProveedorSelect.value = '' }
   if (imagenPreviewContainer) imagenPreviewContainer.style.display = 'none'
   if (document.getElementById('info-margen')) document.getElementById('info-margen').style.display = 'none'
   ocultarError()
@@ -469,9 +507,105 @@ async function guardarProducto(e) {
     const resultado = await response.json()
     const productoGuardado = resultado.data || resultado
     if (inputImagen && inputImagen.files.length > 0) await subirImagen(productoGuardado.id, inputImagen.files[0])
+    // Guardar proveedor si está seleccionado
+    const proveedorId = modalProveedorSelect?.value
+    if (proveedorId) {
+      await guardarProveedorProducto(productoGuardado.id, parseInt(proveedorId))
+    }
     cerrarModal()
     await cargarProductos()
   } catch (error) { console.error('❌ Error guardando:', error); mostrarError(error.message) }
+}
+
+async function guardarProveedorProducto(productoId, proveedorId) {
+  try {
+    // POST a /compras/proveedores/:proveedorId/productos/:productoId
+    const response = await fetch(`${API_URL}/compras/proveedores/${proveedorId}/productos/${productoId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
+      body: JSON.stringify({ precioCosto: 0 })
+    })
+    if (!response.ok && response.status !== 409) {
+      console.warn('⚠️ Error vinculando proveedor, pero continuamos')
+    }
+  } catch (error) {
+    console.warn('⚠️ Error en relación proveedor:', error.message)
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// CREAR NUEVO PROVEEDOR
+// ═══════════════════════════════════════════════════════════════════
+
+window.abrirModalNuevoProveedor = function() {
+  document.getElementById('form-nuevo-proveedor').reset()
+  document.getElementById('prov-error').style.display = 'none'
+  document.getElementById('modal-nuevo-proveedor').style.display = 'flex'
+}
+
+window.cerrarModalNuevoProveedor = function() {
+  document.getElementById('modal-nuevo-proveedor').style.display = 'none'
+  document.getElementById('form-nuevo-proveedor').reset()
+}
+
+async function guardarNuevoProveedor(e) {
+  e.preventDefault()
+  const nombre = document.getElementById('prov-nombre').value.trim()
+  const apodo = document.getElementById('prov-apodo').value.trim() || null
+  const celular = document.getElementById('prov-celular').value.trim() || null
+  const email = document.getElementById('prov-email').value.trim() || null
+
+  if (!nombre) {
+    mostrarErrorProveedor('Nombre oficial es requerido')
+    return
+  }
+
+  const btn = e.target.querySelector('button[type="submit"]')
+  btn.disabled = true
+  const textOriginal = btn.textContent
+  btn.textContent = 'Creando...'
+
+  try {
+    const response = await fetch(`${API_URL}/compras/proveedores`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
+      body: JSON.stringify({ 
+        nombreOficial: nombre, 
+        alias: apodo || nombre,
+        celular,
+        email
+      })
+    })
+    if (!response.ok) {
+      const err = await response.json()
+      throw new Error(err.error || `Error ${response.status}`)
+    }
+    const resultado = await response.json()
+    const proveedorNuevo = resultado.data || resultado
+    
+    // Agregar a lista local
+    proveedoresLista.push(proveedorNuevo)
+    llenarSelectProveedores()
+    
+    // Seleccionar el nuevo proveedor
+    modalProveedorSelect.value = proveedorNuevo.id
+    
+    cerrarModalNuevoProveedor()
+    jeshaToast('Proveedor creado exitosamente', 'success')
+  } catch (error) {
+    mostrarErrorProveedor(error.message)
+  } finally {
+    btn.disabled = false
+    btn.textContent = textOriginal
+  }
+}
+
+function mostrarErrorProveedor(msg) {
+  const el = document.getElementById('prov-error')
+  if (el) {
+    el.textContent = msg
+    el.style.display = 'block'
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -725,6 +859,27 @@ function configurarEventos() {
   const inputPrecio = document.getElementById('producto-precioBase')
   if (inputCosto)  inputCosto.addEventListener('input', calcularMargen)
   if (inputPrecio) inputPrecio.addEventListener('input', calcularMargen)
+
+  // Nuevo Proveedor — Modal
+  const btnNuevoProvModal = document.getElementById('btn-nuevo-prov-modal')
+  if (btnNuevoProvModal) btnNuevoProvModal.addEventListener('click', abrirModalNuevoProveedor)
+
+  const prov_close = document.getElementById('prov-modal-close')
+  if (prov_close) prov_close.addEventListener('click', cerrarModalNuevoProveedor)
+
+  const prov_cancel = document.getElementById('prov-cancel')
+  if (prov_cancel) prov_cancel.addEventListener('click', cerrarModalNuevoProveedor)
+
+  const formProveedor = document.getElementById('form-nuevo-proveedor')
+  if (formProveedor) formProveedor.addEventListener('submit', guardarNuevoProveedor)
+
+  // Cerrar modal al hacer click fuera
+  const modalProveedor = document.getElementById('modal-nuevo-proveedor')
+  if (modalProveedor) {
+    modalProveedor.addEventListener('click', e => {
+      if (e.target === modalProveedor) cerrarModalNuevoProveedor()
+    })
+  }
 }
 
 

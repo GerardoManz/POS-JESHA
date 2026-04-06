@@ -163,6 +163,20 @@
         </div>
       </div>
 
+      <!-- Proveedor -->
+      <div class="form-group full-width">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+          <label for="producto-proveedor" style="margin:0;">Proveedor</label>
+          <button type="button" id="btn-nuevo-prov-modal" class="btn-secondary" style="padding:4px 10px;font-size:0.75rem;flex-shrink:0;">
+            + Nuevo
+          </button>
+        </div>
+        <select id="producto-proveedor">
+          <option value="">Seleccionar proveedor...</option>
+        </select>
+        <small style="color:var(--muted);font-size:0.72rem;margin-top:3px;display:block">Opcional: vincula este producto con un proveedor</small>
+      </div>
+
       <!-- Descripción -->
       <div class="form-group full-width">
         <label for="producto-descripcion">Descripción</label>
@@ -393,5 +407,46 @@
 <script src="config.js"></script>
   <script src="sidebar.js"></script>
 <script src="productos.js"></script>
+
+<!-- ══ MODAL CREAR NUEVO PROVEEDOR ══ -->
+<div id="modal-nuevo-proveedor" class="modal" style="display:none;">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3>Crear Nuevo Proveedor</h3>
+      <button class="modal-close" id="prov-modal-close">&times;</button>
+    </div>
+    <form id="form-nuevo-proveedor">
+      <div class="form-row">
+        <div class="form-group">
+          <label for="prov-nombre">Nombre Oficial *</label>
+          <input type="text" id="prov-nombre" placeholder="ej: ABRAMEX" required />
+        </div>
+        <div class="form-group">
+          <label for="prov-apodo">Apodo</label>
+          <input type="text" id="prov-apodo" placeholder="ej: ADRIAN JWJ" />
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="prov-celular">Celular</label>
+          <input type="text" id="prov-celular" placeholder="Celular (opcional)" />
+        </div>
+        <div class="form-group">
+          <label for="prov-email">Email</label>
+          <input type="email" id="prov-email" placeholder="Email (opcional)" />
+        </div>
+      </div>
+
+      <div id="prov-error" class="error-message" style="display:none;"></div>
+
+      <div class="form-actions">
+        <button type="button" class="btn-secondary" id="prov-cancel">Cancelar</button>
+        <button type="submit" class="btn-primary">Crear Proveedor</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 </body>
 </html>

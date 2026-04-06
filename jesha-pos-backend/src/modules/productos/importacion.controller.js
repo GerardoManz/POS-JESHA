@@ -180,6 +180,7 @@ function mapearProducto(fila) {
 
     // Proveedor — se normaliza y se pasa como campo auxiliar
     const _proveedorNombre = normalizarNombreProveedor(fila['PROVEEDOR'])
+    const _proveedorApodo = (fila['APODO_PROVEEDOR'] || '').trim() || null
 
     return {
         codigoInterno: fila['CLAVE'].trim(),
@@ -199,6 +200,7 @@ function mapearProducto(fila) {
         _stockMinimo:      stockMinimo,
         _stockMaximo:      stockMaximo,
         _proveedorNombre,  // nombre normalizado para buscar/crear en ProveedorProducto
+        _proveedorApodo,   // apodo del proveedor desde CSV
     }
 }
 
@@ -271,19 +273,22 @@ async function preSeedDepartamentosYCategorias(filas) {
 // ═══════════════════════════════════════════════════════════════════
 
 async function preSeedProveedores(filas) {
-    // 1. Extraer nombres únicos normalizados del CSV
-    const nombresUnicos = new Set()
+    // 1. Extraer nombres y apodos únicos normalizados del CSV
+    const proveedoresMap = new Map() // nombre → apodo
     for (const fila of filas) {
         const nombre = normalizarNombreProveedor(fila['PROVEEDOR'])
-        if (nombre) nombresUnicos.add(nombre)
+        const apodo = (fila['APODO_PROVEEDOR'] || '').trim() || null
+        if (nombre) {
+            proveedoresMap.set(nombre, apodo)
+        }
     }
 
-    if (nombresUnicos.size === 0) {
+    if (proveedoresMap.size === 0) {
         console.log('ℹ️  Sin proveedores en el CSV')
         return new Map()
     }
 
-    console.log(`🏭 Procesando ${nombresUnicos.size} proveedores únicos del CSV...`)
+    console.log(`🏭 Procesando ${proveedoresMap.size} proveedores únicos del CSV...`)
 
     // 2. Cargar todos los proveedores existentes en BD
     const todosEnBD = await prisma.proveedor.findMany({
@@ -301,14 +306,18 @@ async function preSeedProveedores(filas) {
     }
 
     // 4. Crear los que no existen
-    for (const nombre of nombresUnicos) {
+    for (const [nombre, apodo] of proveedoresMap) {
         if (cacheProveedores.has(nombre)) continue
         try {
             const prov = await prisma.proveedor.create({
-                data: { nombreOficial: nombre, alias: nombre, activo: true }
+                data: { 
+                    nombreOficial: nombre, 
+                    alias: apodo || nombre,  // ← Usa apodo del CSV si existe, sino usa nombreOficial
+                    activo: true 
+                }
             })
             cacheProveedores.set(nombre, prov.id)
-            console.log(`   + Proveedor creado: ${nombre}`)
+            console.log(`   + Proveedor: ${nombre} (apodo: ${apodo || nombre})`)
         } catch (err) {
             if (err.code === 'P2002') {
                 // Ya existe con ese nombre — recargar y mapear
