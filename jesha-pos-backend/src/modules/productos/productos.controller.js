@@ -63,18 +63,43 @@ async function listar(req, res) {
         }
 
         if (terminoBusqueda) {
-            const palabras = terminoBusqueda.trim().split(/\s+/).filter(Boolean)
+            // ── FIX: Limpiar término de búsqueda ──
+            // 1. Quitar comillas (el CSV las agregó: "001282828" → 001282828)
+            // 2. Quitar espacios extras
+            const termLimpio = terminoBusqueda.trim().replace(/^["']+|["']+$/g, '').trim()
+
+            // ── FIX: Si parece código de barras (solo números), buscar variantes ──
+            const esCodigoNumerico = /^\d+$/.test(termLimpio)
+            // Quitar ceros a la izquierda: "0123" → busca también "123"
+            const sinCeros = termLimpio.replace(/^0+/, '')
+
+            const palabras = termLimpio.split(/\s+/).filter(Boolean)
 
             if (palabras.length <= 1) {
-                // Búsqueda simple — una sola palabra o código
-                where.OR = [
-                    { nombre:        { contains: terminoBusqueda, mode: 'insensitive' } },
-                    { codigoInterno: { contains: terminoBusqueda, mode: 'insensitive' } },
-                    { codigoBarras:  { contains: terminoBusqueda, mode: 'insensitive' } }
+                const condiciones = [
+                    { nombre:        { contains: termLimpio, mode: 'insensitive' } },
+                    { codigoInterno: { contains: termLimpio, mode: 'insensitive' } },
+                    { codigoBarras:  { contains: termLimpio, mode: 'insensitive' } }
                 ]
+
+                // Si es numérico y tiene ceros al inicio, buscar también sin ceros
+                if (esCodigoNumerico && sinCeros !== termLimpio && sinCeros.length > 0) {
+                    condiciones.push(
+                        { codigoInterno: { contains: sinCeros, mode: 'insensitive' } },
+                        { codigoBarras:  { contains: sinCeros, mode: 'insensitive' } }
+                    )
+                }
+
+                // Si es numérico, buscar también con ceros al inicio (DB tiene "123", escáner manda "0123")
+                if (esCodigoNumerico && sinCeros.length > 0) {
+                    condiciones.push(
+                        { codigoInterno: { endsWith: sinCeros, mode: 'insensitive' } },
+                        { codigoBarras:  { endsWith: sinCeros, mode: 'insensitive' } }
+                    )
+                }
+
+                where.OR = condiciones
             } else {
-                // Búsqueda multi-palabra — cada palabra debe aparecer en el nombre
-                // Ej: "cable negro 14" → contiene "cable" AND "negro" AND "14"
                 where.AND = palabras.map(palabra => ({
                     nombre: { contains: palabra, mode: 'insensitive' }
                 }))
