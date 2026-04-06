@@ -403,10 +403,11 @@ function eliminarDelCarrito(productoId) {
 function actualizarCantidad(productoId, cantidad) {
   const item = carrito.find(i => i.id === productoId)
   if (item) {
-    if (cantidad <= 0) {
+    const cantParsed = parseFloat(cantidad)
+    if (isNaN(cantParsed) || cantParsed <= 0) {
       eliminarDelCarrito(productoId)
     } else {
-      item.cantidad = parseFloat(parseFloat(cantidad).toFixed(3))
+      item.cantidad = parseFloat(cantParsed.toFixed(3))
       actualizarCarrito()
     }
   }
@@ -688,7 +689,7 @@ function getPctEfectivo() {
   const selEmp    = document.getElementById('confirm-empleado-select')
   const pctManual = parseFloat(inputDesc?.value) || 0
   const hayEmp    = selEmp?.value !== '' && selEmp?.value !== undefined && selEmp?.value !== null
-  if (pctManual > 0) return { pct: pctManual, esEmpleado: false }
+  if (pctManual > 0) return { pct: Math.min(100, pctManual), esEmpleado: false }
   if (hayEmp)        return { pct: 3, esEmpleado: true }
   return { pct: 0, esEmpleado: false }
 }
@@ -1030,6 +1031,16 @@ async function confirmarVenta() {
     mostrarEstadoInicial()
     actualizarCarrito()
 
+        // ── FIX: Resetear estado para permitir la siguiente venta ──
+    ventaEnProceso              = false
+    btnConfirmarVenta.disabled  = false
+    btnConfirmarVenta.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Confirmar venta`
+    vendedorSeleccionado        = null
+    descuentoManual             = 0
+    pinVendedorVerificado       = false
+    creditoCliente              = null
+    ocultarCreditoCliente()
+
   } catch (err) {
     console.error('❌ Error:', err)
 
@@ -1265,6 +1276,7 @@ function configurarEventListeners() {
 
     if (e.key !== 'Enter') return
     e.preventDefault()
+    if (esRapido) return
     const q = searchProductos.value.trim()
     if (!q) return
 

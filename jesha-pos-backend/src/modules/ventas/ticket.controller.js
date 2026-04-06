@@ -12,7 +12,12 @@ const EMPRESA = {
   tel1:     '4921016879',
 }
 
-const BASE_URL = process.env.BASE_URL || 'http://192.168.0.190:3000'
+// ════════════════════════════════════════════════════════════════════
+//  FIX: La URL del QR debe apuntar al FRONTEND (donde está facturar.html)
+//  En local: http://192.168.0.190:3000 (backend sirve el HTML)
+//  En producción: https://jesha-pos.netlify.app (Netlify sirve el HTML)
+// ════════════════════════════════════════════════════════════════════
+const FACTURACION_URL = process.env.FRONTEND_URL || process.env.BASE_URL || 'http://192.168.0.190:3000'
 
 // ── Cargar logo como base64 una sola vez ──
 function cargarLogoBase64() {
@@ -60,8 +65,14 @@ exports.generarTicket = async (req, res) => {
 
     if (!venta) return res.status(404).json({ error: 'Venta no encontrada' })
 
-    // QR para facturación
-    const urlFacturacion = `${BASE_URL}/facturar?token=${venta.tokenQr}`
+    // ════════════════════════════════════════════════════════════════
+    //  FIX: En producción el QR apunta a facturar.html en Netlify
+    //  En local apunta a /facturar (servido por Express)
+    // ════════════════════════════════════════════════════════════════
+    const isProduction = process.env.NODE_ENV === 'production'
+    const facturarPath = isProduction ? '/facturar.html' : '/facturar'
+    const urlFacturacion = `${FACTURACION_URL}${facturarPath}?token=${venta.tokenQr}`
+
     const qrDataUrl = await QRCode.toDataURL(urlFacturacion, {
       width: 140, margin: 1,
       color: { dark: '#000000', light: '#ffffff' }

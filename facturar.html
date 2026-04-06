@@ -406,8 +406,14 @@
     </div>
   </div>
 
+<script src="config.js"></script>
 <script>
-const API = window.location.origin  // usa automáticamente la misma IP y puerto
+// ════════════════════════════════════════════════════════════════════
+//  FIX: Usar la API_URL de config.js en lugar de window.location.origin
+//  En local: apunta a localhost:3000
+//  En producción: apunta a https://jesha-pos-api.onrender.com
+// ════════════════════════════════════════════════════════════════════
+const API = window.__JESHA_API_URL__ || window.location.origin
 const params = new URLSearchParams(window.location.search)
 const TOKEN  = params.get('token')
 
