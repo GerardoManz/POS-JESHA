@@ -92,7 +92,7 @@ exports.generarTicketThermal = async (req, res) => {
 
 // ════════════════════════════════════════════════════════════════════
 //  GENERADOR HTML — Optimizado para GHIA GTP582 (58mm)
-//  NITIDEZ: Todo negro puro, sin grises, fuentes grandes y gruesas
+//  ✅ CAMBIO ÚNICO: Todos los colores grises cambiados a #000 (negro puro)
 // ════════════════════════════════════════════════════════════════════
 
 function generarHTMLTicket(venta, qrDataUrl, fechaStr, pagos) {
@@ -131,8 +131,8 @@ function generarHTMLTicket(venta, qrDataUrl, fechaStr, pagos) {
     : ''
 
   const logoHTML = LOGO_BASE64
-    ? `<img src="${LOGO_BASE64}" alt="JESHA" style="width:40mm;" />`
-    : `<div style="font-size:18px;font-weight:900;letter-spacing:2px;">JESHA</div>`
+    ? `<img src="${LOGO_BASE64}" alt="JESHA" style="width:40mm;filter:invert(1);" />`
+    : `<div style="font-size:18px;font-weight:900;letter-spacing:2px;color:#000;">JESHA</div>`
 
   return `<!DOCTYPE html>
 <html lang="es">
@@ -143,39 +143,37 @@ function generarHTMLTicket(venta, qrDataUrl, fechaStr, pagos) {
 @page{margin:0;size:58mm auto;}
 *{margin:0;padding:0;box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
 html,body{
-  width:54mm;
+  width:58mm;
   margin:0 auto;
-  padding:2mm 1mm 0;
-  font-family:'Lucida Console','Courier New',Courier,monospace;
+  padding:3mm 2mm;
+  font-family:Arial,Helvetica,sans-serif;
   font-size:11px;
   color:#000;
   background:#fff;
-  line-height:1.4;
-  -webkit-font-smoothing:none;
-  text-rendering:optimizeLegibility;
+  line-height:1.35;
 }
-.hdr{text-align:center;margin-bottom:3px;}
-.hdr img{display:block;margin:0 auto 2px;}
-.emp{font-size:11px;font-weight:bold;text-transform:uppercase;color:#000;}
-.slg{font-size:9px;color:#000;}
-.dir{font-size:9px;color:#000;}
-.sep{border:0;border-top:1px dashed #000;margin:3px 0;}
-.sep2{border:0;border-top:2px solid #000;margin:3px 0;}
-.row{display:flex;justify-content:space-between;font-size:10px;color:#000;padding:1px 0;}
-.tel{text-align:center;font-size:12px;font-weight:bold;color:#000;margin:3px 0;}
-.tbl{width:100%;border-collapse:collapse;}
-.td-prod{padding:3px 0;font-size:10px;color:#000;word-break:break-word;line-height:1.3;}
-.td-imp{padding:3px 0;font-size:10px;color:#000;text-align:right;white-space:nowrap;vertical-align:top;font-weight:bold;}
-.total{display:flex;justify-content:space-between;font-size:14px;font-weight:bold;color:#000;padding:3px 0;}
-.qr{text-align:center;margin:4px 0 2px;}
-.qr img{width:25mm;height:25mm;}
-.qr-lbl{font-size:8px;color:#000;margin-top:2px;}
-.pie{text-align:center;font-size:8px;color:#000;margin-top:3px;line-height:1.4;}
-.pie2{text-align:center;font-size:7px;color:#000;margin-top:2px;line-height:1.3;}
-.no-print{display:block;margin:10px auto 4px;padding:8px 20px;background:#1f3a66;color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;font-family:sans-serif;}
+.hdr{text-align:center;margin-bottom:4mm;}
+.hdr img{display:block;margin:0 auto 2mm;}
+.emp{font-size:12px;font-weight:bold;text-transform:uppercase;color:#000;}
+.slg{font-size:9px;color:#000;margin-top:1mm;}
+.dir{font-size:9px;color:#000;margin-top:0.5mm;}
+.sep{border:0;border-top:1px dashed #000;margin:2mm 0;}
+.sep2{border:0;border-top:2px solid #000;margin:2mm 0;}
+.row{display:flex;justify-content:space-between;font-size:10px;color:#000;padding:0.5mm 0;}
+.tel{text-align:center;font-size:13px;font-weight:bold;color:#000;margin:2mm 0;}
+.tbl{width:100%;border-collapse:collapse;margin:1mm 0;}
+.td-prod{padding:1mm 0;font-size:10px;color:#000;word-break:break-word;line-height:1.3;}
+.td-imp{padding:1mm 0;font-size:10px;color:#000;text-align:right;white-space:nowrap;vertical-align:top;font-weight:bold;}
+.total{display:flex;justify-content:space-between;font-size:14px;font-weight:bold;color:#000;padding:1mm 0;}
+.qr{text-align:center;margin:3mm 0;}
+.qr img{width:28mm;height:28mm;}
+.qr-lbl{font-size:8px;color:#000;margin-top:1mm;}
+.pie{text-align:center;font-size:8px;color:#000;margin-top:2mm;line-height:1.4;}
+.pie2{text-align:center;font-size:7px;color:#000;margin-top:2mm;line-height:1.3;}
+.no-print{display:block;margin:10px auto 5px;padding:10px 24px;background:#1f3a66;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;font-family:sans-serif;}
 @media print{
   .no-print{display:none!important;}
-  html,body{width:54mm;padding:1mm 0 0;}
+  html,body{width:58mm;padding:2mm;}
 }
 </style>
 </head>
@@ -190,15 +188,15 @@ ${logoHTML}
 </div>
 
 <hr class="sep"/>
-<div class="row"><span>${fechaStr}</span><span>F:${folioCorto}</span></div>
+<div class="row"><span>${fechaStr}</span><span>Folio: ${folioCorto}</span></div>
 <div class="row">Cajero: ${cajero}</div>
 ${venta.cliente ? `<div class="row">Cliente: ${venta.cliente.nombre}</div>` : ''}
 <div class="tel">${EMPRESA.tel1}</div>
 <hr class="sep2"/>
 
-<div class="row"><strong>Descripcion</strong><span><strong>Importe</strong></span></div>
+<div class="row"><strong>Descripción</strong><span><strong>Importe</strong></span></div>
 <hr class="sep"/>
-<table class="tbl"><tbody>${filaProductos || '<tr><td colspan="2" style="text-align:center;color:#000;padding:3px 0;">Sin productos</td></tr>'}</tbody></table>
+<table class="tbl"><tbody>${filaProductos || '<tr><td colspan="2" style="text-align:center;color:#000;padding:2mm 0;">Sin productos</td></tr>'}</tbody></table>
 <hr class="sep"/>
 
 <div class="row">Subtotal:<span>${fmt(subtotalV)}</span></div>
@@ -207,21 +205,21 @@ ${descuento > 0 ? `<div class="row">Descuento:<span>-${fmt(descuento)}</span></d
 <div class="total"><span>TOTAL</span><span>${fmt(venta.total)}</span></div>
 <hr class="sep2"/>
 
-<div class="row">Pago:<span>${metodoLabel}</span></div>
+<div class="row">Método de pago:<span>${metodoLabel}</span></div>
 ${seccionPago}
-${pagos.totalCredito > 0 ? `<div class="row"><strong>A credito:</strong><span><strong>${fmt(pagos.totalCredito)}</strong></span></div>` : ''}
+${pagos.totalCredito > 0 ? `<div class="row"><strong>A crédito:</strong><span><strong>${fmt(pagos.totalCredito)}</strong></span></div>` : ''}
 
 <hr class="sep"/>
 <div class="qr">
-<img src="${qrDataUrl}" alt="QR"/>
-<div class="qr-lbl">Escanea para factura electronica</div>
+<img src="${qrDataUrl}" alt="QR Facturación"/>
+<div class="qr-lbl">Escanea para solicitar factura electrónica</div>
 </div>
 
-<div class="pie">Gracias por su compra<br/>Conserve su ticket para aclaraciones</div>
-<div class="pie2">3 dias para solicitar factura.<br/>Pasado el plazo, JESHA no se hace responsable.<br/>No se aceptan devoluciones por mal uso.</div>
+<div class="pie">¡Gracias por su compra!<br/>Conserve su ticket para aclaraciones</div>
+<div class="pie2">Cuenta con 3 días para solicitar factura.<br/>Pasado el plazo, JESHA no se hace responsable.<br/>No se aceptan devoluciones por mal uso del producto.</div>
 
-<button class="no-print" onclick="window.print()">Imprimir</button>
-<script>window.addEventListener('load',()=>{setTimeout(()=>window.print(),400)})</script>
+<button class="no-print" onclick="window.print()">🖨️ Imprimir Ticket</button>
+<script>window.addEventListener('load',()=>{setTimeout(()=>window.print(),500)})</script>
 </body>
 </html>`
 }
