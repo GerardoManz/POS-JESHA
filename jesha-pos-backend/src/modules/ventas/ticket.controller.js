@@ -131,7 +131,7 @@ function generarHTMLTicket(venta, qrDataUrl, fechaStr, pagos) {
     : ''
 
   const logoHTML = LOGO_BASE64
-    ? `<img src="${LOGO_BASE64}" alt="JESHA" style="width:40mm;filter:invert(1);background:#fff;padding:2mm;" />`
+    ? `<img src="${LOGO_BASE64}" alt="JESHA" style="width:35mm;height:auto;display:block;margin:0 auto;filter:invert(1) brightness(0);-webkit-print-color-adjust:exact;print-color-adjust:exact;" />`
     : `<div style="font-size:18px;font-weight:900;letter-spacing:2px;color:#000;">JESHA</div>`
 
   return `<!DOCTYPE html>
@@ -153,7 +153,7 @@ html,body{
   line-height:1.35;
 }
 .hdr{text-align:center;margin-bottom:4mm;}
-.hdr img{display:block;margin:0 auto 2mm;}
+.hdr img{display:block;margin:0 auto 2mm;-webkit-print-color-adjust:exact;print-color-adjust:exact;image-rendering:crisp-edges;}
 .emp{font-size:12px;font-weight:bold;text-transform:uppercase;color:#000;}
 .slg{font-size:9px;color:#000;margin-top:1mm;}
 .dir{font-size:9px;color:#000;margin-top:0.5mm;}
