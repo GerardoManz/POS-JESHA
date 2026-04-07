@@ -92,12 +92,11 @@ const generarTicketThermal = async (req, res) => {
 }
 
 // ════════════════════════════════════════════════════════════════════
-//  GENERADOR HTML — Optimizado para GHIA GTP582 (58mm)
-//  ✅ Corregido: legibilidad, alineación, jerarquía visual
+//  GENERADOR HTML — GHIA GTP582 (58mm)
+//  v3: Fix recorte derecho — @page size:58mm + body width:100%
 // ════════════════════════════════════════════════════════════════════
 
 function generarHTMLTicket(venta, qrDataUrl, fechaStr, pagos) {
-  // Formateador seguro — siempre 2 decimales
   const fmt = v => {
     const num = parseFloat(v || 0)
     return `$${num.toFixed(2)}`
@@ -135,7 +134,6 @@ function generarHTMLTicket(venta, qrDataUrl, fechaStr, pagos) {
        <tr class="bold"><td class="lbl">Cambio:</td><td class="val">${fmt(cambio)}</td></tr>`
     : ''
 
-  // Logo: reducido a 25mm, sin filtro invert (causa pérdida de contraste en térmicas)
   const logoHTML = LOGO_BASE64
     ? `<img src="${LOGO_BASE64}" alt="JESHA" class="logo" />`
     : `<div class="logo-text">JESHA</div>`
@@ -144,15 +142,11 @@ function generarHTMLTicket(venta, qrDataUrl, fechaStr, pagos) {
 <html lang="es">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=48mm"/>
 <title>Ticket ${venta.folio}</title>
 <style>
-/* ═══════════════════════════════════════════════
-   RESET + BASE — Optimizado para térmica 58mm
-   ═══════════════════════════════════════════════ */
 @page {
-  margin: 0;
   size: 58mm auto;
+  margin: 0;
 }
 * {
   margin: 0;
@@ -162,225 +156,59 @@ function generarHTMLTicket(venta, qrDataUrl, fechaStr, pagos) {
   print-color-adjust: exact;
 }
 html, body {
-  width: 48mm;              /* 58mm papel - ~5mm márgenes físicos de la impresora */
-  max-width: 48mm;
-  margin: 0 auto;
-  padding: 2mm 0;
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  padding: 1mm 2mm;
   font-family: Arial, Helvetica, sans-serif;
-  font-size: 11px;
+  font-size: 10px;
   color: #000;
   background: #fff;
   line-height: 1.3;
-  font-weight: 700;         /* TODO BOLD por defecto — térmica necesita peso */
-}
-
-/* ═══ ENCABEZADO ═══ */
-.hdr {
-  text-align: center;
-  padding-bottom: 2mm;
-}
-.logo {
-  display: block;
-  margin: 0 auto 1.5mm;
-  width: 25mm;
-  height: auto;
-  image-rendering: crisp-edges;
-}
-.logo-text {
-  font-size: 20px;
-  font-weight: 900;
-  letter-spacing: 3px;
-}
-.emp {
-  font-size: 11px;
-  font-weight: 900;
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
-}
-.slg {
-  font-size: 8px;
   font-weight: 700;
-  margin-top: 0.5mm;
+  overflow: hidden;
 }
-.dir {
-  font-size: 8px;
-  font-weight: 700;
-  margin-top: 0.3mm;
+.hdr{text-align:center;padding-bottom:1.5mm;}
+.logo{display:block;margin:0 auto 1mm;width:22mm;height:auto;image-rendering:crisp-edges;}
+.logo-text{font-size:18px;font-weight:900;letter-spacing:3px;}
+.emp{font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:0.3px;}
+.slg{font-size:7px;font-weight:700;margin-top:0.5mm;}
+.dir{font-size:7px;font-weight:700;margin-top:0.3mm;}
+.tel{font-size:8px;font-weight:900;margin-top:0.5mm;letter-spacing:0.3px;}
+.sep{border:0;border-top:1px dashed #000;margin:1mm 0;}
+.sep-bold{border:0;border-top:1.5px solid #000;margin:1mm 0;}
+.info-tbl{width:100%;border-collapse:collapse;font-size:9px;table-layout:fixed;}
+.info-tbl td{padding:0.3mm 0;vertical-align:top;overflow:hidden;}
+.info-tbl .lbl{text-align:left;font-weight:700;width:55%;}
+.info-tbl .val{text-align:right;font-weight:900;width:45%;}
+.tbl-hdr{width:100%;border-collapse:collapse;table-layout:fixed;font-size:9px;font-weight:900;}
+.tbl-hdr .col-desc{width:65%;text-align:left;}
+.tbl-hdr .col-imp{width:35%;text-align:right;}
+.tbl{width:100%;border-collapse:collapse;table-layout:fixed;}
+.tbl .td-prod{width:65%;padding:0.8mm 0;font-size:9px;font-weight:900;word-break:break-word;overflow-wrap:break-word;line-height:1.2;vertical-align:top;}
+.tbl .td-det{font-size:8px;font-weight:700;}
+.tbl .td-imp{width:35%;padding:0.8mm 0;font-size:10px;font-weight:900;text-align:right;white-space:nowrap;vertical-align:top;}
+.total-row td{font-size:13px;font-weight:900;padding:0.8mm 0;}
+.bold td{font-weight:900;}
+.qr{text-align:center;margin:1.5mm 0;}
+.qr img{width:22mm;height:22mm;image-rendering:pixelated;-ms-interpolation-mode:nearest-neighbor;}
+.qr-lbl{font-size:7px;font-weight:700;margin-top:0.5mm;}
+.pie{text-align:center;font-size:8px;font-weight:900;margin-top:1mm;line-height:1.3;}
+.pie-legal{text-align:center;font-size:6px;font-weight:700;margin-top:1mm;line-height:1.2;}
+.no-print{display:block;margin:10px auto 5px;padding:10px 24px;background:#1f3a66;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;}
+@media print{
+  .no-print{display:none!important;}
+  html,body{width:100%;max-width:100%;padding:0mm 1mm;font-weight:900;}
+  *{color:#000!important;}
+  .logo{filter:contrast(2) brightness(0);}
 }
-.tel {
-  font-size: 9px;
-  font-weight: 900;
-  margin-top: 1mm;
-  letter-spacing: 0.5px;
-}
-
-/* ═══ SEPARADORES ═══ */
-.sep {
-  border: 0;
-  border-top: 1px dashed #000;
-  margin: 1.5mm 0;
-}
-.sep-bold {
-  border: 0;
-  border-top: 2px solid #000;
-  margin: 1.5mm 0;
-}
-
-/* ═══ INFO DE VENTA ═══ */
-.info {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 10px;
-}
-.info td {
-  padding: 0.3mm 0;
-  vertical-align: top;
-}
-.info .lbl {
-  text-align: left;
-  font-weight: 700;
-}
-.info .val {
-  text-align: right;
-  font-weight: 900;
-}
-
-/* ═══ TABLA DE PRODUCTOS ═══ */
-.tbl-hdr {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 10px;
-  font-weight: 900;
-}
-.tbl-hdr td:first-child { text-align: left; }
-.tbl-hdr td:last-child  { text-align: right; }
-
-.tbl {
-  width: 100%;
-  border-collapse: collapse;
-  table-layout: fixed;       /* CLAVE: anchos fijos para alineación */
-}
-.td-prod {
-  width: 72%;
-  padding: 1mm 0;
-  font-size: 10px;
-  font-weight: 900;         /* Nombre del producto en negrita fuerte */
-  word-break: break-word;
-  line-height: 1.25;
-  vertical-align: top;
-}
-.td-det {
-  font-size: 9px;
-  font-weight: 700;         /* Detalle qty x precio ligeramente menos pesado */
-}
-.td-imp {
-  width: 28%;
-  padding: 1mm 0;
-  font-size: 11px;
-  font-weight: 900;
-  text-align: right;
-  white-space: nowrap;
-  vertical-align: top;
-}
-
-/* ═══ TOTALES ═══ */
-.totales {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 10px;
-}
-.totales td {
-  padding: 0.3mm 0;
-}
-.totales .lbl {
-  text-align: left;
-  font-weight: 700;
-}
-.totales .val {
-  text-align: right;
-  font-weight: 900;
-}
-.total-row td {
-  font-size: 14px;
-  font-weight: 900;
-  padding: 1mm 0;
-}
-.bold td {
-  font-weight: 900;
-}
-
-/* ═══ QR Y PIE ═══ */
-.qr {
-  text-align: center;
-  margin: 2mm 0;
-}
-.qr img {
-  width: 25mm;
-  height: 25mm;
-  image-rendering: pixelated;      /* QR nítido en térmica */
-  -ms-interpolation-mode: nearest-neighbor;
-}
-.qr-lbl {
-  font-size: 8px;
-  font-weight: 700;
-  margin-top: 1mm;
-}
-.pie {
-  text-align: center;
-  font-size: 9px;
-  font-weight: 900;
-  margin-top: 1.5mm;
-  line-height: 1.3;
-}
-.pie-legal {
-  text-align: center;
-  font-size: 7px;
-  font-weight: 700;
-  margin-top: 1.5mm;
-  line-height: 1.25;
-}
-
-/* ═══ BOTÓN IMPRIMIR (solo pantalla) ═══ */
-.no-print {
-  display: block;
-  margin: 10px auto 5px;
-  padding: 10px 24px;
-  background: #1f3a66;
-  color: #fff;
-  border: none;
-  border-radius: 6px;
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-/* ═══ MEDIA PRINT — Forzar máxima legibilidad ═══ */
-@media print {
-  .no-print { display: none !important; }
-  html, body {
-    width: 48mm;
-    max-width: 48mm;
-    padding: 1mm 0;
-    font-weight: 900;        /* Máximo peso en impresión */
-  }
-  * {
-    color: #000 !important;
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
-  }
-  .logo {
-    /* SIN filter:invert — la térmica ya imprime en negro sobre blanco */
-    filter: contrast(2) brightness(0);    /* Maximizar contraste del logo */
-  }
-  img {
-    image-rendering: crisp-edges;
-  }
+@media screen{
+  html,body{width:58mm;margin:0 auto;padding:2mm 3mm;box-shadow:0 0 10px rgba(0,0,0,0.15);}
 }
 </style>
 </head>
 <body>
 
-<!-- ═══ ENCABEZADO ═══ -->
 <div class="hdr">
   ${logoHTML}
   <div class="emp">${EMPRESA.nombre}</div>
@@ -392,20 +220,17 @@ html, body {
 
 <hr class="sep"/>
 
-<!-- ═══ INFO DE VENTA ═══ -->
-<table class="info">
+<table class="info-tbl">
   <tr><td class="lbl">${fechaStr}</td><td class="val">Folio: ${folioCorto}</td></tr>
-  <tr><td class="lbl">Cajero:</td><td class="val">${cajero}</td></tr>
+  <tr><td class="lbl">Cajero: ${cajero}</td><td class="val"></td></tr>
   ${venta.cliente ? `<tr><td class="lbl">Cliente:</td><td class="val">${venta.cliente.nombre}</td></tr>` : ''}
 </table>
 
 <hr class="sep-bold"/>
 
-<!-- ═══ ENCABEZADO DE PRODUCTOS ═══ -->
-<table class="tbl-hdr"><tr><td>Descripción</td><td>Importe</td></tr></table>
+<table class="tbl-hdr"><tr><td class="col-desc">Descripción</td><td class="col-imp">Importe</td></tr></table>
 <hr class="sep"/>
 
-<!-- ═══ PRODUCTOS ═══ -->
 <table class="tbl">
   <tbody>
     ${filaProductos || '<tr><td colspan="2" style="text-align:center;padding:2mm 0;">Sin productos</td></tr>'}
@@ -414,20 +239,18 @@ html, body {
 
 <hr class="sep"/>
 
-<!-- ═══ TOTALES ═══ -->
-<table class="totales">
+<table class="info-tbl">
   <tr><td class="lbl">Subtotal:</td><td class="val">${fmt(subtotalV)}</td></tr>
   ${descuento > 0 ? `<tr><td class="lbl">Descuento:</td><td class="val">-${fmt(descuento)}</td></tr>` : ''}
 </table>
 
 <hr class="sep-bold"/>
-<table class="totales">
+<table class="info-tbl">
   <tr class="total-row"><td class="lbl">TOTAL</td><td class="val">${fmt(venta.total)}</td></tr>
 </table>
 <hr class="sep-bold"/>
 
-<!-- ═══ MÉTODO DE PAGO ═══ -->
-<table class="totales">
+<table class="info-tbl">
   <tr><td class="lbl">Método de pago:</td><td class="val">${metodoLabel}</td></tr>
   ${seccionPago}
   ${pagos.totalCredito > 0 ? `<tr class="bold"><td class="lbl">A crédito:</td><td class="val">${fmt(pagos.totalCredito)}</td></tr>` : ''}
@@ -435,13 +258,11 @@ html, body {
 
 <hr class="sep"/>
 
-<!-- ═══ QR FACTURACIÓN ═══ -->
 <div class="qr">
   <img src="${qrDataUrl}" alt="QR Facturación"/>
   <div class="qr-lbl">Escanea para solicitar factura electrónica</div>
 </div>
 
-<!-- ═══ PIE ═══ -->
 <div class="pie">¡Gracias por su compra!<br/>Conserve su ticket para aclaraciones</div>
 <div class="pie-legal">
   Cuenta con 3 días para solicitar factura.<br/>
