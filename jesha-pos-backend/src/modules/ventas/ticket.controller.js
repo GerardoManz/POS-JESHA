@@ -92,8 +92,16 @@ const generarTicketThermal = async (req, res) => {
 }
 
 // ════════════════════════════════════════════════════════════════════
-//  GENERADOR HTML — GHIA GTP582 (58mm)
-//  v3: Fix recorte derecho — @page size:58mm + body width:100%
+//  v4 — Fix: último carácter cortado + pie tenue
+//
+//  Cambios vs v3:
+//  - padding body: 1mm 2mm → 1mm 3mm (más margen derecho)
+//  - @media print padding: 0mm 1mm → 0mm 2mm
+//  - Columna precios: 35% → 38% (más espacio para "$1,000.00")
+//  - Columna producto: 65% → 62%
+//  - Pie legal: 6px → 8px con font-weight 900 (era 700)
+//  - Nombre empresa: 10px → 8px (para que quepa en 1 línea)
+//  - Font-size base reducidos ~1px para ganar margen horizontal
 // ════════════════════════════════════════════════════════════════════
 
 function generarHTMLTicket(venta, qrDataUrl, fechaStr, pagos) {
@@ -159,9 +167,9 @@ html, body {
   width: 100%;
   max-width: 100%;
   margin: 0;
-  padding: 1mm 2mm;
+  padding: 1mm 3mm;
   font-family: Arial, Helvetica, sans-serif;
-  font-size: 10px;
+  font-size: 9px;
   color: #000;
   background: #fff;
   line-height: 1.3;
@@ -169,36 +177,36 @@ html, body {
   overflow: hidden;
 }
 .hdr{text-align:center;padding-bottom:1.5mm;}
-.logo{display:block;margin:0 auto 1mm;width:22mm;height:auto;image-rendering:crisp-edges;}
-.logo-text{font-size:18px;font-weight:900;letter-spacing:3px;}
-.emp{font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:0.3px;}
+.logo{display:block;margin:0 auto 1mm;width:20mm;height:auto;image-rendering:crisp-edges;}
+.logo-text{font-size:16px;font-weight:900;letter-spacing:3px;}
+.emp{font-size:8px;font-weight:900;text-transform:uppercase;letter-spacing:0.2px;}
 .slg{font-size:7px;font-weight:700;margin-top:0.5mm;}
 .dir{font-size:7px;font-weight:700;margin-top:0.3mm;}
 .tel{font-size:8px;font-weight:900;margin-top:0.5mm;letter-spacing:0.3px;}
 .sep{border:0;border-top:1px dashed #000;margin:1mm 0;}
 .sep-bold{border:0;border-top:1.5px solid #000;margin:1mm 0;}
-.info-tbl{width:100%;border-collapse:collapse;font-size:9px;table-layout:fixed;}
+.info-tbl{width:100%;border-collapse:collapse;font-size:8px;table-layout:fixed;}
 .info-tbl td{padding:0.3mm 0;vertical-align:top;overflow:hidden;}
-.info-tbl .lbl{text-align:left;font-weight:700;width:55%;}
-.info-tbl .val{text-align:right;font-weight:900;width:45%;}
-.tbl-hdr{width:100%;border-collapse:collapse;table-layout:fixed;font-size:9px;font-weight:900;}
-.tbl-hdr .col-desc{width:65%;text-align:left;}
-.tbl-hdr .col-imp{width:35%;text-align:right;}
+.info-tbl .lbl{text-align:left;font-weight:700;width:52%;}
+.info-tbl .val{text-align:right;font-weight:900;width:48%;}
+.tbl-hdr{width:100%;border-collapse:collapse;table-layout:fixed;font-size:8px;font-weight:900;}
+.tbl-hdr .col-desc{width:60%;text-align:left;}
+.tbl-hdr .col-imp{width:40%;text-align:right;}
 .tbl{width:100%;border-collapse:collapse;table-layout:fixed;}
-.tbl .td-prod{width:65%;padding:0.8mm 0;font-size:9px;font-weight:900;word-break:break-word;overflow-wrap:break-word;line-height:1.2;vertical-align:top;}
-.tbl .td-det{font-size:8px;font-weight:700;}
-.tbl .td-imp{width:35%;padding:0.8mm 0;font-size:10px;font-weight:900;text-align:right;white-space:nowrap;vertical-align:top;}
-.total-row td{font-size:13px;font-weight:900;padding:0.8mm 0;}
+.tbl .td-prod{width:60%;padding:0.8mm 1mm 0.8mm 0;font-size:8px;font-weight:900;word-break:break-word;overflow-wrap:break-word;line-height:1.2;vertical-align:top;}
+.tbl .td-det{font-size:7px;font-weight:700;}
+.tbl .td-imp{width:40%;padding:0.8mm 0;font-size:9px;font-weight:900;text-align:right;white-space:nowrap;vertical-align:top;}
+.total-row td{font-size:12px;font-weight:900;padding:0.8mm 0;}
 .bold td{font-weight:900;}
 .qr{text-align:center;margin:1.5mm 0;}
 .qr img{width:22mm;height:22mm;image-rendering:pixelated;-ms-interpolation-mode:nearest-neighbor;}
-.qr-lbl{font-size:7px;font-weight:700;margin-top:0.5mm;}
+.qr-lbl{font-size:7px;font-weight:900;margin-top:0.5mm;}
 .pie{text-align:center;font-size:8px;font-weight:900;margin-top:1mm;line-height:1.3;}
-.pie-legal{text-align:center;font-size:6px;font-weight:700;margin-top:1mm;line-height:1.2;}
+.pie-legal{text-align:center;font-size:8px;font-weight:900;margin-top:1mm;line-height:1.25;}
 .no-print{display:block;margin:10px auto 5px;padding:10px 24px;background:#1f3a66;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;}
 @media print{
   .no-print{display:none!important;}
-  html,body{width:100%;max-width:100%;padding:0mm 1mm;font-weight:900;}
+  html,body{width:100%;max-width:100%;padding:0mm 2mm;font-weight:900;}
   *{color:#000!important;}
   .logo{filter:contrast(2) brightness(0);}
 }
@@ -251,7 +259,7 @@ html, body {
 <hr class="sep-bold"/>
 
 <table class="info-tbl">
-  <tr><td class="lbl">Método de pago:</td><td class="val">${metodoLabel}</td></tr>
+  <tr><td class="lbl">Método:</td><td class="val">${metodoLabel}</td></tr>
   ${seccionPago}
   ${pagos.totalCredito > 0 ? `<tr class="bold"><td class="lbl">A crédito:</td><td class="val">${fmt(pagos.totalCredito)}</td></tr>` : ''}
 </table>
@@ -260,14 +268,14 @@ html, body {
 
 <div class="qr">
   <img src="${qrDataUrl}" alt="QR Facturación"/>
-  <div class="qr-lbl">Escanea para solicitar factura electrónica</div>
+  <div class="qr-lbl">Escanea para solicitar factura</div>
 </div>
 
 <div class="pie">¡Gracias por su compra!<br/>Conserve su ticket para aclaraciones</div>
 <div class="pie-legal">
-  Cuenta con 3 días para solicitar factura.<br/>
+  3 días para solicitar factura.<br/>
   Pasado el plazo, JESHA no se hace responsable.<br/>
-  No se aceptan devoluciones por mal uso del producto.
+  No se aceptan devoluciones por mal uso.
 </div>
 
 <button class="no-print" onclick="window.print()">Imprimir Ticket</button>
