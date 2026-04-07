@@ -860,6 +860,23 @@ function configurarEventos() {
   if (inputCosto)  inputCosto.addEventListener('input', calcularMargen)
   if (inputPrecio) inputPrecio.addEventListener('input', calcularMargen)
 
+  // ── FIX: Prevenir que el escáner de código de barras dispare submit del form ──
+  // Los escáneres envían los caracteres rápidamente y terminan con Enter.
+  // Ese Enter dispara el submit del <form>, guardando el producto antes de tiempo.
+  // Solución: bloquear Enter en el campo de código de barras.
+  const inputCodigoBarras = document.getElementById('producto-codigoBarras')
+  if (inputCodigoBarras) {
+    inputCodigoBarras.addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        e.stopPropagation()
+        // Mover foco al siguiente campo para que el usuario continúe editando
+        const siguiente = inputCodigoBarras.closest('.form-group')?.nextElementSibling?.querySelector('input, select, textarea')
+        if (siguiente) siguiente.focus()
+      }
+    })
+  }
+
   // Nuevo Proveedor — Modal
   const btnNuevoProvModal = document.getElementById('btn-nuevo-prov-modal')
   if (btnNuevoProvModal) btnNuevoProvModal.addEventListener('click', abrirModalNuevoProveedor)
