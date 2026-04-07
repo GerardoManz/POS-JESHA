@@ -1510,7 +1510,22 @@ function configurarEventListeners() {
     actualizarResumenConDescuento()
   })
 
-  document.getElementById('confirm-descuento-input')?.addEventListener('input', actualizarResumenConDescuento)
+  document.getElementById('confirm-descuento-input')?.addEventListener('input', function() {
+    const aviso = document.getElementById('descuento-limite-aviso')
+    const val = parseFloat(this.value) || 0
+    if (val > 10) {
+      this.value = 10
+      this.style.borderColor = 'rgba(232,113,10,0.5)'
+      if (aviso) aviso.style.display = 'block'
+      setTimeout(() => {
+        this.style.borderColor = ''
+        if (aviso) aviso.style.display = 'none'
+      }, 2500)
+    } else if (val < 0) {
+      this.value = 0
+    }
+    actualizarResumenConDescuento()
+  })
 
   document.getElementById('confirm-vendedor-select')?.addEventListener('change', function() {
     const vendId = parseInt(this.value)
