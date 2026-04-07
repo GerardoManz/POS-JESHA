@@ -70,6 +70,104 @@ let clientesLista          = []
 const productoCache        = new Map()
 
 // ══════════════════════════════════════════════════════════════════
+//  PERSISTENCIA DEL CARRITO — sessionStorage
+//  Se guarda cada vez que el carrito cambia.
+//  Se restaura al cargar la página (si el usuario navegó a otro módulo y volvió).
+//  Se limpia automáticamente al cerrar la pestaña del navegador.
+// ══════════════════════════════════════════════════════════════════
+
+function guardarCarritoEnSession() {
+  try {
+    const estado = {
+      carrito,
+      clienteSeleccionado,
+      metodoPagoSeleccionado
+    }
+    sessionStorage.setItem('jesha_carrito', JSON.stringify(estado))
+  } catch (e) {
+    console.warn('⚠️ No se pudo guardar carrito en session:', e.message)
+  }
+}
+
+function restaurarCarritoDeSession() {
+  try {
+    const raw = sessionStorage.getItem('jesha_carrito')
+    if (!raw) return false
+
+    const estado = JSON.parse(raw)
+    if (!Array.isArray(estado.carrito) || estado.carrito.length === 0) return false
+
+    carrito = estado.carrito
+
+    // Restaurar cache de productos desde el carrito
+    carrito.forEach(item => {
+      if (!productoCache.has(item.id)) {
+        productoCache.set(item.id, {
+          id: item.id, nombre: item.nombre,
+          precioVenta: item.precioOriginal || item.precio,
+          precioBase: item.precioOriginal || item.precio,
+          stock: null, codigoInterno: '',
+          esGranel: item.esGranel || false,
+          unidadVenta: item.unidadVenta || ''
+        })
+      }
+    })
+
+    // Restaurar cliente
+    if (estado.clienteSeleccionado?.id) {
+      clienteSeleccionado = estado.clienteSeleccionado
+      if (clienteNombre) clienteNombre.value = clienteSeleccionado.nombre || ''
+      const badge = document.getElementById('cliente-seleccionado-badge')
+      const badgeNombre = document.getElementById('cliente-badge-nombre')
+      if (badge && badgeNombre) {
+        badgeNombre.textContent = clienteSeleccionado.nombre || ''
+        badge.style.display = 'flex'
+      }
+      verificarCreditoCliente(clienteSeleccionado.id)
+    }
+
+    // Restaurar método de pago
+    if (estado.metodoPagoSeleccionado) {
+      metodoPagoSeleccionado = estado.metodoPagoSeleccionado
+      document.querySelectorAll('.metodo-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.metodo === metodoPagoSeleccionado)
+      })
+    }
+
+    actualizarCarrito()
+    console.log(`✅ Carrito restaurado: ${carrito.length} producto(s)`)
+    return true
+  } catch (e) {
+    console.warn('⚠️ Error restaurando carrito:', e.message)
+    sessionStorage.removeItem('jesha_carrito')
+    return false
+  }
+}
+
+function limpiarCarritoSession() {
+  sessionStorage.removeItem('jesha_carrito')
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  EDICIÓN DE PRECIO EN CARRITO
+//  Solo afecta la venta actual, NO modifica la base de datos.
+//  Guarda el precio original para mostrarlo tachado como referencia.
+// ══════════════════════════════════════════════════════════════════
+
+function actualizarPrecio(productoId, nuevoPrecio) {
+  const item = carrito.find(i => i.id === productoId)
+  if (!item) return
+  const parsed = parseFloat(nuevoPrecio)
+  if (isNaN(parsed) || parsed < 0) return
+  // Guardar precio original la primera vez que se edita
+  if (item.precioOriginal === undefined) {
+    item.precioOriginal = item.precio
+  }
+  item.precio = parseFloat(parsed.toFixed(2))
+  actualizarCarrito()
+}
+
+// ══════════════════════════════════════════════════════════════════
 //  INICIALIZACIÓN
 // ══════════════════════════════════════════════════════════════════
 
@@ -82,8 +180,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Quitar selección predeterminada de método de pago
   document.querySelectorAll('.metodo-btn').forEach(b => b.classList.remove('active'))
   metodoPagoSeleccionado = null
-  actualizarCarrito()
-  cargarCotizacionDesdeStorage()
+
+  // Restaurar carrito de sessionStorage (si el usuario navegó a otro módulo y volvió)
+  const restaurado = restaurarCarritoDeSession()
+
+  if (!restaurado) {
+    actualizarCarrito()
+    cargarCotizacionDesdeStorage()
+  }
+
   configurarEventosCotizar()
   console.log('✅ Punto de Venta listo')
 })
@@ -404,7 +509,7 @@ function agregarAlCarrito(productoId, nombre, precio, esGranel = false, unidadVe
   if (existe) {
     existe.cantidad = parseFloat((existe.cantidad + (esGranel ? 0.1 : 1)).toFixed(3))
   } else {
-    carrito.push({ id: idParsed, nombre, precio: parseFloat(precio), cantidad: esGranel ? 0.1 : 1, esGranel, unidadVenta })
+    carrito.push({ id: idParsed, nombre, precio: parseFloat(precio), precioOriginal: parseFloat(precio), cantidad: esGranel ? 0.1 : 1, esGranel, unidadVenta })
   }
 
   if (!productoCache.get(idParsed)) {
@@ -441,18 +546,27 @@ function actualizarCarrito() {
   if (carrito.length === 0) {
     carritoTbody.innerHTML = `
       <tr class="carrito-empty">
-        <td colspan="4" style="text-align:center;color:var(--muted);padding:40px;">
+        <td colspan="5" style="text-align:center;color:var(--muted);padding:40px;">
           Agrega productos para comenzar
         </td>
       </tr>`
   } else {
-    carritoTbody.innerHTML = carrito.map(item => `
+    carritoTbody.innerHTML = carrito.map(item => {
+      const precioModificado = item.precioOriginal !== undefined && item.precio !== item.precioOriginal
+      return `
       <tr>
-        <td>${item.nombre.substring(0, 20)}</td>
+        <td>${item.nombre.substring(0, 18)}</td>
+        <td style="text-align:center;">
+          ${precioModificado ? `<span style="font-size:0.65rem;color:var(--muted);text-decoration:line-through;display:block;">$${item.precioOriginal.toFixed(2)}</span>` : ''}
+          <input type="number" value="${item.precio}"
+                 min="0" step="0.01"
+                 style="width:60px;padding:3px;text-align:center;font-size:0.8rem;${precioModificado ? 'color:#e8710a;font-weight:600;' : ''}"
+                 onchange="actualizarPrecio(${item.id}, this.value)" />
+        </td>
         <td style="text-align:center;">
           <input type="number" value="${item.cantidad}"
                  min="${item.esGranel ? 0.001 : 1}" step="${item.esGranel ? 0.001 : 1}"
-                 style="width:55px;padding:4px;text-align:center;"
+                 style="width:50px;padding:3px;text-align:center;"
                  onchange="actualizarCantidad(${item.id}, this.value)" />
           ${item.unidadVenta ? `<span style="font-size:0.7rem;color:var(--muted);display:block;">${item.unidadVenta}</span>` : ""}
         </td>
@@ -460,7 +574,8 @@ function actualizarCarrito() {
         <td style="text-align:center;">
           <button class="btn-eliminar" onclick="eliminarDelCarrito(${item.id})">❌</button>
         </td>
-      </tr>`).join('')
+      </tr>`
+    }).join('')
   }
 
   itemsCount.textContent = `(${carrito.length})`
@@ -470,6 +585,9 @@ function actualizarCarrito() {
   btnCompletarVenta.disabled = !(carrito.length > 0 && turnoActivo && metodoPagoSeleccionado)
   const btnCotizar = document.getElementById('btn-cotizar-carrito')
   if (btnCotizar) btnCotizar.disabled = carrito.length === 0
+
+  // Persistir estado del carrito en sessionStorage
+  guardarCarritoEnSession()
 }
 
 async function limpiarCarrito() {
@@ -492,6 +610,7 @@ async function limpiarCarrito() {
   clienteNombre.value    = ''
   productoCache.clear()
   searchProductos.value  = ''
+  limpiarCarritoSession()
 
   const badge = document.getElementById('cliente-seleccionado-badge')
   if (badge) badge.style.display = 'none'
@@ -1043,6 +1162,7 @@ async function confirmarVenta() {
     clienteNombre.value = ''
     productoCache.clear()
     searchProductos.value = ''
+    limpiarCarritoSession()
 
     const badge = document.getElementById('cliente-seleccionado-badge')
     if (badge) badge.style.display = 'none'
