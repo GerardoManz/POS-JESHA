@@ -225,6 +225,23 @@ window.verDetalle = async function(id) {
     document.getElementById('det-descuento').textContent = fmt(v.descuento)
     document.getElementById('det-total').textContent     = fmt(v.total)
 
+    // Mostrar monto pagado y cambio (solo si aplica — efectivo con monto mayor al total)
+    const rowPagado = document.getElementById('det-row-pagado')
+    const rowCambio = document.getElementById('det-row-cambio')
+    const montoPagado = parseFloat(v.montoPagado || 0)
+    const totalVenta  = parseFloat(v.total || 0)
+
+    if (v.metodoPago === 'EFECTIVO' && montoPagado > 0 && montoPagado > totalVenta) {
+      const cambio = montoPagado - totalVenta
+      document.getElementById('det-pagado').textContent = fmt(montoPagado)
+      document.getElementById('det-cambio').textContent = fmt(cambio)
+      if (rowPagado) rowPagado.style.display = 'flex'
+      if (rowCambio) rowCambio.style.display = 'flex'
+    } else {
+      if (rowPagado) rowPagado.style.display = 'none'
+      if (rowCambio) rowCambio.style.display = 'none'
+    }
+
     renderAccionesModal(v)
     document.getElementById('modal-venta').classList.add('active')
   } catch (err) { jeshaToast('Error cargando detalle: ' + err.message, 'error') }
