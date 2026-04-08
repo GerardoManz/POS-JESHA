@@ -219,19 +219,31 @@ function actualizarCategoriasFiltroToolbar() {
 }
 
 function llenarSelectProveedores() {
-  if (modalProveedorSelect) {
-    while (modalProveedorSelect.options.length > 1) modalProveedorSelect.remove(1)
-    proveedoresLista.forEach(prov => {
-      const opt = document.createElement('option')
-      opt.value = prov.id
-      // Formato: NOMBREOFICIAL (APODO) o solo NOMBREOFICIAL si apodo es igual
-      const displayName = prov.alias && prov.alias !== prov.nombreOficial 
-        ? `${prov.nombreOficial} (${prov.alias})`
-        : prov.nombreOficial
-      opt.textContent = displayName
-      modalProveedorSelect.appendChild(opt)
-    })
-  }
+  if (!modalProveedorSelect) return
+  
+  // ✅ Limpiar completamente el select
+  modalProveedorSelect.innerHTML = '<option value="">Seleccionar proveedor...</option>'
+  
+  // ✅ Ordenar proveedores alfabéticamente por nombreOficial
+  const proveedoresOrdenados = [...proveedoresLista].sort((a, b) => 
+    a.nombreOficial.localeCompare(b.nombreOficial)
+  )
+  
+  // ✅ Agregar todas las opciones
+  proveedoresOrdenados.forEach(prov => {
+    const opt = document.createElement('option')
+    opt.value = String(prov.id)  // ✅ Asegurar que sea string
+    
+    // Formato: NOMBREOFICIAL (APODO) o solo NOMBREOFICIAL si apodo es igual
+    const displayName = prov.alias && prov.alias !== prov.nombreOficial 
+      ? `${prov.nombreOficial} (${prov.alias})`
+      : prov.nombreOficial
+    opt.textContent = displayName
+    
+    modalProveedorSelect.appendChild(opt)
+  })
+  
+  console.log('📋 Select de proveedores rellenado con', proveedoresOrdenados.length, 'opciones')
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -416,6 +428,10 @@ function renderizarTabla(productos) {
 window.editarProducto = async function(id) {
   const producto = productosLista.find(p => p.id === id)
   if (!producto) return
+  
+  console.log('🔍 Editando producto:', producto)
+  console.log('📦 Datos de proveedor:', producto.proveedorProducto)
+  
   productoActual = producto
   if (modalTitle) modalTitle.textContent = 'Editar Producto'
   document.getElementById('producto-nombre').value            = producto.nombre
@@ -430,21 +446,75 @@ window.editarProducto = async function(id) {
   document.getElementById('producto-factorConversion').value  = producto.factorConversion || ''
   document.getElementById('producto-claveSat').value          = producto.claveSat || ''
   document.getElementById('producto-unidadSat').value         = producto.unidadSat || ''
+  
   const deptoId = producto.categoria?.departamento?.id || ''
   llenarModalDepartamentos(deptoId)
   if (deptoId) actualizarModalCategorias(deptoId, producto.categoriaId)
-  // Cargar proveedor si existe
+  
+  // ✅ SOLUCIÓN MEJORADA: Carga del proveedor con validación completa
   if (modalProveedorSelect) {
-    const proveedorId = producto.proveedorProducto?.[0]?.proveedorId || ''
-    modalProveedorSelect.value = proveedorId
+    console.log('🔄 Iniciando carga de proveedor...')
+    
+    // 1. Re-llenar el select para asegurar que tiene todas las opciones
+    llenarSelectProveedores()
+    console.log('✅ Select de proveedores rellenado. Opciones disponibles:', modalProveedorSelect.options.length)
+    
+    // 2. Extraer el proveedorId del producto
+    let proveedorId = ''
+    
+    // ✅ CORREGIDO: La relación se llama 'proveedores' (plural) no 'proveedorProducto'
+    if (producto.proveedores && Array.isArray(producto.proveedores) && producto.proveedores.length > 0) {
+      proveedorId = producto.proveedores[0].proveedorId || producto.proveedores[0].id || ''
+    } else if (producto.proveedorId) {
+      proveedorId = producto.proveedorId
+    }
+    
+    console.log('🎯 ProveedorId extraído:', proveedorId, typeof proveedorId)
+    
+    // 3. Convertir a string para comparación (los option.value son strings)
+    const proveedorIdStr = String(proveedorId)
+    
+    // 4. Verificar si el proveedor existe en la lista
+    const proveedorEncontrado = proveedoresLista.find(p => String(p.id) === proveedorIdStr)
+    console.log('🔍 Proveedor en lista:', proveedorEncontrado)
+    
+    // 5. Verificar si existe la opción en el select
+    const opcionExiste = Array.from(modalProveedorSelect.options).find(opt => opt.value === proveedorIdStr)
+    console.log('🔍 Opción existe en select:', opcionExiste ? 'SÍ' : 'NO')
+    
+    // 6. Asignar el value usando requestAnimationFrame (más confiable que setTimeout)
+    requestAnimationFrame(() => {
+      if (proveedorIdStr && proveedorIdStr !== '') {
+        modalProveedorSelect.value = proveedorIdStr
+        
+        // Verificar si se asignó correctamente
+        const valorAsignado = modalProveedorSelect.value
+        console.log('📌 Valor asignado al select:', valorAsignado)
+        
+        if (valorAsignado === proveedorIdStr) {
+          console.log('✅ ÉXITO: Proveedor cargado correctamente:', proveedorEncontrado?.nombreOficial || valorAsignado)
+        } else {
+          console.error('❌ FALLO: El proveedor no se asignó. ID esperado:', proveedorIdStr, 'Valor actual:', valorAsignado)
+          console.error('🔍 Verificar: ¿Existe la opción con value="' + proveedorIdStr + '" en el select?')
+        }
+      } else {
+        console.log('ℹ️ Producto sin proveedor asignado')
+        modalProveedorSelect.value = ''
+      }
+    })
   }
+  
   if (producto.imagenUrl) {
     if (imagenPreview) imagenPreview.src = producto.imagenUrl.startsWith('http') ? producto.imagenUrl : API_URL + producto.imagenUrl
     if (imagenPreviewContainer) imagenPreviewContainer.style.display = 'block'
   } else {
     if (imagenPreviewContainer) imagenPreviewContainer.style.display = 'none'
   }
+  
+  // ✅ Calcular precio base y margen al cargar producto
+  calcularPrecioBase()
   calcularMargen()
+  
   ocultarError()
   if (modal) modal.classList.add('active')
 }
@@ -453,6 +523,11 @@ function abrirModalNuevo() {
   productoActual = null
   if (modalTitle) modalTitle.textContent = 'Nuevo Producto'
   if (formulario) formulario.reset()
+  
+  // ✅ Inicializar precio base en 0.00
+  const precioBaseInput = document.getElementById('producto-precioBase')
+  if (precioBaseInput) precioBaseInput.value = '0.00'
+  
   llenarModalDepartamentos()
   if (modalCatSelect) { modalCatSelect.innerHTML = '<option value="">Seleccionar categoría...</option>'; modalCatSelect.disabled = true }
   if (modalProveedorSelect) { modalProveedorSelect.value = '' }
@@ -477,10 +552,15 @@ async function guardarProducto(e) {
   const categoria = modalCatSelect?.value
   const precioBase   = document.getElementById('producto-precioBase').value
   const precioVenta  = document.getElementById('producto-precioVenta').value
+  
   if (!nombre)    return mostrarError('El nombre es requerido')
   if (!codigo)    return mostrarError('El código interno es requerido')
   if (!categoria || categoria === '__NUEVA_CAT__') return mostrarError('La categoría es requerida')
   if (!precioBase)  return mostrarError('El precio base (sin IVA) es requerido')
+  
+  // ✅ CORRECCIÓN: Obtener proveedorId del select
+  const proveedorId = modalProveedorSelect?.value || null
+  
   const datos = {
     nombre, codigoInterno: codigo,
     codigoBarras:     document.getElementById('producto-codigoBarras').value.trim() || null,
@@ -489,12 +569,16 @@ async function guardarProducto(e) {
     precioBase:       parseFloat(precioBase),
     precioVenta:      precioVenta ? parseFloat(precioVenta) : null,
     categoriaId:      parseInt(categoria),
+    proveedorId:      proveedorId ? parseInt(proveedorId) : null,  // ✅ AGREGADO
     unidadCompra:     document.getElementById('producto-unidadCompra').value.trim() || null,
     unidadVenta:      document.getElementById('producto-unidadVenta').value.trim() || null,
     factorConversion: parseFloat(document.getElementById('producto-factorConversion').value) || null,
     claveSat:         document.getElementById('producto-claveSat').value.trim() || null,
     unidadSat:        document.getElementById('producto-unidadSat').value.trim() || null,
   }
+  
+  console.log('📤 Enviando datos al backend:', datos)
+  
   try {
     const metodo = productoActual ? 'PUT' : 'POST'
     const url    = productoActual ? `${API_URL}/productos/${productoActual.id}` : `${API_URL}/productos`
@@ -506,15 +590,19 @@ async function guardarProducto(e) {
     if (!response.ok) { const err = await response.json(); throw new Error(err.error || `Error ${response.status}`) }
     const resultado = await response.json()
     const productoGuardado = resultado.data || resultado
-    if (inputImagen && inputImagen.files.length > 0) await subirImagen(productoGuardado.id, inputImagen.files[0])
-    // Guardar proveedor si está seleccionado
-    const proveedorId = modalProveedorSelect?.value
-    if (proveedorId) {
-      await guardarProveedorProducto(productoGuardado.id, parseInt(proveedorId))
+    
+    // Subir imagen si existe
+    if (inputImagen && inputImagen.files.length > 0) {
+      await subirImagen(productoGuardado.id, inputImagen.files[0])
     }
+    
+    console.log('✅ Producto guardado exitosamente')
     cerrarModal()
     await cargarProductos()
-  } catch (error) { console.error('❌ Error guardando:', error); mostrarError(error.message) }
+  } catch (error) { 
+    console.error('❌ Error guardando:', error)
+    mostrarError(error.message)
+  }
 }
 
 async function guardarProveedorProducto(productoId, proveedorId) {
@@ -771,19 +859,47 @@ async function subirImagen(productoId, archivo) {
 }
 
 function calcularMargen() {
-  const costo       = parseFloat(document.getElementById('producto-costo').value) || 0
+  const costo = parseFloat(document.getElementById('producto-costo').value) || 0
   const precioVenta = parseFloat(document.getElementById('producto-precioVenta').value) || 0
-  const wrap        = document.getElementById('info-margen-wrap')
+  const wrap = document.getElementById('info-margen-wrap')
+  
   if (!wrap) return
+  
   if (costo > 0 && precioVenta > 0) {
-    // Precio venta incluye IVA — calcular margen sobre base sin IVA
-    const baseVenta  = precioVenta / 1.16
-    const margen     = ((baseVenta - costo) / costo) * 100
-    const utilidad   = baseVenta - costo
-    document.getElementById('margen-valor').textContent   = margen.toFixed(1) + '%'
+    // ✅ CORRECCIÓN: Usar precioVenta directamente (no dividir entre 1.16)
+    // Utilidad = Precio Venta - Costo
+    const utilidad = precioVenta - costo
+    
+    // Margen = ((Precio Venta - Costo) / Costo) × 100
+    const margen = (utilidad / costo) * 100
+    
+    // Mostrar con 2 decimales
+    document.getElementById('margen-valor').textContent = margen.toFixed(2) + '%'
     document.getElementById('utilidad-valor').textContent = '$' + utilidad.toFixed(2)
     wrap.style.display = 'block'
-  } else { wrap.style.display = 'none' }
+  } else {
+    wrap.style.display = 'none'
+  }
+}
+
+// ✅ NUEVA FUNCIÓN: Calcular precio base automáticamente desde precio venta
+function calcularPrecioBase() {
+  const precioVentaInput = document.getElementById('producto-precioVenta')
+  const precioBaseInput = document.getElementById('producto-precioBase')
+  
+  if (!precioVentaInput || !precioBaseInput) return
+  
+  const precioVenta = parseFloat(precioVentaInput.value)
+  
+  // Si el precio venta es válido y mayor a 0, calcular precio base
+  if (!isNaN(precioVenta) && precioVenta > 0) {
+    // Fórmula: Precio Venta / 1.16
+    const precioBase = precioVenta / 1.16
+    precioBaseInput.value = precioBase.toFixed(2)
+  } else {
+    // Si está vacío o es inválido, limpiar el precio base
+    precioBaseInput.value = '0.00'
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -852,13 +968,23 @@ function configurarEventos() {
   }
   if (btnCambiarPreview) btnCambiarPreview.addEventListener('click', e => { e.preventDefault(); if (inputImagen) inputImagen.click() })
 
-  // Margen
+  // Margen y Precio Base automático
   const inputCosto  = document.getElementById('producto-costo')
   const inputPrecioVenta = document.getElementById('producto-precioVenta')
-  if (inputPrecioVenta) inputPrecioVenta.addEventListener('input', calcularMargen)
-  const inputPrecio = document.getElementById('producto-precioBase')
-  if (inputCosto)  inputCosto.addEventListener('input', calcularMargen)
-  if (inputPrecio) inputPrecio.addEventListener('input', calcularMargen)
+  const inputPrecioBase = document.getElementById('producto-precioBase')
+  
+  // Cuando cambia el precio venta: calcular precio base Y margen
+  if (inputPrecioVenta) {
+    inputPrecioVenta.addEventListener('input', () => {
+      calcularPrecioBase()  // ✅ Calcular precio base automáticamente
+      calcularMargen()      // ✅ Actualizar margen
+    })
+  }
+  
+  // Cuando cambia el costo: solo recalcular margen
+  if (inputCosto) {
+    inputCosto.addEventListener('input', calcularMargen)
+  }
 
   // ── FIX: Prevenir que el escáner de código de barras dispare submit del form ──
   // Los escáneres envían los caracteres rápidamente y terminan con Enter.

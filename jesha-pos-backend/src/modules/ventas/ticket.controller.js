@@ -142,6 +142,16 @@ function generarHTMLTicket(venta, qrDataUrl, fechaStr, pagos) {
        <tr class="bold"><td class="lbl">Cambio:</td><td class="val">${fmt(cambio)}</td></tr>`
     : ''
 
+  // ── Extraer N° Autorización Ingenico de notas ──
+  let refAutorizacion = null
+  if (['CREDITO', 'DEBITO'].includes(venta.metodoPago) && venta.notas) {
+    const match = venta.notas.match(/Ref\.\s*Ingenico:\s*(\d{4,6})/)
+    if (match) refAutorizacion = match[1]
+  }
+  const seccionAutorizacion = refAutorizacion
+    ? `<tr class="bold"><td class="lbl">Autorización:</td><td class="val">${refAutorizacion}</td></tr>`
+    : ''
+
   const logoHTML = LOGO_BASE64
     ? `<img src="${LOGO_BASE64}" alt="JESHA" class="logo" />`
     : `<div class="logo-text">JESHA</div>`
@@ -260,6 +270,7 @@ html, body {
 
 <table class="info-tbl">
   <tr><td class="lbl">Método:</td><td class="val">${metodoLabel}</td></tr>
+  ${seccionAutorizacion}
   ${seccionPago}
   ${pagos.totalCredito > 0 ? `<tr class="bold"><td class="lbl">A crédito:</td><td class="val">${fmt(pagos.totalCredito)}</td></tr>` : ''}
 </table>

@@ -115,7 +115,10 @@
               💵 Efectivo
             </button>
             <button class="metodo-btn" data-metodo="CREDITO">
-              💳 Tarjeta
+              💳 T. Crédito
+            </button>
+            <button class="metodo-btn" data-metodo="DEBITO">
+              💳 T. Débito
             </button>
             <button class="metodo-btn" data-metodo="TRANSFERENCIA">
               🔄 Transf.
@@ -319,10 +322,13 @@
         <label style="font-size:0.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;display:block;margin-bottom:6px;">
           💳 N° Autorización Ingenico <span style="font-weight:400;color:var(--muted)">(requerido)</span>
         </label>
-        <input type="text" id="confirm-referencia-tarjeta" maxlength="20" placeholder="Ej. 123456"
+        <input type="text" id="confirm-referencia-tarjeta" inputmode="numeric" pattern="[0-9]*"
+          minlength="4" maxlength="6" placeholder="Ej. 123456"
           autocomplete="off"
           style="width:100%;padding:8px 12px;background:rgba(255,255,255,0.04);border:1px solid var(--panel-border);border-radius:8px;color:var(--text);font-family:'Barlow',sans-serif;font-size:0.9rem;outline:none;letter-spacing:0.1em;" />
-        <p style="font-size:0.72rem;color:var(--muted);margin:4px 0 0;"> Aparece en el voucher del Move/2500 como "Núm. Autorización"</p>
+        <div id="ref-tarjeta-feedback" style="font-size:0.72rem;margin:4px 0 0;min-height:16px;color:var(--muted);">
+          Solo dígitos — 6 dígitos del voucher Move/2500
+        </div>
       </div>
 
       <!-- 3. Monto recibido (solo efectivo) -->

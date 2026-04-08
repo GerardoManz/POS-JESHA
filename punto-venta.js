@@ -742,7 +742,7 @@ function mostrarModalConfirmacion() {
   const total = carrito.reduce((sum, item) => sum + (item.precio * item.cantidad), 0)
 
   document.getElementById('confirmacion-total').textContent  = `$${total.toFixed(2)}`
-  const metodoLabel = { EFECTIVO:'💵 Efectivo', CREDITO:'💳 Tarjeta', DEBITO:'💳 Tarjeta', TRANSFERENCIA:'🔄 Transferencia' }
+  const metodoLabel = { EFECTIVO:'💵 Efectivo', CREDITO:'💳 T. Crédito', DEBITO:'💳 T. Débito', TRANSFERENCIA:'🔄 Transferencia', CREDITO_CLIENTE:'🏦 Crédito cliente' }
   document.getElementById('confirmacion-metodo').textContent = metodoLabel[metodoPagoSeleccionado] || metodoPagoSeleccionado
 
   const rowCliente = document.getElementById('confirm-row-cliente')
@@ -777,7 +777,28 @@ function mostrarModalConfirmacion() {
   if (tarjetaWrap) {
     const esTarjeta = ['CREDITO', 'DEBITO'].includes(metodoPagoSeleccionado)
     tarjetaWrap.style.display = esTarjeta ? 'block' : 'none'
-    if (refInput) refInput.value = ''
+    if (refInput) {
+      refInput.value = ''
+      // Validación en tiempo real: solo dígitos, feedback visual
+      refInput.oninput = () => {
+        refInput.value = refInput.value.replace(/[^0-9]/g, '')
+        const len = refInput.value.length
+        const feedback = document.getElementById('ref-tarjeta-feedback')
+        if (len === 0) {
+          refInput.style.borderColor = 'var(--panel-border)'
+          if (feedback) { feedback.textContent = 'Solo dígitos — 6 dígitos del voucher Move/2500'; feedback.style.color = 'var(--muted)' }
+        } else if (len >= 4 && len <= 6) {
+          refInput.style.borderColor = 'rgba(96,208,128,0.5)'
+          if (feedback) { feedback.textContent = `✓ ${len} dígitos — válido`; feedback.style.color = '#60d080' }
+        } else if (len < 4) {
+          refInput.style.borderColor = 'rgba(232,113,10,0.5)'
+          if (feedback) { feedback.textContent = `${len}/4 dígitos mínimo`; feedback.style.color = '#e8710a' }
+        } else {
+          refInput.style.borderColor = 'rgba(232,113,10,0.5)'
+          if (feedback) { feedback.textContent = 'Máximo 6 dígitos'; feedback.style.color = '#e8710a' }
+        }
+      }
+    }
     if (esTarjeta) setTimeout(() => refInput?.focus(), 150)
   }
 
@@ -982,8 +1003,8 @@ function mostrarModalExito(ventaData, totalFinal) {
 
   const metodoLabel = {
     EFECTIVO:        '💵 Efectivo',
-    CREDITO:         '💳 Tarjeta',
-    DEBITO:          '💳 Tarjeta',
+    CREDITO:         '💳 T. Crédito',
+    DEBITO:          '💳 T. Débito',
     TRANSFERENCIA:   '🔄 Transferencia',
     CREDITO_CLIENTE: '🏦 Crédito cliente'
   }
@@ -1047,6 +1068,12 @@ async function confirmarVenta() {
     if (esTarjetaPago && !refTarjeta) {
       ventaEnProceso = false
       mostrarToast('Ingresa el Número de Autorización del Ingenico antes de continuar', 'warning')
+      document.getElementById('confirm-referencia-tarjeta')?.focus()
+      return
+    }
+    if (esTarjetaPago && (!/^\d+$/.test(refTarjeta) || refTarjeta.length < 4 || refTarjeta.length > 6)) {
+      ventaEnProceso = false
+      mostrarToast('El N° de Autorización debe ser de 4 a 6 dígitos numéricos', 'warning')
       document.getElementById('confirm-referencia-tarjeta')?.focus()
       return
     }

@@ -123,7 +123,10 @@ async function listar(req, res) {
                 where,
                 include: {
                     categoria: { include: { departamento: true } },
-                    inventarios: { where: { sucursalId: 1 }, take: 1 }
+                    inventarios: { where: { sucursalId: 1 }, take: 1 },
+                    proveedores: {  // ✅ CORREGIDO: era proveedorProducto, debe ser proveedores
+                        include: { proveedor: true }
+                    }
                 },
                 orderBy: { nombre: 'asc' },
                 skip: skipNum,
@@ -195,7 +198,10 @@ async function obtener(req, res) {
             where: { id: parseInt(id) },
             include: {
                 categoria: { include: { departamento: true } },
-                inventarios: { where: { sucursalId: 1 }, take: 1 }
+                inventarios: { where: { sucursalId: 1 }, take: 1 },
+                proveedores: {  // ✅ CORREGIDO
+                    include: { proveedor: true }
+                }
             }
         })
 
@@ -226,7 +232,7 @@ async function crear(req, res) {
             nombre, codigoInterno, codigoBarras, descripcion,
             costo, precioBase, precioVenta, categoriaId,
             unidadCompra, unidadVenta, factorConversion,
-            claveSat, unidadSat
+            claveSat, unidadSat, proveedorId  // ✅ AGREGADO
         } = req.body
 
         if (!nombre || !codigoInterno || !categoriaId || !precioBase) {
@@ -265,6 +271,19 @@ async function crear(req, res) {
             }
         })
 
+        // ✅ NUEVO: Guardar relación con proveedor si se proporcionó
+        if (proveedorId) {
+            await prisma.proveedorProducto.create({
+                data: {
+                    productoId: producto.id,
+                    proveedorId: parseInt(proveedorId),
+                    precioCosto: costo ? parseFloat(costo) : 0,  // ✅ AGREGADO: usar el costo del producto
+                    activo: true
+                }
+            })
+            console.log(`✅ Proveedor ${proveedorId} vinculado al producto ${producto.id}`)
+        }
+
         console.log(`✅ Producto creado: ${nombre}`)
         res.status(201).json({
             success: true,
@@ -290,7 +309,7 @@ async function editar(req, res) {
             nombre, codigoInterno, codigoBarras, descripcion,
             costo, precioBase, precioVenta, categoriaId,
             unidadCompra, unidadVenta, factorConversion,
-            claveSat, unidadSat
+            claveSat, unidadSat, proveedorId  // ✅ AGREGADO
         } = req.body
 
         if (!nombre || !codigoInterno || !categoriaId || !precioBase) {
@@ -320,13 +339,34 @@ async function editar(req, res) {
                 unidadVenta:      unidadVenta      || null,
                 factorConversion: factorConversion ? parseFloat(factorConversion) : null,
                 claveSat:         claveSat         || null,
-                unidadSat:        unidadSat        || null
+                unidadSat:        unidadSat        || null  // ✅ CORREGIDO: era unidSat
             },
             include: {
                 categoria: { include: { departamento: true } },
                 inventarios: { where: { sucursalId: 1 }, take: 1 }
             }
         })
+
+        // ✅ NUEVO: Gestionar relación con proveedor
+        // 1. Eliminar relaciones anteriores
+        await prisma.proveedorProducto.deleteMany({
+            where: { productoId: parseInt(id) }
+        })
+
+        // 2. Crear nueva relación si se proporcionó un proveedor
+        if (proveedorId && proveedorId !== '' && proveedorId !== 'null') {
+            await prisma.proveedorProducto.create({
+                data: {
+                    productoId: parseInt(id),
+                    proveedorId: parseInt(proveedorId),
+                    precioCosto: costo ? parseFloat(costo) : 0,  // ✅ AGREGADO: usar el costo del producto
+                    activo: true
+                }
+            })
+            console.log(`✅ Proveedor ${proveedorId} vinculado al producto ${id}`)
+        } else {
+            console.log(`ℹ️ Producto ${id} actualizado sin proveedor`)
+        }
 
         console.log(`✅ Producto actualizado: ${nombre}`)
         res.json({

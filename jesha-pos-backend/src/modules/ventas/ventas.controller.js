@@ -43,6 +43,19 @@ exports.crearVenta = async (req, res) => {
       return res.status(403).json({ error: 'Sin permiso para aplicar descuentos', codigo: 'SIN_PERMISO_DESCUENTO' })
     }
 
+    // ── Validar referencia Ingenico si es tarjeta ─────────────────
+    const esTarjetaPago = ['CREDITO', 'DEBITO'].includes(metodoPago)
+    if (esTarjetaPago) {
+      const refMatch = (notas || '').match(/^Ref\. Ingenico:\s*(\d+)$/)
+      if (!refMatch) {
+        return res.status(400).json({ error: 'Pago con tarjeta requiere N° de Autorización válido en notas', codigo: 'REF_INGENICO_REQUERIDA' })
+      }
+      const refDigitos = refMatch[1]
+      if (refDigitos.length < 4 || refDigitos.length > 6) {
+        return res.status(400).json({ error: 'N° de Autorización debe ser de 4 a 6 dígitos', codigo: 'REF_INGENICO_INVALIDA' })
+      }
+    }
+
     let totalRecalculado = 0
     const detallesValidados = []
     for (const detalle of detalles) {
