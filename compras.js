@@ -16,6 +16,8 @@ let paginaActual = 1
 let ocActual     = null
 let itemsEdicion = []
 let proveedores  = []
+let _deptosCache = []
+let _catsCache   = []
 let debounce, debounceSearch, debounceProd, debounceProv
 
 const fmt = v => `$${parseFloat(v||0).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})}`
@@ -481,14 +483,22 @@ window.abrirEdicion = async function(id) {
     document.getElementById('lista-prod-modal').innerHTML = '<p class="muted-hint">Escribe para buscar...</p>'
     document.getElementById('crear-error').classList.remove('show')
 
-    itemsEdicion = (ocActual.detalles || []).map(d => ({
-      productoId:       d.producto?.id,
-      nombre:           d.producto?.nombre || '—',
-      unidad:           d.producto?.unidadCompra || 'pza',
-      cantidad:         d.cantidadPedida,
-      costo:            parseFloat(d.precioCosto),
-      cantidadRecibida: d.cantidadRecibida || 0  // para proteger en UI
-    }))
+    itemsEdicion = (ocActual.detalles || []).map(d => {
+      const costoNeto = parseFloat(d.precioCosto)
+      const pv = parseFloat(d.producto?.precioVenta || d.producto?.precioBase || 0)
+      const margen = costoNeto > 0 && pv > 0 ? +((pv / costoNeto - 1) * 100).toFixed(2) : 0
+      return {
+        productoId:       d.producto?.id,
+        nombre:           d.producto?.nombre || '—',
+        unidad:           d.producto?.unidadCompra || 'pza',
+        cantidad:         d.cantidadPedida,
+        costoBase:        +(costoNeto / 1.16).toFixed(4),
+        costoNeto:        costoNeto,
+        margen:           margen,
+        precioVenta:      pv,
+        cantidadRecibida: d.cantidadRecibida || 0
+      }
+    })
     renderItemsEdicion()
     document.getElementById('modal-crear').classList.add('active')
   } catch (err) { jeshaToast('Error: ' + err.message, 'error') }
@@ -497,29 +507,41 @@ window.abrirEdicion = async function(id) {
 function renderItemsEdicion() {
   const tbody = document.getElementById('comp-items-tbody')
   if (itemsEdicion.length === 0) {
-    tbody.innerHTML = `<tr id="comp-empty"><td colspan="6" class="empty-items">Agrega productos desde el panel izquierdo</td></tr>`
+    tbody.innerHTML = `<tr id="comp-empty"><td colspan="8" class="empty-items">Agrega productos desde el panel izquierdo</td></tr>`
     actualizarTotalEdicion(); return
   }
   tbody.innerHTML = itemsEdicion.map((item, i) => {
     const bloqueado = (item.cantidadRecibida || 0) > 0
+    const subtotal  = item.costoNeto * item.cantidad
     return `
     <tr style="${bloqueado ? 'opacity:0.6;' : ''}">
-      <td style="max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${item.nombre}">
+      <td style="max-width:150px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:0.82rem;" title="${item.nombre}">
         ${item.nombre}
-        ${bloqueado ? `<span style="font-size:0.68rem;color:#ffc107;margin-left:4px;">recibido ${item.cantidadRecibida}</span>` : ''}
+        ${bloqueado ? `<span style="font-size:0.65rem;color:#ffc107;margin-left:3px;">rec:${item.cantidadRecibida}</span>` : ''}
       </td>
-      <td style="color:var(--muted);font-size:0.78rem">${item.unidad}</td>
       <td>${bloqueado
-        ? `<span style="color:var(--muted);font-size:0.85rem;">${item.cantidad}</span>`
-        : `<input type="number" min="0.001" step="0.01" value="${item.cantidad}" style="width:58px" oninput="actualizarItemEdicion(${i},'cantidad',this.value)" />`
+        ? `<span style="color:var(--muted);font-size:0.82rem;">${item.cantidad}</span>`
+        : `<input type="number" min="0.001" step="0.01" value="${item.cantidad}" oninput="editItem(${i},'cantidad',this.value)" />`
       }</td>
       <td>${bloqueado
-        ? `<span style="color:var(--muted);font-size:0.85rem;">${fmt(item.costo)}</span>`
-        : `<input type="number" min="0" step="0.01" value="${item.costo.toFixed(2)}" style="width:88px" oninput="actualizarItemEdicion(${i},'costo',this.value)" />`
+        ? `<span style="color:var(--muted);font-size:0.82rem;">${fmt(item.costoBase)}</span>`
+        : `<input type="number" min="0" step="0.01" value="${item.costoBase.toFixed(2)}" oninput="editItem(${i},'costoBase',this.value)" />`
       }</td>
-      <td id="item-sub-${i}"><strong>${fmt(item.costo * item.cantidad)}</strong></td>
       <td>${bloqueado
-        ? `<span title="No se puede eliminar — ya hay mercancía recibida" style="color:var(--muted);font-size:0.75rem;cursor:not-allowed;">🔒</span>`
+        ? `<span class="readonly-cell readonly-neto">${fmt(item.costoNeto)}</span>`
+        : `<input type="number" min="0" step="0.01" value="${item.costoNeto.toFixed(2)}" oninput="editItem(${i},'costoNeto',this.value)" style="color:#60d080;" />`
+      }</td>
+      <td>${bloqueado
+        ? `<span style="color:var(--muted);font-size:0.82rem;">${item.margen.toFixed(1)}%</span>`
+        : `<input type="number" min="0" max="999" step="0.1" value="${item.margen.toFixed(1)}" oninput="editItem(${i},'margen',this.value)" />`
+      }</td>
+      <td>${bloqueado
+        ? `<span class="readonly-cell readonly-pv">${fmt(item.precioVenta)}</span>`
+        : `<input type="number" min="0" step="0.01" value="${item.precioVenta.toFixed(2)}" oninput="editItem(${i},'precioVenta',this.value)" style="color:#7db8f0;" />`
+      }</td>
+      <td><span class="readonly-cell readonly-sub" id="item-sub-${i}">${fmt(subtotal)}</span></td>
+      <td>${bloqueado
+        ? `<span title="Mercancía ya recibida" style="color:var(--muted);font-size:0.72rem;cursor:not-allowed;">🔒</span>`
         : `<button class="btn-eliminar" onclick="quitarItemEdicion(${i})">✕</button>`
       }</td>
     </tr>`
@@ -527,33 +549,95 @@ function renderItemsEdicion() {
   actualizarTotalEdicion()
 }
 
-window.actualizarItemEdicion = function(i, campo, v) {
+// ═══ Lógica bidireccional estilo SICAR ═══
+// Reglas:
+// - Editar C.Base  → C.Neto = CBase * 1.16, recalcular PVenta desde Margen
+// - Editar C.Neto  → C.Base = CNeto / 1.16, recalcular PVenta desde Margen
+// - Editar Margen  → PVenta = CNeto * (1 + Margen/100)
+// - Editar PVenta  → Margen = (PVenta/CNeto - 1) * 100
+// - Editar Cantidad → solo recalcular Subtotal
+// - Subtotal siempre = Cantidad * C.Neto
+window.editItem = function(i, campo, v) {
   const n = parseFloat(v)
-  if (!isNaN(n) && n >= 0) {
-    if (campo === 'cantidad') itemsEdicion[i].cantidad = parseFloat(v) || 0.001
-    else itemsEdicion[i].costo = n
+  if (isNaN(n) || n < 0) return
+  const item = itemsEdicion[i]
+
+  switch (campo) {
+    case 'cantidad':
+      item.cantidad = n || 0.001
+      break
+    case 'costoBase':
+      item.costoBase = n
+      item.costoNeto = +(n * 1.16).toFixed(4)
+      // Recalcular PVenta manteniendo margen
+      if (item.margen > 0) {
+        item.precioVenta = +(item.costoNeto * (1 + item.margen / 100)).toFixed(2)
+      }
+      break
+    case 'costoNeto':
+      item.costoNeto = n
+      item.costoBase = +(n / 1.16).toFixed(4)
+      // Recalcular PVenta manteniendo margen
+      if (item.margen > 0) {
+        item.precioVenta = +(n * (1 + item.margen / 100)).toFixed(2)
+      }
+      break
+    case 'margen':
+      item.margen = n
+      item.precioVenta = +(item.costoNeto * (1 + n / 100)).toFixed(2)
+      break
+    case 'precioVenta':
+      item.precioVenta = n
+      item.margen = item.costoNeto > 0 ? +((n / item.costoNeto - 1) * 100).toFixed(2) : 0
+      break
+  }
+
+  // Actualización inline rápida sin re-render completo
+  if (campo !== 'cantidad') {
+    // Refrescar solo las celdas que cambiaron (evitar perder focus del input activo)
+    renderItemsEdicion()
+    // Restaurar focus al input editado
+    const row = document.querySelector(`#comp-items-tbody tr:nth-child(${i + 1})`)
+    if (row) {
+      const colMap = { costoBase: 2, costoNeto: 3, margen: 4, precioVenta: 5 }
+      const colIdx = colMap[campo]
+      if (colIdx !== undefined) {
+        const inp = row.querySelectorAll('td')[colIdx]?.querySelector('input')
+        if (inp) { inp.focus(); inp.select() }
+      }
+    }
+  } else {
+    // Solo actualizar subtotal y total
     const cel = document.getElementById(`item-sub-${i}`)
-    if (cel) cel.innerHTML = `<strong>${fmt(itemsEdicion[i].costo * itemsEdicion[i].cantidad)}</strong>`
+    if (cel) cel.textContent = fmt(item.costoNeto * item.cantidad)
     actualizarTotalEdicion()
   }
 }
+
 window.quitarItemEdicion = function(i) {
-  if ((itemsEdicion[i]?.cantidadRecibida || 0) > 0) return  // protegido
+  if ((itemsEdicion[i]?.cantidadRecibida || 0) > 0) return
   itemsEdicion.splice(i, 1)
   renderItemsEdicion()
 }
 
 function actualizarTotalEdicion() {
-  const t = itemsEdicion.reduce((s, i) => s + i.costo * i.cantidad, 0)
+  const t = itemsEdicion.reduce((s, i) => s + i.costoNeto * i.cantidad, 0)
   document.getElementById('comp-total').textContent = fmt(t)
 }
 
 function agregarProductoEdicion(prod) {
   const existe = itemsEdicion.find(i => i.productoId === prod.id)
-  if (existe) { existe.cantidad += 1 }
-  else {
-    itemsEdicion.push({ productoId: prod.id, nombre: prod.nombre, unidad: prod.unidadCompra || 'pza', cantidad: 1, costo: parseFloat(prod.costo || prod.precioBase || 0) })
-  }
+  if (existe) { existe.cantidad += 1; renderItemsEdicion(); return }
+  const costoNeto = parseFloat(prod.costo || prod.precioBase || 0)
+  const costoBase = +(costoNeto / 1.16).toFixed(4)
+  const pv = parseFloat(prod.precioVenta || prod.precioBase || 0)
+  const margen = costoNeto > 0 && pv > 0 ? +((pv / costoNeto - 1) * 100).toFixed(2) : 0
+  itemsEdicion.push({
+    productoId: prod.id, nombre: prod.nombre,
+    unidad: prod.unidadCompra || 'pza', cantidad: 1,
+    costoBase, costoNeto, margen, precioVenta: pv,
+    cantidadRecibida: 0
+  })
   renderItemsEdicion()
 }
 
@@ -563,7 +647,13 @@ async function guardarCompra() {
   if (!provId) { mostrarError('crear-error', 'Selecciona un proveedor'); return }
   if (itemsEdicion.length === 0) { mostrarError('crear-error', 'Agrega al menos un producto'); return }
 
-  const detalles = itemsEdicion.map(i => ({ productoId: i.productoId, cantidadPedida: i.cantidad, precioCosto: i.costo }))
+  // El backend recibe costoNeto como precioCosto (valor real con IVA para inventario)
+  const detalles = itemsEdicion.map(i => ({
+    productoId: i.productoId,
+    cantidadPedida: i.cantidad,
+    precioCosto: +i.costoNeto.toFixed(2),
+    precioVenta: i.precioVenta > 0 ? +i.precioVenta.toFixed(2) : undefined
+  }))
   const btn = document.getElementById('crear-guardar')
   btn.disabled = true; btn.textContent = 'Guardando...'
 
@@ -729,6 +819,91 @@ function mostrarError(id, msg) {
 }
 
 // ════════════════════════════════════════════════════════════════════
+//  PRODUCTO RÁPIDO (Alta desde compras)
+// ════════════════════════════════════════════════════════════════════
+async function cargarDeptosYCats() {
+  try {
+    const [dRes, cRes] = await Promise.all([
+      apiFetch('/productos/departamentos'),
+      apiFetch('/productos/categorias')
+    ])
+    _deptosCache = dRes.data || dRes
+    _catsCache   = cRes.data || cRes
+  } catch (e) { console.warn('Error cargando deptos/cats:', e.message) }
+}
+
+function llenarSelectDeptos() {
+  const sel = document.getElementById('pr-depto')
+  if (!sel) return
+  sel.innerHTML = '<option value="">Seleccionar...</option>'
+  _deptosCache.forEach(d => {
+    sel.innerHTML += `<option value="${d.id}">${d.nombre}</option>`
+  })
+}
+
+function llenarSelectCats(deptoId) {
+  const sel = document.getElementById('pr-cat')
+  if (!sel) return
+  sel.innerHTML = '<option value="">Seleccionar...</option>'
+  const filtradas = _catsCache.filter(c => c.departamentoId === parseInt(deptoId))
+  filtradas.forEach(c => {
+    sel.innerHTML += `<option value="${c.id}">${c.nombre}</option>`
+  })
+}
+
+function abrirModalProdRapido() {
+  document.getElementById('pr-nombre').value = ''
+  document.getElementById('pr-codigo').value = ''
+  document.getElementById('pr-costo').value  = ''
+  document.getElementById('pr-pventa').value = ''
+  document.getElementById('pr-unidad').value = 'pza'
+  document.getElementById('pr-barras').value = ''
+  document.getElementById('pr-depto').value  = ''
+  document.getElementById('pr-cat').innerHTML = '<option value="">Seleccionar depto primero</option>'
+  document.getElementById('pr-error').classList.remove('show')
+  llenarSelectDeptos()
+  document.getElementById('modal-prod-rapido').classList.add('active')
+  setTimeout(() => document.getElementById('pr-nombre')?.focus(), 100)
+}
+
+async function guardarProdRapido() {
+  const nombre = document.getElementById('pr-nombre').value.trim()
+  const codigo = document.getElementById('pr-codigo').value.trim()
+  const catId  = document.getElementById('pr-cat').value
+  const costo  = parseFloat(document.getElementById('pr-costo').value)
+  const pventa = parseFloat(document.getElementById('pr-pventa').value)
+  const unidad = document.getElementById('pr-unidad').value.trim() || 'pza'
+  const barras = document.getElementById('pr-barras').value.trim() || null
+
+  if (!nombre) { mostrarError('pr-error', 'Nombre requerido'); return }
+  if (!codigo) { mostrarError('pr-error', 'Código requerido'); return }
+  if (!catId)  { mostrarError('pr-error', 'Categoría requerida'); return }
+  if (!costo || costo <= 0) { mostrarError('pr-error', 'Costo inválido'); return }
+  if (!pventa || pventa <= 0) { mostrarError('pr-error', 'Precio venta inválido'); return }
+
+  const btn = document.getElementById('prod-rapido-guardar')
+  btn.disabled = true; btn.textContent = 'Creando...'
+
+  try {
+    const provId = document.getElementById('prov-id').value || null
+    const datos = {
+      nombre, codigoInterno: codigo, codigoBarras: barras,
+      costo, precioBase: pventa, precioVenta: pventa,
+      categoriaId: parseInt(catId), unidadCompra: unidad,
+      proveedorId: provId ? parseInt(provId) : null
+    }
+    const data = await apiFetch('/productos', { method: 'POST', body: JSON.stringify(datos) })
+    const prod = data.data || data
+
+    // Inyectar automáticamente en la compra actual
+    agregarProductoEdicion(prod)
+    document.getElementById('modal-prod-rapido').classList.remove('active')
+    jeshaToast(`Producto "${nombre}" creado y agregado`, 'success')
+  } catch (err) { mostrarError('pr-error', err.message) }
+  finally { btn.disabled = false; btn.textContent = 'Crear y Agregar' }
+}
+
+// ════════════════════════════════════════════════════════════════════
 //  INICIALIZACIÓN
 // ════════════════════════════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', async () => {
@@ -751,6 +926,16 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('crear-close')?.addEventListener('click', () => document.getElementById('modal-crear').classList.remove('active'))
   document.getElementById('crear-cancel')?.addEventListener('click', () => document.getElementById('modal-crear').classList.remove('active'))
   document.getElementById('crear-guardar')?.addEventListener('click', guardarCompra)
+
+  // Producto rápido
+  document.getElementById('btn-nuevo-prod')?.addEventListener('click', abrirModalProdRapido)
+  document.getElementById('prod-rapido-close')?.addEventListener('click', () => document.getElementById('modal-prod-rapido').classList.remove('active'))
+  document.getElementById('prod-rapido-cancel')?.addEventListener('click', () => document.getElementById('modal-prod-rapido').classList.remove('active'))
+  document.getElementById('prod-rapido-guardar')?.addEventListener('click', guardarProdRapido)
+  document.getElementById('pr-depto')?.addEventListener('change', e => llenarSelectCats(e.target.value))
+
+  // Cargar catálogo para producto rápido
+  cargarDeptosYCats()
 
   document.getElementById('search-prod-modal')?.addEventListener('input', e => {
     clearTimeout(debounceProd); debounceProd = setTimeout(() => buscarProductosModal(e.target.value.trim()), 350)
@@ -806,6 +991,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       document.getElementById('modal-crear')?.classList.remove('active')
       document.getElementById('modal-detalle')?.classList.remove('active')
       document.getElementById('modal-prov')?.classList.remove('active')
+      document.getElementById('modal-prod-rapido')?.classList.remove('active')
       cerrarDDProv()
     }
   })

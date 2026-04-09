@@ -11,6 +11,27 @@
   <title>JESHA POS - Compras</title>
   <link rel="stylesheet" href="dashboard.css" />
   <link rel="stylesheet" href="compras.css" />
+  <style>
+    /* Cuadrícula bidireccional — inputs compactos estilo SICAR */
+    .items-table input[type="number"] {
+      width: 100%; padding: 5px 6px; background: rgba(255,255,255,0.05);
+      border: 1px solid var(--panel-border,#444); border-radius: 5px;
+      color: var(--text,#eee); font-family: 'Barlow',sans-serif;
+      font-size: 0.82rem; text-align: right; outline: none;
+      transition: border-color 0.15s;
+    }
+    .items-table input[type="number"]:focus {
+      border-color: var(--accent,#5b8eff);
+    }
+    .items-table .readonly-cell {
+      font-size: 0.84rem; font-weight: 500; text-align: right;
+      padding: 0 4px; line-height: 1.6;
+    }
+    .readonly-neto { color: #60d080; }
+    .readonly-sub  { color: var(--text,#eee); }
+    .readonly-pv   { color: #7db8f0; }
+    .items-table th { font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.3px; }
+  </style>
 </head>
 <body data-page="compras">
 <div class="app-shell">
@@ -87,33 +108,34 @@
       <!-- Panel izq: buscar productos -->
       <div class="panel-izq">
         <p class="panel-label">Agregar productos</p>
-        <div class="search-group" style="margin-bottom:12px;">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-          <input type="text" id="search-prod-modal" placeholder="Nombre o código..." class="search-input" />
+        <div style="display:flex;gap:6px;margin-bottom:10px;">
+          <div class="search-group" style="flex:1;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+            <input type="text" id="search-prod-modal" placeholder="Nombre o código..." class="search-input" />
+          </div>
+          <button class="btn-secondary btn-sm" id="btn-nuevo-prod" title="Nuevo producto" style="white-space:nowrap;font-size:0.78rem;">+ Producto</button>
         </div>
         <div id="lista-prod-modal" class="lista-prod-modal">
           <p class="muted-hint">Escribe para buscar...</p>
         </div>
       </div>
-      <!-- Panel der: datos compra -->
+      <!-- Panel der: datos compra + tabla -->
       <div class="panel-der">
         <p class="panel-label">Datos de la compra</p>
-        <div class="form-row" style="margin-bottom:12px;">
+        <div class="form-row" style="margin-bottom:10px;">
           <div class="form-group">
             <label>Proveedor *</label>
             <div style="position:relative;">
-  <div style="display:flex;gap:6px;">
-    <input type="text" id="prov-buscar" placeholder="Buscar proveedor..." class="search-input" autocomplete="off" style="flex:1" />
-    <button type="button" id="btn-chevron-prov"
-      style="padding:7px 10px;background:rgba(255,255,255,0.04);border:1px solid var(--border-color,#333);border-radius:6px;color:var(--muted);cursor:pointer;transition:color 0.15s;flex-shrink:0;"
-      title="Ver todos los proveedores">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-    </button>
-    <button class="btn-secondary btn-sm" id="btn-nuevo-prov" title="Nuevo proveedor">+</button>
-  </div>
-  <input type="hidden" id="prov-id" />
-  <div id="dd-proveedores" class="dropdown-clientes" style="display:none;position:absolute;z-index:300;width:100%;left:0;top:calc(100% + 4px);background:var(--panel-bg,#1a1a1a);border:1px solid var(--border-color,#333);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.4);overflow:hidden;"></div>
-</div>
+              <div style="display:flex;gap:6px;">
+                <input type="text" id="prov-buscar" placeholder="Buscar proveedor..." class="search-input" autocomplete="off" style="flex:1" />
+                <button type="button" id="btn-chevron-prov" style="padding:7px 10px;background:rgba(255,255,255,0.04);border:1px solid var(--border-color,#333);border-radius:6px;color:var(--muted);cursor:pointer;transition:color 0.15s;flex-shrink:0;" title="Ver todos los proveedores">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                </button>
+                <button class="btn-secondary btn-sm" id="btn-nuevo-prov" title="Nuevo proveedor">+</button>
+              </div>
+              <input type="hidden" id="prov-id" />
+              <div id="dd-proveedores" class="dropdown-clientes" style="display:none;position:absolute;z-index:300;width:100%;left:0;top:calc(100% + 4px);background:var(--panel-bg,#1a1a1a);border:1px solid var(--border-color,#333);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.4);overflow:hidden;"></div>
+            </div>
           </div>
           <div class="form-group">
             <label>Notas</label>
@@ -121,33 +143,69 @@
           </div>
         </div>
 
-        <div class="items-wrapper">
-          <table class="items-table">
+        <!-- Tabla de captura bidireccional estilo SICAR -->
+        <div class="items-wrapper" style="margin-top:4px;">
+          <table class="items-table" style="width:100%;table-layout:auto;">
             <thead>
               <tr>
-                <th>Producto</th>
-                <th style="width:55px">Unidad</th>
-                <th style="width:65px">Cantidad</th>
-                <th style="width:100px">Costo Unit.</th>
-                <th style="width:100px">Subtotal</th>
-                <th style="width:32px"></th>
+                <th style="min-width:140px;">Producto</th>
+                <th style="width:60px;">Cant.</th>
+                <th style="width:90px;">C. Base</th>
+                <th style="width:90px;">C. Neto</th>
+                <th style="width:70px;">Margen%</th>
+                <th style="width:90px;">P. Venta</th>
+                <th style="width:90px;">Subtotal</th>
+                <th style="width:28px;"></th>
               </tr>
             </thead>
             <tbody id="comp-items-tbody">
-              <tr id="comp-empty"><td colspan="6" class="empty-items">Agrega productos desde el panel izquierdo</td></tr>
+              <tr id="comp-empty"><td colspan="8" class="empty-items">Agrega productos desde el panel izquierdo</td></tr>
             </tbody>
           </table>
         </div>
 
-        <div class="total-row">
+        <div class="total-row" style="margin-top:8px;">
           <span>Total estimado:</span>
           <span id="comp-total" class="total-monto">$0.00</span>
         </div>
         <div id="crear-error" class="error-message"></div>
-        <div class="form-actions">
-          <button class="btn-secondary" id="crear-cancel">Cancelar</button>
-          <button class="btn-primary" id="crear-guardar">Guardar Compra</button>
+        <div class="form-actions" style="justify-content:flex-end;gap:10px;margin-top:10px;">
+          <button class="btn-secondary" id="crear-cancel" style="padding:8px 20px;font-size:0.85rem;">Cancelar</button>
+          <button class="btn-primary" id="crear-guardar" style="padding:8px 24px;font-size:0.85rem;">Guardar Compra</button>
         </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL PRODUCTO RÁPIDO ══ -->
+<div id="modal-prod-rapido" class="modal">
+  <div class="modal-content" style="max-width:520px;">
+    <div class="modal-header">
+      <h3>Alta rápida de producto</h3>
+      <button class="modal-close" id="prod-rapido-close">&times;</button>
+    </div>
+    <div style="padding:18px 22px;">
+      <div class="form-row" style="margin-bottom:10px;">
+        <div class="form-group" style="flex:2;"><label>Nombre *</label><input type="text" id="pr-nombre" class="search-input" style="width:100%;" placeholder="Ej: Niple galvanizado 1/2x10" /></div>
+        <div class="form-group" style="flex:1;"><label>Código *</label><input type="text" id="pr-codigo" class="search-input" style="width:100%;" placeholder="Ej: NIP-G12" /></div>
+      </div>
+      <div class="form-row" style="margin-bottom:10px;">
+        <div class="form-group"><label>Departamento *</label><select id="pr-depto" class="filter-select" style="width:100%;"><option value="">Seleccionar...</option></select></div>
+        <div class="form-group"><label>Categoría *</label><select id="pr-cat" class="filter-select" style="width:100%;"><option value="">Seleccionar depto primero</option></select></div>
+      </div>
+      <div class="form-row" style="margin-bottom:10px;">
+        <div class="form-group"><label>Costo (C. Neto) *</label><input type="number" id="pr-costo" class="search-input" style="width:100%;" min="0" step="0.01" placeholder="0.00" /></div>
+        <div class="form-group"><label>Precio Venta *</label><input type="number" id="pr-pventa" class="search-input" style="width:100%;" min="0" step="0.01" placeholder="0.00" /></div>
+      </div>
+      <div class="form-row" style="margin-bottom:10px;">
+        <div class="form-group"><label>Unidad compra</label><input type="text" id="pr-unidad" class="search-input" style="width:100%;" placeholder="pza" value="pza" /></div>
+        <div class="form-group"><label>Código barras</label><input type="text" id="pr-barras" class="search-input" style="width:100%;" placeholder="Opcional" /></div>
+      </div>
+      <div id="pr-error" class="error-message" style="margin-bottom:8px;"></div>
+      <div class="form-actions" style="justify-content:flex-end;gap:10px;">
+        <button class="btn-secondary" id="prod-rapido-cancel" style="padding:8px 18px;font-size:0.85rem;">Cancelar</button>
+        <button class="btn-primary" id="prod-rapido-guardar" style="padding:8px 22px;font-size:0.85rem;">Crear y Agregar</button>
       </div>
     </div>
   </div>

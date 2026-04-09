@@ -39,6 +39,9 @@ let btnLimpiarFiltros
 // Selects del modal (separados del toolbar)
 let modalDeptoSelect, modalCatSelect, modalProveedorSelect
 
+// Tipo de factura proveedor
+let radioFacturaA, radioFacturaB, camposFacturaA, camposFacturaB
+
 // ═══════════════════════════════════════════════════════════════════
 // INICIALIZACIÓN
 // ═══════════════════════════════════════════════════════════════════
@@ -69,6 +72,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   modalDeptoSelect   = document.getElementById('producto-departamento')
   modalCatSelect     = document.getElementById('producto-categoria')
   modalProveedorSelect = document.getElementById('producto-proveedor')
+
+  // Tipo de factura
+  radioFacturaA  = document.getElementById('radio-factura-a')
+  radioFacturaB  = document.getElementById('radio-factura-b')
+  camposFacturaA = document.getElementById('campos-factura-a')
+  camposFacturaB = document.getElementById('campos-factura-b')
 
   console.log('✅ Token encontrado')
   await cargarDepartamentos()
@@ -438,9 +447,22 @@ window.editarProducto = async function(id) {
   document.getElementById('producto-codigo').value            = producto.codigoInterno
   document.getElementById('producto-codigoBarras').value      = producto.codigoBarras || ''
   document.getElementById('producto-descripcion').value       = producto.descripcion || ''
-  document.getElementById('producto-costo').value             = producto.costo || ''
   document.getElementById('producto-precioBase').value        = producto.precioBase
   document.getElementById('producto-precioVenta').value       = producto.precioVenta || ''
+
+  // ✅ Tipo de factura: detectar si tiene costoSinIvaProveedor guardado → radio B, si no → radio A
+  const tieneCostoSinIva = producto.costoSinIvaProveedor && parseFloat(producto.costoSinIvaProveedor) > 0
+  if (tieneCostoSinIva) {
+    if (radioFacturaB) radioFacturaB.checked = true
+    aplicarTipoFactura('B')
+    document.getElementById('producto-costoSinIva').value      = producto.costoSinIvaProveedor
+    document.getElementById('producto-costo-b-display').value  = producto.costo || ''
+    document.getElementById('producto-costo').value            = producto.costo || ''
+  } else {
+    if (radioFacturaA) radioFacturaA.checked = true
+    aplicarTipoFactura('A')
+    document.getElementById('producto-costo').value            = producto.costo || ''
+  }
   document.getElementById('producto-unidadCompra').value      = producto.unidadCompra || ''
   document.getElementById('producto-unidadVenta').value       = producto.unidadVenta || ''
   document.getElementById('producto-factorConversion').value  = producto.factorConversion || ''
@@ -514,6 +536,13 @@ window.editarProducto = async function(id) {
   // ✅ Calcular precio base y margen al cargar producto
   calcularPrecioBase()
   calcularMargen()
+  // ✅ Limpiar campos del escenario no activo para evitar confusión
+  if (!tieneCostoSinIva) {
+    const sinIva  = document.getElementById('producto-costoSinIva')
+    const display = document.getElementById('producto-costo-b-display')
+    if (sinIva)  sinIva.value  = ''
+    if (display) display.value = ''
+  }
   
   ocultarError()
   if (modal) modal.classList.add('active')
@@ -527,6 +556,10 @@ function abrirModalNuevo() {
   // ✅ Inicializar precio base en 0.00
   const precioBaseInput = document.getElementById('producto-precioBase')
   if (precioBaseInput) precioBaseInput.value = '0.00'
+
+  // ✅ Resetear tipo de factura a Escenario A (default)
+  if (radioFacturaA) radioFacturaA.checked = true
+  aplicarTipoFactura('A')
   
   llenarModalDepartamentos()
   if (modalCatSelect) { modalCatSelect.innerHTML = '<option value="">Seleccionar categoría...</option>'; modalCatSelect.disabled = true }
@@ -566,6 +599,7 @@ async function guardarProducto(e) {
     codigoBarras:     document.getElementById('producto-codigoBarras').value.trim() || null,
     descripcion:      document.getElementById('producto-descripcion').value.trim() || null,
     costo:            parseFloat(document.getElementById('producto-costo').value) || null,
+    costoSinIvaProveedor: parseFloat(document.getElementById('producto-costoSinIva')?.value) || null,
     precioBase:       parseFloat(precioBase),
     precioVenta:      precioVenta ? parseFloat(precioVenta) : null,
     categoriaId:      parseInt(categoria),
@@ -858,6 +892,53 @@ async function subirImagen(productoId, archivo) {
   } catch (error) { console.error('❌ Error subiendo imagen:', error) }
 }
 
+// ─── TIPO DE FACTURA — show/hide campos ───────────────────────────
+function aplicarTipoFactura(tipo) {
+  const esB = tipo === 'B'
+  if (camposFacturaA) camposFacturaA.style.display = esB ? 'none' : ''
+  if (camposFacturaB) camposFacturaB.style.display = esB ? ''     : 'none'
+
+  // Estilo visual de los radio labels
+  const labelA = document.getElementById('radio-label-a')
+  const labelB = document.getElementById('radio-label-b')
+  if (labelA) {
+    labelA.style.background    = esB ? '' : 'rgba(107,157,232,0.08)'
+    labelA.style.borderColor   = esB ? 'var(--panel-border)' : '#6b9de8'
+  }
+  if (labelB) {
+    labelB.style.background    = esB ? 'rgba(107,157,232,0.08)' : ''
+    labelB.style.borderColor   = esB ? '#6b9de8' : 'var(--panel-border)'
+  }
+
+  // Si cambia a A, limpiar campo sin IVA y display
+  if (!esB) {
+    const sinIva = document.getElementById('producto-costoSinIva')
+    const display = document.getElementById('producto-costo-b-display')
+    if (sinIva)  sinIva.value   = ''
+    if (display) display.value  = ''
+  }
+
+  calcularMargen()
+}
+
+// Cuando el empleado escribe en "Precio sin IVA de proveedor" (Esc. B)
+// → calcula automáticamente el Precio Proveedor y lo muestra en readonly
+function calcularPrecioProveedorDesdeB() {
+  const sinIva  = parseFloat(document.getElementById('producto-costoSinIva')?.value) || 0
+  const display = document.getElementById('producto-costo-b-display')
+  const inputCosto = document.getElementById('producto-costo')
+
+  const precioProveedor = sinIva > 0 ? parseFloat((sinIva * 1.16).toFixed(2)) : 0
+
+  // Mostrar en el readonly del Esc. B
+  if (display) display.value = precioProveedor > 0 ? precioProveedor : ''
+
+  // Sincronizar también en producto-costo para que guardarProducto() lo lea
+  if (inputCosto) inputCosto.value = precioProveedor > 0 ? precioProveedor : ''
+
+  calcularMargen()
+}
+
 function calcularMargen() {
   const costo = parseFloat(document.getElementById('producto-costo').value) || 0
   const precioVenta = parseFloat(document.getElementById('producto-precioVenta').value) || 0
@@ -969,9 +1050,17 @@ function configurarEventos() {
   if (btnCambiarPreview) btnCambiarPreview.addEventListener('click', e => { e.preventDefault(); if (inputImagen) inputImagen.click() })
 
   // Margen y Precio Base automático
-  const inputCosto  = document.getElementById('producto-costo')
+  const inputCosto       = document.getElementById('producto-costo')
   const inputPrecioVenta = document.getElementById('producto-precioVenta')
-  const inputPrecioBase = document.getElementById('producto-precioBase')
+  const inputPrecioBase  = document.getElementById('producto-precioBase')
+
+  // Radio buttons tipo de factura
+  if (radioFacturaA) radioFacturaA.addEventListener('change', () => aplicarTipoFactura('A'))
+  if (radioFacturaB) radioFacturaB.addEventListener('change', () => aplicarTipoFactura('B'))
+
+  // Campo sin IVA de proveedor (Esc. B) → calcula precio proveedor automático
+  const inputCostoSinIva = document.getElementById('producto-costoSinIva')
+  if (inputCostoSinIva) inputCostoSinIva.addEventListener('input', calcularPrecioProveedorDesdeB)
   
   // Cuando cambia el precio venta: calcular precio base Y margen
   if (inputPrecioVenta) {
