@@ -66,20 +66,18 @@ exports.crearVenta = async (req, res) => {
       if (cantidad <= 0) {
         return res.status(400).json({ error: 'Cantidad debe ser > 0', producto: productoId })
       }
-      // FIX: parseFloat para soportar cantidades decimales (productos granel)
       const cantidadFloat   = parseFloat(cantidad)
       const subtotalDetalle = parseFloat((cantidadFloat * precioUnitario).toFixed(2))
       totalRecalculado += subtotalDetalle
       detallesValidados.push({
         productoId:     parseInt(productoId),
-        cantidad:       cantidadFloat,           // ← era parseInt, rompía granel
+        cantidad:       cantidadFloat,
         precioUnitario: parseFloat(precioUnitario),
         subtotal:       subtotalDetalle
       })
     }
     totalRecalculado = parseFloat(totalRecalculado.toFixed(2))
 
-    // Restar descuento antes de comparar
     const totalEsperado = parseFloat((totalRecalculado - descuentoAmt).toFixed(2))
     const diferencia    = Math.abs(totalEsperado - parseFloat(total))
     if (diferencia > 0.01) {
@@ -87,7 +85,7 @@ exports.crearVenta = async (req, res) => {
     }
 
     const folio = await generarFolio()
-   let facturaEstado = 'DISPONIBLE'
+    let facturaEstado = 'DISPONIBLE'
     let facturaLimite = new Date()
     if (metodoPago === 'CREDITO_CLIENTE') {
       facturaEstado = 'BLOQUEADA'
@@ -99,7 +97,6 @@ exports.crearVenta = async (req, res) => {
       facturaLimite.setDate(facturaLimite.getDate() + 30)
     }
 
-    // Crédito cliente — validación previa (confirma disponibilidad antes de abrir tx)
     const esCredito = req.body.esCreditoCliente === true || req.body.esCreditoCliente === 'true'
                    || req.body.esCredito === true        || metodoPago === 'CREDITO_CLIENTE'
     let clienteCredito = null
@@ -113,7 +110,6 @@ exports.crearVenta = async (req, res) => {
     }
 
     const venta = await prisma.$transaction(async (tx) => {
-      // ── Validar stock DENTRO de la transacción ──
       const inventarios = await tx.inventarioSucursal.findMany({
         where: { sucursalId, productoId: { in: detallesValidados.map(d => d.productoId) } }
       })
@@ -335,11 +331,13 @@ exports.obtenerVentas = async (req, res) => {
         folio:          v.folio,
         fecha:          v.creadaEn,
         cliente:        v.cliente ? v.cliente.nombre : 'Público general',
+        clienteId:      v.clienteId,
         usuario:        v.usuario.nombre,
         metodoPago:     v.metodoPago,
         total:          v.total,
         productosCount: v.detalles.length,
-        estado:         v.estado
+        estado:         v.estado,
+        facturaEstado:  v.facturaEstado
       })),
       total, skip: parseInt(skip), take: parseInt(take)
     })
@@ -385,6 +383,7 @@ exports.obtenerVenta = async (req, res) => {
         estado:        venta.estado,
         tokenQr:       venta.tokenQr,
         facturaEstado: venta.facturaEstado,
+        notas:         venta.notas,
         detalles: venta.detalles.map(d => ({
           productoId:     d.productoId,
           nombre:         d.producto.nombre,
@@ -437,7 +436,7 @@ function generarUUID() {
 exports.cancelarVenta = async (req, res) => {
   try {
     const id      = parseInt(req.params.id)
-    const usuario = req.usuario
+    const usuario = req.usuario   // ← usa req.usuario (middleware JWT de JESHA)
     const { motivo } = req.body
 
     const venta = await prisma.venta.findUnique({
@@ -528,4 +527,218 @@ exports.cancelarVenta = async (req, res) => {
     res.status(500).json({ error: 'Error al cancelar venta: ' + err.message })
   }
 }
-// generarFolioBitacora eliminada — usa folio_bitacora_seq directamente
+
+// ════════════════════════════════════════════════════════════════════
+//  PATCH /ventas/:id/metodo-pago — Actualizar método de pago
+//
+//  FIX vs versión anterior:
+//  1. Usa req.usuario (consistente con cancelarVenta)
+//  2. MovimientoCaja usa turnoId (del schema real), NO cajaId/conceptoTipo
+//  3. facturaEstado desbloqueo va a 'DISPONIBLE', NO a null
+//  4. deleteMany filtra por tipo:'VENTA' para no borrar devoluciones
+//  5. Permisos: solo SUPERADMIN y ADMIN_SUCURSAL pueden editar método
+// ════════════════════════════════════════════════════════════════════
+exports.actualizarMetodoPago = async (req, res) => {
+  try {
+    const ventaId  = parseInt(req.params.id)
+    const usuario  = req.usuario   // ← consistente con cancelarVenta
+    const { nuevoMetodo } = req.body
+
+    if (!usuario) {
+      return res.status(401).json({ error: 'Usuario no autenticado' })
+    }
+
+    // ── Solo SUPERADMIN y ADMIN_SUCURSAL pueden cambiar el método ──
+    const rolesPermitidos = ['SUPERADMIN', 'ADMIN_SUCURSAL']
+    if (!rolesPermitidos.includes(usuario.rol)) {
+      return res.status(403).json({ error: 'Sin permiso para editar el método de pago' })
+    }
+
+    // ── Validar método válido ──
+    const metodosValidos = ['EFECTIVO', 'CREDITO', 'DEBITO', 'TRANSFERENCIA', 'CREDITO_CLIENTE']
+    if (!metodosValidos.includes(nuevoMetodo)) {
+      return res.status(400).json({ error: 'Método de pago inválido' })
+    }
+
+    // ── Obtener venta ──
+    const venta = await prisma.venta.findUnique({
+      where:   { id: ventaId },
+      include: { cliente: true }
+    })
+
+    if (!venta) {
+      return res.status(404).json({ error: 'Venta no encontrada' })
+    }
+
+    // ── Validar sucursal (SUPERADMIN puede editar todas) ──
+    if (usuario.sucursalId && venta.sucursalId !== usuario.sucursalId) {
+      return res.status(403).json({ error: 'No tienes permiso para editar esta venta' })
+    }
+
+    // ── VALIDACIÓN 1: Factura ya emitida ──
+    if (venta.facturaEstado === 'FACTURADA' || venta.facturaEstado === 'TIMBRADA') {
+      return res.status(400).json({ error: 'No se puede cambiar el método de pago de una venta ya facturada' })
+    }
+
+    // ── VALIDACIÓN 2: Venta cancelada ──
+    if (venta.estado === 'CANCELADA') {
+      return res.status(400).json({ error: 'No se puede editar una venta cancelada' })
+    }
+
+    // ── VALIDACIÓN 3: Sin cambio real ──
+    if (venta.metodoPago === nuevoMetodo) {
+      return res.json({ message: 'El método de pago ya es el seleccionado', venta })
+    }
+
+    // ── VALIDACIÓN 4: Crédito sin cliente ──
+    if (nuevoMetodo === 'CREDITO_CLIENTE' && !venta.clienteId) {
+      return res.status(400).json({ error: 'No se puede cambiar a crédito cliente sin un cliente registrado en la venta' })
+    }
+
+    // ── VALIDACIÓN 5: Límite de crédito ──
+    if (nuevoMetodo === 'CREDITO_CLIENTE' && venta.clienteId && venta.metodoPago !== 'CREDITO_CLIENTE') {
+      const cliente    = venta.cliente
+      const montoVenta = parseFloat(venta.total)
+      const nuevoSaldo = parseFloat(cliente.saldoPendiente) + montoVenta
+
+      if (nuevoSaldo > parseFloat(cliente.limiteCredito)) {
+        return res.status(400).json({
+          error: `Excede límite de crédito. Límite: $${parseFloat(cliente.limiteCredito).toFixed(2)}, Saldo actual: $${parseFloat(cliente.saldoPendiente).toFixed(2)}, Incremento: $${montoVenta.toFixed(2)}`
+        })
+      }
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    //  TRANSACCIÓN
+    // ════════════════════════════════════════════════════════════════
+    const metodoAnterior = venta.metodoPago
+    const total          = parseFloat(venta.total)
+
+    // Métodos que generan MovimientoCaja tipo VENTA
+    const metodosConMovimiento = ['EFECTIVO', 'CREDITO', 'DEBITO', 'TRANSFERENCIA']
+    const anteriorTeniaMovimiento = metodosConMovimiento.includes(metodoAnterior)
+    const nuevoTieneMovimiento    = metodosConMovimiento.includes(nuevoMetodo)
+
+    const result = await prisma.$transaction(async (tx) => {
+
+      // ── PASO 1: Manejar MovimientoCaja ──────────────────────────
+      if (anteriorTeniaMovimiento && !nuevoTieneMovimiento) {
+        // EFECTIVO/TARJETA/TRANSFERENCIA → CREDITO_CLIENTE
+        // Eliminar el movimiento de caja de la venta original
+        // Filtramos por referencia (folio) Y tipo VENTA para no tocar devoluciones
+        await tx.movimientoCaja.deleteMany({
+          where: {
+            referencia: venta.folio,
+            tipo:       'VENTA'
+          }
+        })
+      } else if (!anteriorTeniaMovimiento && nuevoTieneMovimiento) {
+        // CREDITO_CLIENTE → EFECTIVO/TARJETA/TRANSFERENCIA
+        // Crear MovimientoCaja en el turno de la venta
+        const turno = await tx.turnoCaja.findUnique({
+          where: { id: venta.turnoId }
+        })
+        if (!turno) {
+          throw new Error('No se encontró el turno de la venta')
+        }
+
+        await tx.movimientoCaja.create({
+          data: {
+            turnoId:    turno.id,
+            tipo:       'VENTA',
+            monto:      total,
+            metodoPago: nuevoMetodo,
+            referencia: venta.folio,
+            notas:      `Cambio de método: ${metodoAnterior} → ${nuevoMetodo} (por ${usuario.nombre})`
+          }
+        })
+      } else if (anteriorTeniaMovimiento && nuevoTieneMovimiento && metodoAnterior !== nuevoMetodo) {
+        // EFECTIVO → TARJETA o similar: actualizar metodoPago en el movimiento existente
+        await tx.movimientoCaja.updateMany({
+          where: {
+            referencia: venta.folio,
+            tipo:       'VENTA'
+          },
+          data: {
+            metodoPago: nuevoMetodo,
+            notas:      `Método actualizado: ${metodoAnterior} → ${nuevoMetodo} (por ${usuario.nombre})`
+          }
+        })
+      }
+
+      // ── PASO 2: Actualizar saldo del cliente ────────────────────
+      if (venta.clienteId) {
+        const esAhoraCreditoCliente  = nuevoMetodo    === 'CREDITO_CLIENTE'
+        const eraAntesCreditoCliente = metodoAnterior === 'CREDITO_CLIENTE'
+
+        if (esAhoraCreditoCliente && !eraAntesCreditoCliente) {
+          // Cambió A crédito → incrementar saldo pendiente
+          await tx.cliente.update({
+            where: { id: venta.clienteId },
+            data:  { saldoPendiente: { increment: total } }
+          })
+        } else if (!esAhoraCreditoCliente && eraAntesCreditoCliente) {
+          // Cambió DESDE crédito → decrementar saldo pendiente
+          await tx.cliente.update({
+            where: { id: venta.clienteId },
+            data:  { saldoPendiente: { decrement: total } }
+          })
+        }
+      }
+
+      // ── PASO 3: Recalcular facturaEstado ────────────────────────
+      // FIX: 'DISPONIBLE' en lugar de null — facturaEstado es enum, null no es válido
+      let nuevoFacturaEstado = venta.facturaEstado
+
+      if (nuevoMetodo === 'CREDITO_CLIENTE') {
+        nuevoFacturaEstado = 'BLOQUEADA'
+      } else if (nuevoMetodo === 'EFECTIVO' && total > 2000) {
+        nuevoFacturaEstado = 'BLOQUEADA'
+      } else if (venta.facturaEstado === 'BLOQUEADA') {
+        // Estaba bloqueada por método anterior y ahora ya no aplica → desbloquear
+        nuevoFacturaEstado = 'DISPONIBLE'
+      }
+      // Si estaba DISPONIBLE/VENCIDA/CANCELADA y el nuevo método no bloquea → sin cambio
+
+      // ── PASO 4: Actualizar venta ─────────────────────────────────
+      const timestamp = new Date().toLocaleString('es-MX', { timeZone: 'America/Mexico_City' })
+      const notaAudit = `[${timestamp}] Método cambiado: ${metodoAnterior} → ${nuevoMetodo} (por ${usuario.nombre})`
+
+      const ventaActualizada = await tx.venta.update({
+        where: { id: ventaId },
+        data: {
+          metodoPago:    nuevoMetodo,
+          facturaEstado: nuevoFacturaEstado,
+          notas:         venta.notas ? `${venta.notas}\n${notaAudit}` : notaAudit
+        },
+        include: {
+          cliente:  { select: { nombre: true } },
+          usuario:  { select: { nombre: true } },
+          sucursal: { select: { nombre: true } },
+          detalles: { include: { producto: { select: { nombre: true, codigoInterno: true } } } }
+        }
+      })
+
+      // ── PASO 5: Auditoria ────────────────────────────────────────
+      await tx.auditoria.create({
+        data: {
+          usuarioId:    usuario.id,
+          sucursalId:   venta.sucursalId,
+          accion:       'EDITAR_METODO_PAGO',
+          modulo:       'VENTAS',
+          referencia:   venta.folio,
+          valorAntes:   { metodoPago: metodoAnterior, facturaEstado: venta.facturaEstado },
+          valorDespues: { metodoPago: nuevoMetodo,    facturaEstado: nuevoFacturaEstado  }
+        }
+      })
+
+      return ventaActualizada
+    })
+
+    res.json({ message: 'Método de pago actualizado correctamente', venta: result })
+
+  } catch (err) {
+    console.error('❌ Error en actualizarMetodoPago:', err)
+    res.status(500).json({ error: err.message || 'Error al actualizar método de pago' })
+  }
+}

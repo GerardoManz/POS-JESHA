@@ -5,7 +5,14 @@
 
 const express = require('express')
 const router  = express.Router()
-const { crearVenta, obtenerVentas, obtenerVenta, obtenerHistorial, cancelarVenta } = require('./ventas.controller')
+const { 
+  crearVenta, 
+  obtenerVentas, 
+  obtenerVenta, 
+  obtenerHistorial, 
+  cancelarVenta,
+  actualizarMetodoPago  // ← NUEVA IMPORTACIÓN
+} = require('./ventas.controller')
 const ticketController = require('./ticket.controller')
 
 // POST /ventas — Crear venta
@@ -19,6 +26,9 @@ router.get('/historial/lista', obtenerHistorial)
 
 // PATCH /ventas/:id/cancelar — Cancelar venta
 router.patch('/:id/cancelar', cancelarVenta)
+
+// PATCH /ventas/:id/metodo-pago — Actualizar método de pago ← NUEVA RUTA
+router.patch('/:id/metodo-pago', actualizarMetodoPago)
 
 // GET /ventas/:id/ticket — Ticket imprimible (desktop)
 router.get('/:id/ticket', ticketController.generarTicket)

@@ -203,7 +203,8 @@ window.verDetalle = async function(id) {
       TRANSFERENCIA:'🔄 Transferencia', CREDITO_CLIENTE:'🏦 Crédito cliente'
     }[v.metodoPago] || v.metodoPago
     document.getElementById('det-factura').textContent  = {
-      DISPONIBLE:'Disponible', BLOQUEADA:'Bloqueada', FACTURADA:'Facturada', VENCIDA:'Vencida'
+      DISPONIBLE:'Disponible', BLOQUEADA:'Bloqueada', FACTURADA:'Facturada',
+      TIMBRADA:'Timbrada', VENCIDA:'Vencida', CANCELADA:'Cancelada'
     }[v.facturaEstado] || v.facturaEstado
 
     const badge       = document.getElementById('det-estado-badge')
@@ -225,9 +226,9 @@ window.verDetalle = async function(id) {
     document.getElementById('det-descuento').textContent = fmt(v.descuento)
     document.getElementById('det-total').textContent     = fmt(v.total)
 
-    // Mostrar monto pagado y cambio (solo si aplica — efectivo con monto mayor al total)
-    const rowPagado = document.getElementById('det-row-pagado')
-    const rowCambio = document.getElementById('det-row-cambio')
+    // Mostrar monto pagado y cambio (solo efectivo con monto mayor al total)
+    const rowPagado   = document.getElementById('det-row-pagado')
+    const rowCambio   = document.getElementById('det-row-cambio')
     const montoPagado = parseFloat(v.montoPagado || 0)
     const totalVenta  = parseFloat(v.total || 0)
 
@@ -254,9 +255,17 @@ function renderAccionesModal(v) {
   const div = document.getElementById('det-acciones-modal')
   if (!div) return
 
-  const esSuperAdmin    = ['SUPERADMIN', 'ADMIN_SUCURSAL'].includes(USUARIO.rol)
-  const puedeDevolver   = v.estado === 'COMPLETADA' || v.estado === 'DEVOLUCION'
-  const puedeCancelar   = v.estado === 'COMPLETADA' && esSuperAdmin
+  const esSuperAdmin  = ['SUPERADMIN', 'ADMIN_SUCURSAL'].includes(USUARIO.rol)
+  const puedeDevolver = v.estado === 'COMPLETADA' || v.estado === 'DEVOLUCION'
+  const puedeCancelar = v.estado === 'COMPLETADA' && esSuperAdmin
+
+  // Editar método: solo SUPERADMIN/ADMIN, venta no cancelada, factura no emitida
+  const facturasBloqueantes = ['FACTURADA', 'TIMBRADA']
+  const puedeEditarMetodo   = esSuperAdmin
+    && v.estado !== 'CANCELADA'
+    && !facturasBloqueantes.includes(v.facturaEstado)
+
+  const clienteId = v.cliente?.id || null
 
   const btnTicket = `
     <button class="btn-ticket-hist" onclick="imprimirTicket(${v.id})">
@@ -274,15 +283,18 @@ function renderAccionesModal(v) {
       ✕ Cancelar venta
     </button>` : ''
 
-  div.innerHTML = btnTicket + btnDevolver + btnCancelar
+  const btnEditarMetodo = puedeEditarMetodo ? `
+    <button class="btn-editar-metodo" onclick="abrirModalEditarMetodo(${v.id}, '${v.metodoPago}', ${clienteId ? clienteId : 'null'}, ${parseFloat(v.total)})">
+      ✏️ Editar método de pago
+    </button>` : ''
+
+  div.innerHTML = btnTicket + btnDevolver + btnCancelar + btnEditarMetodo
 }
 
 // ════════════════════════════════════════════════════════════════════
 //  CANCELAR VENTA
 // ════════════════════════════════════════════════════════════════════
-// ── Modal de cancelación (sin prompt/confirm nativos) ────────────────
 function abrirModalCancelacion(id, folio) {
-  // Inyectar modal si no existe
   if (!document.getElementById('modal-cancelar-venta')) {
     const m = document.createElement('div')
     m.id        = 'modal-cancelar-venta'
@@ -321,18 +333,16 @@ function abrirModalCancelacion(id, folio) {
     document.body.appendChild(m)
   }
 
-  // Reset estado del modal
-  const input    = document.getElementById('cancelar-motivo-input')
-  const errMot   = document.getElementById('cancelar-motivo-error')
-  const errApi   = document.getElementById('cancelar-api-error')
-  const btnConf  = document.getElementById('cancelar-confirmar-btn')
-  input.value        = ''
+  const input   = document.getElementById('cancelar-motivo-input')
+  const errMot  = document.getElementById('cancelar-motivo-error')
+  const errApi  = document.getElementById('cancelar-api-error')
+  const btnConf = document.getElementById('cancelar-confirmar-btn')
+  input.value          = ''
   errMot.style.display = 'none'
   errApi.style.display = 'none'
   btnConf.disabled     = false
   btnConf.textContent  = '✕ Confirmar cancelación'
 
-  // Bind del botón confirmar
   btnConf.onclick = async () => {
     const motivo = input.value.trim()
     if (!motivo) { errMot.style.display = 'block'; input.focus(); return }
@@ -516,20 +526,19 @@ async function confirmarDevolucion() {
     productos.push({ productoId, cantidad })
   })
 
-  if (!productos.length)      return mostrarErrorDev('Selecciona al menos un producto')
-  if (!devTipoSeleccionado)   return mostrarErrorDev('Selecciona el tipo de resolución')
+  if (!productos.length)    return mostrarErrorDev('Selecciona al menos un producto')
+  if (!devTipoSeleccionado) return mostrarErrorDev('Selecciona el tipo de resolución')
 
   const motivo = document.getElementById('dev-motivo').value.trim()
   if (!motivo) return mostrarErrorDev('El motivo es obligatorio')
 
-  // ── Verificar turno activo antes de proceder ──────────────────
+  // Verificar turno activo antes de proceder
   try {
     const resTurno = await fetch(`${API_URL}/turnos-caja/activo`, {
       headers: { 'Authorization': `Bearer ${TOKEN}` }
     })
     if (window.handle401 && window.handle401(resTurno.status)) return
     if (!resTurno.ok) {
-      // Sin turno — advertir solo si el tipo implica movimiento de caja
       if (devTipoSeleccionado === 'REEMBOLSO' || devTipoSeleccionado === 'CAMBIO_PARCIAL') {
         const continuar = await jeshaConfirm({
           title: 'Sin turno de caja',
@@ -540,7 +549,6 @@ async function confirmarDevolucion() {
       }
     }
   } catch (e) {
-    // Si falla la verificación de turno, dejar pasar — el backend lo maneja
     console.warn('No se pudo verificar turno:', e.message)
   }
 
@@ -570,7 +578,6 @@ async function confirmarDevolucion() {
     cerrarModalDevolucion()
     cargarVentas()
 
-    // Toast de éxito
     const toast = document.createElement('div')
     let mensajeToast = `✓ Devolución <strong>${data.folio}</strong> registrada — ${fmt(data.data.montoReembolso)}`
     if (data.sinTurno) {
@@ -644,6 +651,269 @@ window.imprimirTicket = function(id) {
 }
 
 // ════════════════════════════════════════════════════════════════════
+//  MODAL EDITAR MÉTODO DE PAGO
+// ════════════════════════════════════════════════════════════════════
+
+window.abrirModalEditarMetodo = function(ventaId, metodoActual, clienteId, totalVenta) {
+  // Crear modal dinámicamente la primera vez
+  if (!document.getElementById('modal-editar-metodo')) {
+    const m = document.createElement('div')
+    m.id        = 'modal-editar-metodo'
+    m.className = 'modal'
+    m.innerHTML = `
+      <div class="modal-content" style="max-width:480px;">
+        <div class="modal-header">
+          <h3>Editar método de pago</h3>
+          <button class="modal-close" id="modal-editar-metodo-close">&times;</button>
+        </div>
+        <div style="padding:20px 22px;display:flex;flex-direction:column;gap:14px;">
+
+          <div id="editar-metodo-info" style="
+            padding:10px 14px;
+            background:rgba(100,160,255,0.07);
+            border:1px solid rgba(100,160,255,0.2);
+            border-radius:8px;
+            color:var(--muted);
+            font-size:0.82rem;
+            line-height:1.5;
+          ">
+            Método actual: <strong id="editar-metodo-actual-label" style="color:var(--text)">—</strong><br>
+            <span style="font-size:0.78rem;opacity:0.8;">
+              Ajusta automáticamente los movimientos de caja y el crédito del cliente.
+            </span>
+          </div>
+
+          <div>
+            <label style="font-size:0.75rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;display:block;margin-bottom:8px;">
+              Nuevo método *
+            </label>
+            <div id="editar-metodo-opciones" style="display:flex;flex-direction:column;gap:6px;">
+              <label class="em-opcion" data-v="EFECTIVO">
+                <input type="radio" name="nuevo-metodo-pago" value="EFECTIVO" />
+                <span style="font-size:16px;">💵</span>
+                <span class="em-opcion-label">Efectivo</span>
+                <span class="em-badge-actual" style="display:none;">Actual</span>
+              </label>
+              <label class="em-opcion" data-v="CREDITO">
+                <input type="radio" name="nuevo-metodo-pago" value="CREDITO" />
+                <span style="font-size:16px;">💳</span>
+                <span class="em-opcion-label">Tarjeta crédito</span>
+                <span class="em-badge-actual" style="display:none;">Actual</span>
+              </label>
+              <label class="em-opcion" data-v="DEBITO">
+                <input type="radio" name="nuevo-metodo-pago" value="DEBITO" />
+                <span style="font-size:16px;">💳</span>
+                <span class="em-opcion-label">Tarjeta débito</span>
+                <span class="em-badge-actual" style="display:none;">Actual</span>
+              </label>
+              <label class="em-opcion" data-v="TRANSFERENCIA">
+                <input type="radio" name="nuevo-metodo-pago" value="TRANSFERENCIA" />
+                <span style="font-size:16px;">🔄</span>
+                <span class="em-opcion-label">Transferencia</span>
+                <span class="em-badge-actual" style="display:none;">Actual</span>
+              </label>
+              <label class="em-opcion" data-v="CREDITO_CLIENTE" id="em-opcion-credito-cliente" style="display:none;">
+                <input type="radio" name="nuevo-metodo-pago" value="CREDITO_CLIENTE" />
+                <span style="font-size:16px;">🏦</span>
+                <span class="em-opcion-label">Crédito cliente</span>
+                <span class="em-badge-actual" style="display:none;">Actual</span>
+              </label>
+            </div>
+          </div>
+
+          <div id="editar-metodo-efectos" style="
+            display:none;
+            background:rgba(255,255,255,0.03);
+            border:1px solid var(--panel-border);
+            border-radius:8px;
+            padding:10px 13px;
+            font-size:0.8rem;
+            color:var(--muted);
+            line-height:1.7;
+          "></div>
+
+          <div id="editar-metodo-error" style="
+            display:none;
+            padding:10px 14px;
+            background:rgba(255,107,107,0.08);
+            border-left:3px solid #ff6b6b;
+            border-radius:4px;
+            color:#ff9999;
+            font-size:0.85rem;
+          "></div>
+
+          <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:10px;border-top:1px solid var(--panel-border);">
+            <button class="btn-secondary" id="editar-metodo-cancelar-btn">Cancelar</button>
+            <button id="editar-metodo-confirmar-btn" class="btn-editar-metodo" disabled style="opacity:0.45;cursor:not-allowed;">
+              ✏️ Confirmar cambio
+            </button>
+          </div>
+        </div>
+      </div>`
+    document.body.appendChild(m)
+
+    // Eventos que solo se bindan una vez
+    document.getElementById('modal-editar-metodo-close')
+      .addEventListener('click', cerrarModalEditarMetodo)
+    document.getElementById('editar-metodo-cancelar-btn')
+      .addEventListener('click', cerrarModalEditarMetodo)
+  }
+
+  // ── Configurar el modal para esta venta específica ──────────────
+  const metodoLabels = {
+    EFECTIVO:        '💵 Efectivo',
+    CREDITO:         '💳 Tarjeta crédito',
+    DEBITO:          '💳 Tarjeta débito',
+    TRANSFERENCIA:   '🔄 Transferencia',
+    CREDITO_CLIENTE: '🏦 Crédito cliente'
+  }
+
+  document.getElementById('editar-metodo-actual-label').textContent = metodoLabels[metodoActual] || metodoActual
+  document.getElementById('editar-metodo-error').style.display   = 'none'
+  document.getElementById('editar-metodo-efectos').style.display = 'none'
+
+  // Mostrar opción crédito cliente solo si la venta tiene cliente
+  document.getElementById('em-opcion-credito-cliente').style.display = clienteId ? 'flex' : 'none'
+
+  // Resetear todas las opciones
+  document.querySelectorAll('.em-opcion').forEach(label => {
+    const radio   = label.querySelector('input[type="radio"]')
+    const badge   = label.querySelector('.em-badge-actual')
+    radio.checked = false
+    label.classList.remove('em-seleccionada', 'em-actual')
+    badge.style.display = 'none'
+
+    if (radio.value === metodoActual) {
+      label.classList.add('em-actual')
+      badge.style.display = 'inline-block'
+    }
+  })
+
+  // Reset botón confirmar
+  const btnConf = document.getElementById('editar-metodo-confirmar-btn')
+  btnConf.disabled      = true
+  btnConf.style.opacity = '0.45'
+  btnConf.style.cursor  = 'not-allowed'
+  btnConf.textContent   = '✏️ Confirmar cambio'
+
+  // Re-bindear radios con el ventaId/total de esta apertura
+  document.querySelectorAll('.em-opcion input[type="radio"]').forEach(radio => {
+    radio.onchange = () => {
+      document.querySelectorAll('.em-opcion').forEach(l => l.classList.remove('em-seleccionada'))
+      radio.closest('.em-opcion').classList.add('em-seleccionada')
+      btnConf.disabled      = false
+      btnConf.style.opacity = '1'
+      btnConf.style.cursor  = 'pointer'
+      document.getElementById('editar-metodo-error').style.display = 'none'
+      mostrarEfectosMetodo(metodoActual, radio.value, clienteId, totalVenta)
+    }
+  })
+
+  // Re-bindear confirmar con ventaId actual
+  btnConf.onclick = () => confirmarCambioMetodo(ventaId)
+
+  document.getElementById('modal-editar-metodo').classList.add('active')
+}
+
+function mostrarEfectosMetodo(metodoAnterior, nuevoMetodo, clienteId, totalVenta) {
+  const box = document.getElementById('editar-metodo-efectos')
+  const metodosConMovimiento = ['EFECTIVO', 'CREDITO', 'DEBITO', 'TRANSFERENCIA']
+  const anteriorConMov = metodosConMovimiento.includes(metodoAnterior)
+  const nuevoConMov    = metodosConMovimiento.includes(nuevoMetodo)
+
+  let lineas = []
+
+  // Efecto en caja
+  if (!anteriorConMov && nuevoConMov) {
+    lineas.push('+ Caja: se creará un movimiento VENTA en el turno original')
+  } else if (anteriorConMov && !nuevoConMov) {
+    lineas.push('− Caja: se eliminará el movimiento de esta venta')
+  } else {
+    lineas.push('~ Caja: se actualizará el método en el movimiento existente')
+  }
+
+  // Efecto en cliente
+  if (clienteId) {
+    const total = parseFloat(totalVenta || 0)
+    if (nuevoMetodo === 'CREDITO_CLIENTE' && metodoAnterior !== 'CREDITO_CLIENTE') {
+      lineas.push(`+ Cliente: saldo pendiente aumentará ${fmt(total)}`)
+    } else if (metodoAnterior === 'CREDITO_CLIENTE' && nuevoMetodo !== 'CREDITO_CLIENTE') {
+      lineas.push(`− Cliente: saldo pendiente disminuirá ${fmt(total)}`)
+    }
+  }
+
+  // Efecto en factura
+  const bloqueaNuevo = nuevoMetodo === 'CREDITO_CLIENTE' || (nuevoMetodo === 'EFECTIVO' && parseFloat(totalVenta) > 2000)
+  const bloqueaAnterior = metodoAnterior === 'CREDITO_CLIENTE' || (metodoAnterior === 'EFECTIVO' && parseFloat(totalVenta) > 2000)
+  if (bloqueaNuevo && !bloqueaAnterior) {
+    lineas.push('! Factura: quedará BLOQUEADA')
+  } else if (!bloqueaNuevo && bloqueaAnterior) {
+    lineas.push('✓ Factura: se desbloqueará (DISPONIBLE)')
+  } else {
+    lineas.push('− Factura: sin cambio')
+  }
+
+  box.innerHTML  = lineas.join('<br>')
+  box.style.display = 'block'
+}
+
+function cerrarModalEditarMetodo() {
+  document.getElementById('modal-editar-metodo')?.classList.remove('active')
+}
+
+async function confirmarCambioMetodo(ventaId) {
+  const radioSeleccionado = document.querySelector('.em-opcion input[type="radio"]:checked')
+  if (!radioSeleccionado) return
+
+  const nuevoMetodo = radioSeleccionado.value
+  const errEl       = document.getElementById('editar-metodo-error')
+  const btnConf     = document.getElementById('editar-metodo-confirmar-btn')
+
+  errEl.style.display   = 'none'
+  btnConf.disabled      = true
+  btnConf.style.opacity = '0.45'
+  btnConf.textContent   = '⟳ Guardando...'
+
+  try {
+    const res = await fetch(`${API_URL}/ventas/${ventaId}/metodo-pago`, {
+      method:  'PATCH',
+      headers: {
+        'Content-Type':  'application/json',
+        'Authorization': `Bearer ${TOKEN}`
+      },
+      body: JSON.stringify({ nuevoMetodo })
+    })
+    if (window.handle401 && window.handle401(res.status)) return
+
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.error || 'Error al cambiar método de pago')
+
+    cerrarModalEditarMetodo()
+    document.getElementById('modal-venta').classList.remove('active')
+    cargarVentas()
+
+    const toast = document.createElement('div')
+    toast.textContent = `✓ Método de pago actualizado correctamente`
+    Object.assign(toast.style, {
+      position:'fixed', top:'20px', right:'20px', zIndex:'9999',
+      background:'#1a3a28', border:'1px solid rgba(96,208,128,0.3)',
+      color:'#60d080', padding:'14px 20px', borderRadius:'8px',
+      fontSize:'0.875rem', fontWeight:'600',
+      boxShadow:'0 4px 16px rgba(0,0,0,0.4)', transition:'opacity 0.4s'
+    })
+    document.body.appendChild(toast)
+    setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 400) }, 4000)
+
+  } catch (err) {
+    errEl.textContent    = err.message
+    errEl.style.display  = 'block'
+    btnConf.disabled     = false
+    btnConf.style.opacity = '1'
+    btnConf.textContent  = '✏️ Confirmar cambio'
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════
 //  INICIALIZACIÓN
 // ════════════════════════════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', async () => {
@@ -675,7 +945,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('modal-venta').classList.remove('active')
   })
 
-  // ── Eventos modal devolución ──────────────────────────────────
+  // Eventos modal devolución
   document.getElementById('modal-dev-close')?.addEventListener('click', cerrarModalDevolucion)
   document.getElementById('dev-cancelar')?.addEventListener('click', cerrarModalDevolucion)
   document.getElementById('dev-confirmar')?.addEventListener('click', confirmarDevolucion)
@@ -700,14 +970,13 @@ document.addEventListener('DOMContentLoaded', async () => {
       btn.classList.add('active')
       devTipoSeleccionado = btn.dataset.tipo
 
-      // Al seleccionar "Cambio de producto" → marcar todos los productos disponibles
       if (devTipoSeleccionado === 'CAMBIO_PRODUCTO') {
         document.querySelectorAll('.dev-check').forEach(chk => {
-          if (chk.disabled) return                         // sin disponible → omitir
-          const productoId  = chk.dataset.id
-          const disponible  = parseInt(chk.dataset.disponible)
-          const cantInput   = document.getElementById(`dev-cant-${productoId}`)
-          chk.checked       = true
+          if (chk.disabled) return
+          const productoId = chk.dataset.id
+          const disponible = parseInt(chk.dataset.disponible)
+          const cantInput  = document.getElementById(`dev-cant-${productoId}`)
+          chk.checked        = true
           cantInput.disabled = false
           cantInput.value    = disponible
         })
@@ -722,13 +991,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (e.key === 'Escape') {
       document.getElementById('modal-venta')?.classList.remove('active')
       cerrarModalDevolucion()
+      cerrarModalEditarMetodo()
     }
   })
 })
 
 console.log('✅ historial.js cargado')
 
-// ── Inyectar estilos de badge faltantes ────────────────────────────
+// ── Inyectar estilos extra ──────────────────────────────────────────
 ;(function() {
   if (!document.getElementById('hist-extra-styles')) {
     const s = document.createElement('style')
@@ -749,6 +1019,55 @@ console.log('✅ historial.js cargado')
         transition: all 0.15s;
       }
       .btn-cancelar-venta:hover { background: rgba(255,107,107,0.2); }
+      .btn-editar-metodo {
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 8px 16px;
+        background: rgba(100,160,255,0.1);
+        border: 1px solid rgba(100,160,255,0.3);
+        border-radius: 8px; color: #64a0ff;
+        font-family: 'Barlow', sans-serif;
+        font-size: 0.85rem; font-weight: 700; cursor: pointer;
+        transition: all 0.15s;
+      }
+      .btn-editar-metodo:hover { background: rgba(100,160,255,0.2); }
+      .em-opcion {
+        display: flex; align-items: center; gap: 10px;
+        padding: 10px 13px;
+        background: rgba(255,255,255,0.03);
+        border: 1px solid var(--panel-border);
+        border-radius: 8px; cursor: pointer;
+        font-family: 'Barlow', sans-serif;
+        font-size: 0.875rem; color: var(--text);
+        transition: all 0.12s;
+        user-select: none;
+      }
+      .em-opcion:hover:not(.em-actual) {
+        border-color: rgba(100,160,255,0.4);
+        background: rgba(100,160,255,0.06);
+      }
+      .em-opcion.em-actual {
+        opacity: 0.42;
+        cursor: not-allowed;
+        pointer-events: none;
+      }
+      .em-opcion.em-seleccionada {
+        border-color: rgba(100,160,255,0.5);
+        background: rgba(100,160,255,0.1);
+      }
+      .em-opcion input[type="radio"] {
+        accent-color: #64a0ff;
+        width: 15px; height: 15px;
+        flex-shrink: 0;
+      }
+      .em-opcion-label { flex: 1; }
+      .em-badge-actual {
+        font-size: 0.7rem;
+        padding: 2px 7px;
+        background: rgba(255,255,255,0.06);
+        border: 1px solid var(--panel-border);
+        border-radius: 4px;
+        color: var(--muted);
+      }
     `
     document.head.appendChild(s)
   }

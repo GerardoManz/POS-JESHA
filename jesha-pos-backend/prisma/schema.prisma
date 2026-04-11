@@ -256,31 +256,33 @@ model ProveedorProducto {
 // PRODUCTO
 // ══════════════════════════════════════════════════════════════════
 model Producto {
-  id                  Int      @id @default(autoincrement())
-  nombre              String
-  codigoInterno       String   @unique
-  codigoBarras        String?  @unique
-  descripcion         String?
-  imagenUrl           String?
-  imagenOriginal      String?
-  precioBase          Decimal  @db.Decimal(10, 2)
-  precioVenta         Decimal? @db.Decimal(10, 2)
-  costo               Decimal? @db.Decimal(10, 2)
-  costoPromedio       Decimal? @db.Decimal(10, 2)
-  precioMayoreo       Decimal? @db.Decimal(10, 2)
-  cantidadMinMayoreo  Int?     @default(10)
-  aplicaMayoreo       Boolean  @default(false)
-  unidadCompra        String?
-  unidadVenta         String?
-  factorConversion    Decimal? @db.Decimal(10, 4)
-  claveSat            String?
-  unidadSat           String?
-  esGranel            Boolean  @default(false)
-  margen              Decimal? @db.Decimal(5, 2)
-  categoriaId         Int
-  activo              Boolean  @default(true)
-  creadoEn            DateTime @default(now())
-  actualizadoEn       DateTime @updatedAt
+  id                   Int      @id @default(autoincrement())
+  nombre               String
+  codigoInterno        String   @unique
+  codigoBarras         String?  @unique
+  descripcion          String?
+  imagenUrl            String?
+  imagenOriginal       String?
+  precioBase           Decimal  @db.Decimal(10, 2)
+  precioVenta          Decimal? @db.Decimal(10, 2)
+  costo                Decimal? @db.Decimal(10, 2)
+  costoPromedio        Decimal? @db.Decimal(10, 2)
+  precioMayoreo        Decimal? @db.Decimal(10, 2)
+  cantidadMinMayoreo   Int?     @default(10)
+  aplicaMayoreo        Boolean  @default(false)
+  unidadCompra         String?
+  unidadVenta          String?
+  factorConversion     Decimal? @db.Decimal(10, 4)
+  claveSat             String?
+  unidadSat            String?
+  esGranel             Boolean  @default(false)
+  margen               Decimal? @db.Decimal(5, 2)
+  tipoFacturaProv      String?  @default("NETO")
+  costoSinIvaProveedor Decimal? @db.Decimal(10, 2)
+  categoriaId          Int
+  activo               Boolean  @default(true)
+  creadoEn             DateTime @default(now())
+  actualizadoEn        DateTime @updatedAt
   categoria             Categoria              @relation(fields: [categoriaId], references: [id])
   inventarios           InventarioSucursal[]
   detallesVenta         DetalleVenta[]

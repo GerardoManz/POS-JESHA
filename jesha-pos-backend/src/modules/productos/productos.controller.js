@@ -1,6 +1,7 @@
 // ═══════════════════════════════════════════════════════════════════
 // PRODUCTOS.CONTROLLER.JS — CORREGIDO
 // FIX: Usa instancia centralizada de Prisma (no crea una propia)
+// FIX: Agrega tipoFacturaProv y costoSinIvaProveedor en crear/editar
 // ═══════════════════════════════════════════════════════════════════
 
 const prisma = require('../../lib/prisma')
@@ -124,7 +125,7 @@ async function listar(req, res) {
                 include: {
                     categoria: { include: { departamento: true } },
                     inventarios: { where: { sucursalId: 1 }, take: 1 },
-                    proveedores: {  // ✅ CORREGIDO: era proveedorProducto, debe ser proveedores
+                    proveedores: {
                         include: { proveedor: true }
                     }
                 },
@@ -199,7 +200,7 @@ async function obtener(req, res) {
             include: {
                 categoria: { include: { departamento: true } },
                 inventarios: { where: { sucursalId: 1 }, take: 1 },
-                proveedores: {  // ✅ CORREGIDO
+                proveedores: {
                     include: { proveedor: true }
                 }
             }
@@ -232,7 +233,8 @@ async function crear(req, res) {
             nombre, codigoInterno, codigoBarras, descripcion,
             costo, precioBase, precioVenta, categoriaId,
             unidadCompra, unidadVenta, factorConversion,
-            claveSat, unidadSat, proveedorId  // ✅ AGREGADO
+            claveSat, unidadSat, proveedorId,
+            tipoFacturaProv, costoSinIvaProveedor
         } = req.body
 
         if (!nombre || !codigoInterno || !categoriaId || !precioBase) {
@@ -251,18 +253,20 @@ async function crear(req, res) {
             data: {
                 nombre,
                 codigoInterno,
-                codigoBarras:     codigoBarras     || null,
-                descripcion:      descripcion      || null,
-                costo:            costo            ? parseFloat(costo)            : null,
-                costoPromedio:    costo            ? parseFloat(costo)            : null,
-                precioBase:       parseFloat(precioBase),
-                precioVenta:      precioVenta ? parseFloat(precioVenta) : null,
-                categoriaId:      parseInt(categoriaId),
-                unidadCompra:     unidadCompra     || null,
-                unidadVenta:      unidadVenta      || null,
-                factorConversion: factorConversion ? parseFloat(factorConversion) : null,
-                claveSat:         claveSat         || null,
-                unidadSat:        unidadSat        || null,
+                codigoBarras:        codigoBarras     || null,
+                descripcion:         descripcion      || null,
+                costo:               costo            ? parseFloat(costo)            : null,
+                costoPromedio:       costo            ? parseFloat(costo)            : null,
+                precioBase:          parseFloat(precioBase),
+                precioVenta:         precioVenta ? parseFloat(precioVenta) : null,
+                categoriaId:         parseInt(categoriaId),
+                unidadCompra:        unidadCompra     || null,
+                unidadVenta:         unidadVenta      || null,
+                factorConversion:    factorConversion ? parseFloat(factorConversion) : null,
+                claveSat:            claveSat         || null,
+                unidadSat:           unidadSat        || null,
+                tipoFacturaProv:     tipoFacturaProv  || 'NETO',
+                costoSinIvaProveedor: costoSinIvaProveedor ? parseFloat(costoSinIvaProveedor) : null,
                 activo: true
             },
             include: {
@@ -271,13 +275,13 @@ async function crear(req, res) {
             }
         })
 
-        // ✅ NUEVO: Guardar relación con proveedor si se proporcionó
+        // Guardar relación con proveedor si se proporcionó
         if (proveedorId) {
             await prisma.proveedorProducto.create({
                 data: {
                     productoId: producto.id,
                     proveedorId: parseInt(proveedorId),
-                    precioCosto: costo ? parseFloat(costo) : 0,  // ✅ AGREGADO: usar el costo del producto
+                    precioCosto: costo ? parseFloat(costo) : 0,
                     activo: true
                 }
             })
@@ -309,7 +313,8 @@ async function editar(req, res) {
             nombre, codigoInterno, codigoBarras, descripcion,
             costo, precioBase, precioVenta, categoriaId,
             unidadCompra, unidadVenta, factorConversion,
-            claveSat, unidadSat, proveedorId  // ✅ AGREGADO
+            claveSat, unidadSat, proveedorId,
+            tipoFacturaProv, costoSinIvaProveedor
         } = req.body
 
         if (!nombre || !codigoInterno || !categoriaId || !precioBase) {
@@ -329,17 +334,19 @@ async function editar(req, res) {
             data: {
                 nombre,
                 codigoInterno,
-                codigoBarras:     codigoBarras     || null,
-                descripcion:      descripcion      || null,
-                costo:            costo            ? parseFloat(costo)            : null,
-                precioBase:       parseFloat(precioBase),
-                precioVenta:      precioVenta ? parseFloat(precioVenta) : null,
-                categoriaId:      parseInt(categoriaId),
-                unidadCompra:     unidadCompra     || null,
-                unidadVenta:      unidadVenta      || null,
-                factorConversion: factorConversion ? parseFloat(factorConversion) : null,
-                claveSat:         claveSat         || null,
-                unidadSat:        unidadSat        || null  // ✅ CORREGIDO: era unidSat
+                codigoBarras:        codigoBarras     || null,
+                descripcion:         descripcion      || null,
+                costo:               costo            ? parseFloat(costo)            : null,
+                precioBase:          parseFloat(precioBase),
+                precioVenta:         precioVenta ? parseFloat(precioVenta) : null,
+                categoriaId:         parseInt(categoriaId),
+                unidadCompra:        unidadCompra     || null,
+                unidadVenta:         unidadVenta      || null,
+                factorConversion:    factorConversion ? parseFloat(factorConversion) : null,
+                claveSat:            claveSat         || null,
+                unidadSat:           unidadSat        || null,
+                tipoFacturaProv:     tipoFacturaProv  || 'NETO',
+                costoSinIvaProveedor: costoSinIvaProveedor ? parseFloat(costoSinIvaProveedor) : null,
             },
             include: {
                 categoria: { include: { departamento: true } },
@@ -347,7 +354,7 @@ async function editar(req, res) {
             }
         })
 
-        // ✅ NUEVO: Gestionar relación con proveedor
+        // Gestionar relación con proveedor
         // 1. Eliminar relaciones anteriores
         await prisma.proveedorProducto.deleteMany({
             where: { productoId: parseInt(id) }
@@ -359,7 +366,7 @@ async function editar(req, res) {
                 data: {
                     productoId: parseInt(id),
                     proveedorId: parseInt(proveedorId),
-                    precioCosto: costo ? parseFloat(costo) : 0,  // ✅ AGREGADO: usar el costo del producto
+                    precioCosto: costo ? parseFloat(costo) : 0,
                     activo: true
                 }
             })
@@ -511,7 +518,7 @@ async function crearCategoria(req, res) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// EXPORTAR
+// AJUSTAR INVENTARIO
 // ═══════════════════════════════════════════════════════════════════
 
 async function ajustarInventario(req, res) {

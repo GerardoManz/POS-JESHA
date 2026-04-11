@@ -7,6 +7,7 @@
    - Opción de crear nuevos departamentos/categorías desde el modal
    - Filtros del toolbar separados de los selects del modal
    - Botón "Subir Inventario" integrado con modal de importación CSV
+   - tipoFacturaProv y costoSinIvaProveedor se guardan y restauran
    ═══════════════════════════════════════════════════════════════════ */
 
 
@@ -233,18 +234,18 @@ function actualizarCategoriasFiltroToolbar() {
 function llenarSelectProveedores() {
   if (!modalProveedorSelect) return
   
-  // ✅ Limpiar completamente el select
+  // Limpiar completamente el select
   modalProveedorSelect.innerHTML = '<option value="">Seleccionar proveedor...</option>'
   
-  // ✅ Ordenar proveedores alfabéticamente por nombreOficial
+  // Ordenar proveedores alfabéticamente por nombreOficial
   const proveedoresOrdenados = [...proveedoresLista].sort((a, b) => 
     a.nombreOficial.localeCompare(b.nombreOficial)
   )
   
-  // ✅ Agregar todas las opciones
+  // Agregar todas las opciones
   proveedoresOrdenados.forEach(prov => {
     const opt = document.createElement('option')
-    opt.value = String(prov.id)  // ✅ Asegurar que sea string
+    opt.value = String(prov.id)  // Asegurar que sea string
     
     // Formato: NOMBREOFICIAL (APODO) o solo NOMBREOFICIAL si apodo es igual
     const displayName = prov.alias && prov.alias !== prov.nombreOficial 
@@ -442,7 +443,7 @@ window.editarProducto = async function(id) {
   if (!producto) return
   
   console.log('🔍 Editando producto:', producto)
-  console.log('📦 Datos de proveedor:', producto.proveedorProducto)
+  console.log('📦 Datos de proveedor:', producto.proveedores)
   
   productoActual = producto
   if (modalTitle) modalTitle.textContent = 'Editar Producto'
@@ -453,12 +454,11 @@ window.editarProducto = async function(id) {
   document.getElementById('producto-precioBase').value        = producto.precioBase
   document.getElementById('producto-precioVenta').value       = producto.precioVenta || ''
 
-  // ✅ Tipo de factura: detectar si tiene costoSinIvaProveedor guardado → radio B, si no → radio A
-  const tieneCostoSinIva = producto.costoSinIvaProveedor && parseFloat(producto.costoSinIvaProveedor) > 0
-  if (tieneCostoSinIva) {
+  // ✅ FIX: Tipo de factura — leer el valor real guardado en BD
+  if (producto.tipoFacturaProv === 'DESGLOSE') {
     if (radioFacturaB) radioFacturaB.checked = true
     aplicarTipoFactura('B')
-    document.getElementById('producto-costoSinIva').value      = producto.costoSinIvaProveedor
+    document.getElementById('producto-costoSinIva').value      = producto.costoSinIvaProveedor || ''
     document.getElementById('producto-costo-b-display').value  = producto.costo || ''
     document.getElementById('producto-costo').value            = producto.costo || ''
   } else {
@@ -466,13 +466,14 @@ window.editarProducto = async function(id) {
     aplicarTipoFactura('A')
     document.getElementById('producto-costo').value            = producto.costo || ''
   }
+
   document.getElementById('producto-unidadCompra').value      = producto.unidadCompra || ''
   document.getElementById('producto-unidadVenta').value       = producto.unidadVenta || ''
   document.getElementById('producto-factorConversion').value  = producto.factorConversion || ''
   document.getElementById('producto-claveSat').value          = producto.claveSat || ''
   document.getElementById('producto-unidadSat').value         = producto.unidadSat || ''
   
-  // ✅ Toggle de granel
+  // Toggle de granel
   const granelCheck = document.getElementById('producto-esGranel')
   if (granelCheck) {
     granelCheck.checked = !!producto.esGranel
@@ -483,7 +484,7 @@ window.editarProducto = async function(id) {
   llenarModalDepartamentos(deptoId)
   if (deptoId) actualizarModalCategorias(deptoId, producto.categoriaId)
   
-  // ✅ SOLUCIÓN MEJORADA: Carga del proveedor con validación completa
+  // Carga del proveedor con validación completa
   if (modalProveedorSelect) {
     console.log('🔄 Iniciando carga de proveedor...')
     
@@ -494,7 +495,7 @@ window.editarProducto = async function(id) {
     // 2. Extraer el proveedorId del producto
     let proveedorId = ''
     
-    // ✅ CORREGIDO: La relación se llama 'proveedores' (plural) no 'proveedorProducto'
+    // La relación se llama 'proveedores' (plural) no 'proveedorProducto'
     if (producto.proveedores && Array.isArray(producto.proveedores) && producto.proveedores.length > 0) {
       proveedorId = producto.proveedores[0].proveedorId || producto.proveedores[0].id || ''
     } else if (producto.proveedorId) {
@@ -543,16 +544,9 @@ window.editarProducto = async function(id) {
     if (imagenPreviewContainer) imagenPreviewContainer.style.display = 'none'
   }
   
-  // ✅ Calcular precio base y margen al cargar producto
+  // Calcular precio base y margen al cargar producto
   calcularPrecioBase()
   calcularMargen()
-  // ✅ Limpiar campos del escenario no activo para evitar confusión
-  if (!tieneCostoSinIva) {
-    const sinIva  = document.getElementById('producto-costoSinIva')
-    const display = document.getElementById('producto-costo-b-display')
-    if (sinIva)  sinIva.value  = ''
-    if (display) display.value = ''
-  }
   
   ocultarError()
   if (modal) modal.classList.add('active')
@@ -563,20 +557,24 @@ function abrirModalNuevo() {
   if (modalTitle) modalTitle.textContent = 'Nuevo Producto'
   if (formulario) formulario.reset()
   
-  // ✅ Inicializar precio base en 0.00
+  // Inicializar precio base en 0.00
   const precioBaseInput = document.getElementById('producto-precioBase')
   if (precioBaseInput) precioBaseInput.value = '0.00'
 
-  // ✅ Resetear tipo de factura a Escenario A (default)
+  // Resetear tipo de factura a Escenario A (default)
   if (radioFacturaA) radioFacturaA.checked = true
   aplicarTipoFactura('A')
+
+  // Limpiar costoSinIva explícitamente (por si no está dentro del form)
+  const costoSinIvaInput = document.getElementById('producto-costoSinIva')
+  if (costoSinIvaInput) costoSinIvaInput.value = ''
   
   llenarModalDepartamentos()
   if (modalCatSelect) { modalCatSelect.innerHTML = '<option value="">Seleccionar categoría...</option>'; modalCatSelect.disabled = true }
   if (modalProveedorSelect) { modalProveedorSelect.value = '' }
   if (imagenPreviewContainer) imagenPreviewContainer.style.display = 'none'
   if (document.getElementById('info-margen')) document.getElementById('info-margen').style.display = 'none'
-  // ✅ Resetear granel
+  // Resetear granel
   const granelCheck = document.getElementById('producto-esGranel')
   if (granelCheck) { granelCheck.checked = false; actualizarVisualGranel(false) }
   ocultarError()
@@ -604,8 +602,11 @@ async function guardarProducto(e) {
   if (!categoria || categoria === '__NUEVA_CAT__') return mostrarError('La categoría es requerida')
   if (!precioBase)  return mostrarError('El precio base (sin IVA) es requerido')
   
-  // ✅ CORRECCIÓN: Obtener proveedorId del select
+  // Obtener proveedorId del select
   const proveedorId = modalProveedorSelect?.value || null
+
+  // ✅ FIX: Determinar tipo de factura según radio seleccionado
+  const tipoFactura = radioFacturaB?.checked ? 'DESGLOSE' : 'NETO'
   
   const datos = {
     nombre, codigoInterno: codigo,
@@ -613,10 +614,11 @@ async function guardarProducto(e) {
     descripcion:      document.getElementById('producto-descripcion').value.trim() || null,
     costo:            parseFloat(document.getElementById('producto-costo').value) || null,
     costoSinIvaProveedor: parseFloat(document.getElementById('producto-costoSinIva')?.value) || null,
+    tipoFacturaProv:  tipoFactura,
     precioBase:       parseFloat(precioBase),
     precioVenta:      precioVenta ? parseFloat(precioVenta) : null,
     categoriaId:      parseInt(categoria),
-    proveedorId:      proveedorId ? parseInt(proveedorId) : null,  // ✅ AGREGADO
+    proveedorId:      proveedorId ? parseInt(proveedorId) : null,
     unidadCompra:     document.getElementById('producto-unidadCompra').value.trim() || null,
     unidadVenta:      document.getElementById('producto-unidadVenta').value.trim() || null,
     factorConversion: parseFloat(document.getElementById('producto-factorConversion').value) || null,
@@ -961,7 +963,6 @@ function calcularMargen() {
   if (!wrap) return
   
   if (costo > 0 && precioVenta > 0) {
-    // ✅ CORRECCIÓN: Usar precioVenta directamente (no dividir entre 1.16)
     // Utilidad = Precio Venta - Costo
     const utilidad = precioVenta - costo
     
@@ -977,7 +978,7 @@ function calcularMargen() {
   }
 }
 
-// ✅ NUEVA FUNCIÓN: Calcular precio base automáticamente desde precio venta
+// Calcular precio base automáticamente desde precio venta
 function calcularPrecioBase() {
   const precioVentaInput = document.getElementById('producto-precioVenta')
   const precioBaseInput = document.getElementById('producto-precioBase')
@@ -1079,8 +1080,8 @@ function configurarEventos() {
   // Cuando cambia el precio venta: calcular precio base Y margen
   if (inputPrecioVenta) {
     inputPrecioVenta.addEventListener('input', () => {
-      calcularPrecioBase()  // ✅ Calcular precio base automáticamente
-      calcularMargen()      // ✅ Actualizar margen
+      calcularPrecioBase()
+      calcularMargen()
     })
   }
   
@@ -1090,9 +1091,6 @@ function configurarEventos() {
   }
 
   // ── FIX: Prevenir que el escáner de código de barras dispare submit del form ──
-  // Los escáneres envían los caracteres rápidamente y terminan con Enter.
-  // Ese Enter dispara el submit del <form>, guardando el producto antes de tiempo.
-  // Solución: bloquear Enter en el campo de código de barras.
   const inputCodigoBarras = document.getElementById('producto-codigoBarras')
   if (inputCodigoBarras) {
     inputCodigoBarras.addEventListener('keydown', e => {
@@ -1127,14 +1125,14 @@ function configurarEventos() {
     })
   }
 
-  // ✅ Toggle de granel
+  // Toggle de granel
   const granelCheck = document.getElementById('producto-esGranel')
   if (granelCheck) {
     granelCheck.addEventListener('change', () => actualizarVisualGranel(granelCheck.checked))
   }
 }
 
-// ✅ Visual del toggle de granel
+// Visual del toggle de granel
 function actualizarVisualGranel(activo) {
   const knob = document.getElementById('granel-toggle-knob')
   const track = knob?.parentElement
@@ -1446,8 +1444,7 @@ function mostrarErrorImport(msg) {
 
 
 // ════════════════════════════════════════════════════════════════════
-//  AJUSTE INVENTARIO — añadir al final de productos.js
-//  Llama initAjusteInventario() dentro de DOMContentLoaded
+//  AJUSTE INVENTARIO
 // ════════════════════════════════════════════════════════════════════
 
 // Roles que pueden ajustar inventario
@@ -1512,7 +1509,7 @@ window.abrirAjusteInventario = function(id) {
   document.getElementById('ajuste-motivo').value      = ''
   document.getElementById('ajuste-error').style.display = 'none'
 
-  // ✅ Adaptar step para granel
+  // Adaptar step para granel
   const inputStockNuevo = document.getElementById('ajuste-stock-nuevo')
   const inputMinNuevo   = document.getElementById('ajuste-min-nuevo')
   if (producto.esGranel) {
