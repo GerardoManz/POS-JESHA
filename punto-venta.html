@@ -495,6 +495,61 @@
   </div>
 </div>
 
+<!-- ══ MODAL: CANTIDAD GRANEL ══ -->
+<div id="modal-cantidad-granel" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.72);backdrop-filter:blur(4px);z-index:3000;align-items:center;justify-content:center;padding:20px;">
+  <div style="background:#16191e;border:1px solid rgba(255,255,255,0.09);border-radius:16px;width:100%;max-width:360px;overflow:hidden;box-shadow:0 32px 80px rgba(0,0,0,0.7);animation:granelModalIn 0.2s cubic-bezier(0.16,1,0.3,1);">
+    <style>
+      @keyframes granelModalIn {
+        from{opacity:0;transform:translateY(16px) scale(0.97)}
+        to{opacity:1;transform:translateY(0) scale(1)}
+      }
+    </style>
+
+    <!-- Header -->
+    <div style="display:flex;align-items:center;gap:14px;padding:20px 22px 16px;">
+      <div style="width:46px;height:46px;border-radius:11px;flex-shrink:0;background:rgba(107,157,232,0.12);border:1px solid rgba(107,157,232,0.25);display:grid;place-items:center;">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#6b9de8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+        </svg>
+      </div>
+      <div style="flex:1;min-width:0;">
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:1.05rem;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:#e9edf4;line-height:1.1;">
+          Cantidad a granel
+        </div>
+        <div id="granel-modal-producto-nombre" style="font-size:0.78rem;color:#7a8599;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+          —
+        </div>
+      </div>
+      <button id="granel-modal-close" style="background:none;border:none;color:#7a8599;font-size:1.4rem;cursor:pointer;padding:0;line-height:1;">&times;</button>
+    </div>
+
+    <div style="height:1px;background:rgba(255,255,255,0.06);margin:0 22px;"></div>
+
+    <!-- Body -->
+    <div style="padding:18px 22px;">
+      <label style="font-size:0.72rem;font-weight:700;color:var(--muted,#7a8599);text-transform:uppercase;letter-spacing:0.05em;display:block;margin-bottom:8px;">
+        Cantidad <span id="granel-modal-unidad-label" style="font-weight:400;color:#6b9de8;">(unidades)</span>
+      </label>
+      <input type="number" id="granel-modal-cantidad" min="0.001" step="0.001" placeholder="Ej: 2.500"
+        style="width:100%;padding:12px 14px;background:rgba(255,255,255,0.04);border:1px solid var(--panel-border,rgba(255,255,255,0.09));border-radius:8px;color:#e9edf4;font-family:'Barlow',sans-serif;font-size:1.1rem;outline:none;text-align:center;letter-spacing:0.05em;" 
+        autocomplete="off" />
+      <div id="granel-modal-stock-info" style="font-size:0.75rem;color:#7a8599;margin-top:6px;text-align:center;">—</div>
+      <div id="granel-modal-error" style="display:none;font-size:0.78rem;color:#ff6b6b;margin-top:6px;text-align:center;"></div>
+    </div>
+
+    <div style="height:1px;background:rgba(255,255,255,0.06);margin:0 22px;"></div>
+
+    <!-- Acciones -->
+    <div style="display:flex;gap:10px;padding:14px 22px 20px;">
+      <button id="granel-modal-cancel" style="flex:1;padding:11px 18px;background:transparent;border:1px solid rgba(255,255,255,0.1);border-radius:10px;color:#7a8599;font-family:'Barlow',sans-serif;font-size:0.875rem;font-weight:700;cursor:pointer;">Cancelar</button>
+      <button id="granel-modal-confirm" style="flex:1;padding:11px 18px;background:rgba(107,157,232,0.12);border:1px solid rgba(107,157,232,0.3);border-radius:10px;color:#6b9de8;font-family:'Barlow',sans-serif;font-size:0.875rem;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:7px;">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+        Agregar
+      </button>
+    </div>
+  </div>
+</div>
+
 <script src="config.js"></script>
   <script src="sidebar.js"></script>
 <script src="punto-venta.js"></script>

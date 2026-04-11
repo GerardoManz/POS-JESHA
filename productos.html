@@ -308,6 +308,25 @@
         </div>
       </div>
 
+      <!-- GRANEL toggle -->
+      <div class="form-group full-width" id="granel-toggle-wrap">
+        <div style="display:flex;align-items:center;gap:14px;padding:12px 16px;border-radius:8px;border:1px solid var(--panel-border);background:rgba(255,255,255,0.02);">
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;margin:0;flex:1;">
+            <span style="font-size:0.85rem;font-weight:600;color:var(--text);">Producto a granel</span>
+            <span style="font-size:0.72rem;color:var(--muted);font-weight:400;">(se vende por metro, kg, litro, etc.)</span>
+          </label>
+          <label class="toggle-switch" style="position:relative;display:inline-block;width:44px;height:24px;flex-shrink:0;">
+            <input type="checkbox" id="producto-esGranel" style="opacity:0;width:0;height:0;" />
+            <span style="position:absolute;cursor:pointer;inset:0;background:rgba(255,255,255,0.1);border-radius:24px;transition:background 0.25s;">
+              <span id="granel-toggle-knob" style="position:absolute;content:'';height:18px;width:18px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:transform 0.25s;"></span>
+            </span>
+          </label>
+        </div>
+        <div id="granel-unidad-info" style="display:none;margin-top:8px;padding:8px 12px;background:rgba(107,157,232,0.08);border:1px solid rgba(107,157,232,0.2);border-radius:8px;font-size:0.8rem;color:#6b9de8;">
+          La unidad de venta (arriba) se usará como unidad de granel. Ej: <strong>mts</strong>, <strong>kg</strong>, <strong>lts</strong>
+        </div>
+      </div>
+
       <!-- Claves SAT -->
       <div class="form-row">
         <div class="form-group">

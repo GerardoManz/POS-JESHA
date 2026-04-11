@@ -407,7 +407,7 @@ function renderizarTabla(productos) {
     const catNombre   = p.categoria?.nombre || '-'
     return `<tr>
       <td>${p.codigoInterno || '-'}</td>
-      <td><strong>${p.nombre}</strong>${p.codigoBarras ? `<br/><small style="color:var(--muted)">${p.codigoBarras}</small>` : ''}</td>
+      <td><strong>${p.nombre}</strong>${p.esGranel ? `<span style="display:inline-block;margin-left:6px;padding:1px 6px;font-size:0.65rem;font-weight:700;background:rgba(107,157,232,0.15);color:#6b9de8;border-radius:4px;vertical-align:middle;letter-spacing:0.03em;">GRANEL${p.unidadVenta ? ' · ' + p.unidadVenta : ''}</span>` : ''}${p.codigoBarras ? `<br/><small style="color:var(--muted)">${p.codigoBarras}</small>` : ''}</td>
       <td>${deptoNombre ? `<small style="color:var(--muted);display:block;font-size:0.7rem;">${deptoNombre}</small>` : ''}
           <span class="categoria-badge">${catNombre}</span></td>
       <td>
@@ -471,6 +471,13 @@ window.editarProducto = async function(id) {
   document.getElementById('producto-factorConversion').value  = producto.factorConversion || ''
   document.getElementById('producto-claveSat').value          = producto.claveSat || ''
   document.getElementById('producto-unidadSat').value         = producto.unidadSat || ''
+  
+  // ✅ Toggle de granel
+  const granelCheck = document.getElementById('producto-esGranel')
+  if (granelCheck) {
+    granelCheck.checked = !!producto.esGranel
+    actualizarVisualGranel(granelCheck.checked)
+  }
   
   const deptoId = producto.categoria?.departamento?.id || ''
   llenarModalDepartamentos(deptoId)
@@ -569,6 +576,9 @@ function abrirModalNuevo() {
   if (modalProveedorSelect) { modalProveedorSelect.value = '' }
   if (imagenPreviewContainer) imagenPreviewContainer.style.display = 'none'
   if (document.getElementById('info-margen')) document.getElementById('info-margen').style.display = 'none'
+  // ✅ Resetear granel
+  const granelCheck = document.getElementById('producto-esGranel')
+  if (granelCheck) { granelCheck.checked = false; actualizarVisualGranel(false) }
   ocultarError()
   if (modal) modal.classList.add('active')
 }
@@ -612,6 +622,7 @@ async function guardarProducto(e) {
     factorConversion: parseFloat(document.getElementById('producto-factorConversion').value) || null,
     claveSat:         document.getElementById('producto-claveSat').value.trim() || null,
     unidadSat:        document.getElementById('producto-unidadSat').value.trim() || null,
+    esGranel:         document.getElementById('producto-esGranel')?.checked || false,
   }
   
   console.log('📤 Enviando datos al backend:', datos)
@@ -1115,6 +1126,22 @@ function configurarEventos() {
       if (e.target === modalProveedor) cerrarModalNuevoProveedor()
     })
   }
+
+  // ✅ Toggle de granel
+  const granelCheck = document.getElementById('producto-esGranel')
+  if (granelCheck) {
+    granelCheck.addEventListener('change', () => actualizarVisualGranel(granelCheck.checked))
+  }
+}
+
+// ✅ Visual del toggle de granel
+function actualizarVisualGranel(activo) {
+  const knob = document.getElementById('granel-toggle-knob')
+  const track = knob?.parentElement
+  const infoDiv = document.getElementById('granel-unidad-info')
+  if (knob) knob.style.transform = activo ? 'translateX(20px)' : 'translateX(0)'
+  if (track) track.style.background = activo ? '#6b9de8' : 'rgba(255,255,255,0.1)'
+  if (infoDiv) infoDiv.style.display = activo ? 'block' : 'none'
 }
 
 
@@ -1478,12 +1505,23 @@ window.abrirAjusteInventario = function(id) {
   const min   = producto.inventario?.stockMinimoAlerta ?? 5
 
   document.getElementById('ajuste-producto-nombre').textContent   = producto.nombre
-  document.getElementById('ajuste-stock-actual-display').textContent = stock
-  document.getElementById('ajuste-min-actual-display').textContent   = min
+  document.getElementById('ajuste-stock-actual-display').textContent = fmtStock(stock)
+  document.getElementById('ajuste-min-actual-display').textContent   = fmtStock(min)
   document.getElementById('ajuste-stock-nuevo').value = ''
   document.getElementById('ajuste-min-nuevo').value   = ''
   document.getElementById('ajuste-motivo').value      = ''
   document.getElementById('ajuste-error').style.display = 'none'
+
+  // ✅ Adaptar step para granel
+  const inputStockNuevo = document.getElementById('ajuste-stock-nuevo')
+  const inputMinNuevo   = document.getElementById('ajuste-min-nuevo')
+  if (producto.esGranel) {
+    if (inputStockNuevo) { inputStockNuevo.step = '0.001'; inputStockNuevo.min = '0' }
+    if (inputMinNuevo)   { inputMinNuevo.step = '0.001'; inputMinNuevo.min = '0' }
+  } else {
+    if (inputStockNuevo) { inputStockNuevo.step = '1'; inputStockNuevo.min = '0' }
+    if (inputMinNuevo)   { inputMinNuevo.step = '1'; inputMinNuevo.min = '0' }
+  }
 
   document.getElementById('modal-ajuste-inv').style.display = 'flex'
   setTimeout(() => document.getElementById('ajuste-stock-nuevo').focus(), 80)
@@ -1512,8 +1550,8 @@ async function guardarAjuste() {
 
   try {
     const body = {}
-    if (stockNuevo !== '') body.stockActual       = parseInt(stockNuevo)
-    if (minNuevo   !== '') body.stockMinimoAlerta = parseInt(minNuevo)
+    if (stockNuevo !== '') body.stockActual       = parseFloat(stockNuevo)
+    if (minNuevo   !== '') body.stockMinimoAlerta = parseFloat(minNuevo)
     if (motivo)            body.motivo            = motivo
 
     const token    = localStorage.getItem('jesha_token')

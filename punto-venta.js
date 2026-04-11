@@ -486,12 +486,13 @@ function mostrarProductos(productos) {
       <div class="producto-info">
         <h4>${nombreSeguro}</h4>
         <p class="producto-codigo">${p.codigoInterno}</p>
-        <p class="producto-precio">$${parseFloat(p.precioVenta || p.precioBase).toFixed(2)}</p>
+        ${p.esGranel ? `<p style="margin:2px 0 0;"><span style="display:inline-block;padding:1px 6px;font-size:0.65rem;font-weight:700;background:rgba(107,157,232,0.15);color:#6b9de8;border-radius:4px;letter-spacing:0.03em;">GRANEL${p.unidadVenta ? ' · ' + p.unidadVenta : ''}</span></p>` : ''}
+        <p class="producto-precio">$${parseFloat(p.precioVenta || p.precioBase).toFixed(2)}${p.esGranel && p.unidadVenta ? `<span style="font-size:0.7rem;color:var(--muted,#999);font-weight:400;"> / ${p.unidadVenta}</span>` : ''}</p>
         <p class="producto-stock ${p.stock > 0 ? '' : 'agotado'}">
           ${p.stock > 0 ? `Stock: ${(() => {
             const s = parseFloat(p.stock)
             return Number.isInteger(s) ? s : s.toFixed(3).replace(/\.?0+$/, '')
-          })()}` : 'Agotado'}
+          })()}${p.esGranel && p.unidadVenta ? ' ' + p.unidadVenta : ''}` : 'Agotado'}
         </p>
       </div>
     </div>`
@@ -504,12 +505,21 @@ function mostrarProductos(productos) {
 
 function agregarAlCarrito(productoId, nombre, precio, esGranel = false, unidadVenta = '') {
   const idParsed = parseInt(productoId, 10)
+
+  // ✅ GRANEL: abrir mini-modal para pedir cantidad exacta
+  if (esGranel) {
+    const existe = carrito.find(item => item.id === idParsed)
+    abrirModalGranel(idParsed, nombre, parseFloat(precio), unidadVenta, existe?.cantidad || '')
+    return
+  }
+
+  // Producto normal: sumar +1
   const existe = carrito.find(item => item.id === idParsed)
 
   if (existe) {
-    existe.cantidad = parseFloat((existe.cantidad + (esGranel ? 0.1 : 1)).toFixed(3))
+    existe.cantidad = existe.cantidad + 1
   } else {
-    carrito.push({ id: idParsed, nombre, precio: parseFloat(precio), precioOriginal: parseFloat(precio), cantidad: esGranel ? 0.1 : 1, esGranel, unidadVenta })
+    carrito.push({ id: idParsed, nombre, precio: parseFloat(precio), precioOriginal: parseFloat(precio), cantidad: 1, esGranel: false, unidadVenta: '' })
   }
 
   if (!productoCache.get(idParsed)) {
@@ -517,11 +527,84 @@ function agregarAlCarrito(productoId, nombre, precio, esGranel = false, unidadVe
       id: idParsed, nombre,
       precioVenta: precio, precioBase: precio,
       stock: null, codigoInterno: '',
-      esGranel, unidadVenta
+      esGranel: false, unidadVenta: ''
     })
   }
 
   actualizarCarrito()
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  MODAL CANTIDAD GRANEL
+// ══════════════════════════════════════════════════════════════════
+
+let _granelPendiente = null // { id, nombre, precio, unidadVenta }
+
+function abrirModalGranel(id, nombre, precio, unidadVenta, cantidadActual) {
+  _granelPendiente = { id, nombre, precio, unidadVenta }
+  const modal     = document.getElementById('modal-cantidad-granel')
+  const lblNombre = document.getElementById('granel-modal-producto-nombre')
+  const lblUnidad = document.getElementById('granel-modal-unidad-label')
+  const inputCant = document.getElementById('granel-modal-cantidad')
+  const stockInfo = document.getElementById('granel-modal-stock-info')
+  const errorDiv  = document.getElementById('granel-modal-error')
+
+  if (lblNombre) lblNombre.textContent = nombre
+  if (lblUnidad) lblUnidad.textContent = unidadVenta ? `(${unidadVenta})` : '(unidades)'
+  if (inputCant) {
+    inputCant.value = cantidadActual || ''
+    inputCant.placeholder = unidadVenta ? `Ej: 2.500 ${unidadVenta}` : 'Ej: 2.500'
+  }
+  if (errorDiv) { errorDiv.style.display = 'none'; errorDiv.textContent = '' }
+
+  // Mostrar stock disponible
+  const cached = productoCache.get(id)
+  if (stockInfo && cached && cached.stock !== null && cached.stock !== undefined) {
+    const s = parseFloat(cached.stock)
+    const stockFmt = Number.isInteger(s) ? s : s.toFixed(3).replace(/\.?0+$/, '')
+    stockInfo.textContent = `Stock disponible: ${stockFmt}${unidadVenta ? ' ' + unidadVenta : ''}`
+  } else if (stockInfo) {
+    stockInfo.textContent = ''
+  }
+
+  if (modal) modal.style.display = 'flex'
+  setTimeout(() => { if (inputCant) { inputCant.focus(); inputCant.select() } }, 100)
+}
+
+function cerrarModalGranel() {
+  const modal = document.getElementById('modal-cantidad-granel')
+  if (modal) modal.style.display = 'none'
+  _granelPendiente = null
+}
+
+function confirmarCantidadGranel() {
+  if (!_granelPendiente) return
+  const inputCant = document.getElementById('granel-modal-cantidad')
+  const errorDiv  = document.getElementById('granel-modal-error')
+  const cantidad  = parseFloat(inputCant?.value)
+
+  if (isNaN(cantidad) || cantidad <= 0) {
+    if (errorDiv) { errorDiv.textContent = 'Ingresa una cantidad válida mayor a 0'; errorDiv.style.display = 'block' }
+    inputCant?.focus()
+    return
+  }
+
+  const { id, nombre, precio, unidadVenta } = _granelPendiente
+  const existe = carrito.find(item => item.id === id)
+
+  if (existe) {
+    existe.cantidad = parseFloat(cantidad.toFixed(3))
+  } else {
+    carrito.push({ id, nombre, precio, precioOriginal: precio, cantidad: parseFloat(cantidad.toFixed(3)), esGranel: true, unidadVenta })
+  }
+
+  if (!productoCache.get(id)) {
+    productoCache.set(id, { id, nombre, precioVenta: precio, precioBase: precio, stock: null, codigoInterno: '', esGranel: true, unidadVenta })
+  }
+
+  cerrarModalGranel()
+  actualizarCarrito()
+  mostrarToast(`✓ ${nombre}: ${cantidad.toFixed(3)} ${unidadVenta || 'u.'} agregado`, 'success')
 }
 
 function eliminarDelCarrito(productoId) {
@@ -532,10 +615,12 @@ function eliminarDelCarrito(productoId) {
 function actualizarCantidad(productoId, cantidad) {
   const item = carrito.find(i => i.id === productoId)
   if (item) {
-    const cantParsed = parseFloat(cantidad)
+    let cantParsed = parseFloat(cantidad)
     if (isNaN(cantParsed) || cantParsed <= 0) {
       eliminarDelCarrito(productoId)
     } else {
+      // ✅ Bloquear decimales para productos NO granel
+      if (!item.esGranel) cantParsed = Math.round(cantParsed)
       item.cantidad = parseFloat(cantParsed.toFixed(3))
       actualizarCarrito()
     }
@@ -1323,8 +1408,8 @@ function cargarCotizacionDesdeStorage() {
         !Array.isArray(payload.items) || payload.items.length === 0) return
 
     payload.items.forEach(item => {
-      carrito.push({ id: item.id, nombre: item.nombre, precio: parseFloat(item.precio), cantidad: parseFloat(item.cantidad) || 1 })
-      productoCache.set(item.id, { id: item.id, nombre: item.nombre, precioVenta: item.precio, precioBase: item.precio, stock: null })
+      carrito.push({ id: item.id, nombre: item.nombre, precio: parseFloat(item.precio), cantidad: parseFloat(item.cantidad) || 1, esGranel: item.esGranel || false, unidadVenta: item.unidadVenta || '' })
+      productoCache.set(item.id, { id: item.id, nombre: item.nombre, precioVenta: item.precio, precioBase: item.precio, stock: null, esGranel: item.esGranel || false, unidadVenta: item.unidadVenta || '' })
     })
 
     if (payload.clienteId && payload.clienteNombre) {
@@ -1599,6 +1684,7 @@ function configurarEventListeners() {
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
       cerrarDropdownClientes()
+      cerrarModalGranel()
       modalConfirmacion.style.display     = 'none'
       modalClienteRapido.style.display    = 'none'
       modalAbrirTurno.style.display       = 'none'
@@ -1606,6 +1692,17 @@ function configurarEventListeners() {
       const exitoOverlay = document.getElementById('modal-venta-exitosa')
       if (exitoOverlay) exitoOverlay.style.display = 'none'
     }
+  })
+
+  // ✅ Eventos del modal de cantidad granel
+  document.getElementById('granel-modal-close')?.addEventListener('click', cerrarModalGranel)
+  document.getElementById('granel-modal-cancel')?.addEventListener('click', cerrarModalGranel)
+  document.getElementById('granel-modal-confirm')?.addEventListener('click', confirmarCantidadGranel)
+  document.getElementById('granel-modal-cantidad')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); confirmarCantidadGranel() }
+  })
+  document.getElementById('modal-cantidad-granel')?.addEventListener('click', e => {
+    if (e.target.id === 'modal-cantidad-granel') cerrarModalGranel()
   })
 
   console.log('✅ Event listeners configurados')
