@@ -70,6 +70,7 @@ router.post('/categorias',                      productosController.crearCategor
 // ═══════════════════════════════════════════════════════════════════
 
 router.post('/importar/csv', uploadCSV.single('archivo'), importacionController.importarCSV)
+router.post('/importar/datos-fiscales', uploadCSV.single('archivo'), importacionController.actualizarDatosFiscales)
 
 // ═══════════════════════════════════════════════════════════════════
 // CRUD PRODUCTOS

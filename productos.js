@@ -93,6 +93,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Inicializar ajuste de inventario
   initAjusteInventario()
+
+  // Inicializar actualización de datos fiscales
+  initActualizarFiscales()
 })
 
 // ═══════════════════════════════════════════════════════════════════
@@ -1549,4 +1552,85 @@ async function guardarAjuste() {
     btnConfirm.disabled  = false
     btnConfirm.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Guardar ajuste'
   }
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  ACTUALIZAR DATOS FISCALES — CSV con claveSat, unidadSat, proveedor
+//  Endpoint: POST /productos/importar/datos-fiscales
+// ════════════════════════════════════════════════════════════════════
+
+function initActualizarFiscales() {
+  const btnFiscales = document.getElementById('btn-actualizar-fiscales')
+  const inputCSV    = document.getElementById('input-csv-fiscales')
+
+  if (!btnFiscales || !inputCSV) return
+
+  btnFiscales.addEventListener('click', () => inputCSV.click())
+
+  inputCSV.addEventListener('change', async (e) => {
+    const archivo = e.target.files[0]
+    if (!archivo) return
+
+    // Confirmar antes de enviar
+    const confirmar = confirm(
+      `¿Actualizar datos fiscales con "${archivo.name}"?\n\n` +
+      `Solo se actualizarán: Clave SAT, Unidad SAT y Proveedor.\n` +
+      `No se eliminarán ni crearán productos.`
+    )
+
+    if (!confirmar) {
+      inputCSV.value = ''
+      return
+    }
+
+    // Deshabilitar botón mientras procesa
+    btnFiscales.disabled = true
+    const textoOriginal = btnFiscales.innerHTML
+    btnFiscales.innerHTML = `
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="animation:spin 1s linear infinite">
+        <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+      </svg>
+      Procesando...
+    `
+
+    try {
+      const formData = new FormData()
+      formData.append('archivo', archivo)
+
+      const token = localStorage.getItem('jesha_token')
+      const response = await fetch(`${API_URL}/productos/importar/datos-fiscales`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData
+      })
+
+      const resultado = await response.json()
+
+      if (!response.ok) throw new Error(resultado.error || 'Error en actualización')
+
+      // Log de omitidos en consola para diagnóstico
+      if (resultado.detalleOmitidos && resultado.detalleOmitidos.length > 0) {
+        console.warn(`⚠️ ${resultado.omitidos} productos sin match:`)
+        console.table(resultado.detalleOmitidos)
+      }
+
+      // Toast de éxito con resumen
+      jeshaToast(
+        `✅ Datos fiscales actualizados: ${resultado.actualizados} productos` +
+        (resultado.omitidos > 0 ? ` | ${resultado.omitidos} sin match` : '') +
+        (resultado.errores > 0 ? ` | ${resultado.errores} errores` : ''),
+        'success'
+      )
+
+      // Recargar tabla
+      await cargarProductos()
+
+    } catch (err) {
+      jeshaToast('❌ Error: ' + err.message, 'error')
+    } finally {
+      btnFiscales.disabled = false
+      btnFiscales.innerHTML = textoOriginal
+      inputCSV.value = ''
+    }
+  })
 }

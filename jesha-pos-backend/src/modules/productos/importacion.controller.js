@@ -158,6 +158,11 @@ function mapearProducto(fila) {
     if (codigoBarras && esNotacionCientifica(codigoBarras)) {
         codigoBarras = null
     }
+    // FIX: limpiar comillas residuales y forzar null si vacío
+    if (codigoBarras) {
+        codigoBarras = codigoBarras.replace(/^[\"']+|[\"']+$/g, '').trim()
+        if (!codigoBarras) codigoBarras = null
+    }
 
     // Stock inicial y mínimo desde el CSV
     const stockInicial = parseInt(fila['EXIST.']) || 0
@@ -183,15 +188,15 @@ function mapearProducto(fila) {
     const _proveedorApodo = (fila['APODO_PROVEEDOR'] || '').trim() || null
 
     return {
-        codigoInterno: fila['CLAVE'].trim(),
+        codigoInterno: fila['CLAVE'].trim().replace(/\s+0:00:00$/, '').replace(/^[\"']+|[\"']+$/g, ''),
         codigoBarras,
         nombre: (fila['DESCRIPCION'] || '').trim(),
         descripcion: fila['CARACTERISTICAS'] || null,
         precioBase:  parseFloat(fila['PRECIO 1']) || 0,
         precioVenta: fila['PRECIO_VENTA'] ? parseFloat(fila['PRECIO_VENTA']) : null,
         costo:       fila['PRECIO COMPRA'] ? parseFloat(fila['PRECIO COMPRA']) : null,
-        claveSat:  fila['CLAVE SAT']  || '31162800',
-        unidadSat: fila['UNIDAD SAT'] || 'H87',
+        claveSat:  fila['CLAVE SAT']  || null,
+        unidadSat: fila['UNIDAD SAT'] || null,
         esGranel,
         unidadVenta,
         activo: true,
@@ -343,11 +348,16 @@ async function preSeedProveedores(filas) {
 /**
  * Busca categoriaId en el cache ya poblado (sin queries, sin race condition)
  */
-function obtenerCategoriaIdDelCache(cacheCats, nombreDepto, nombreCat) {
-    if (!nombreDepto || !nombreCat) return 1
+async function obtenerCategoriaFallback() {
+    const primera = await prisma.categoria.findFirst({ orderBy: { id: 'asc' }, select: { id: true } })
+    return primera ? primera.id : null
+}
+
+function obtenerCategoriaIdDelCache(cacheCats, nombreDepto, nombreCat, fallbackId) {
+    if (!nombreDepto || !nombreCat) return fallbackId
 
     const key = `${nombreDepto.toUpperCase().trim()}|${nombreCat.trim()}`
-    return cacheCats.get(key) || 1
+    return cacheCats.get(key) || fallbackId
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -401,6 +411,16 @@ exports.importarCSV = async (req, res) => {
         // ── Pre-crear proveedores (auto-crear si no existe) ──
         const cacheProveedores = await preSeedProveedores(filasValidas)
 
+        // ── Obtener categoría fallback (primera existente en BD) ──
+        const categoriaFallbackId = await obtenerCategoriaFallback()
+        if (!categoriaFallbackId) {
+            return res.status(400).json({
+                error: 'No hay categorías en la base de datos. Crea al menos una categoría primero.',
+                total: 0, creados: 0, errores: 0
+            })
+        }
+        console.log(`📁 Categoría fallback: id=${categoriaFallbackId}`)
+
         // ── Procesar productos en lotes ──
         let creados = 0
         let actualizados = 0
@@ -420,7 +440,8 @@ exports.importarCSV = async (req, res) => {
                     const categoriaId = obtenerCategoriaIdDelCache(
                         cacheCats,
                         fila['DEPARTAMENTO'],
-                        fila['CATEGORIA']
+                        fila['CATEGORIA'],
+                        categoriaFallbackId
                     )
 
                     // Upsert: crear si no existe, actualizar si existe
@@ -429,7 +450,13 @@ exports.importarCSV = async (req, res) => {
                     })
 
                     if (existente) {
-                        const { _stockInicial, _stockMinimo, _stockMaximo, _proveedorNombre, ...dataSinAux } = data
+                        const { _stockInicial, _stockMinimo, _stockMaximo, _proveedorNombre, _proveedorApodo, ...dataSinAux } = data
+
+                        // FIX: codigoBarras vacío "" viola @unique — forzar null
+                        if (!dataSinAux.codigoBarras || dataSinAux.codigoBarras.trim() === '') {
+                            dataSinAux.codigoBarras = null
+                        }
+
                         await prisma.producto.update({
                             where: { codigoInterno: dataSinAux.codigoInterno },
                             data: {
@@ -480,7 +507,12 @@ exports.importarCSV = async (req, res) => {
                         actualizados++
                     } else {
                         // Extraer campos auxiliares antes de insertar
-                        const { _stockInicial, _stockMinimo, _stockMaximo, _proveedorNombre, ...dataSinAux } = data
+                        const { _stockInicial, _stockMinimo, _stockMaximo, _proveedorNombre, _proveedorApodo, ...dataSinAux } = data
+
+                        // FIX: codigoBarras vacío "" viola @unique — forzar null
+                        if (!dataSinAux.codigoBarras || dataSinAux.codigoBarras.trim() === '') {
+                            dataSinAux.codigoBarras = null
+                        }
 
                         let productoCreado
                         try {
@@ -488,9 +520,14 @@ exports.importarCSV = async (req, res) => {
                                 data: { ...dataSinAux, categoriaId }
                             })
                         } catch (createErr) {
-                            productoCreado = await prisma.producto.create({
-                                data: { ...dataSinAux, codigoBarras: null, categoriaId }
-                            })
+                            // Segundo intento sin codigoBarras (por si es duplicado)
+                            try {
+                                productoCreado = await prisma.producto.create({
+                                    data: { ...dataSinAux, codigoBarras: null, categoriaId }
+                                })
+                            } catch (createErr2) {
+                                throw new Error(`No se pudo crear: ${createErr2.message.substring(0, 200)}`)
+                            }
                         }
 
                         // Crear o actualizar inventario con stock del CSV
@@ -529,7 +566,7 @@ exports.importarCSV = async (req, res) => {
                     erroresInsert.push({
                         fila: numFila,
                         clave: fila['CLAVE'],
-                        error: err.message.substring(0, 300)
+                        error: err.message.substring(0, 500)
                     })
                 }
             })
@@ -565,6 +602,248 @@ exports.importarCSV = async (req, res) => {
         res.status(500).json({
             error: 'Error en importación: ' + error.message,
             total: 0, creados: 0, errores: 0
+        })
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ACTUALIZAR DATOS FISCALES — Actualización parcial masiva
+// Solo toca: claveSat, unidadSat, proveedorId (si viene)
+// CERO destrucción: no elimina, no oculta, no crea productos
+// ═══════════════════════════════════════════════════════════════════
+
+exports.actualizarDatosFiscales = async (req, res) => {
+    try {
+        // ── Validar archivo ──
+        if (!req.file) {
+            return res.status(400).json({
+                error: 'Archivo CSV requerido. Envía el archivo con campo "archivo".',
+                actualizados: 0, omitidos: 0, errores: 0
+            })
+        }
+
+        console.log(`\n📦 [DATOS FISCALES] Archivo: ${req.file.originalname} (${(req.file.size / 1024).toFixed(1)} KB)`)
+
+        // ── Parsear CSV ──
+        const { headers, filas } = parsearCSVBuffer(req.file.buffer)
+
+        console.log(`📋 Headers: ${headers.join(', ')}`)
+        console.log(`📊 Filas con datos: ${filas.length}`)
+
+        if (filas.length === 0) {
+            return res.status(400).json({
+                error: 'CSV vacío o sin datos válidos',
+                actualizados: 0, omitidos: 0, errores: 0
+            })
+        }
+
+        // ── Validar columnas requeridas ──
+        const columnasRequeridas = ['CLAVE', 'CLAVE SAT', 'UNIDAD SAT']
+        const faltantes = columnasRequeridas.filter(col =>
+            !headers.some(h => h.trim().toUpperCase() === col)
+        )
+
+        if (faltantes.length > 0) {
+            return res.status(400).json({
+                error: `Columnas faltantes en el CSV: ${faltantes.join(', ')}. Columnas encontradas: ${headers.join(', ')}`,
+                actualizados: 0, omitidos: 0, errores: 0
+            })
+        }
+
+        // ── Verificar si hay columnas de proveedor (opcionales) ──
+        const tieneProveedor = headers.some(h => h.trim().toUpperCase() === 'PROVEEDOR')
+        const tieneApodo     = headers.some(h => h.trim().toUpperCase() === 'APODO_PROVEEDOR')
+
+        console.log(`🏭 Columnas de proveedor: ${tieneProveedor ? 'SÍ' : 'NO'}`)
+
+        // ── Pre-crear proveedores si vienen en el CSV ──
+        let cacheProveedores = new Map()
+        if (tieneProveedor) {
+            cacheProveedores = await preSeedProveedores(filas)
+        }
+
+        // ── Procesar en lotes ──
+        let actualizados = 0
+        let omitidos     = 0
+        const erroresProc   = []
+        const detalleOmitidos = []  // ← NUEVO: lista de claves sin match
+        const BATCH_SIZE  = 50
+
+        for (let i = 0; i < filas.length; i += BATCH_SIZE) {
+            const lote = filas.slice(i, i + BATCH_SIZE)
+
+            const promesas = lote.map(async (fila, j) => {
+                const numFila = i + j + 2
+                try {
+                    const claveCSV   = (fila['CLAVE'] || '').trim()
+                    const claveSat   = (fila['CLAVE SAT'] || '').trim() || null
+                    const unidadSat  = (fila['UNIDAD SAT'] || '').trim() || null
+
+                    if (!claveCSV) {
+                        omitidos++
+                        detalleOmitidos.push({ fila: numFila, clave: '(vacía)', razon: 'CLAVE vacía' })
+                        return
+                    }
+
+                    // ── Filtrar notación científica (Excel destruyó el dato) ──
+                    if (/^[\d.]+[eE]\+\d+$/.test(claveCSV)) {
+                        omitidos++
+                        detalleOmitidos.push({
+                            fila: numFila,
+                            clave: claveCSV,
+                            descripcion: (fila['DESCRIPCION'] || '').substring(0, 80),
+                            razon: 'Notación científica — Excel destruyó esta clave'
+                        })
+                        return
+                    }
+
+                    // ── Limpiar fechas de Excel (ej: "2026-04-12 0:00:00" → "2026-04-12") ──
+                    if (/\d{4}-\d{2}-\d{2}\s+0:00:00/.test(claveCSV)) {
+                        claveCSV = claveCSV.replace(/\s+0:00:00/, '').trim()
+                    }
+
+                    // ── Match doble: codigoInterno O codigoBarras ──
+                    // Intento 1: match exacto
+                    let producto = await prisma.producto.findFirst({
+                        where: {
+                            OR: [
+                                { codigoInterno: claveCSV },
+                                { codigoBarras:  claveCSV }
+                            ]
+                        },
+                        select: { id: true, codigoInterno: true }
+                    })
+
+                    // Intento 2: si no matcheó y es numérico, buscar con endsWith (ceros iniciales)
+                    if (!producto && /^\d+$/.test(claveCSV)) {
+                        const sinCeros = claveCSV.replace(/^0+/, '')
+                        if (sinCeros.length > 0) {
+                            producto = await prisma.producto.findFirst({
+                                where: {
+                                    OR: [
+                                        { codigoInterno: sinCeros },
+                                        { codigoBarras:  sinCeros },
+                                        { codigoInterno: { endsWith: sinCeros } },
+                                        { codigoBarras:  { endsWith: sinCeros } }
+                                    ]
+                                },
+                                select: { id: true, codigoInterno: true }
+                            })
+                        }
+                    }
+
+                    // Intento 3: startsWith — la clave del CSV está truncada
+                    // Ej: CSV="DOT3" → BD="DOT3 LF3", CSV="CAEV-23" → BD="CAEV-23L"
+                    // Solo si la clave tiene 3+ caracteres (evitar matches falsos con "1", "22")
+                    if (!producto && claveCSV.length >= 3) {
+                        producto = await prisma.producto.findFirst({
+                            where: {
+                                OR: [
+                                    { codigoInterno: { startsWith: claveCSV, mode: 'insensitive' } },
+                                    { codigoBarras:  { startsWith: claveCSV, mode: 'insensitive' } }
+                                ]
+                            },
+                            select: { id: true, codigoInterno: true }
+                        })
+                    }
+
+                    // Intento 4: limpiar comillas y ceros del CSV para emparejar con BD
+                    // Ej: CSV="82269122020" → BD tiene "082269122020" (guardado con comillas en importación)
+                    if (!producto) {
+                        const limpia = claveCSV.replace(/^[\"']+|[\"']+$/g, '').trim()
+                        const conCero = '0' + limpia
+                        const sinCero = limpia.replace(/^0+/, '')
+                        const variantes = [limpia, conCero, sinCero].filter(v => v && v !== claveCSV)
+                        if (variantes.length > 0) {
+                            producto = await prisma.producto.findFirst({
+                                where: {
+                                    OR: variantes.flatMap(v => [
+                                        { codigoInterno: v },
+                                        { codigoBarras: v }
+                                    ])
+                                },
+                                select: { id: true, codigoInterno: true }
+                            })
+                        }
+                    }
+
+                    if (!producto) {
+                        omitidos++
+                        detalleOmitidos.push({
+                            fila: numFila,
+                            clave: claveCSV,
+                            descripcion: (fila['DESCRIPCION'] || '').substring(0, 80),
+                            razon: 'Sin match en codigoInterno ni codigoBarras'
+                        })
+                        return
+                    }
+
+                    // ── Construir datos a actualizar ──
+                    const updateData = {}
+                    if (claveSat)  updateData.claveSat  = claveSat
+                    if (unidadSat) updateData.unidadSat = unidadSat
+
+                    // ── Proveedor (solo si viene la columna) ──
+                    if (tieneProveedor) {
+                        const proveedorNombre = normalizarNombreProveedor(fila['PROVEEDOR'])
+                        if (proveedorNombre) {
+                            const proveedorId = cacheProveedores.get(proveedorNombre)
+                            if (proveedorId) {
+                                // Vincular proveedor al producto (upsert en tabla pivote)
+                                await prisma.proveedorProducto.upsert({
+                                    where:  { proveedorId_productoId: { proveedorId, productoId: producto.id } },
+                                    update: { activo: true },
+                                    create: { proveedorId, productoId: producto.id, precioCosto: 0, activo: true }
+                                })
+                            }
+                        }
+                    }
+
+                    // ── Ejecutar UPDATE solo si hay algo que actualizar ──
+                    if (Object.keys(updateData).length > 0) {
+                        await prisma.producto.update({
+                            where: { id: producto.id },
+                            data: updateData
+                        })
+                    }
+
+                    actualizados++
+
+                } catch (err) {
+                    erroresProc.push({
+                        fila: numFila,
+                        clave: fila['CLAVE'],
+                        error: err.message.substring(0, 500)
+                    })
+                }
+            })
+
+            await Promise.all(promesas)
+            const procesados = Math.min(i + BATCH_SIZE, filas.length)
+            console.log(`   Procesados: ${procesados}/${filas.length}`)
+        }
+
+        // ── Respuesta ──
+        console.log(`\n✅ Actualización de datos fiscales completada`)
+        console.log(`   Actualizados: ${actualizados}`)
+        console.log(`   Omitidos (sin match): ${omitidos}`)
+        console.log(`   Errores: ${erroresProc.length}`)
+
+        res.json({
+            mensaje: 'Actualización de datos fiscales completada',
+            total: filas.length,
+            actualizados,
+            omitidos,
+            errores: erroresProc.length,
+            detalleErrores: erroresProc.slice(0, 30),
+            detalleOmitidos: detalleOmitidos.slice(0, 50)
+        })
+
+    } catch (error) {
+        console.error('❌ Error general en actualización fiscal:', error)
+        res.status(500).json({
+            error: 'Error en actualización: ' + error.message,
+            actualizados: 0, omitidos: 0, errores: 0
         })
     }
 }
