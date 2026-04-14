@@ -73,11 +73,12 @@ const generarTicket = async (req, res) => {
     const totalTarjeta       = ['CREDITO','DEBITO'].includes(venta.metodoPago)       ? parseFloat(venta.total) : 0
     const totalTransferencia = venta.metodoPago === 'TRANSFERENCIA'                  ? parseFloat(venta.total) : 0
     const totalCredito       = venta.metodoPago === 'CREDITO_CLIENTE'                ? parseFloat(venta.total) : 0
+    const esMixto            = venta.metodoPago === 'MIXTO' && venta.desglosePagos
 
     const fecha   = new Date(venta.creadaEn || venta.fecha || venta.createdAt)
     const fechaStr = `${String(fecha.getDate()).padStart(2,'0')}/${String(fecha.getMonth()+1).padStart(2,'0')}/${String(fecha.getFullYear()).slice(-2)}`
 
-    const html = generarHTMLTicket(venta, qrDataUrl, fechaStr, { totalEfectivo, totalTarjeta, totalTransferencia, totalCredito })
+    const html = generarHTMLTicket(venta, qrDataUrl, fechaStr, { totalEfectivo, totalTarjeta, totalTransferencia, totalCredito, esMixto })
     res.setHeader('Content-Type', 'text/html; charset=utf-8')
     res.send(html)
 
@@ -132,7 +133,8 @@ function generarHTMLTicket(venta, qrDataUrl, fechaStr, pagos) {
     CREDITO:         'T. Crédito',
     DEBITO:          'T. Débito',
     TRANSFERENCIA:   'Transferencia',
-    CREDITO_CLIENTE: 'Crédito cliente'
+    CREDITO_CLIENTE: 'Crédito cliente',
+    MIXTO:           'Pago Mixto'
   }[venta.metodoPago] || venta.metodoPago
 
   const montoPagado  = parseFloat(venta.montoPagado || 0)
@@ -141,6 +143,18 @@ function generarHTMLTicket(venta, qrDataUrl, fechaStr, pagos) {
     ? `<tr><td class="lbl">Recibido:</td><td class="val">${fmt(montoPagado)}</td></tr>
        <tr class="bold"><td class="lbl">Cambio:</td><td class="val">${fmt(cambio)}</td></tr>`
     : ''
+
+  // ── Desglose de pago mixto ──
+  const metodoLabelCorto = { EFECTIVO:'Efectivo', CREDITO:'T. Crédito', DEBITO:'T. Débito', TRANSFERENCIA:'Transf.' }
+  let seccionMixto = ''
+  if (pagos.esMixto && venta.desglosePagos) {
+    seccionMixto = venta.desglosePagos.map(p =>
+      `<tr><td class="lbl">${metodoLabelCorto[p.metodo] || p.metodo}:</td><td class="val">${fmt(p.monto)}</td></tr>`
+    ).join('')
+    if (cambio > 0) {
+      seccionMixto += `<tr class="bold"><td class="lbl">Cambio:</td><td class="val">${fmt(cambio)}</td></tr>`
+    }
+  }
 
   // ── Extraer N° Autorización Ingenico de notas ──
   let refAutorizacion = null
@@ -271,6 +285,7 @@ html, body {
 <table class="info-tbl">
   <tr><td class="lbl">Método:</td><td class="val">${metodoLabel}</td></tr>
   ${seccionAutorizacion}
+  ${seccionMixto}
   ${seccionPago}
   ${pagos.totalCredito > 0 ? `<tr class="bold"><td class="lbl">A crédito:</td><td class="val">${fmt(pagos.totalCredito)}</td></tr>` : ''}
 </table>

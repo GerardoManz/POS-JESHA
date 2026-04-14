@@ -827,7 +827,7 @@ function mostrarModalConfirmacion() {
   const total = carrito.reduce((sum, item) => sum + (item.precio * item.cantidad), 0)
 
   document.getElementById('confirmacion-total').textContent  = `$${total.toFixed(2)}`
-  const metodoLabel = { EFECTIVO:'💵 Efectivo', CREDITO:'💳 T. Crédito', DEBITO:'💳 T. Débito', TRANSFERENCIA:'🔄 Transferencia', CREDITO_CLIENTE:'🏦 Crédito cliente' }
+  const metodoLabel = { EFECTIVO:'💵 Efectivo', CREDITO:'💳 T. Crédito', DEBITO:'💳 T. Débito', TRANSFERENCIA:'🔄 Transferencia', CREDITO_CLIENTE:'🏦 Crédito cliente', MIXTO:'🔀 Pago Mixto' }
   document.getElementById('confirmacion-metodo').textContent = metodoLabel[metodoPagoSeleccionado] || metodoPagoSeleccionado
 
   const rowCliente = document.getElementById('confirm-row-cliente')
@@ -885,6 +885,17 @@ function mostrarModalConfirmacion() {
       }
     }
     if (esTarjeta) setTimeout(() => refInput?.focus(), 150)
+  }
+
+  // ── Sección mixto ──
+  const mixtoWrap = document.getElementById('confirm-mixto-wrap')
+  if (mixtoWrap) {
+    if (metodoPagoSeleccionado === 'MIXTO') {
+      mixtoWrap.style.display = 'block'
+      inicializarPagoMixto(total)
+    } else {
+      mixtoWrap.style.display = 'none'
+    }
   }
 
   const selVendedor = document.getElementById('confirm-vendedor-select')
@@ -1091,7 +1102,8 @@ function mostrarModalExito(ventaData, totalFinal) {
     CREDITO:         '💳 T. Crédito',
     DEBITO:          '💳 T. Débito',
     TRANSFERENCIA:   '🔄 Transferencia',
-    CREDITO_CLIENTE: '🏦 Crédito cliente'
+    CREDITO_CLIENTE: '🏦 Crédito cliente',
+    MIXTO:           '🔀 Pago Mixto'
   }
   document.getElementById('exito-metodo').textContent =
     metodoLabel[ventaData.metodoPago] || metodoLabel[metodoPagoSeleccionado] || ventaData.metodoPago || '—'
@@ -1104,6 +1116,23 @@ function mostrarModalExito(ventaData, totalFinal) {
     if (cambio >= 0) {
       document.getElementById('exito-cambio').textContent = `$${cambio.toFixed(2)}`
       rowCambio.style.display = 'flex'
+    } else {
+      rowCambio.style.display = 'none'
+    }
+  } else if (metodoPagoSeleccionado === 'MIXTO') {
+    // Mostrar cambio del componente efectivo
+    const pagos = obtenerDesgloseMixto()
+    const pagoEfectivo = pagos.find(p => p.metodo === 'EFECTIVO')
+    if (pagoEfectivo) {
+      const sumNoEfectivo = pagos.filter(p => p.metodo !== 'EFECTIVO').reduce((s, p) => s + parseFloat(p.monto), 0)
+      const necesarioEfectivo = totalFinal - sumNoEfectivo
+      const sobraEfectivo = parseFloat(pagoEfectivo.monto) - necesarioEfectivo
+      if (sobraEfectivo > 0.005) {
+        document.getElementById('exito-cambio').textContent = `$${sobraEfectivo.toFixed(2)}`
+        rowCambio.style.display = 'flex'
+      } else {
+        rowCambio.style.display = 'none'
+      }
     } else {
       rowCambio.style.display = 'none'
     }
@@ -1150,15 +1179,34 @@ async function confirmarVenta() {
 
     const esTarjetaPago = ['CREDITO', 'DEBITO'].includes(metodoPagoSeleccionado)
     const refTarjeta    = document.getElementById('confirm-referencia-tarjeta')?.value.trim() || ''
-    // ── DESPUÉS — REEMPLAZAR CON ESTO ──
-if (esTarjetaPago && refTarjeta) {
-  if (!/^\d+$/.test(refTarjeta) || refTarjeta.length < 4 || refTarjeta.length > 6) {
-    ventaEnProceso = false
-    mostrarToast('El N° de Autorización debe ser de 4 a 6 dígitos numéricos', 'warning')
-    document.getElementById('confirm-referencia-tarjeta')?.focus()
-    return
-  }
-}
+    if (esTarjetaPago && refTarjeta) {
+      if (!/^\d+$/.test(refTarjeta) || refTarjeta.length < 4 || refTarjeta.length > 6) {
+        ventaEnProceso = false
+        mostrarToast('El N° de Autorización debe ser de 4 a 6 dígitos numéricos', 'warning')
+        document.getElementById('confirm-referencia-tarjeta')?.focus()
+        return
+      }
+    }
+
+    // Validar pago mixto
+    if (metodoPagoSeleccionado === 'MIXTO') {
+      const pagos = obtenerDesgloseMixto()
+      if (pagos.length < 2) {
+        ventaEnProceso = false
+        mostrarToast('Pago mixto requiere al menos 2 métodos de pago', 'warning')
+        return
+      }
+      const totalBruto = carrito.reduce((s, i) => s + (i.precio * i.cantidad), 0)
+      const { pct } = getPctEfectivo()
+      const descAmt = parseFloat((totalBruto * (pct / 100)).toFixed(2))
+      const totalConDesc = parseFloat((totalBruto - descAmt).toFixed(2))
+      const sumaPagos = pagos.reduce((s, p) => s + parseFloat(p.monto), 0)
+      if (sumaPagos < totalConDesc - 0.01) {
+        ventaEnProceso = false
+        mostrarToast(`Faltan $${(totalConDesc - sumaPagos).toFixed(2)} para cubrir el total`, 'warning')
+        return
+      }
+    }
 
     if (metodoPagoSeleccionado === 'EFECTIVO') {
       const montoInput = document.getElementById('confirm-monto-recibido')
@@ -1226,6 +1274,16 @@ if (esTarjetaPago && refTarjeta) {
 
     const montoInputVal = parseFloat(document.getElementById('confirm-monto-recibido')?.value) || 0
 
+    // Calcular montoPagado según método
+    let montoPagadoPayload = totalFinal
+    let desglosePagosPayload = null
+    if (metodoPagoSeleccionado === 'EFECTIVO') {
+      montoPagadoPayload = montoInputVal
+    } else if (metodoPagoSeleccionado === 'MIXTO') {
+      desglosePagosPayload = obtenerDesgloseMixto()
+      montoPagadoPayload = desglosePagosPayload.reduce((s, p) => s + parseFloat(p.monto), 0)
+    }
+
     const payload = {
       sucursalId:  parseInt(sucursalIdSeguro, 10),
       usuarioId:   vendId,
@@ -1236,8 +1294,9 @@ if (esTarjetaPago && refTarjeta) {
       subtotal:    parseFloat(total.toFixed(2)),
       descuento:   descAmt,
       total:       totalFinal,
-      montoPagado: metodoPagoSeleccionado === 'EFECTIVO' ? montoInputVal : totalFinal,
+      montoPagado: montoPagadoPayload,
       esCredito,
+      desglosePagos: desglosePagosPayload,
       notas: esTarjetaPago ? `Ref. Ingenico: ${refTarjeta}` : null,
       detalles
     }
@@ -1706,3 +1765,114 @@ function configurarEventListeners() {
 }
 
 console.log('✅ punto-venta.js completamente cargado')
+
+// ══════════════════════════════════════════════════════════════════
+//  PAGO MIXTO — Funciones UI
+// ══════════════════════════════════════════════════════════════════
+
+function inicializarPagoMixto(totalVenta) {
+  const list = document.getElementById('mixto-pagos-list')
+  const totalRef = document.getElementById('mixto-total-ref')
+  if (totalRef) totalRef.textContent = `$${totalVenta.toFixed(2)}`
+  list.innerHTML = ''
+  agregarFilaMixto('EFECTIVO')
+  agregarFilaMixto('DEBITO')
+  recalcularMixto()
+
+  document.getElementById('btn-mixto-agregar').onclick = () => {
+    agregarFilaMixto('TRANSFERENCIA')
+    recalcularMixto()
+  }
+}
+
+function agregarFilaMixto(metodoDefault) {
+  const list = document.getElementById('mixto-pagos-list')
+  const row = document.createElement('div')
+  row.style.cssText = 'display:flex;gap:8px;align-items:center;margin-bottom:8px;'
+  row.innerHTML = `
+    <select class="mixto-metodo" style="flex:1;padding:7px 10px;background:rgba(255,255,255,0.04);border:1px solid var(--panel-border);border-radius:8px;color:var(--text);font-size:0.85rem;color-scheme:dark;">
+      <option value="EFECTIVO" ${metodoDefault==='EFECTIVO'?'selected':''}>💵 Efectivo</option>
+      <option value="CREDITO" ${metodoDefault==='CREDITO'?'selected':''}>💳 T. Crédito</option>
+      <option value="DEBITO" ${metodoDefault==='DEBITO'?'selected':''}>💳 T. Débito</option>
+      <option value="TRANSFERENCIA" ${metodoDefault==='TRANSFERENCIA'?'selected':''}>🔄 Transf.</option>
+    </select>
+    <input type="number" class="mixto-monto" min="0" step="0.01" placeholder="$0.00"
+      style="width:110px;padding:7px 10px;background:rgba(255,255,255,0.04);border:1px solid var(--panel-border);border-radius:8px;color:var(--text);font-size:0.85rem;text-align:right;" />
+    <button type="button" class="mixto-quitar" style="background:none;border:none;color:#ff6b6b;font-size:1.1rem;cursor:pointer;padding:4px 8px;" title="Quitar">✕</button>
+  `
+  row.querySelector('.mixto-monto').addEventListener('input', recalcularMixto)
+  row.querySelector('.mixto-quitar').addEventListener('click', () => {
+    row.remove()
+    recalcularMixto()
+  })
+  list.appendChild(row)
+  setTimeout(() => row.querySelector('.mixto-monto')?.focus(), 50)
+}
+
+function recalcularMixto() {
+  const rows = document.querySelectorAll('#mixto-pagos-list > div')
+  let suma = 0
+  rows.forEach(row => {
+    const monto = parseFloat(row.querySelector('.mixto-monto')?.value) || 0
+    suma += monto
+  })
+
+  const totalBruto = carrito.reduce((s, i) => s + (i.precio * i.cantidad), 0)
+  const { pct } = getPctEfectivo()
+  const descAmt = parseFloat((totalBruto * (pct / 100)).toFixed(2))
+  const totalFinal = parseFloat((totalBruto - descAmt).toFixed(2))
+
+  const cubierto = document.getElementById('mixto-cubierto')
+  const falta = document.getElementById('mixto-falta')
+  const totalRef = document.getElementById('mixto-total-ref')
+  const cambioWrap = document.getElementById('mixto-cambio-wrap')
+  const cambioEl = document.getElementById('mixto-cambio')
+
+  if (cubierto) cubierto.textContent = `$${suma.toFixed(2)}`
+  if (totalRef) totalRef.textContent = `$${totalFinal.toFixed(2)}`
+
+  const diferencia = totalFinal - suma
+  if (falta) {
+    if (diferencia > 0.01) {
+      falta.textContent = `(faltan $${diferencia.toFixed(2)})`
+      falta.style.color = '#e8710a'
+    } else if (diferencia < -0.01) {
+      falta.textContent = ''
+    } else {
+      falta.textContent = '✓ Cubierto'
+      falta.style.color = '#60d080'
+    }
+  }
+
+  // Cambio solo sobre efectivo
+  if (cambioWrap && cambioEl) {
+    const pagos = obtenerDesgloseMixto()
+    const pagoEfectivo = pagos.find(p => p.metodo === 'EFECTIVO')
+    if (pagoEfectivo && suma > totalFinal + 0.005) {
+      const sumNoEfectivo = pagos.filter(p => p.metodo !== 'EFECTIVO').reduce((s, p) => s + parseFloat(p.monto), 0)
+      const necesarioEfectivo = totalFinal - sumNoEfectivo
+      const sobraEfectivo = parseFloat(pagoEfectivo.monto) - necesarioEfectivo
+      if (sobraEfectivo > 0.005) {
+        cambioEl.textContent = `$${sobraEfectivo.toFixed(2)}`
+        cambioWrap.style.display = 'block'
+      } else {
+        cambioWrap.style.display = 'none'
+      }
+    } else {
+      cambioWrap.style.display = 'none'
+    }
+  }
+}
+
+function obtenerDesgloseMixto() {
+  const rows = document.querySelectorAll('#mixto-pagos-list > div')
+  const pagos = []
+  rows.forEach(row => {
+    const metodo = row.querySelector('.mixto-metodo')?.value
+    const monto = parseFloat(row.querySelector('.mixto-monto')?.value) || 0
+    if (metodo && monto > 0) {
+      pagos.push({ metodo, monto: parseFloat(monto.toFixed(2)) })
+    }
+  })
+  return pagos
+}

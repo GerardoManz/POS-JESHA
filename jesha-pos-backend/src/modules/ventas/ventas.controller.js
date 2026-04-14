@@ -43,18 +43,31 @@ exports.crearVenta = async (req, res) => {
       return res.status(403).json({ error: 'Sin permiso para aplicar descuentos', codigo: 'SIN_PERMISO_DESCUENTO' })
     }
 
-    // ── Validar referencia Ingenico si es tarjeta ─────────────────
-    // ── DESPUÉS — REEMPLAZAR CON ESTO ──
-const esTarjetaPago = ['CREDITO', 'DEBITO'].includes(metodoPago)
-if (esTarjetaPago && notas) {
-  const refMatch = notas.match(/^Ref\. Ingenico:\s*(\d+)$/)
-  if (refMatch) {
-    const refDigitos = refMatch[1]
-    if (refDigitos.length < 4 || refDigitos.length > 6) {
-      return res.status(400).json({ error: 'N° de Autorización debe ser de 4 a 6 dígitos', codigo: 'REF_INGENICO_INVALIDA' })
+    // ── Validar referencia Ingenico si es tarjeta (opcional) ─────
+    const esTarjetaPago = ['CREDITO', 'DEBITO'].includes(metodoPago)
+    if (esTarjetaPago && notas) {
+      const refMatch = notas.match(/^Ref\. Ingenico:\s*(\d+)$/)
+      if (refMatch && (refMatch[1].length < 4 || refMatch[1].length > 6)) {
+        return res.status(400).json({ error: 'N° de Autorización debe ser de 4 a 6 dígitos', codigo: 'REF_INGENICO_INVALIDA' })
+      }
     }
-  }
-}
+
+    // ── Validar desglose de pagos mixtos ─────────────────────────
+    const desglosePagos = req.body.desglosePagos || null
+    if (metodoPago === 'MIXTO') {
+      if (!desglosePagos || !Array.isArray(desglosePagos) || desglosePagos.length < 2) {
+        return res.status(400).json({ error: 'Pago mixto requiere al menos 2 métodos de pago', codigo: 'MIXTO_MIN_2' })
+      }
+      const metodosPermitidos = ['EFECTIVO', 'CREDITO', 'DEBITO', 'TRANSFERENCIA']
+      for (const pago of desglosePagos) {
+        if (!pago.metodo || !metodosPermitidos.includes(pago.metodo)) {
+          return res.status(400).json({ error: `Método inválido en desglose: ${pago.metodo}`, codigo: 'MIXTO_METODO_INVALIDO' })
+        }
+        if (!pago.monto || parseFloat(pago.monto) <= 0) {
+          return res.status(400).json({ error: 'Cada pago debe tener monto mayor a 0', codigo: 'MIXTO_MONTO_INVALIDO' })
+        }
+      }
+    }
 
     let totalRecalculado = 0
     const detallesValidados = []
@@ -90,6 +103,15 @@ if (esTarjetaPago && notas) {
     if (metodoPago === 'CREDITO_CLIENTE') {
       facturaEstado = 'BLOQUEADA'
       facturaLimite = null
+    } else if (metodoPago === 'MIXTO') {
+      // MIXTO: evaluar si algún pago es efectivo y total > 2000
+      const tieneEfectivo = desglosePagos?.some(p => p.metodo === 'EFECTIVO')
+      if (tieneEfectivo && totalEsperado > 2000) {
+        facturaEstado = 'BLOQUEADA'
+        facturaLimite.setHours(facturaLimite.getHours() + 72)
+      } else {
+        facturaLimite.setDate(facturaLimite.getDate() + 30)
+      }
     } else if (metodoPago === 'EFECTIVO' && totalEsperado > 2000) {
       facturaEstado = 'BLOQUEADA'
       facturaLimite.setHours(facturaLimite.getHours() + 72)
@@ -144,16 +166,30 @@ if (esTarjetaPago && notas) {
 
       const montoPagadoFinal = metodoPago === 'EFECTIVO'
         ? parseFloat(parseFloat(montoPagadoRaw || 0).toFixed(2))
-        : totalEsperado
-      const cambioFinal = metodoPago === 'EFECTIVO' && montoPagadoFinal > totalEsperado
-        ? parseFloat((montoPagadoFinal - totalEsperado).toFixed(2))
-        : 0
+        : metodoPago === 'MIXTO'
+          ? parseFloat(desglosePagos.reduce((s, p) => s + parseFloat(p.monto), 0).toFixed(2))
+          : totalEsperado
+
+      // Cambio: solo sobre efectivo (individual o componente mixto)
+      let cambioFinal = 0
+      if (metodoPago === 'EFECTIVO' && montoPagadoFinal > totalEsperado) {
+        cambioFinal = parseFloat((montoPagadoFinal - totalEsperado).toFixed(2))
+      } else if (metodoPago === 'MIXTO') {
+        const pagoEfectivo = desglosePagos.find(p => p.metodo === 'EFECTIVO')
+        if (pagoEfectivo) {
+          const sumNoEfectivo = desglosePagos.filter(p => p.metodo !== 'EFECTIVO').reduce((s, p) => s + parseFloat(p.monto), 0)
+          const necesarioEfectivo = totalEsperado - sumNoEfectivo
+          const sobraEfectivo = parseFloat(pagoEfectivo.monto) - necesarioEfectivo
+          if (sobraEfectivo > 0.005) cambioFinal = parseFloat(sobraEfectivo.toFixed(2))
+        }
+      }
 
       const ventaCreada = await tx.venta.create({
         data: {
           folio, sucursalId, usuarioId, clienteId: clienteId || null, turnoId, metodoPago,
           subtotal: totalRecalculado, descuento: descuentoAmt, total: totalEsperado,
           montoPagado: montoPagadoFinal, cambio: cambioFinal,
+          desglosePagos: desglosePagos || undefined,
           notas: notas || null,
           estado: 'COMPLETADA', tokenQr: generarUUID(), facturaEstado, facturaLimite,
           detalles: {
@@ -199,11 +235,19 @@ if (esTarjetaPago && notas) {
         })
       }
 
-      // Movimiento de caja solo si NO es crédito cliente
+      // Movimiento de caja — uno por pago (MIXTO crea múltiples)
       if (!esCredito) {
-        await tx.movimientoCaja.create({
-          data: { turnoId, tipo: 'VENTA', monto: totalEsperado, metodoPago, referencia: folio }
-        })
+        if (metodoPago === 'MIXTO' && desglosePagos) {
+          for (const pago of desglosePagos) {
+            await tx.movimientoCaja.create({
+              data: { turnoId, tipo: 'VENTA', monto: parseFloat(pago.monto), metodoPago: pago.metodo, referencia: folio, notas: `Pago mixto: ${pago.metodo}` }
+            })
+          }
+        } else {
+          await tx.movimientoCaja.create({
+            data: { turnoId, tipo: 'VENTA', monto: totalEsperado, metodoPago, referencia: folio }
+          })
+        }
       }
 
       // Si es crédito: actualizar saldo cliente + crear bitácora automática
@@ -383,6 +427,7 @@ exports.obtenerVenta = async (req, res) => {
         estado:        venta.estado,
         tokenQr:       venta.tokenQr,
         facturaEstado: venta.facturaEstado,
+        desglosePagos: venta.desglosePagos || null,
         notas:         venta.notas,
         detalles: venta.detalles.map(d => ({
           productoId:     d.productoId,
@@ -493,16 +538,32 @@ exports.cancelarVenta = async (req, res) => {
       if (venta.turnoId) {
         const turno = await tx.turnoCaja.findFirst({ where: { id: venta.turnoId } })
         if (turno) {
-          await tx.movimientoCaja.create({
-            data: {
-              turnoId:    turno.id,
-              tipo:       'DEVOLUCION',
-              monto:      -parseFloat(venta.total),
-              metodoPago: venta.metodoPago,
-              referencia: venta.folio,
-              notas:      motivo || `Cancelación de ${venta.folio}`
+          if (venta.metodoPago === 'MIXTO' && venta.desglosePagos) {
+            // MIXTO: un movimiento de devolución por cada pago original
+            for (const pago of venta.desglosePagos) {
+              await tx.movimientoCaja.create({
+                data: {
+                  turnoId:    turno.id,
+                  tipo:       'DEVOLUCION',
+                  monto:      -parseFloat(pago.monto),
+                  metodoPago: pago.metodo,
+                  referencia: venta.folio,
+                  notas:      motivo || `Cancelación mixto ${pago.metodo} — ${venta.folio}`
+                }
+              })
             }
-          })
+          } else {
+            await tx.movimientoCaja.create({
+              data: {
+                turnoId:    turno.id,
+                tipo:       'DEVOLUCION',
+                monto:      -parseFloat(venta.total),
+                metodoPago: venta.metodoPago,
+                referencia: venta.folio,
+                notas:      motivo || `Cancelación de ${venta.folio}`
+              }
+            })
+          }
         }
       }
 
@@ -568,6 +629,11 @@ exports.actualizarMetodoPago = async (req, res) => {
 
     if (!venta) {
       return res.status(404).json({ error: 'Venta no encontrada' })
+    }
+
+    // ── Bloquear edición de ventas MIXTO ──
+    if (venta.metodoPago === 'MIXTO') {
+      return res.status(400).json({ error: 'No se puede cambiar el método de pago de una venta con pago mixto. Cancela y crea una nueva.', codigo: 'MIXTO_NO_EDITABLE' })
     }
 
     // ── Validar sucursal (SUPERADMIN puede editar todas) ──

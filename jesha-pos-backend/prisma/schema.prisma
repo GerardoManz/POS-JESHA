@@ -36,6 +36,7 @@ enum MetodoPago {
   CREDITO
   TRANSFERENCIA
   CREDITO_CLIENTE
+  MIXTO
 }
 
 enum EstadoCotizacion {
@@ -417,6 +418,7 @@ model Venta {
   clienteRazonSocial String?
   clienteRFC         String?
   notas              String?
+  desglosePagos      Json?
   creadaEn           DateTime     @default(now())
   sucursal    Sucursal   @relation(fields: [sucursalId], references: [id])
   usuario     Usuario    @relation(fields: [usuarioId], references: [id])
