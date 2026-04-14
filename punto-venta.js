@@ -1210,7 +1210,10 @@ async function confirmarVenta() {
 
     if (metodoPagoSeleccionado === 'EFECTIVO') {
       const montoInput = document.getElementById('confirm-monto-recibido')
-      const totalVenta = carrito.reduce((sum, item) => sum + (item.precio * item.cantidad), 0)
+      const totalBrutoEf = carrito.reduce((sum, item) => sum + (item.precio * item.cantidad), 0)
+      const { pct: pctEf } = getPctEfectivo()
+      const descAmtEf = parseFloat((totalBrutoEf * (pctEf / 100)).toFixed(2))
+      const totalVenta = parseFloat((totalBrutoEf - descAmtEf).toFixed(2))
       const montoVal   = parseFloat(montoInput?.value) || 0
       if (!montoVal || montoVal <= 0) {
         ventaEnProceso = false
@@ -1218,7 +1221,7 @@ async function confirmarVenta() {
         montoInput?.focus()
         return
       }
-      if (montoVal < totalVenta) {
+      if (montoVal < totalVenta - 0.01) {
         ventaEnProceso = false
         mostrarToast(`El monto recibido ($${montoVal.toFixed(2)}) es menor al total ($${totalVenta.toFixed(2)})`, 'warning')
         montoInput?.focus()
