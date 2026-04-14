@@ -1150,18 +1150,15 @@ async function confirmarVenta() {
 
     const esTarjetaPago = ['CREDITO', 'DEBITO'].includes(metodoPagoSeleccionado)
     const refTarjeta    = document.getElementById('confirm-referencia-tarjeta')?.value.trim() || ''
-    if (esTarjetaPago && !refTarjeta) {
-      ventaEnProceso = false
-      mostrarToast('Ingresa el Número de Autorización del Ingenico antes de continuar', 'warning')
-      document.getElementById('confirm-referencia-tarjeta')?.focus()
-      return
-    }
-    if (esTarjetaPago && (!/^\d+$/.test(refTarjeta) || refTarjeta.length < 4 || refTarjeta.length > 6)) {
-      ventaEnProceso = false
-      mostrarToast('El N° de Autorización debe ser de 4 a 6 dígitos numéricos', 'warning')
-      document.getElementById('confirm-referencia-tarjeta')?.focus()
-      return
-    }
+    // ── DESPUÉS — REEMPLAZAR CON ESTO ──
+if (esTarjetaPago && refTarjeta) {
+  if (!/^\d+$/.test(refTarjeta) || refTarjeta.length < 4 || refTarjeta.length > 6) {
+    ventaEnProceso = false
+    mostrarToast('El N° de Autorización debe ser de 4 a 6 dígitos numéricos', 'warning')
+    document.getElementById('confirm-referencia-tarjeta')?.focus()
+    return
+  }
+}
 
     if (metodoPagoSeleccionado === 'EFECTIVO') {
       const montoInput = document.getElementById('confirm-monto-recibido')

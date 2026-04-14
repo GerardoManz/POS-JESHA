@@ -1,15 +1,6 @@
-// ═══════════════════════════════════════════════════════════════════
-// SEED.JS — Datos iniciales JESHA POS
-// Compatible con schema actual + campos Cliente restaurados
-// ═══════════════════════════════════════════════════════════════════
-
 require('dotenv').config()
-const bcrypt = require('bcrypt')
-const { PrismaClient } = require('@prisma/client')
-const { PrismaPg } = require('@prisma/adapter-pg')
-
-const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL })
-const prisma = new PrismaClient({ adapter })
+const bcrypt = require('bcryptjs')
+const prisma = require('../src/lib/prisma')
 
 async function main() {
   console.log('🌱 Iniciando seed...\n')
@@ -22,10 +13,10 @@ async function main() {
   console.log(`✅ Sucursal: ${sucursal.nombre}`)
 
   const hash = await bcrypt.hash('Admin2024!', 12)
-  await prisma.usuario.upsert({ where: { username: 'superadmin' }, update: {}, create: { nombre: 'Administrador JESHA', username: 'superadmin', passwordHash: hash, rol: 'SUPERADMIN', sucursalId: null, activo: true } })
+  await prisma.usuario.upsert({ where: { username: 'Gerardo_Manz' }, update: {}, create: { nombre: 'Gerardo Manzano', username: 'Gerardo_Manz', passwordHash: hash, rol: 'SUPERADMIN', sucursalId: null, activo: true } })
   await prisma.usuario.upsert({ where: { username: 'admin' }, update: {}, create: { nombre: 'Admin Sucursal', username: 'admin', passwordHash: hash, rol: 'ADMIN_SUCURSAL', sucursalId: sucursal.id, activo: true } })
   await prisma.usuario.upsert({ where: { username: 'empleado' }, update: {}, create: { nombre: 'Empleado POS', username: 'empleado', passwordHash: hash, rol: 'EMPLEADO', sucursalId: sucursal.id, activo: true } })
-  console.log('✅ Usuarios: superadmin / admin / empleado — Admin2024!')
+  console.log('✅ Usuarios: Gerardo_Manz / admin / empleado — Admin2024!')
 
   const deptos = ['Herramientas','Plomería','Electricidad','Pintura','Gas','Limpieza','Seguridad','Construcción','SERVICIOS']
   const iconos = ['🔧','🚿','⚡','🎨','🔥','🧹','🔒','🏗️','🛠️']
@@ -58,7 +49,6 @@ async function main() {
   }
   console.log(`✅ ${Object.keys(categorias).length} categorías`)
 
-  // CLIENTES — con todos los campos restaurados
   await prisma.cliente.upsert({ where: { rfc: 'XAXX010101000' }, update: {}, create: { nombre: 'Cliente General', rfc: 'XAXX010101000', tipo: 'GENERAL', activo: true, limiteCredito: 0 } })
   await prisma.cliente.upsert({ where: { rfc: 'SEMG020428G7' }, update: {}, create: { nombre: 'Gerardo Andrés Serrano Manzano', apodo: 'Don Gerardo', rfc: 'SEMG020428G7', telefono: '4924920823', tipo: 'GENERAL', activo: true, limiteCredito: 0 } })
   await prisma.cliente.upsert({ where: { rfc: 'CXYZ240001SA' }, update: {}, create: { nombre: 'Constructora XYZ S.A. de C.V.', apodo: 'Constructora XYZ', rfc: 'CXYZ240001SA', telefono: '492-987-6543', email: 'fiscal@constructoraxyz.com', razonSocial: 'Constructora XYZ S.A. de C.V.', codigoPostalFiscal: '98000', regimenFiscal: '601', usoCfdi: 'G03', tipo: 'FISCAL', limiteCredito: 100000, activo: true } })
