@@ -417,7 +417,7 @@
 
 
 <!-- ══ MODAL: GUARDAR COTIZACIÓN ══ -->
-<div id="modal-cotizar" class="modal-cotizar-overlay" style="display: none;">
+<div id="modal-cotizar" class="modal-cotizar-overlay">
   <div class="modal-cotizar-card">
 
     <div class="modal-cotizar-header">
@@ -552,6 +552,28 @@
 
     <!-- Body -->
     <div style="padding:18px 22px;">
+
+      <!-- ── SELECTOR DE UNIDAD (solo si tiene factorConversion > 1) ── -->
+      <div id="granel-modal-unidad-wrap" style="display:none;margin-bottom:16px;">
+        <label style="font-size:0.72rem;font-weight:700;color:var(--muted,#7a8599);text-transform:uppercase;letter-spacing:0.05em;display:block;margin-bottom:8px;">
+          Vender por:
+        </label>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <button type="button" id="granel-modal-btn-base" class="granel-unidad-btn granel-unidad-active"
+            style="padding:12px 10px;background:rgba(107,157,232,0.12);border:2px solid rgba(107,157,232,0.4);border-radius:10px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;font-family:'Barlow',sans-serif;color:#6b9de8;transition:all 0.2s;">
+            <span style="font-size:1.2rem;">📏</span>
+            <span id="granel-btn-base-label" style="font-size:0.85rem;font-weight:700;letter-spacing:0.04em;">PZA</span>
+            <span style="font-size:0.7rem;opacity:0.7;">Pieza suelta</span>
+          </button>
+          <button type="button" id="granel-modal-btn-empaque" class="granel-unidad-btn"
+            style="padding:12px 10px;background:rgba(255,255,255,0.04);border:2px solid rgba(255,255,255,0.09);border-radius:10px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;font-family:'Barlow',sans-serif;color:#7a8599;transition:all 0.2s;">
+            <span style="font-size:1.2rem;">📦</span>
+            <span id="granel-btn-empaque-label" style="font-size:0.85rem;font-weight:700;letter-spacing:0.04em;">CAJA</span>
+            <span id="granel-btn-empaque-sub" style="font-size:0.7rem;opacity:0.7;">12 pza c/u</span>
+          </button>
+        </div>
+      </div>
+
       <label style="font-size:0.72rem;font-weight:700;color:var(--muted,#7a8599);text-transform:uppercase;letter-spacing:0.05em;display:block;margin-bottom:8px;">
         Cantidad <span id="granel-modal-unidad-label" style="font-weight:400;color:#6b9de8;">(unidades)</span>
       </label>
@@ -560,6 +582,7 @@
         autocomplete="off" />
       <div id="granel-modal-stock-info" style="font-size:0.75rem;color:#7a8599;margin-top:6px;text-align:center;">—</div>
       <div id="granel-modal-error" style="display:none;font-size:0.78rem;color:#ff6b6b;margin-top:6px;text-align:center;"></div>
+      <div id="granel-modal-conversion" style="display:none;font-size:0.78rem;color:#6b9de8;margin-top:6px;text-align:center;background:rgba(107,157,232,0.08);padding:6px 10px;border-radius:6px;border:1px solid rgba(107,157,232,0.15);"></div>
     </div>
 
     <div style="height:1px;background:rgba(255,255,255,0.06);margin:0 22px;"></div>

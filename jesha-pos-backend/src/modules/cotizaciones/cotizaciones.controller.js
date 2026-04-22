@@ -19,7 +19,8 @@ const service = require('./cotizaciones.service')
 const listar = async (req, res) => {
   try {
     const { estado, tipo, buscar, page, limit } = req.query
-    const { sucursalId, rol } = req.usuario
+    const { sucursalId: sucursalIdToken, rol } = req.usuario
+    const sucursalId = sucursalIdToken || parseInt(req.query.sucursalId) || 1
 
     // Si no se especifica estado, excluir CANCELADA por defecto
     const estadoFiltro = estado || undefined
@@ -66,7 +67,8 @@ const obtener = async (req, res) => {
 const crear = async (req, res) => {
   try {
     const { clienteId, tipo = 'PRODUCTOS', detalles, notas, venceEn } = req.body
-    const { id: usuarioId, sucursalId } = req.usuario
+    const { id: usuarioId, sucursalId: sucursalIdToken } = req.usuario
+    const sucursalId = sucursalIdToken || parseInt(req.body.sucursalId) || 1
 
     // Validaciones básicas
     if (!detalles || !Array.isArray(detalles) || detalles.length === 0) {
@@ -74,13 +76,6 @@ const crear = async (req, res) => {
         success: false,
         error: 'La cotización debe tener al menos 1 producto',
         campo: 'detalles'
-      })
-    }
-
-    if (!sucursalId) {
-      return res.status(400).json({
-        success: false,
-        error: 'Usuario sin sucursal asignada'
       })
     }
 
@@ -134,7 +129,8 @@ const editar = async (req, res) => {
   try {
     const { id } = req.params
     const { clienteId, notas, venceEn, detalles } = req.body
-    const { id: usuarioId, sucursalId } = req.usuario
+    const { id: usuarioId, sucursalId: sucursalIdToken } = req.usuario
+    const sucursalId = sucursalIdToken || parseInt(req.body.sucursalId) || 1
 
     const cotizacion = await service.editar(id, {
       clienteId,
@@ -164,7 +160,8 @@ const cambiarEstado = async (req, res) => {
   try {
     const { id } = req.params
     const { estado } = req.body
-    const { id: usuarioId, sucursalId } = req.usuario
+    const { id: usuarioId, sucursalId: sucursalIdToken } = req.usuario
+    const sucursalId = sucursalIdToken || parseInt(req.body.sucursalId) || 1
 
     if (!estado) {
       return res.status(400).json({ success: false, error: 'Campo "estado" requerido' })

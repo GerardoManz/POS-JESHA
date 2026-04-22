@@ -108,7 +108,9 @@ function restaurarCarritoDeSession() {
           precioBase: item.precioOriginal || item.precio,
           stock: null, codigoInterno: '',
           esGranel: item.esGranel || false,
-          unidadVenta: item.unidadVenta || ''
+          unidadVenta: item.unidadVenta || '',
+          unidadCompra: item.unidadCompra || '',
+          factorConversion: item.factorConversion || 1
         })
       }
     })
@@ -505,11 +507,14 @@ function mostrarProductos(productos) {
 
 function agregarAlCarrito(productoId, nombre, precio, esGranel = false, unidadVenta = '') {
   const idParsed = parseInt(productoId, 10)
+  const cached = productoCache.get(idParsed)
+  const factor = cached?.factorConversion ? parseFloat(cached.factorConversion) : 1
+  const unidadCompra = cached?.unidadCompra || ''
 
-  // ✅ GRANEL: abrir mini-modal para pedir cantidad exacta
-  if (esGranel) {
+  // ✅ GRANEL o producto con FACTOR DE CONVERSIÓN > 1: abrir modal
+  if (esGranel || factor > 1) {
     const existe = carrito.find(item => item.id === idParsed)
-    abrirModalGranel(idParsed, nombre, parseFloat(precio), unidadVenta, existe?.cantidad || '')
+    abrirModalGranel(idParsed, nombre, parseFloat(precio), unidadVenta, existe?.cantidad || '', factor, unidadCompra)
     return
   }
 
@@ -519,7 +524,7 @@ function agregarAlCarrito(productoId, nombre, precio, esGranel = false, unidadVe
   if (existe) {
     existe.cantidad = existe.cantidad + 1
   } else {
-    carrito.push({ id: idParsed, nombre, precio: parseFloat(precio), precioOriginal: parseFloat(precio), cantidad: 1, esGranel: false, unidadVenta: '' })
+    carrito.push({ id: idParsed, nombre, precio: parseFloat(precio), precioOriginal: parseFloat(precio), cantidad: 1, esGranel: false, unidadVenta: '', unidadCompra: '', factorConversion: 1, unidadElegida: 'base' })
   }
 
   if (!productoCache.get(idParsed)) {
@@ -527,7 +532,8 @@ function agregarAlCarrito(productoId, nombre, precio, esGranel = false, unidadVe
       id: idParsed, nombre,
       precioVenta: precio, precioBase: precio,
       stock: null, codigoInterno: '',
-      esGranel: false, unidadVenta: ''
+      esGranel: false, unidadVenta: '',
+      unidadCompra: '', factorConversion: 1
     })
   }
 
@@ -535,19 +541,23 @@ function agregarAlCarrito(productoId, nombre, precio, esGranel = false, unidadVe
 }
 
 // ══════════════════════════════════════════════════════════════════
-//  MODAL CANTIDAD GRANEL
+//  MODAL CANTIDAD — GRANEL + SELECTOR DE UNIDAD
 // ══════════════════════════════════════════════════════════════════
 
-let _granelPendiente = null // { id, nombre, precio, unidadVenta }
+let _granelPendiente = null // { id, nombre, precio, unidadVenta, factorConversion, unidadCompra }
+let _unidadElegida = 'base' // 'base' o 'empaque'
 
-function abrirModalGranel(id, nombre, precio, unidadVenta, cantidadActual) {
-  _granelPendiente = { id, nombre, precio, unidadVenta }
+function abrirModalGranel(id, nombre, precio, unidadVenta, cantidadActual, factorConversion = 1, unidadCompra = '') {
+  _granelPendiente = { id, nombre, precio, unidadVenta, factorConversion: factorConversion || 1, unidadCompra: unidadCompra || '' }
+  _unidadElegida = 'base'
+
   const modal     = document.getElementById('modal-cantidad-granel')
   const lblNombre = document.getElementById('granel-modal-producto-nombre')
   const lblUnidad = document.getElementById('granel-modal-unidad-label')
   const inputCant = document.getElementById('granel-modal-cantidad')
   const stockInfo = document.getElementById('granel-modal-stock-info')
   const errorDiv  = document.getElementById('granel-modal-error')
+  const convDiv   = document.getElementById('granel-modal-conversion')
 
   if (lblNombre) lblNombre.textContent = nombre
   if (lblUnidad) lblUnidad.textContent = unidadVenta ? `(${unidadVenta})` : '(unidades)'
@@ -556,13 +566,54 @@ function abrirModalGranel(id, nombre, precio, unidadVenta, cantidadActual) {
     inputCant.placeholder = unidadVenta ? `Ej: 2.500 ${unidadVenta}` : 'Ej: 2.500'
   }
   if (errorDiv) { errorDiv.style.display = 'none'; errorDiv.textContent = '' }
+  if (convDiv) convDiv.style.display = 'none'
+
+  // ── Selector de unidad: mostrar solo si factor > 1 Y no es granel ──
+  const cached = productoCache.get(id)
+  const esGranel = cached?.esGranel || false
+  const tieneEmpaque = factorConversion > 1 && !esGranel
+  const unidadWrap = document.getElementById('granel-modal-unidad-wrap')
+
+  if (unidadWrap) {
+    if (tieneEmpaque) {
+      unidadWrap.style.display = 'block'
+      // Actualizar labels de los botones
+      document.getElementById('granel-btn-base-label').textContent = (unidadVenta || 'PZA').toUpperCase()
+      document.getElementById('granel-btn-empaque-label').textContent = (unidadCompra || 'CAJA').toUpperCase()
+      document.getElementById('granel-btn-empaque-sub').textContent = `${factorConversion} ${unidadVenta || 'pza'} c/u`
+      // Reset visual a "base"
+      _setUnidadVisual('base')
+    } else {
+      unidadWrap.style.display = 'none'
+    }
+  }
+
+  // Ajustar step según tipo de producto
+  if (inputCant) {
+    if (esGranel) {
+      inputCant.min = '0.001'
+      inputCant.step = '0.001'
+    } else {
+      inputCant.min = '1'
+      inputCant.step = '1'
+    }
+  }
 
   // Mostrar stock disponible
-  const cached = productoCache.get(id)
   if (stockInfo && cached && cached.stock !== null && cached.stock !== undefined) {
     const s = parseFloat(cached.stock)
     const stockFmt = Number.isInteger(s) ? s : s.toFixed(3).replace(/\.?0+$/, '')
-    stockInfo.textContent = `Stock disponible: ${stockFmt}${unidadVenta ? ' ' + unidadVenta : ''}`
+    let stockText = `Stock disponible: ${stockFmt}${unidadVenta ? ' ' + unidadVenta : ''}`
+    // Si tiene empaque, mostrar también en cajas
+    if (tieneEmpaque && factorConversion > 1) {
+      const cajas = Math.floor(s / factorConversion)
+      const sueltas = s % factorConversion
+      let desglose = ''
+      if (cajas > 0) desglose += `${cajas} ${unidadCompra}`
+      if (sueltas > 0) desglose += `${desglose ? ' + ' : ''}${Number.isInteger(sueltas) ? sueltas : sueltas.toFixed(3).replace(/\.?0+$/, '')} ${unidadVenta}`
+      stockText = `Stock: ${stockFmt} ${unidadVenta} (${desglose})`
+    }
+    stockInfo.textContent = stockText
   } else if (stockInfo) {
     stockInfo.textContent = ''
   }
@@ -571,10 +622,57 @@ function abrirModalGranel(id, nombre, precio, unidadVenta, cantidadActual) {
   setTimeout(() => { if (inputCant) { inputCant.focus(); inputCant.select() } }, 100)
 }
 
+function _setUnidadVisual(modo) {
+  _unidadElegida = modo
+  const btnBase = document.getElementById('granel-modal-btn-base')
+  const btnEmpaque = document.getElementById('granel-modal-btn-empaque')
+  const lblUnidad = document.getElementById('granel-modal-unidad-label')
+  const inputCant = document.getElementById('granel-modal-cantidad')
+
+  if (modo === 'base') {
+    if (btnBase) { btnBase.style.background = 'rgba(107,157,232,0.12)'; btnBase.style.borderColor = 'rgba(107,157,232,0.4)'; btnBase.style.color = '#6b9de8' }
+    if (btnEmpaque) { btnEmpaque.style.background = 'rgba(255,255,255,0.04)'; btnEmpaque.style.borderColor = 'rgba(255,255,255,0.09)'; btnEmpaque.style.color = '#7a8599' }
+    if (lblUnidad && _granelPendiente) lblUnidad.textContent = `(${_granelPendiente.unidadVenta || 'unidades'})`
+    if (inputCant) { inputCant.min = '1'; inputCant.step = '1' }
+  } else {
+    if (btnEmpaque) { btnEmpaque.style.background = 'rgba(107,157,232,0.12)'; btnEmpaque.style.borderColor = 'rgba(107,157,232,0.4)'; btnEmpaque.style.color = '#6b9de8' }
+    if (btnBase) { btnBase.style.background = 'rgba(255,255,255,0.04)'; btnBase.style.borderColor = 'rgba(255,255,255,0.09)'; btnBase.style.color = '#7a8599' }
+    if (lblUnidad && _granelPendiente) lblUnidad.textContent = `(${_granelPendiente.unidadCompra || 'cajas'})`
+    if (inputCant) { inputCant.min = '1'; inputCant.step = '1' }
+  }
+
+  // Limpiar y recalcular
+  if (inputCant) inputCant.value = ''
+  _actualizarConversionModal()
+}
+
+function _actualizarConversionModal() {
+  const convDiv = document.getElementById('granel-modal-conversion')
+  const inputCant = document.getElementById('granel-modal-cantidad')
+  if (!convDiv || !_granelPendiente) return
+
+  const cantidad = parseFloat(inputCant?.value) || 0
+  const factor = _granelPendiente.factorConversion || 1
+
+  if (_unidadElegida === 'empaque' && factor > 1 && cantidad > 0) {
+    const cantidadBase = cantidad * factor
+    const subtotal = cantidadBase * _granelPendiente.precio
+    convDiv.innerHTML = `${cantidad} ${_granelPendiente.unidadCompra} = <strong>${cantidadBase} ${_granelPendiente.unidadVenta}</strong> en inventario — Subtotal: <strong>$${subtotal.toFixed(2)}</strong>`
+    convDiv.style.display = 'block'
+  } else if (cantidad > 0) {
+    const subtotal = cantidad * _granelPendiente.precio
+    convDiv.innerHTML = `Subtotal: <strong>$${subtotal.toFixed(2)}</strong>`
+    convDiv.style.display = 'block'
+  } else {
+    convDiv.style.display = 'none'
+  }
+}
+
 function cerrarModalGranel() {
   const modal = document.getElementById('modal-cantidad-granel')
   if (modal) modal.style.display = 'none'
   _granelPendiente = null
+  _unidadElegida = 'base'
 }
 
 function confirmarCantidadGranel() {
@@ -589,22 +687,66 @@ function confirmarCantidadGranel() {
     return
   }
 
-  const { id, nombre, precio, unidadVenta } = _granelPendiente
+  const { id, nombre, precio, unidadVenta, factorConversion, unidadCompra } = _granelPendiente
+  const esGranel = productoCache.get(id)?.esGranel || false
+  const factor = factorConversion || 1
+
+  // Calcular cantidad en unidad base
+  let cantidadBase = cantidad
+  if (_unidadElegida === 'empaque' && factor > 1) {
+    cantidadBase = cantidad * factor
+  }
+
+  // Validar stock
+  const cached = productoCache.get(id)
+  if (cached && cached.stock !== null && cached.stock !== undefined) {
+    if (cantidadBase > parseFloat(cached.stock)) {
+      const stockDisp = parseFloat(cached.stock)
+      let maxMsg = `Stock insuficiente. Disponible: ${Number.isInteger(stockDisp) ? stockDisp : stockDisp.toFixed(3)} ${unidadVenta}`
+      if (_unidadElegida === 'empaque' && factor > 1) {
+        const maxEmpaques = Math.floor(stockDisp / factor)
+        maxMsg += ` (${maxEmpaques} ${unidadCompra} completos)`
+      }
+      if (errorDiv) { errorDiv.textContent = maxMsg; errorDiv.style.display = 'block' }
+      inputCant?.focus()
+      return
+    }
+  }
+
+  // Buscar si ya existe en carrito (mismo producto Y misma unidad elegida)
   const existe = carrito.find(item => item.id === id)
 
+  const cantFinal = esGranel ? parseFloat(cantidadBase.toFixed(3)) : Math.round(cantidadBase)
+
   if (existe) {
-    existe.cantidad = parseFloat(cantidad.toFixed(3))
+    existe.cantidad = cantFinal
+    existe.unidadElegida = _unidadElegida
+    existe.cantidadVisible = esGranel ? parseFloat(cantidad.toFixed(3)) : Math.round(cantidad)
   } else {
-    carrito.push({ id, nombre, precio, precioOriginal: precio, cantidad: parseFloat(cantidad.toFixed(3)), esGranel: true, unidadVenta })
+    carrito.push({
+      id, nombre, precio, precioOriginal: precio,
+      cantidad: cantFinal,
+      cantidadVisible: esGranel ? parseFloat(cantidad.toFixed(3)) : Math.round(cantidad),
+      esGranel,
+      unidadVenta: unidadVenta || '',
+      unidadCompra: unidadCompra || '',
+      factorConversion: factor,
+      unidadElegida: _unidadElegida
+    })
   }
 
   if (!productoCache.get(id)) {
-    productoCache.set(id, { id, nombre, precioVenta: precio, precioBase: precio, stock: null, codigoInterno: '', esGranel: true, unidadVenta })
+    productoCache.set(id, { id, nombre, precioVenta: precio, precioBase: precio, stock: null, codigoInterno: '', esGranel, unidadVenta, unidadCompra, factorConversion: factor })
   }
 
   cerrarModalGranel()
   actualizarCarrito()
-  mostrarToast(`✓ ${nombre}: ${cantidad.toFixed(3)} ${unidadVenta || 'u.'} agregado`, 'success')
+
+  // Toast con info de lo agregado
+  const unidadMsg = _unidadElegida === 'empaque'
+    ? `${Math.round(cantidad)} ${unidadCompra} (${cantFinal} ${unidadVenta})`
+    : `${esGranel ? cantidad.toFixed(3) : Math.round(cantidad)} ${unidadVenta || 'u.'}`
+  mostrarToast(`✓ ${nombre}: ${unidadMsg} agregado`, 'success')
 }
 
 function eliminarDelCarrito(productoId) {
@@ -621,7 +763,15 @@ function actualizarCantidad(productoId, cantidad) {
     } else {
       // ✅ Bloquear decimales para productos NO granel
       if (!item.esGranel) cantParsed = Math.round(cantParsed)
-      item.cantidad = parseFloat(cantParsed.toFixed(3))
+
+      // Si está en modo empaque, la cantidad visible cambia pero la base se recalcula
+      if (item.unidadElegida === 'empaque' && item.factorConversion > 1) {
+        item.cantidadVisible = cantParsed
+        item.cantidad = parseFloat((cantParsed * item.factorConversion).toFixed(3))
+      } else {
+        item.cantidad = parseFloat(cantParsed.toFixed(3))
+        item.cantidadVisible = item.cantidad
+      }
       actualizarCarrito()
     }
   }
@@ -638,6 +788,9 @@ function actualizarCarrito() {
   } else {
     carritoTbody.innerHTML = carrito.map(item => {
       const precioModificado = item.precioOriginal !== undefined && item.precio !== item.precioOriginal
+      const esEmpaque = item.unidadElegida === 'empaque' && item.factorConversion > 1
+      const cantidadVisible = item.cantidadVisible || item.cantidad
+      const unidadLabel = esEmpaque ? (item.unidadCompra || 'caja') : (item.unidadVenta || '')
       return `
       <tr>
         <td>${item.nombre.substring(0, 18)}</td>
@@ -649,11 +802,12 @@ function actualizarCarrito() {
                  onchange="actualizarPrecio(${item.id}, this.value)" />
         </td>
         <td style="text-align:center;">
-          <input type="number" value="${item.cantidad}"
+          <input type="number" value="${cantidadVisible}"
                  min="${item.esGranel ? 0.001 : 1}" step="${item.esGranel ? 0.001 : 1}"
                  style="width:50px;padding:3px;text-align:center;"
                  onchange="actualizarCantidad(${item.id}, this.value)" />
-          ${item.unidadVenta ? `<span style="font-size:0.7rem;color:var(--muted);display:block;">${item.unidadVenta}</span>` : ""}
+          ${unidadLabel ? `<span style="font-size:0.7rem;color:var(--muted);display:block;">${unidadLabel}</span>` : ""}
+          ${esEmpaque ? `<span style="font-size:0.6rem;color:#6b9de8;display:block;">(${item.cantidad} ${item.unidadVenta})</span>` : ""}
         </td>
         <td style="text-align:right;">$${(item.precio * item.cantidad).toFixed(2)}</td>
         <td style="text-align:center;">
@@ -1467,8 +1621,8 @@ function cargarCotizacionDesdeStorage() {
         !Array.isArray(payload.items) || payload.items.length === 0) return
 
     payload.items.forEach(item => {
-      carrito.push({ id: item.id, nombre: item.nombre, precio: parseFloat(item.precio), cantidad: parseFloat(item.cantidad) || 1, esGranel: item.esGranel || false, unidadVenta: item.unidadVenta || '' })
-      productoCache.set(item.id, { id: item.id, nombre: item.nombre, precioVenta: item.precio, precioBase: item.precio, stock: null, esGranel: item.esGranel || false, unidadVenta: item.unidadVenta || '' })
+      carrito.push({ id: item.id, nombre: item.nombre, precio: parseFloat(item.precio), cantidad: parseFloat(item.cantidad) || 1, esGranel: item.esGranel || false, unidadVenta: item.unidadVenta || '', unidadCompra: item.unidadCompra || '', factorConversion: item.factorConversion || 1, unidadElegida: 'base', cantidadVisible: parseFloat(item.cantidad) || 1 })
+      productoCache.set(item.id, { id: item.id, nombre: item.nombre, precioVenta: item.precio, precioBase: item.precio, stock: null, esGranel: item.esGranel || false, unidadVenta: item.unidadVenta || '', unidadCompra: item.unidadCompra || '', factorConversion: item.factorConversion || 1 })
     })
 
     if (payload.clienteId && payload.clienteNombre) {
@@ -1753,16 +1907,21 @@ function configurarEventListeners() {
     }
   })
 
-  // ✅ Eventos del modal de cantidad granel
+  // ✅ Eventos del modal de cantidad granel + selector de unidad
   document.getElementById('granel-modal-close')?.addEventListener('click', cerrarModalGranel)
   document.getElementById('granel-modal-cancel')?.addEventListener('click', cerrarModalGranel)
   document.getElementById('granel-modal-confirm')?.addEventListener('click', confirmarCantidadGranel)
   document.getElementById('granel-modal-cantidad')?.addEventListener('keydown', e => {
     if (e.key === 'Enter') { e.preventDefault(); confirmarCantidadGranel() }
   })
+  document.getElementById('granel-modal-cantidad')?.addEventListener('input', _actualizarConversionModal)
   document.getElementById('modal-cantidad-granel')?.addEventListener('click', e => {
     if (e.target.id === 'modal-cantidad-granel') cerrarModalGranel()
   })
+
+  // Botones selector de unidad
+  document.getElementById('granel-modal-btn-base')?.addEventListener('click', () => _setUnidadVisual('base'))
+  document.getElementById('granel-modal-btn-empaque')?.addEventListener('click', () => _setUnidadVisual('empaque'))
 
   console.log('✅ Event listeners configurados')
 }
