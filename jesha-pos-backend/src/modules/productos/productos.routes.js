@@ -2,6 +2,7 @@
 // PRODUCTOS.ROUTES.JS — CORREGIDO
 // FIX: importacionController.importarCSV ahora SÍ existe
 // FIX: Ruta de importar coincide con lo que el frontend envía
+// FEAT: Nueva ruta /importar/solo-nuevos
 // ═══════════════════════════════════════════════════════════════════
 
 const express = require('express')
@@ -69,7 +70,8 @@ router.post('/categorias',                      productosController.crearCategor
 // "importar" como un :id
 // ═══════════════════════════════════════════════════════════════════
 
-router.post('/importar/csv', uploadCSV.single('archivo'), importacionController.importarCSV)
+router.post('/importar/csv',            uploadCSV.single('archivo'), importacionController.importarCSV)
+router.post('/importar/solo-nuevos',    uploadCSV.single('archivo'), importacionController.importarSoloNuevos)
 router.post('/importar/datos-fiscales', uploadCSV.single('archivo'), importacionController.actualizarDatosFiscales)
 
 // ═══════════════════════════════════════════════════════════════════

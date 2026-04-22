@@ -11,6 +11,41 @@
   <title>JESHA POS - Inventario</title>
   <link rel="stylesheet" href="dashboard.css" />
   <link rel="stylesheet" href="productos.css" />
+  <style>
+    /* ── Paginación ── */
+    .paginacion-bar {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      padding: 14px 0 6px;
+    }
+    .btn-pag {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      color: var(--muted, #71717a);
+      padding: 7px 16px;
+      border-radius: 7px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .btn-pag:hover:not(:disabled) {
+      background: rgba(255,255,255,0.1);
+      color: #e4e4e7;
+    }
+    .btn-pag:disabled {
+      opacity: 0.35;
+      cursor: default;
+    }
+    .pag-info {
+      font-size: 0.82rem;
+      color: var(--muted, #71717a);
+      font-weight: 500;
+      user-select: none;
+    }
+  </style>
 </head>
 <body data-page="inventario">
 <div class="app-shell">
@@ -78,7 +113,7 @@
         Agregar Producto
       </button>
 
-      <!-- BOTÓN SUBIR INVENTARIO ← NUEVO -->
+      <!-- BOTÓN SUBIR INVENTARIO (Upsert) -->
       <button id="btn-subir-inventario" class="btn-upload-inv">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <polyline points="16 16 12 12 8 16"/>
@@ -86,6 +121,14 @@
           <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>
         </svg>
         Subir Inventario
+      </button>
+
+      <!-- BOTÓN SUBIR SOLO NUEVOS ← NUEVO -->
+      <button id="btn-subir-solo-nuevos" class="btn-upload-inv" style="background:rgba(245,158,11,0.08);border-color:rgba(245,158,11,0.25);color:#f59e0b;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
+        Subir Solo Nuevos
       </button>
 
       <!-- BOTÓN ACTUALIZAR DATOS FISCALES -->
@@ -128,6 +171,14 @@
           </tbody>
         </table>
       </div>
+
+      <!-- ── PAGINACIÓN ── -->
+      <div id="paginacion-bar" class="paginacion-bar" style="display:none;">
+        <button id="btn-pag-anterior" class="btn-pag" disabled>← Anterior</button>
+        <span id="pag-info" class="pag-info">Página 1 de 1</span>
+        <button id="btn-pag-siguiente" class="btn-pag" disabled>Siguiente →</button>
+      </div>
+
     </section>
   </main>
 </div>
@@ -352,21 +403,21 @@
   </div>
 </div>
 
-<!-- ══ MODAL SUBIR INVENTARIO (CSV) ← NUEVO ══ -->
+<!-- ══ MODAL SUBIR INVENTARIO (CSV) — Reutilizado para UPSERT y SOLO NUEVOS ══ -->
 <div id="modal-importacion" class="modal modal-import-overlay" style="display:none;">
   <div class="modal-import-card">
 
     <div class="modal-import-header">
-      <div class="modal-import-icon">
-        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#6b9de8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <div class="modal-import-icon" id="import-icon-wrap">
+        <svg id="import-icon-svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#6b9de8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
           <polyline points="16 16 12 12 8 16"/>
           <line x1="12" y1="12" x2="12" y2="21"/>
           <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>
         </svg>
       </div>
       <div>
-        <h3 class="modal-import-titulo">Subir Inventario</h3>
-        <p class="modal-import-sub">Importar productos desde archivo CSV</p>
+        <h3 class="modal-import-titulo" id="import-modal-titulo">Subir Inventario</h3>
+        <p class="modal-import-sub" id="import-modal-sub">Importar productos desde archivo CSV</p>
       </div>
       <button class="modal-import-close" id="import-close-btn">&times;</button>
     </div>
@@ -377,9 +428,9 @@
 
       <div class="import-info-box">
         <strong>Columnas requeridas:</strong>
-        <span>CLAVE, DESCRIPCION, PRECIO 1</span><br/>
+        <span>CLAVE, DESCRIPCION, PRECIO 1, CLAVE SAT, UNIDAD SAT</span><br/>
         <strong>Columnas opcionales:</strong>
-        <span>CLAVE ALTERNA, PRECIO COMPRA, DEPARTAMENTO, CATEGORIA, CLAVE SAT, UNIDAD SAT, EXIST., INV_MIN, INV_MAX, GRANEL (S/N)</span>
+        <span>CLAVE ALTERNA, PRECIO COMPRA, DEPARTAMENTO, CATEGORIA, EXIST., INV_MIN, INV_MAX, GRANEL (S/N)</span>
       </div>
 
       <div class="import-drop-zone" id="import-drop-zone">
@@ -425,8 +476,7 @@
   </div>
 </div>
 
-<!-- ══ MODAL AJUSTE DE INVENTARIO ← NUEVO ══ -->
-<!-- Pegar antes de los scripts en productos.html -->
+<!-- ══ MODAL AJUSTE DE INVENTARIO ══ -->
 <div id="modal-ajuste-inv" class="modal modal-ajuste-overlay" style="display:none;">
   <div class="modal-ajuste-card">
 
@@ -540,3 +590,4 @@
 
 </body>
 </html>
+

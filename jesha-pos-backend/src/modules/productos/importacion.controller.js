@@ -93,6 +93,8 @@ function validarFila(fila, idx) {
     const clave = fila['CLAVE']
     const desc = fila['DESCRIPCION']
     const precio = fila['PRECIO 1']
+    const claveSat = fila['CLAVE SAT']
+    const unidadSat = fila['UNIDAD SAT']
 
     if (!clave) {
         errores.push({ fila: idx, error: 'CLAVE vacía' })
@@ -107,6 +109,15 @@ function validarFila(fila, idx) {
     const precioNum = parseFloat(precio)
     if (!precio || isNaN(precioNum) || precioNum <= 0) {
         errores.push({ fila: idx, clave, error: `PRECIO 1 inválido: "${precio}"` })
+    }
+
+    // CLAVE SAT y UNIDAD SAT ahora son obligatorias
+    if (!claveSat || claveSat.trim() === '' || claveSat.toLowerCase() === 'null') {
+        errores.push({ fila: idx, clave, error: 'CLAVE SAT vacía o nula' })
+    }
+
+    if (!unidadSat || unidadSat.trim() === '' || unidadSat.toLowerCase() === 'null') {
+        errores.push({ fila: idx, clave, error: 'UNIDAD SAT vacía o nula' })
     }
 
     return errores
@@ -847,3 +858,232 @@ exports.actualizarDatosFiscales = async (req, res) => {
         })
     }
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPORTAR SOLO NUEVOS — Crea productos que NO existen, ignora existentes
+// Misma estructura que importarCSV pero sin update de existentes
+// ═══════════════════════════════════════════════════════════════════
+
+exports.importarSoloNuevos = async (req, res) => {
+    try {
+        // ── Validar que llegó un archivo ──
+        if (!req.file) {
+            return res.status(400).json({
+                error: 'Archivo CSV requerido. Envía el archivo con campo "archivo".',
+                total: 0, creados: 0, omitidos: 0, errores: 0
+            })
+        }
+
+        console.log(`\n📦 [SOLO NUEVOS] Archivo: ${req.file.originalname} (${(req.file.size / 1024).toFixed(1)} KB)`)
+
+        // ── Parsear CSV del buffer ──
+        const { headers, filas } = parsearCSVBuffer(req.file.buffer)
+
+        console.log(`📋 Headers: ${headers.join(', ')}`)
+        console.log(`📊 Filas con datos: ${filas.length}`)
+
+        if (filas.length === 0) {
+            return res.status(400).json({
+                error: 'CSV vacío o sin datos válidos',
+                total: 0, creados: 0, omitidos: 0, errores: 0
+            })
+        }
+
+        // ── Validar TODAS las filas primero ──
+        const erroresValidacion = []
+        const filasValidas = []
+
+        for (let i = 0; i < filas.length; i++) {
+            const errs = validarFila(filas[i], i + 2)
+            if (errs.length > 0) {
+                erroresValidacion.push(...errs)
+            } else {
+                filasValidas.push(filas[i])
+            }
+        }
+
+        console.log(`✅ Filas válidas: ${filasValidas.length}`)
+        console.log(`⚠️  Filas con error de validación: ${erroresValidacion.length}`)
+
+        // ── Pre-crear departamentos y categorías ──
+        const cacheCats = await preSeedDepartamentosYCategorias(filasValidas)
+
+        // ── Pre-crear proveedores ──
+        const cacheProveedores = await preSeedProveedores(filasValidas)
+
+        // ── Obtener categoría fallback ──
+        const categoriaFallbackId = await obtenerCategoriaFallback()
+        if (!categoriaFallbackId) {
+            return res.status(400).json({
+                error: 'No hay categorías en la base de datos. Crea al menos una categoría primero.',
+                total: 0, creados: 0, omitidos: 0, errores: 0
+            })
+        }
+        console.log(`📁 Categoría fallback: id=${categoriaFallbackId}`)
+
+        // ── Procesar productos en lotes ──
+        let creados       = 0
+        let omitidos       = 0
+        let vinculaciones  = 0
+        const erroresInsert    = []
+        const detalleOmitidos  = []
+        const BATCH_SIZE   = 50
+
+        for (let i = 0; i < filasValidas.length; i += BATCH_SIZE) {
+            const lote = filasValidas.slice(i, i + BATCH_SIZE)
+
+            const promesas = lote.map(async (fila, j) => {
+                const numFila = i + j + 2
+                try {
+                    const data = mapearProducto(fila)
+
+                    // ══════════════════════════════════════════════════
+                    // BÚSQUEDA DE EXISTENCIA — doble: codigoInterno Y codigoBarras
+                    // Si CUALQUIERA matchea → omitir (no crear)
+                    // ══════════════════════════════════════════════════
+
+                    // Check 1: por codigoInterno
+                    const existePorCodigo = await prisma.producto.findUnique({
+                        where: { codigoInterno: data.codigoInterno },
+                        select: { id: true }
+                    })
+
+                    if (existePorCodigo) {
+                        omitidos++
+                        detalleOmitidos.push({
+                            fila: numFila,
+                            clave: data.codigoInterno,
+                            descripcion: data.nombre.substring(0, 80),
+                            razon: 'Ya existe por codigoInterno'
+                        })
+                        return
+                    }
+
+                    // Check 2: por codigoBarras (si tiene uno válido)
+                    if (data.codigoBarras) {
+                        const existePorBarras = await prisma.producto.findFirst({
+                            where: { codigoBarras: data.codigoBarras },
+                            select: { id: true }
+                        })
+                        if (existePorBarras) {
+                            omitidos++
+                            detalleOmitidos.push({
+                                fila: numFila,
+                                clave: data.codigoInterno,
+                                descripcion: data.nombre.substring(0, 80),
+                                razon: `Ya existe por codigoBarras (${data.codigoBarras})`
+                            })
+                            return
+                        }
+                    }
+
+                    // ══════════════════════════════════════════════════
+                    // NO EXISTE → CREAR
+                    // ══════════════════════════════════════════════════
+
+                    const categoriaId = obtenerCategoriaIdDelCache(
+                        cacheCats,
+                        fila['DEPARTAMENTO'],
+                        fila['CATEGORIA'],
+                        categoriaFallbackId
+                    )
+
+                    const { _stockInicial, _stockMinimo, _stockMaximo, _proveedorNombre, _proveedorApodo, ...dataSinAux } = data
+
+                    // FIX: codigoBarras vacío "" viola @unique — forzar null
+                    if (!dataSinAux.codigoBarras || dataSinAux.codigoBarras.trim() === '') {
+                        dataSinAux.codigoBarras = null
+                    }
+
+                    let productoCreado
+                    try {
+                        productoCreado = await prisma.producto.create({
+                            data: { ...dataSinAux, categoriaId }
+                        })
+                    } catch (createErr) {
+                        // Segundo intento sin codigoBarras (por si es duplicado)
+                        try {
+                            productoCreado = await prisma.producto.create({
+                                data: { ...dataSinAux, codigoBarras: null, categoriaId }
+                            })
+                        } catch (createErr2) {
+                            throw new Error(`No se pudo crear: ${createErr2.message.substring(0, 200)}`)
+                        }
+                    }
+
+                    // Crear inventario con stock del CSV
+                    const sucursalId = req.usuario?.sucursalId || 1
+                    await prisma.inventarioSucursal.upsert({
+                        where: { productoId_sucursalId: { productoId: productoCreado.id, sucursalId } },
+                        update: {
+                            stockActual:       _stockInicial,
+                            stockMinimoAlerta: _stockMinimo,
+                            ..._stockMaximo && { stockMaximo: _stockMaximo }
+                        },
+                        create: {
+                            productoId:        productoCreado.id,
+                            sucursalId,
+                            stockActual:       _stockInicial,
+                            stockMinimoAlerta: _stockMinimo,
+                            ..._stockMaximo && { stockMaximo: _stockMaximo }
+                        }
+                    })
+
+                    // Vincular proveedor si viene en el CSV
+                    if (_proveedorNombre) {
+                        const proveedorId = cacheProveedores.get(_proveedorNombre)
+                        if (proveedorId) {
+                            await prisma.proveedorProducto.upsert({
+                                where:  { proveedorId_productoId: { proveedorId, productoId: productoCreado.id } },
+                                update: { precioCosto: dataSinAux.costo || 0, activo: true },
+                                create: { proveedorId, productoId: productoCreado.id, precioCosto: dataSinAux.costo || 0, activo: true }
+                            })
+                            vinculaciones++
+                        }
+                    }
+
+                    creados++
+
+                } catch (err) {
+                    erroresInsert.push({
+                        fila: numFila,
+                        clave: fila['CLAVE'],
+                        error: err.message.substring(0, 500)
+                    })
+                }
+            })
+
+            await Promise.all(promesas)
+
+            const procesados = Math.min(i + BATCH_SIZE, filasValidas.length)
+            console.log(`   Procesados: ${procesados}/${filasValidas.length}`)
+        }
+
+        // ── Respuesta ──
+        const todosErrores = [...erroresValidacion, ...erroresInsert]
+
+        console.log(`\n✅ Importación SOLO NUEVOS completada`)
+        console.log(`   Creados: ${creados}`)
+        console.log(`   Omitidos (ya existían): ${omitidos}`)
+        console.log(`   Errores: ${todosErrores.length}`)
+
+        res.json({
+            mensaje: 'Importación Solo Nuevos completada',
+            total: filas.length,
+            creados,
+            omitidos: omitidos + erroresValidacion.length,
+            vinculaciones,
+            errores: erroresInsert.length,
+            detalleErrores: todosErrores.slice(0, 30),
+            detalleOmitidos: detalleOmitidos.slice(0, 50)
+        })
+
+    } catch (error) {
+        console.error('❌ Error general en importación Solo Nuevos:', error)
+        res.status(500).json({
+            error: 'Error en importación: ' + error.message,
+            total: 0, creados: 0, omitidos: 0, errores: 0
+        })
+    }
+}
+

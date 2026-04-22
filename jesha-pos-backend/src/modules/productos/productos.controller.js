@@ -43,37 +43,68 @@ async function listarCategorias(req, res) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// LISTAR TODOS
+// LISTAR TODOS — CON PAGINACIÓN REAL Y FILTROS EN BACKEND
+// Params: page, limit, buscar, categoriaId, departamentoId,
+//         stock (con|sin|bajo), proveedorId
 // ═══════════════════════════════════════════════════════════════════
 
 async function listar(req, res) {
     try {
         console.log('🔍 Iniciando query de productos...')
 
-        const { buscar, q, enStock, categoriaId, proveedorId, skip = 0, take = 9999 } = req.query
+        const {
+            buscar, q, categoriaId, departamentoId, proveedorId,
+            stock,          // 'con' | 'sin' | 'bajo' — reemplaza el antiguo enStock
+            enStock,        // compatibilidad hacia atrás con POS
+            page = 1,
+            limit = 50,
+            // Compatibilidad con skip/take directo (ej: POS u otros módulos)
+            skip, take
+        } = req.query
+
+        // Calcular skip/take desde page/limit O desde skip/take directo
+        let takeNum, skipNum
+        if (skip !== undefined || take !== undefined) {
+            // Modo legacy — quien manda skip/take directo
+            skipNum = parseInt(skip) || 0
+            takeNum = parseInt(take) || 50
+        } else {
+            // Modo paginación — page/limit
+            takeNum = Math.min(parseInt(limit) || 50, 200) // tope de 200 por seguridad
+            const pageNum = Math.max(parseInt(page) || 1, 1)
+            skipNum = (pageNum - 1) * takeNum
+        }
 
         const terminoBusqueda = buscar || q
-        const skipNum = parseInt(skip)
-        const takeNum = parseInt(take)
 
         const where = { activo: true }
 
-        // Filtro por proveedor — solo productos vinculados a ese proveedor
+        // ── Filtro por proveedor ──
         if (proveedorId) {
             where.proveedores = { some: { proveedorId: parseInt(proveedorId), activo: true } }
         }
 
+        // ── Filtro por departamento (NUEVO — antes se hacía en frontend) ──
+        if (departamentoId) {
+            where.categoria = { departamentoId: parseInt(departamentoId) }
+        }
+
+        // ── Filtro por categoría ──
+        if (categoriaId) {
+            // Si ya hay where.categoria por departamento, mergeamos
+            if (where.categoria) {
+                where.categoriaId = parseInt(categoriaId)
+                delete where.categoria // categoriaId es más específico
+            } else {
+                where.categoriaId = parseInt(categoriaId)
+            }
+        }
+
+        // ── Filtro por búsqueda ──
         if (terminoBusqueda) {
-            // ── FIX: Limpiar término de búsqueda ──
-            // 1. Quitar comillas (el CSV las agregó: "001282828" → 001282828)
-            // 2. Quitar espacios extras
             const termLimpio = terminoBusqueda.trim().replace(/^["']+|["']+$/g, '').trim()
-
-            // ── FIX: Si parece código de barras (solo números), buscar variantes ──
             const esCodigoNumerico = /^\d+$/.test(termLimpio)
-            // Quitar ceros a la izquierda: "0123" → busca también "123"
             const sinCeros = termLimpio.replace(/^0+/, '')
-
             const palabras = termLimpio.split(/\s+/).filter(Boolean)
 
             if (palabras.length <= 1) {
@@ -83,7 +114,6 @@ async function listar(req, res) {
                     { codigoBarras:  { contains: termLimpio, mode: 'insensitive' } }
                 ]
 
-                // Si es numérico y tiene ceros al inicio, buscar también sin ceros
                 if (esCodigoNumerico && sinCeros !== termLimpio && sinCeros.length > 0) {
                     condiciones.push(
                         { codigoInterno: { contains: sinCeros, mode: 'insensitive' } },
@@ -91,7 +121,6 @@ async function listar(req, res) {
                     )
                 }
 
-                // Si es numérico, buscar también con ceros al inicio (DB tiene "123", escáner manda "0123")
                 if (esCodigoNumerico && sinCeros.length > 0) {
                     condiciones.push(
                         { codigoInterno: { endsWith: sinCeros, mode: 'insensitive' } },
@@ -107,42 +136,40 @@ async function listar(req, res) {
             }
         }
 
-        if (categoriaId) {
-            where.categoriaId = parseInt(categoriaId)
+        // ── Filtro por stock (NUEVO — antes se hacía en frontend) ──
+        // Soporta el nuevo param `stock` (con|sin|bajo) y el legacy `enStock`
+        const stockFiltro = stock || (enStock === 'true' ? 'con' : '')
+        if (stockFiltro === 'con') {
+            where.inventarios = { some: { sucursalId: 1, stockActual: { gt: 0 } } }
+        } else if (stockFiltro === 'sin') {
+            where.inventarios = { none: { sucursalId: 1, stockActual: { gt: 0 } } }
         }
+        // 'bajo' se maneja post-query porque requiere comparar dos columnas
+        // (stockActual <= stockMinimoAlerta) que Prisma no soporta en where
 
-        if (enStock === 'true') {
-            where.inventarios = { some: { stockActual: { gt: 0 } } }
-        }
-
-        // Query de datos y conteo en paralelo
-        // whereBase: igual que where pero sin filtros de stock/búsqueda para conteos globales
+        // ── Query de datos y conteo en paralelo ──
         const whereGlobal = { activo: true }
 
-        const [productos, total, conStock, sinStock, bajoStock] = await Promise.all([
+        const queries = [
             prisma.producto.findMany({
                 where,
                 include: {
                     categoria: { include: { departamento: true } },
                     inventarios: { where: { sucursalId: 1 }, take: 1 },
-                    proveedores: {
-                        include: { proveedor: true }
-                    }
+                    proveedores: { include: { proveedor: true } }
                 },
                 orderBy: { nombre: 'asc' },
                 skip: skipNum,
-                take: takeNum
+                take: stockFiltro === 'bajo' ? 9999 : takeNum  // bajo stock necesita filtrar post-query
             }),
-            prisma.producto.count({ where }),
-            // Con stock > 0
+            prisma.producto.count({ where: stockFiltro === 'bajo' ? { ...where } : where }),
+            // Conteos globales para las estadísticas del header
             prisma.producto.count({
                 where: { ...whereGlobal, inventarios: { some: { sucursalId: 1, stockActual: { gt: 0 } } } }
             }),
-            // Sin stock (0 o sin registro)
             prisma.producto.count({
                 where: { ...whereGlobal, inventarios: { none: { sucursalId: 1, stockActual: { gt: 0 } } } }
             }),
-            // Bajo stock: stockActual > 0 pero <= stockMinimoAlerta (comparación de columnas, requiere raw)
             prisma.$queryRaw`
                 SELECT COUNT(*)::int AS count
                 FROM "InventarioSucursal" i
@@ -152,7 +179,23 @@ async function listar(req, res) {
                   AND i."stockActual" <= i."stockMinimoAlerta"
                   AND p.activo = true
             `.then(r => r[0].count)
-        ])
+        ]
+
+        let [productos, total, conStock, sinStock, bajoStock] = await Promise.all(queries)
+
+        // ── Post-filtro para "bajo stock" (requiere comparar columnas) ──
+        if (stockFiltro === 'bajo') {
+            productos = productos.filter(p => {
+                const inv = p.inventarios?.[0]
+                if (!inv) return false
+                const sa = parseFloat(inv.stockActual)
+                const sm = parseFloat(inv.stockMinimoAlerta)
+                return sa > 0 && sa <= sm
+            })
+            total = productos.length
+            // Aplicar paginación manual sobre el resultado filtrado
+            productos = productos.slice(skipNum, skipNum + takeNum)
+        }
 
         const data = productos.map(prod => ({
             ...prod,
@@ -165,7 +208,9 @@ async function listar(req, res) {
             } : null
         }))
 
-        console.log(`✅ Productos: ${data.length} de ${total} | stock: ${conStock} con, ${sinStock} sin, ${bajoStock} bajo`)
+        const paginaActual = Math.floor(skipNum / takeNum) + 1
+
+        console.log(`✅ Productos: ${data.length} de ${total} (pág ${paginaActual}) | stock: ${conStock} con, ${sinStock} sin, ${bajoStock} bajo`)
         res.json({
             success: true,
             data,
@@ -173,7 +218,7 @@ async function listar(req, res) {
                 total,
                 skip:         skipNum,
                 take:         takeNum,
-                pagina:       Math.floor(skipNum / takeNum) + 1,
+                pagina:       paginaActual,
                 totalPaginas: Math.ceil(total / takeNum)
             },
             resumenStock: {

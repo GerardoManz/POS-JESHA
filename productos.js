@@ -8,6 +8,11 @@
    - Filtros del toolbar separados de los selects del modal
    - Botón "Subir Inventario" integrado con modal de importación CSV
    - tipoFacturaProv y costoSinIvaProveedor se guardan y restauran
+   - FIX: onclick inline reemplazado por data-* + delegación de eventos
+   - FIX: variable modal sombreada en initImportacion renombrada
+   - FIX: API_URL_IMPORT eliminada, se usa API_URL en todos lados
+   - FEAT: modoImportacion (upsert / solo_nuevos) con modal dinámico
+   - FEAT: columnas obligatorias ahora incluyen CLAVE SAT y UNIDAD SAT
    ═══════════════════════════════════════════════════════════════════ */
 
 
@@ -28,6 +33,11 @@ let productoActual     = null
 
 // Total global
 let totalProductos = 0
+
+// ── Estado de paginación ──
+let paginaActual   = 1
+const PRODUCTOS_POR_PAGINA = 50
+let totalPaginas   = 1
 
 // Variables DOM
 let productosTbody, searchInput, filtroDepto, filtroCat
@@ -145,22 +155,42 @@ async function cargarProductos() {
   try {
     console.log('📦 Cargando productos...')
     mostrarLoadingTabla()
+
+    // ── Construir query params — TODOS los filtros van al backend ──
     const params = new URLSearchParams()
+    params.set('page', paginaActual)
+    params.set('limit', PRODUCTOS_POR_PAGINA)
+
     const busqueda = searchInput?.value?.trim()
     if (busqueda) params.set('buscar', busqueda)
+
     const catId = filtroCat?.value
     if (catId) params.set('categoriaId', catId)
+
+    const deptoId = filtroDepto?.value
+    if (deptoId) params.set('departamentoId', deptoId)
+
+    const stockVal = filtroStock?.value
+    if (stockVal) params.set('stock', stockVal)
+
     const response = await fetch(`${API_URL}/productos?${params}`, {
       headers: { 'Authorization': `Bearer ${TOKEN}` }
     })
     if (!response.ok) throw new Error(`Error ${response.status}`)
     const resultado = await response.json()
     productosLista = resultado.data || resultado
-    if (resultado.paginacion) totalProductos = resultado.paginacion.total
+
+    if (resultado.paginacion) {
+      totalProductos = resultado.paginacion.total
+      totalPaginas   = resultado.paginacion.totalPaginas
+      paginaActual   = resultado.paginacion.pagina
+    }
     if (resultado.resumenStock) window._resumenStock = resultado.resumenStock
-    console.log(`✅ Productos cargados: ${productosLista.length}`)
+
+    console.log(`✅ Productos cargados: ${productosLista.length} de ${totalProductos} (pág ${paginaActual}/${totalPaginas})`)
     mostrarEstadisticasInventario()
-    aplicarFiltros()
+    renderizarTabla(productosLista)
+    renderizarPaginacion()
   } catch (error) {
     console.error('❌ Error cargando productos:', error)
     if (productosTbody) {
@@ -168,6 +198,7 @@ async function cargarProductos() {
         ❌ Error: ${error.message}<br/><br/>
         <button onclick="cargarProductos()" class="btn-secondary">Reintentar</button></td></tr>`
     }
+    ocultarPaginacion()
   }
 }
 
@@ -357,17 +388,11 @@ async function crearNuevaCategoria() {
 // FILTRADO
 // ═══════════════════════════════════════════════════════════════════
 
+// Todos los filtros van al backend via cargarProductos()
+// aplicarFiltros solo resetea la página a 1 y recarga
 function aplicarFiltros() {
-  const deptId     = parseInt(filtroDepto?.value) || null
-  const stockFiltro = filtroStock?.value || ''
-  let filtrados     = productosLista
-  if (deptId) filtrados = filtrados.filter(p => p.categoria?.departamento?.id === deptId)
-  if (stockFiltro === 'con')  filtrados = filtrados.filter(p => p.inventario && p.inventario.stockActual > 0)
-  else if (stockFiltro === 'sin')  filtrados = filtrados.filter(p => !p.inventario || p.inventario.stockActual === 0)
-  else if (stockFiltro === 'bajo') filtrados = filtrados.filter(p =>
-    p.inventario && p.inventario.stockActual > 0 && p.inventario.stockActual <= p.inventario.stockMinimoAlerta
-  )
-  renderizarTabla(filtrados)
+  paginaActual = 1
+  cargarProductos()
 }
 
 function limpiarFiltros() {
@@ -376,6 +401,7 @@ function limpiarFiltros() {
   if (filtroCat)    { filtroCat.value = ''; filtroCat.disabled = true }
   if (searchInput)  searchInput.value  = ''
   actualizarCategoriasFiltroToolbar()
+  paginaActual = 1
   cargarProductos()
 }
 
@@ -392,6 +418,7 @@ function mostrarLoadingTabla() {
     </td></tr>`
 }
 
+// FIX: onclick inline reemplazado por data-* attributes
 function renderizarTabla(productos) {
   if (!productosTbody) return
   if (productos.length === 0) {
@@ -419,13 +446,13 @@ function renderizarTabla(productos) {
       <td>${fmtStock(minStock)}</td>
       <td><span class="estado-badge ${p.activo ? 'activo' : 'inactivo'}">${p.activo ? 'Activo' : 'Inactivo'}</span></td>
       <td><div class="actions-cell">
-        <button class="btn-icon" onclick="editarProducto(${p.id})" title="Editar">✏️</button>
-        <button class="btn-ajuste-inv" onclick="event.stopPropagation();abrirAjusteInventario(${p.id})" title="Ajustar stock">
+        <button class="btn-icon btn-editar-producto" data-id="${p.id}" title="Editar">✏️</button>
+        <button class="btn-ajuste-inv" data-id="${p.id}" title="Ajustar stock">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
           Stock
         </button>
         <button class="btn-icon btn-toggle-estado ${p.activo ? 'btn-desactivar' : 'btn-activar'}"
-          onclick="toggleEstadoProducto(${p.id}, ${!p.activo}, '${p.nombre.replace(/'/g,"\\'")}')"
+          data-id="${p.id}" data-activo="${p.activo}" data-nombre="${p.nombre}"
           title="${p.activo ? 'Desactivar producto — dejará de aparecer en el POS' : 'Activar producto — volverá a aparecer en el POS'}">
           ${p.activo ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>' : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>'}
         </button>
@@ -750,6 +777,8 @@ function mostrarErrorProveedor(msg) {
 // ESTADO / IMAGEN / MARGEN
 // ═══════════════════════════════════════════════════════════════════
 
+// FIX: toggleEstadoProducto ya no se llama desde onclick inline
+// Ahora se invoca desde delegación de eventos en configurarEventos()
 window.toggleEstadoProducto = function(id, nuevoEstado, nombreProducto) {
   if (!nuevoEstado) {
     // Desactivar — mostrar modal de confirmación del sistema
@@ -781,15 +810,15 @@ function mostrarConfirmEstado(id, nuevoEstado, nombreProducto) {
 
   const nombre = (nombreProducto || 'este producto').substring(0, 60)
 
-  const modal = document.createElement('div')
-  modal.id = 'modal-confirm-estado'
-  modal.style.cssText = `
+  const confirmModal = document.createElement('div')
+  confirmModal.id = 'modal-confirm-estado'
+  confirmModal.style.cssText = `
     position:fixed;inset:0;background:rgba(0,0,0,0.72);
     backdrop-filter:blur(4px);z-index:3000;
     display:flex;align-items:center;justify-content:center;padding:20px;
   `
 
-  modal.innerHTML = `
+  confirmModal.innerHTML = `
     <div style="
       background:#16191e;border:1px solid rgba(255,255,255,0.09);
       border-radius:16px;width:100%;max-width:400px;overflow:hidden;
@@ -872,13 +901,13 @@ function mostrarConfirmEstado(id, nuevoEstado, nombreProducto) {
     </div>
   `
 
-  document.body.appendChild(modal)
+  document.body.appendChild(confirmModal)
 
   // Eventos
-  const cerrar = () => modal.remove()
+  const cerrar = () => confirmModal.remove()
 
   document.getElementById('cfe-cancel').addEventListener('click', cerrar)
-  modal.addEventListener('click', e => { if (e.target === modal) cerrar() })
+  confirmModal.addEventListener('click', e => { if (e.target === confirmModal) cerrar() })
   document.addEventListener('keydown', function escHandler(e) {
     if (e.key === 'Escape') { cerrar(); document.removeEventListener('keydown', escHandler) }
   })
@@ -1017,6 +1046,36 @@ function actualizarFecha() {
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// PAGINACIÓN — Renderizado de controles
+// ═══════════════════════════════════════════════════════════════════
+
+function renderizarPaginacion() {
+  const bar     = document.getElementById('paginacion-bar')
+  const btnAnt  = document.getElementById('btn-pag-anterior')
+  const btnSig  = document.getElementById('btn-pag-siguiente')
+  const info    = document.getElementById('pag-info')
+
+  if (!bar) return
+
+  // Ocultar si solo hay 1 página o menos
+  if (totalPaginas <= 1) {
+    bar.style.display = 'none'
+    return
+  }
+
+  bar.style.display = 'flex'
+
+  if (btnAnt) btnAnt.disabled = paginaActual <= 1
+  if (btnSig) btnSig.disabled = paginaActual >= totalPaginas
+  if (info)   info.textContent = `Página ${paginaActual} de ${totalPaginas} (${totalProductos} productos)`
+}
+
+function ocultarPaginacion() {
+  const bar = document.getElementById('paginacion-bar')
+  if (bar) bar.style.display = 'none'
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // EVENTOS
 // ═══════════════════════════════════════════════════════════════════
 
@@ -1026,16 +1085,22 @@ function configurarEventos() {
   if (btnCloseModal)    btnCloseModal.addEventListener('click', cerrarModal)
   if (formulario)       formulario.addEventListener('submit', guardarProducto)
 
-  // Filtros toolbar
+  // Filtros toolbar — todos delegan al backend via aplicarFiltros()
   if (filtroDepto) filtroDepto.addEventListener('change', () => { actualizarCategoriasFiltroToolbar(); aplicarFiltros() })
-  if (filtroCat)   filtroCat.addEventListener('change', () => cargarProductos())
+  if (filtroCat)   filtroCat.addEventListener('change', () => aplicarFiltros())
   if (searchInput) {
     let debounce
-    searchInput.addEventListener('input', () => { clearTimeout(debounce); debounce = setTimeout(() => cargarProductos(), 400) })
-    searchInput.addEventListener('keypress', e => { if (e.key === 'Enter') { clearTimeout(debounce); cargarProductos() } })
+    searchInput.addEventListener('input', () => { clearTimeout(debounce); debounce = setTimeout(() => aplicarFiltros(), 400) })
+    searchInput.addEventListener('keypress', e => { if (e.key === 'Enter') { clearTimeout(debounce); aplicarFiltros() } })
   }
   if (filtroStock)       filtroStock.addEventListener('change', aplicarFiltros)
   if (btnLimpiarFiltros) btnLimpiarFiltros.addEventListener('click', limpiarFiltros)
+
+  // ── Paginación ──
+  const btnPagAnt = document.getElementById('btn-pag-anterior')
+  const btnPagSig = document.getElementById('btn-pag-siguiente')
+  if (btnPagAnt) btnPagAnt.addEventListener('click', () => { if (paginaActual > 1) { paginaActual--; cargarProductos() } })
+  if (btnPagSig) btnPagSig.addEventListener('click', () => { if (paginaActual < totalPaginas) { paginaActual++; cargarProductos() } })
 
   // Selects modal
   if (modalDeptoSelect) {
@@ -1067,7 +1132,6 @@ function configurarEventos() {
   // Margen y Precio Base automático
   const inputCosto       = document.getElementById('producto-costo')
   const inputPrecioVenta = document.getElementById('producto-precioVenta')
-  const inputPrecioBase  = document.getElementById('producto-precioBase')
 
   // Radio buttons tipo de factura
   if (radioFacturaA) radioFacturaA.addEventListener('change', () => aplicarTipoFactura('A'))
@@ -1130,6 +1194,38 @@ function configurarEventos() {
   if (granelCheck) {
     granelCheck.addEventListener('change', () => actualizarVisualGranel(granelCheck.checked))
   }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // FIX: DELEGACIÓN DE EVENTOS — reemplaza onclick inline en la tabla
+  // ═══════════════════════════════════════════════════════════════════
+  if (productosTbody) {
+    productosTbody.addEventListener('click', e => {
+      // Buscar el botón más cercano con data-id
+      const btnEditar = e.target.closest('.btn-editar-producto')
+      if (btnEditar) {
+        const id = parseInt(btnEditar.dataset.id)
+        if (id) editarProducto(id)
+        return
+      }
+
+      const btnAjuste = e.target.closest('.btn-ajuste-inv')
+      if (btnAjuste) {
+        e.stopPropagation()
+        const id = parseInt(btnAjuste.dataset.id)
+        if (id) abrirAjusteInventario(id)
+        return
+      }
+
+      const btnEstado = e.target.closest('.btn-toggle-estado')
+      if (btnEstado) {
+        const id = parseInt(btnEstado.dataset.id)
+        const activoActual = btnEstado.dataset.activo === 'true'
+        const nombre = btnEstado.dataset.nombre || ''
+        if (id) toggleEstadoProducto(id, !activoActual, nombre)
+        return
+      }
+    })
+  }
 }
 
 // Visual del toggle de granel
@@ -1146,15 +1242,15 @@ function actualizarVisualGranel(activo) {
 
 // ════════════════════════════════════════════════════════════════════
 //  IMPORTACIÓN INVENTARIO — Modal integrado en productos.js
-//  Añade estas funciones al final de productos.js
-//  Y llama initImportacion() dentro de DOMContentLoaded
+//  FEAT: modoImportacion controla upsert vs solo_nuevos
+//  FIX: variable modal renombrada a modalImport (evita sombra)
+//  FIX: API_URL_IMPORT eliminada, se usa API_URL
 // ════════════════════════════════════════════════════════════════════
-
-const API_URL_IMPORT = window.__JESHA_API_URL__ || 'http://localhost:3000'
 
 // ── Estado ──
 let importArchivoSeleccionado = null
 let importValidado            = false
+let modoImportacion           = 'upsert' // 'upsert' | 'solo_nuevos'
 
 // ── Helpers parseo CSV (para validación local) ──
 function importParseCSVLine(line) {
@@ -1178,12 +1274,39 @@ function importEsCientifica(val) {
 }
 
 // ════════════════════════════════════════════════════════════════════
+//  CONFIGURAR MODAL SEGÚN MODO
+// ════════════════════════════════════════════════════════════════════
+
+function configurarModalImportSegunModo() {
+  const titulo   = document.getElementById('import-modal-titulo')
+  const subtit   = document.getElementById('import-modal-sub')
+  const iconSvg  = document.getElementById('import-icon-svg')
+
+  if (modoImportacion === 'solo_nuevos') {
+    if (titulo)  titulo.textContent  = 'Subir Solo Nuevos (Ignorar Existentes)'
+    if (subtit)  subtit.textContent  = 'Solo se crearán productos que no existan en la base de datos'
+    if (iconSvg) {
+      iconSvg.setAttribute('stroke', '#f59e0b')
+      iconSvg.innerHTML = '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>'
+    }
+  } else {
+    if (titulo)  titulo.textContent  = 'Subir Inventario (Actualizar y Crear)'
+    if (subtit)  subtit.textContent  = 'Importar productos desde archivo CSV'
+    if (iconSvg) {
+      iconSvg.setAttribute('stroke', '#6b9de8')
+      iconSvg.innerHTML = '<polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>'
+    }
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════
 //  INICIALIZAR MÓDULO
 // ════════════════════════════════════════════════════════════════════
 
 function initImportacion() {
   const btnSubir       = document.getElementById('btn-subir-inventario')
-  const modal          = document.getElementById('modal-importacion')
+  const btnSoloNuevos  = document.getElementById('btn-subir-solo-nuevos')
+  const modalImport    = document.getElementById('modal-importacion') // FIX: renombrada
   const btnClose       = document.getElementById('import-close-btn')
   const btnCancel      = document.getElementById('import-cancel-btn')
   const btnValidar     = document.getElementById('import-validate-btn')
@@ -1191,23 +1314,31 @@ function initImportacion() {
   const fileInput      = document.getElementById('import-csv-file')
   const dropZone       = document.getElementById('import-drop-zone')
 
-  if (!btnSubir) return
-
-  // Abrir modal
-  btnSubir.addEventListener('click', () => {
+  // Abrir modal — modo UPSERT
+  btnSubir?.addEventListener('click', () => {
+    modoImportacion = 'upsert'
     resetModalImport()
-    modal.style.display = 'flex'
+    configurarModalImportSegunModo()
+    modalImport.style.display = 'flex'
+  })
+
+  // Abrir modal — modo SOLO NUEVOS
+  btnSoloNuevos?.addEventListener('click', () => {
+    modoImportacion = 'solo_nuevos'
+    resetModalImport()
+    configurarModalImportSegunModo()
+    modalImport.style.display = 'flex'
   })
 
   // Cerrar modal
-  const cerrar = () => {
-    modal.style.display = 'none'
+  const cerrarImport = () => {
+    modalImport.style.display = 'none'
     resetModalImport()
   }
-  btnClose?.addEventListener('click', cerrar)
-  btnCancel?.addEventListener('click', cerrar)
-  modal?.addEventListener('click', e => { if (e.target === modal) cerrar() })
-  document.addEventListener('keydown', e => { if (e.key === 'Escape') cerrar() })
+  btnClose?.addEventListener('click', cerrarImport)
+  btnCancel?.addEventListener('click', cerrarImport)
+  modalImport?.addEventListener('click', e => { if (e.target === modalImport) cerrarImport() })
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') cerrarImport() })
 
   // Seleccionar archivo via input
   fileInput?.addEventListener('change', e => {
@@ -1257,6 +1388,7 @@ function setArchivoImport(file) {
 
 // ════════════════════════════════════════════════════════════════════
 //  VALIDAR CSV (local, sin enviar al servidor)
+//  ACTUALIZADO: CLAVE SAT y UNIDAD SAT ahora son obligatorias
 // ════════════════════════════════════════════════════════════════════
 
 async function validarCSVImport() {
@@ -1274,8 +1406,8 @@ async function validarCSVImport() {
     while (headerIdx < lineas.length && !lineas[headerIdx].trim()) headerIdx++
     const headers = importParseCSVLine(lineas[headerIdx])
 
-    // Verificar columnas críticas
-    const requeridas = ['CLAVE','DESCRIPCION','PRECIO 1']
+    // Verificar columnas críticas — ACTUALIZADO: incluye CLAVE SAT y UNIDAD SAT
+    const requeridas = ['CLAVE', 'DESCRIPCION', 'PRECIO 1', 'CLAVE SAT', 'UNIDAD SAT']
     const faltantes  = requeridas.filter(r => !headers.some(h => h.trim() === r))
     if (faltantes.length > 0) {
       mostrarErrorImport(`Columnas faltantes: ${faltantes.join(', ')}`)
@@ -1290,7 +1422,7 @@ async function validarCSVImport() {
     const idxUnidSat  = headers.findIndex(h => h.trim() === 'UNIDAD SAT')
     const idxExist    = headers.findIndex(h => h.trim() === 'EXIST.')
 
-    let total = 0, cientificas = 0, sinPrecio = 0, sinClaveSat = 0, conStock = 0
+    let total = 0, cientificas = 0, sinPrecio = 0, sinClaveSat = 0, sinUnidadSat = 0, conStock = 0
     const clavesSet = new Set()
     let duplicados  = 0
 
@@ -1312,6 +1444,9 @@ async function validarCSVImport() {
       const cs = (vals[idxClaveSat] || '').trim()
       if (!cs || cs.toLowerCase() === 'null') sinClaveSat++
 
+      const us = (vals[idxUnidSat] || '').trim()
+      if (!us || us.toLowerCase() === 'null') sinUnidadSat++
+
       if (idxExist >= 0) {
         const exist = parseFloat(vals[idxExist] || '0')
         if (exist > 0) conStock++
@@ -1321,12 +1456,20 @@ async function validarCSVImport() {
     // Render resultado
     const valDiv = document.getElementById('import-validacion')
     valDiv.style.display = 'block'
+
+    // Etiqueta del modo activo
+    const modoLabel = modoImportacion === 'solo_nuevos'
+      ? '<div style="margin-bottom:8px;padding:4px 10px;display:inline-block;font-size:0.72rem;font-weight:700;background:rgba(245,158,11,0.1);color:#f59e0b;border:1px solid rgba(245,158,11,0.25);border-radius:5px;">MODO: SOLO NUEVOS</div>'
+      : '<div style="margin-bottom:8px;padding:4px 10px;display:inline-block;font-size:0.72rem;font-weight:700;background:rgba(107,157,232,0.1);color:#6b9de8;border:1px solid rgba(107,157,232,0.25);border-radius:5px;">MODO: ACTUALIZAR Y CREAR</div>'
+
     valDiv.innerHTML = `
+      ${modoLabel}
       <div class="import-stat"><span class="import-stat-label">Total productos en CSV</span><span class="import-stat-val">${total}</span></div>
       <div class="import-stat"><span class="import-stat-label">Con CLAVE SAT</span><span class="import-stat-val ${sinClaveSat === 0 ? 'ok' : 'warn'}">${total - sinClaveSat} / ${total}</span></div>
+      <div class="import-stat"><span class="import-stat-label">Con UNIDAD SAT</span><span class="import-stat-val ${sinUnidadSat === 0 ? 'ok' : 'warn'}">${total - sinUnidadSat} / ${total}</span></div>
       <div class="import-stat"><span class="import-stat-label">Con stock inicial</span><span class="import-stat-val ok">${conStock}</span></div>
       ${cientificas > 0 ? `<div class="import-stat"><span class="import-stat-label">CLAVEs en notación científica</span><span class="import-stat-val warn">${cientificas} (se omitirán)</span></div>` : ''}
-      ${duplicados > 0 ? `<div class="import-stat"><span class="import-stat-label">CLAVEs duplicadas</span><span class="import-stat-val warn">${duplicados} (se actualizarán)</span></div>` : ''}
+      ${duplicados > 0 ? `<div class="import-stat"><span class="import-stat-label">CLAVEs duplicadas</span><span class="import-stat-val warn">${duplicados} (se ${modoImportacion === 'solo_nuevos' ? 'ignorarán' : 'actualizarán'})</span></div>` : ''}
       ${sinPrecio > 0 ? `<div class="import-stat"><span class="import-stat-label">Sin precio válido</span><span class="import-stat-val danger">${sinPrecio} (se omitirán)</span></div>` : ''}
       <div class="import-stat" style="margin-top:4px;border-top:1px solid rgba(255,255,255,0.08);padding-top:8px;">
         <span class="import-stat-label">Listos para importar</span>
@@ -1349,6 +1492,7 @@ async function validarCSVImport() {
 
 // ════════════════════════════════════════════════════════════════════
 //  EJECUTAR IMPORTACIÓN
+//  ACTUALIZADO: lee modoImportacion para elegir endpoint y adaptar resultado
 // ════════════════════════════════════════════════════════════════════
 
 async function ejecutarImportacion() {
@@ -1371,10 +1515,17 @@ async function ejecutarImportacion() {
     formData.append('archivo', importArchivoSeleccionado)
 
     progresoFill.style.width = '60%'
-    progresoText.textContent = 'Procesando productos...'
+    progresoText.textContent = modoImportacion === 'solo_nuevos'
+      ? 'Creando solo productos nuevos...'
+      : 'Procesando productos...'
+
+    // FIX: usar API_URL en lugar de API_URL_IMPORT
+    const endpoint = modoImportacion === 'solo_nuevos'
+      ? `${API_URL}/productos/importar/solo-nuevos`
+      : `${API_URL}/productos/importar/csv`
 
     const token = localStorage.getItem('jesha_token')
-    const response = await fetch(`${API_URL_IMPORT}/productos/importar/csv`, {
+    const response = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${token}` },
       body: formData
@@ -1389,16 +1540,33 @@ async function ejecutarImportacion() {
     progresoFill.style.background = '#60d080'
     progresoText.textContent = '¡Importación completada!'
 
-    // Mostrar resultado
+    // Mostrar resultado — adaptado según modo
     const valDiv = document.getElementById('import-validacion')
     valDiv.style.display = 'block'
-    valDiv.innerHTML = `
-      <div class="import-stat"><span class="import-stat-label">Total en archivo</span><span class="import-stat-val">${resultado.total}</span></div>
-      <div class="import-stat"><span class="import-stat-label">Creados</span><span class="import-stat-val ok">+${resultado.creados}</span></div>
-      <div class="import-stat"><span class="import-stat-label">Actualizados</span><span class="import-stat-val ok">↑${resultado.actualizados || 0}</span></div>
-      ${resultado.omitidos > 0 ? `<div class="import-stat"><span class="import-stat-label">Omitidos</span><span class="import-stat-val warn">${resultado.omitidos}</span></div>` : ''}
-      ${resultado.errores > 0 ? `<div class="import-stat"><span class="import-stat-label">Errores</span><span class="import-stat-val danger">${resultado.errores}</span></div>` : ''}
-    `
+
+    if (modoImportacion === 'solo_nuevos') {
+      valDiv.innerHTML = `
+        <div class="import-stat"><span class="import-stat-label">Total en archivo</span><span class="import-stat-val">${resultado.total}</span></div>
+        <div class="import-stat"><span class="import-stat-label">Creados (nuevos)</span><span class="import-stat-val ok">+${resultado.creados}</span></div>
+        <div class="import-stat"><span class="import-stat-label">Omitidos (ya existían)</span><span class="import-stat-val warn">${resultado.omitidos || 0}</span></div>
+        ${resultado.vinculaciones > 0 ? `<div class="import-stat"><span class="import-stat-label">Proveedores vinculados</span><span class="import-stat-val ok">${resultado.vinculaciones}</span></div>` : ''}
+        ${resultado.errores > 0 ? `<div class="import-stat"><span class="import-stat-label">Errores</span><span class="import-stat-val danger">${resultado.errores}</span></div>` : ''}
+      `
+    } else {
+      valDiv.innerHTML = `
+        <div class="import-stat"><span class="import-stat-label">Total en archivo</span><span class="import-stat-val">${resultado.total}</span></div>
+        <div class="import-stat"><span class="import-stat-label">Creados</span><span class="import-stat-val ok">+${resultado.creados}</span></div>
+        <div class="import-stat"><span class="import-stat-label">Actualizados</span><span class="import-stat-val ok">↑${resultado.actualizados || 0}</span></div>
+        ${resultado.omitidos > 0 ? `<div class="import-stat"><span class="import-stat-label">Omitidos</span><span class="import-stat-val warn">${resultado.omitidos}</span></div>` : ''}
+        ${resultado.errores > 0 ? `<div class="import-stat"><span class="import-stat-label">Errores</span><span class="import-stat-val danger">${resultado.errores}</span></div>` : ''}
+      `
+    }
+
+    // Log detalle omitidos en consola
+    if (resultado.detalleOmitidos && resultado.detalleOmitidos.length > 0) {
+      console.warn(`⚠️ ${resultado.omitidos} productos omitidos:`)
+      console.table(resultado.detalleOmitidos)
+    }
 
     // Recargar tabla de productos
     setTimeout(() => {
@@ -1449,28 +1617,16 @@ function mostrarErrorImport(msg) {
 
 // Roles que pueden ajustar inventario
 const ROLES_AJUSTE = ['SUPERADMIN', 'ADMIN_SUCURSAL']
-
-// Producto actualmente en el modal de ajuste
 let productoAjuste = null
 
-// ── Inicializar ──
 function initAjusteInventario() {
-  const usuario = JSON.parse(localStorage.getItem('jesha_usuario') || '{}')
-  const puedeAjustar = ROLES_AJUSTE.includes(usuario.rol)
-
-  // Si no tiene permiso, ocultar todos los botones (por clase)
-  if (!puedeAjustar) {
-    document.querySelectorAll('.btn-ajuste-inv').forEach(b => b.classList.add('hidden'))
-    return
-  }
-
-  const modal      = document.getElementById('modal-ajuste-inv')
+  const modalAjuste = document.getElementById('modal-ajuste-inv')
   const btnClose   = document.getElementById('ajuste-close-btn')
   const btnCancel  = document.getElementById('ajuste-cancel-btn')
   const btnConfirm = document.getElementById('ajuste-confirm-btn')
 
-  const cerrar = () => {
-    modal.style.display = 'none'
+  function cerrar() {
+    if (modalAjuste) modalAjuste.style.display = 'none'
     productoAjuste = null
     document.getElementById('ajuste-stock-nuevo').value = ''
     document.getElementById('ajuste-min-nuevo').value   = ''
@@ -1480,7 +1636,7 @@ function initAjusteInventario() {
 
   btnClose?.addEventListener('click', cerrar)
   btnCancel?.addEventListener('click', cerrar)
-  modal?.addEventListener('click', e => { if (e.target === modal) cerrar() })
+  modalAjuste?.addEventListener('click', e => { if (e.target === modalAjuste) cerrar() })
   document.addEventListener('keydown', e => { if (e.key === 'Escape') cerrar() })
   btnConfirm?.addEventListener('click', guardarAjuste)
 }
