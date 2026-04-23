@@ -186,12 +186,23 @@ exports.crearVenta = async (req, res) => {
 
       const ventaCreada = await tx.venta.create({
         data: {
-          folio, sucursalId, usuarioId, clienteId: clienteId || null, turnoId, metodoPago,
-          subtotal: totalRecalculado, descuento: descuentoAmt, total: totalEsperado,
-          montoPagado: montoPagadoFinal, cambio: cambioFinal,
-          desglosePagos: desglosePagos || undefined,
+          folio,
+          sucursal: { connect: { id: sucursalId } },
+          usuario:  { connect: { id: usuarioId } },
+          turno:    { connect: { id: turnoId } },
+          ...(clienteId ? { cliente: { connect: { id: clienteId } } } : {}),
+          metodoPago,
+          subtotal: totalRecalculado,
+          descuento: descuentoAmt,
+          total: totalEsperado,
+          montoPagado: montoPagadoFinal,
+          cambio: cambioFinal,
+          ...(desglosePagos ? { desglosePagos } : {}),
           notas: notas || null,
-          estado: 'COMPLETADA', tokenQr: generarUUID(), facturaEstado, facturaLimite,
+          estado: 'COMPLETADA',
+          tokenQr: generarUUID(),
+          facturaEstado,
+          ...(facturaLimite ? { facturaLimite } : {}),
           detalles: {
             create: detallesValidados.map(d => ({
               productoId:     d.productoId,

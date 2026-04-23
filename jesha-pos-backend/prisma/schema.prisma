@@ -282,7 +282,7 @@ model Producto {
   costoSinIvaProveedor Decimal? @db.Decimal(10, 2)
   categoriaId          Int
   activo               Boolean  @default(true)
-  creadoEn             DateTime @default(now())
+  facturaLimite DateTime? @default(now())
   actualizadoEn        DateTime @updatedAt
   categoria             Categoria              @relation(fields: [categoriaId], references: [id])
   inventarios           InventarioSucursal[]
