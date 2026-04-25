@@ -261,8 +261,20 @@ exports.crearVenta = async (req, res) => {
         }
       }
 
-      // Si es crédito: actualizar saldo cliente + crear bitácora automática
+      // ──────────────────────────────────────────────────────────
+      // Si es crédito: acumular en bitácora del cliente
+      // Modelo A: una bitácora origen VENTA ABIERTA por cliente,
+      // todas las ventas a crédito se suman a esa misma bitácora.
+      // Bitácoras origen MANUAL NO se tocan desde aquí.
+      // ──────────────────────────────────────────────────────────
       if (esCredito && clienteId) {
+        // Obtener nombre del cliente para título auto-generado
+        const clienteInfo = await tx.cliente.findUnique({
+          where: { id: clienteId },
+          select: { nombre: true }
+        })
+
+        // Actualizar saldo del cliente (cuenta corriente)
         await tx.cliente.update({
           where: { id: clienteId },
           data: {
@@ -270,35 +282,55 @@ exports.crearVenta = async (req, res) => {
             totalCreditoUsado: { increment: totalEsperado }
           }
         })
-        const fechaBit  = new Date()
-        const seqBitRes = await tx.$queryRaw`SELECT nextval('folio_bitacora_seq') as seq`
-        const folioBit  = `BIT-${fechaBit.getFullYear()}${String(fechaBit.getMonth()+1).padStart(2,'0')}${String(fechaBit.getDate()).padStart(2,'0')}-${String(Number(seqBitRes[0].seq)).padStart(5,'0')}`
-        const bitacoraCreada = await tx.bitacora.create({
-          data: {
-            folio:           folioBit,
-            titulo:          `Crédito — ${folio}`,
-            descripcion:     `Venta a crédito por $${totalEsperado.toFixed(2)}`,
-            clienteId,
-            sucursalId,
-            usuarioId,
-            estado:          'ABIERTA',
-            totalMateriales: totalEsperado,
-            totalAbonado:    0,
-            saldoPendiente:  totalEsperado,
-            ventaId:         ventaCreada.id,
-            notas:           'Generada automáticamente — crédito a cliente'
-          }
+
+        // Buscar bitácora origen VENTA ABIERTA del cliente
+        let bitacora = await tx.bitacora.findFirst({
+          where: { clienteId, estado: 'ABIERTA', origen: 'VENTA' }
         })
+
+        if (bitacora) {
+          // EXISTE → sumar totales a la bitácora existente
+          bitacora = await tx.bitacora.update({
+            where: { id: bitacora.id },
+            data: {
+              totalMateriales: { increment: totalEsperado },
+              saldoPendiente:  { increment: totalEsperado }
+            }
+          })
+        } else {
+          // NO EXISTE → crear nueva bitácora acumulativa (origen VENTA)
+          const fechaBit  = new Date()
+          const seqBitRes = await tx.$queryRaw`SELECT nextval('folio_bitacora_seq') as seq`
+          const folioBit  = `BIT-${fechaBit.getFullYear()}${String(fechaBit.getMonth()+1).padStart(2,'0')}${String(fechaBit.getDate()).padStart(2,'0')}-${String(Number(seqBitRes[0].seq)).padStart(5,'0')}`
+          bitacora = await tx.bitacora.create({
+            data: {
+              folio:           folioBit,
+              titulo:          `Crédito — ${clienteInfo?.nombre || 'Cliente'}`,
+              origen:          'VENTA',
+              clienteId,
+              sucursalId,
+              usuarioId,
+              estado:          'ABIERTA',
+              totalMateriales: totalEsperado,
+              totalAbonado:    0,
+              saldoPendiente:  totalEsperado,
+              notas:           'Cuenta corriente — crédito a cliente'
+            }
+          })
+        }
+
+        // Agregar detalles de esta venta a la bitácora (siempre, exista o no)
         for (const d of detallesValidados) {
           await tx.detalleBitacora.create({
             data: {
-              bitacoraId:           bitacoraCreada.id,
+              bitacoraId:           bitacora.id,
+              ventaId:              ventaCreada.id,
               productoId:           d.productoId,
               cantidad:             d.cantidad,
               precioUnitario:       d.precioUnitario,
               subtotal:             d.subtotal,
-              inventarioDescontado: false,
-              notas:                'Importado automáticamente desde venta ' + folio
+              inventarioDescontado: true,              // ya se descontó en la venta
+              notas:                `Venta ${folio}`
             }
           })
         }

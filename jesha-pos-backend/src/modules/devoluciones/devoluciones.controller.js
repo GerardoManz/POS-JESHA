@@ -108,6 +108,29 @@ exports.crear = async (req, res) => {
       console.warn(`⚠️ Devolución ${folio} SIN turno activo. Egreso de caja ($${montoReembolso}) NO registrado.`)
     }
 
+    // ── Si la venta era a crédito, descontar de la bitácora ─────
+    // Se valida ANTES de la transacción para fallar rápido sin tocar nada.
+    let bitacoraVenta = null
+    if (venta.metodoPago === 'CREDITO_CLIENTE' && venta.clienteId) {
+      bitacoraVenta = await prisma.bitacora.findFirst({
+        where: { clienteId: venta.clienteId, estado: 'ABIERTA', origen: 'VENTA' },
+        select: { id: true, folio: true, totalMateriales: true, saldoPendiente: true, totalAbonado: true, notas: true }
+      })
+
+      if (bitacoraVenta) {
+        const saldoActual = parseFloat(bitacoraVenta.saldoPendiente)
+        if (montoReembolso > saldoActual + 0.005) {
+          return res.status(400).json({
+            error: `No se puede devolver $${montoReembolso.toFixed(2)}: la bitácora ${bitacoraVenta.folio} solo tiene saldo pendiente de $${saldoActual.toFixed(2)}. El excedente debe manejarse fuera del sistema.`,
+            codigo: 'EXCEDE_SALDO_BITACORA',
+            saldoBitacora: saldoActual,
+            montoSolicitado: montoReembolso,
+            folioBitacora: bitacoraVenta.folio
+          })
+        }
+      }
+    }
+
     // ── Transacción atómica ─────────────────────────────────────
     const devolucion = await prisma.$transaction(async (tx) => {
 
@@ -167,6 +190,73 @@ exports.crear = async (req, res) => {
         data:  { estado: nuevoEstadoVenta }
       })
 
+      // ── ACTUALIZAR BITÁCORA SI APLICA (venta a crédito) ───────
+      if (bitacoraVenta) {
+        // 1. Reducir cantidad/subtotal en DetalleBitacora por cada producto devuelto
+        for (const det of detallesValidados) {
+          // Buscar todos los DetalleBitacora de esta venta+producto (suele ser 1 por producto)
+          const detallesBit = await tx.detalleBitacora.findMany({
+            where: { bitacoraId: bitacoraVenta.id, ventaId: parseInt(ventaId), productoId: det.productoId },
+            orderBy: { creadoEn: 'asc' }
+          })
+
+          let cantidadADescontar = det.cantidad
+          for (const detBit of detallesBit) {
+            if (cantidadADescontar <= 0) break
+            const cantActual = parseFloat(detBit.cantidad)
+            const descontar  = Math.min(cantActual, cantidadADescontar)
+            const nuevaCant  = cantActual - descontar
+            const nuevoSub   = parseFloat((nuevaCant * parseFloat(detBit.precioUnitario)).toFixed(2))
+
+            await tx.detalleBitacora.update({
+              where: { id: detBit.id },
+              data: {
+                cantidad: nuevaCant,
+                subtotal: nuevoSub
+              }
+            })
+            cantidadADescontar -= descontar
+          }
+        }
+
+        // 2. Reducir totales de la bitácora
+        const nuevoTotalMat = parseFloat((parseFloat(bitacoraVenta.totalMateriales) - montoReembolso).toFixed(2))
+        const nuevoSaldo    = parseFloat((parseFloat(bitacoraVenta.saldoPendiente)  - montoReembolso).toFixed(2))
+
+        // 3. Construir nueva nota agregada
+        const fechaCorta = new Date().toLocaleDateString('es-MX', { day: '2-digit', month: 'short' })
+        const lineaNueva = `[${fechaCorta}] ${folio}: ${motivo} (-$${montoReembolso.toFixed(2)})`
+        const notasFinal = bitacoraVenta.notas
+          ? `${bitacoraVenta.notas}\n${lineaNueva}`
+          : lineaNueva
+
+        // 4. Si se devolvió todo (totalMateriales = 0), cerrar bitácora automáticamente
+        const cerrarBitacora = nuevoTotalMat <= 0.005
+
+        const updateBitData = {
+          totalMateriales: Math.max(0, nuevoTotalMat),
+          saldoPendiente:  Math.max(0, nuevoSaldo),
+          notas:           notasFinal
+        }
+
+        if (cerrarBitacora) {
+          updateBitData.estado        = 'CERRADA_VENTA'
+          updateBitData.cerradaEn     = new Date()
+          updateBitData.saldoAlCerrar = Math.max(0, nuevoSaldo)
+        }
+
+        await tx.bitacora.update({
+          where: { id: bitacoraVenta.id },
+          data:  updateBitData
+        })
+
+        // 5. Actualizar saldo del cliente
+        await tx.cliente.update({
+          where: { id: venta.clienteId },
+          data:  { saldoPendiente: { decrement: montoReembolso } }
+        })
+      }
+
       return devCreada
     })
 
@@ -178,10 +268,11 @@ exports.crear = async (req, res) => {
       productos:          detallesValidados.length,
       fueraDeTiempo,
       sinTurnoAlDevolver: sinTurno,
-      estadoVentaResultante: nuevoEstadoVenta
+      estadoVentaResultante: nuevoEstadoVenta,
+      bitacoraAfectada:   bitacoraVenta?.folio || null
     })
 
-    console.log(`✅ Devolución ${folio} — Venta: ${venta.folio} — $${montoReembolso} — Estado venta: ${nuevoEstadoVenta}${sinTurno ? ' — ⚠️ sin turno' : ''}`)
+    console.log(`✅ Devolución ${folio} — Venta: ${venta.folio} — $${montoReembolso} — Estado venta: ${nuevoEstadoVenta}${sinTurno ? ' — ⚠️ sin turno' : ''}${bitacoraVenta ? ` — 📒 Bitácora ${bitacoraVenta.folio} actualizada` : ''}`)
 
     res.status(201).json({
       success:       true,
@@ -190,6 +281,7 @@ exports.crear = async (req, res) => {
       fueraDeTiempo,
       sinTurno,
       estadoVenta:   nuevoEstadoVenta,
+      bitacoraAfectada: bitacoraVenta ? { folio: bitacoraVenta.folio, id: bitacoraVenta.id } : null,
       data: {
         id:             devolucion.id,
         folio,

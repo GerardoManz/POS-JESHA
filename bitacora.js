@@ -1,633 +1,982 @@
 // ════════════════════════════════════════════════════════════════════
-//  BITACORA.JS
+//  BITACORA.JS — Frontend Fase 4
+//  Maneja dos orígenes: VENTA (desde POS) y MANUAL (creadas aquí)
 // ════════════════════════════════════════════════════════════════════
 
-const TOKEN   = localStorage.getItem('jesha_token')
-const USUARIO = JSON.parse(localStorage.getItem('jesha_usuario') || '{}')
-const API_URL = window.__JESHA_API_URL__ || 'http://localhost:3000'
-const LIMIT   = 25
+// ── Estado global ──
+let bitacoraActual     = null
+let turnoActual        = null    // { id, abierto, abiertaEn, ... }
+let todasBitacoras     = []
+let productosCache     = []
+let clientesCache      = []
+let productoSeleccionado = null
+let paginaActual       = 1
+const LIMIT = 25
 
-if (!TOKEN) {
-  localStorage.setItem('redirect_after_login', 'bitacora.html')
-  window.location.href = 'login.html'
-  throw new Error('Sin autenticación')
+const usuario  = JSON.parse(localStorage.getItem('jesha_usuario') || '{}')
+const esSUPER  = usuario.rol === 'SUPERADMIN'
+
+// ════════════════════════════════════════════════════════════════════
+//  HELPERS
+// ════════════════════════════════════════════════════════════════════
+function formatMoney(n) {
+  return '$' + parseFloat(n || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
-let paginaActual   = 1
-let bitacoraActual = null
-let clientesLista  = []
-let prodSeleccionado = null
-let debounce, debounceSearch, debounceProd
-
-const fmt = v => `$${parseFloat(v||0).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})}`
-const fmtFecha = iso => iso ? new Date(iso).toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'}) : '—'
-const fmtHora  = iso => iso ? new Date(iso).toLocaleString('es-MX',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : '—'
-
-const ESTADOS = {
-  ABIERTA:         { label:'Abierta',          cls:'abierta' },
-  CERRADA_VENTA:   { label:'Cerrada c/venta',   cls:'cerrada_venta' },
-  CERRADA_INTERNA: { label:'Cerrada interna',   cls:'cerrada_interna' }
+function formatFecha(iso, corto = false) {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  return corto
+    ? d.toLocaleDateString('es-MX', { day: '2-digit', month: 'short' })
+    : d.toLocaleString('es-MX', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
-// apiFetch global disponible desde sidebar.js
+function toast(msg, tipo = 'info') {
+  if (typeof jeshaToast === 'function') return jeshaToast(msg, tipo)
+  alert(msg)
+}
+
+function badgeEstado(estado) {
+  const nombres = { ABIERTA: 'Abierta', PAUSADA: 'Pausada', CERRADA_VENTA: 'Pagada', CERRADA_INTERNA: 'Cerrada interna' }
+  return `<span class="bit-estado-badge ${estado.toLowerCase()}">${nombres[estado] || estado}</span>`
+}
+
+function badgeOrigen(origen) {
+  if (origen === 'VENTA')  return `<span class="bit-origen-badge origen-venta">🛒 POS</span>`
+  if (origen === 'MANUAL') return `<span class="bit-origen-badge origen-manual">📝 Manual</span>`
+  return ''
+}
+
+function claseSaldo(saldo) {
+  const n = parseFloat(saldo)
+  if (n > 0)  return 'saldo-neg'
+  if (n < 0)  return 'saldo-ok'
+  return 'saldo-zer'
+}
 
 // ════════════════════════════════════════════════════════════════════
-//  LISTAR
+//  TURNO DE CAJA
 // ════════════════════════════════════════════════════════════════════
-async function cargarBitacoras() {
-  const tbody  = document.getElementById('bit-tbody')
-  const pagDiv = document.getElementById('pagination')
-  tbody.innerHTML = `<tr><td colspan="8" class="loading-cell"><div class="spinner"></div><p>Cargando...</p></td></tr>`
-
-  const buscar  = document.getElementById('search-input')?.value.trim() || ''
-  const estado  = document.getElementById('filtro-estado')?.value || ''
-  const cliente = document.getElementById('filtro-cliente')?.value || ''
-  const params  = new URLSearchParams({ page: paginaActual, limit: LIMIT })
-  if (buscar)  params.set('buscar',    buscar)
-  if (estado)  params.set('estado',    estado)
-  if (cliente && parseInt(cliente) > 0) params.set('clienteId', cliente)
-
+async function cargarTurnoActivo() {
   try {
-    const data     = await apiFetch(`/bitacoras?${params}`)
-    const lista    = data.data || []
-    const total    = data.total || 0
+    const res = await apiFetch('/turnos-caja/activo', { method: 'GET' })
+    turnoActual = res?.data || null
+  } catch (e) {
+    // 404 = sin turno abierto, es normal
+    turnoActual = null
+  }
+  actualizarIndicadorTurno()
+}
 
-    if (lista.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="8" class="loading-cell"><p>No hay bitácoras con los filtros aplicados</p></td></tr>`
-      pagDiv.style.display = 'none'
-      return
-    }
-
-    tbody.innerHTML = lista.map(b => {
-      const e    = ESTADOS[b.estado] || { label: b.estado, cls: 'abierta' }
-      const saldo = parseFloat(b.saldoPendiente)
-      const saldoCls = saldo > 0 ? 'saldo-neg' : saldo < 0 ? 'saldo-ok' : 'saldo-zer'
-      return `
-        <tr onclick="abrirDetalle(${b.id})">
-          <td><strong>${b.folio}</strong></td>
-          <td>${b.titulo}</td>
-          <td>${b.cliente?.nombre || '<span style="color:var(--muted)">Sin cliente</span>'}</td>
-          <td>${fmt(b.totalMateriales)}</td>
-          <td style="color:#60d080">${fmt(b.totalAbonado)}</td>
-          <td class="${saldoCls}">${fmt(b.saldoPendiente)}</td>
-          <td><span class="bit-estado-badge ${e.cls}">${e.label}</span></td>
-          <td><button class="btn-pag" onclick="event.stopPropagation();abrirDetalle(${b.id})" style="padding:4px 10px">Abrir</button></td>
-        </tr>`
-    }).join('')
-
-    const totalPags = Math.ceil(total / LIMIT)
-    if (totalPags > 1) {
-      pagDiv.style.display = 'flex'
-      document.getElementById('pag-info').textContent = `Página ${paginaActual} de ${totalPags} (${total} bitácoras)`
-      document.getElementById('btn-prev').disabled = paginaActual <= 1
-      document.getElementById('btn-next').disabled = paginaActual >= totalPags
-    } else pagDiv.style.display = 'none'
-
-  } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="8" class="loading-cell"><p style="color:#f44336">Error: ${err.message}</p></td></tr>`
+function actualizarIndicadorTurno() {
+  const chip   = document.getElementById('info-turno')
+  const icon   = document.getElementById('info-turno-icon')
+  const texto  = document.getElementById('info-turno-texto')
+  if (!chip) return
+  chip.classList.remove('info-turno-loading', 'info-turno-abierto', 'info-turno-cerrado')
+  if (turnoActual?.id && turnoActual.abierto) {
+    chip.classList.add('info-turno-abierto')
+    icon.textContent  = '✅'
+    texto.textContent = `Turno #${turnoActual.id} abierto`
+  } else {
+    chip.classList.add('info-turno-cerrado')
+    icon.textContent  = '⚠️'
+    texto.textContent = 'Sin turno abierto'
   }
 }
 
 // ════════════════════════════════════════════════════════════════════
-//  ABRIR DETALLE
+//  LISTADO PRINCIPAL
 // ════════════════════════════════════════════════════════════════════
-window.abrirDetalle = async function(id) {
+async function cargarBitacoras(pagina = 1) {
+  const tbody = document.getElementById('bit-tbody')
+  tbody.innerHTML = `<tr><td colspan="8" class="loading-cell"><div class="spinner"></div><p>Cargando...</p></td></tr>`
+
+  const buscar = document.getElementById('search-input').value.trim()
+  const estado = document.getElementById('filtro-estado').value
+  const origen = document.getElementById('filtro-origen').value
+  const cli    = document.getElementById('filtro-cliente').value
+
+  const params = new URLSearchParams({ page: pagina, limit: LIMIT })
+  if (buscar) params.append('buscar',    buscar)
+  if (estado) params.append('estado',    estado)
+  if (origen) params.append('origen',    origen)
+  if (cli)    params.append('clienteId', cli)
+
   try {
-    const data = await apiFetch(`/bitacoras/${id}`)
-    bitacoraActual = data.data
+    const res = await apiFetch(`/bitacoras?${params}`, { method: 'GET' })
+    todasBitacoras = res.data || []
+    renderTabla(todasBitacoras)
+    renderPaginacion(res.total || 0, pagina)
+    paginaActual = pagina
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="8" class="loading-cell"><p style="color:#ff6b6b;">Error: ${e.message}</p></td></tr>`
+  }
+}
+
+function renderTabla(bitacoras) {
+  const tbody = document.getElementById('bit-tbody')
+  if (!bitacoras.length) {
+    tbody.innerHTML = `<tr><td colspan="8" class="loading-cell"><p>Sin bitácoras</p></td></tr>`
+    return
+  }
+  tbody.innerHTML = bitacoras.map(b => {
+    const cli   = b.cliente?.nombre || '—'
+    const titCli = b.titulo ? `<strong>${b.titulo}</strong><br><small style="color:var(--muted);">${cli}</small>` : cli
+    return `
+      <tr data-id="${b.id}">
+        <td><strong>${b.folio}</strong></td>
+        <td>${badgeOrigen(b.origen)}</td>
+        <td>${titCli}</td>
+        <td>${formatMoney(b.totalMateriales)}</td>
+        <td class="saldo-ok">${formatMoney(b.totalAbonado)}</td>
+        <td class="${claseSaldo(b.saldoPendiente)}">${formatMoney(b.saldoPendiente)}</td>
+        <td>${badgeEstado(b.estado)}</td>
+        <td style="white-space:nowrap;text-align:center;color:var(--muted);font-size:0.78rem;">${formatFecha(b.creadaEn, true)}</td>
+      </tr>`
+  }).join('')
+  tbody.querySelectorAll('tr').forEach(tr => {
+    tr.addEventListener('click', () => abrirDetalle(parseInt(tr.dataset.id)))
+  })
+}
+
+function renderPaginacion(total, pagina) {
+  const pag = document.getElementById('pagination')
+  if (total <= LIMIT) { pag.style.display = 'none'; return }
+  pag.style.display = 'flex'
+  const totalPags = Math.ceil(total / LIMIT)
+  document.getElementById('pag-info').textContent = `Página ${pagina} de ${totalPags} (${total} registros)`
+  document.getElementById('btn-prev').disabled = pagina === 1
+  document.getElementById('btn-next').disabled = pagina >= totalPags
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  DETALLE
+// ════════════════════════════════════════════════════════════════════
+async function abrirDetalle(id) {
+  try {
+    const res = await apiFetch(`/bitacoras/${id}`, { method: 'GET' })
+    bitacoraActual = res.data
     renderDetalle()
     document.getElementById('modal-detalle').classList.add('active')
-  } catch (err) { jeshaToast('Error: ' + err.message, 'error') }
+  } catch (e) {
+    toast('Error al cargar bitácora: ' + e.message, 'error')
+  }
+}
+
+function cerrarDetalle() {
+  document.getElementById('modal-detalle').classList.remove('active')
+  bitacoraActual        = null
+  productoSeleccionado  = null
+  document.getElementById('buscador-prod-panel').style.display = 'none'
+  document.getElementById('form-cantidad-prod').style.display  = 'none'
 }
 
 function renderDetalle() {
   const b = bitacoraActual
-  const e = ESTADOS[b.estado] || { label: b.estado, cls: 'abierta' }
-  const abierta = b.estado === 'ABIERTA'
+  if (!b) return
 
-  document.getElementById('det-folio').textContent         = b.folio
-  document.getElementById('det-titulo-header').textContent = b.titulo
-  const badge = document.getElementById('det-estado-badge')
-  badge.className   = `bit-estado-badge ${e.cls}`
-  badge.textContent = e.label
+  // Header
+  document.getElementById('det-folio').textContent          = b.folio
+  document.getElementById('det-origen-badge').innerHTML     = badgeOrigen(b.origen)
+  document.getElementById('det-estado-badge').outerHTML     = `<span id="det-estado-badge" class="bit-estado-badge ${b.estado.toLowerCase()}">${badgeEstado(b.estado).match(/>([^<]+)</)[1]}</span>`
+  document.getElementById('det-titulo-header').textContent  = b.titulo || ''
 
-  document.getElementById('det-cliente').textContent   = b.cliente?.nombre  || '—'
+  // Info
+  document.getElementById('det-cliente').textContent   = b.cliente?.nombre   || '—'
   document.getElementById('det-telefono').textContent  = b.cliente?.telefono || '—'
-  document.getElementById('det-fecha').textContent     = fmtFecha(b.creadaEn)
+  document.getElementById('det-fecha').textContent     = formatFecha(b.creadaEn)
   document.getElementById('det-usuario').textContent   = b.usuario?.nombre   || '—'
 
-  const descEl = document.getElementById('det-descripcion')
-  if (b.descripcion) { descEl.textContent = b.descripcion; descEl.style.display = 'block' }
-  else descEl.style.display = 'none'
+  const descP = document.getElementById('det-descripcion')
+  if (b.descripcion) { descP.textContent = b.descripcion; descP.style.display = 'block' }
+  else descP.style.display = 'none'
 
-  const notasEl = document.getElementById('det-notas-p')
-  if (b.notas) { notasEl.textContent = `📝 ${b.notas}`; notasEl.style.display = 'block' }
-  else notasEl.style.display = 'none'
+  const notasP = document.getElementById('det-notas-p')
+  if (b.notas) { notasP.textContent = b.notas; notasP.style.display = 'block' }
+  else notasP.style.display = 'none'
 
   // Financiero
-  document.getElementById('fin-materiales').textContent = fmt(b.totalMateriales)
-  document.getElementById('fin-abonado').textContent    = fmt(b.totalAbonado)
-  const saldo    = parseFloat(b.saldoPendiente)
-  const saldoEl  = document.getElementById('fin-saldo')
-  saldoEl.textContent = fmt(saldo)
-  saldoEl.className   = `fin-monto ${saldo > 0 ? 'fin-naranja' : saldo < 0 ? 'fin-verde' : ''}`
+  document.getElementById('fin-materiales').textContent = formatMoney(b.totalMateriales)
+  document.getElementById('fin-abonado').textContent    = formatMoney(b.totalAbonado)
+  document.getElementById('fin-saldo').textContent      = formatMoney(b.saldoPendiente)
 
-  // Panel abono visible solo si está abierta/pausada
-  document.getElementById('card-abono').style.display = abierta ? 'block' : 'none'
-
-  // Card de crédito del cliente (solo si viene de venta a crédito)
+  // Crédito del cliente
   const cardCredito = document.getElementById('card-credito-cliente')
-  if (cardCredito) {
-    // Mostrar card si viene de venta a crédito — usar ventaId como señal principal
-    const esCredito = b.ventaId !== null && b.ventaId !== undefined
-    if (esCredito && b.cliente) {
-      cardCredito.style.display = 'block'
-      // Siempre cargar datos frescos del cliente al abrir
-      cargarCreditoCliente(b.cliente.id)
+  if (b.cliente) {
+    cardCredito.style.display = 'block'
+    const limite      = parseFloat(b.cliente.limiteCredito || 0)
+    const saldoTotal  = parseFloat(b.cliente.saldoPendiente || 0)
+    const disponible  = limite - saldoTotal
+    document.getElementById('cred-limite').textContent     = formatMoney(limite)
+    document.getElementById('cred-usado').textContent      = formatMoney(saldoTotal)
+    document.getElementById('cred-disponible').textContent = formatMoney(disponible)
+  } else {
+    cardCredito.style.display = 'none'
+  }
+
+  // Productos (tabla materiales)
+  renderDetalleItems(b.detalles || [])
+
+  // Abonos
+  renderAbonos(b.abonos || [])
+
+  // Botón agregar producto — SOLO si origen MANUAL y estado ABIERTA
+  const btnAgregar   = document.getElementById('btn-agregar-prod')
+  const avisoVenta   = document.getElementById('aviso-origen-venta')
+  const esManual     = b.origen === 'MANUAL'
+  const esEditable   = b.estado === 'ABIERTA'
+  if (esManual && esEditable) {
+    btnAgregar.style.display = 'inline-flex'
+    avisoVenta.style.display = 'none'
+  } else {
+    btnAgregar.style.display = 'none'
+    avisoVenta.style.display = (b.origen === 'VENTA') ? 'block' : 'none'
+  }
+
+  // Abono — deshabilitar si no hay turno o estado no ABIERTA
+  const btnAbonar   = document.getElementById('btn-abonar')
+  const avisoTurno  = document.getElementById('aviso-sin-turno')
+  const cardAbono   = document.getElementById('card-abono')
+  if (!esEditable) {
+    cardAbono.style.display = 'none'
+  } else {
+    cardAbono.style.display = 'block'
+    if (!turnoActual?.abierto) {
+      btnAbonar.disabled  = true
+      btnAbonar.style.opacity = '0.5'
+      btnAbonar.style.cursor  = 'not-allowed'
+      avisoTurno.style.display = 'block'
     } else {
-      cardCredito.style.display = 'none'
+      btnAbonar.disabled  = false
+      btnAbonar.style.opacity = '1'
+      btnAbonar.style.cursor  = 'pointer'
+      avisoTurno.style.display = 'none'
     }
   }
 
-  // Abonos
-  const listaAbonos = document.getElementById('lista-abonos')
-  if (!b.abonos || b.abonos.length === 0) {
-    listaAbonos.innerHTML = '<p class="muted-hint">Sin abonos registrados</p>'
-  } else {
-    listaAbonos.innerHTML = b.abonos.map(a => `
-      <div class="abono-item">
-        <div>
-          <div class="abono-monto">+${fmt(a.monto)}</div>
-          <div class="abono-meta">${a.metodoPago} · ${fmtHora(a.creadoEn)} · ${a.usuario?.nombre || '—'}</div>
-          ${a.notas ? `<div class="abono-meta">${a.notas}</div>` : ''}
-        </div>
-      </div>
-    `).join('')
-  }
-
-  // Tabla de materiales
-  const tbody = document.getElementById('det-items-tbody')
-  if (!b.detalles || b.detalles.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="7" class="loading-cell"><p>Sin materiales aún</p></td></tr>`
-  } else {
-    tbody.innerHTML = b.detalles.map(d => `
-      <tr>
-        <td>${d.producto?.nombre || '—'}</td>
-        <td style="color:var(--muted);font-size:0.78rem">${d.producto?.unidadVenta || '—'}</td>
-        <td style="text-align:center">${d.cantidad}</td>
-        <td>${fmt(d.precioUnitario)}</td>
-        <td><strong>${fmt(d.subtotal)}</strong></td>
-        <td style="color:var(--muted);font-size:0.75rem">${fmtFecha(d.creadoEn)}</td>
-        <td>${abierta ? `<button class="btn-eliminar" onclick="quitarProducto(${d.id})" title="Quitar">✕</button>` : ''}</td>
-      </tr>
-    `).join('')
-  }
-
-  // Botón agregar producto
-  document.getElementById('btn-agregar-prod').style.display = abierta ? 'inline-flex' : 'none'
-  document.getElementById('buscador-prod-panel').style.display = 'none'
-  document.getElementById('form-cantidad-prod').style.display  = 'none'
-  document.getElementById('search-prod-det').value = ''
-  document.getElementById('lista-prod-det').innerHTML = '<p class="muted-hint">Escribe para buscar...</p>'
-  prodSeleccionado = null
-
-  // Acciones de estado
+  // Acciones (botones de cierre/reapertura)
   renderAcciones()
 }
 
-function renderAcciones() {
-  const b       = bitacoraActual
-  const accDiv  = document.getElementById('det-acciones')
-  accDiv.innerHTML = ''
-
-  if (b.estado === 'ABIERTA') {
-    accDiv.innerHTML += `<button class="btn-success" onclick="cambiarEstado('CERRADA_INTERNA')">✓ Cerrar (uso interno)</button>`
-    accDiv.innerHTML += `<button class="btn-danger"  onclick="cambiarEstado('CERRADA_VENTA')">🛒 Cerrar con venta</button>`
+function renderDetalleItems(detalles) {
+  const tbody = document.getElementById('det-items-tbody')
+  if (!detalles.length) {
+    tbody.innerHTML = `<tr><td colspan="7" class="loading-cell"><p>Sin materiales aún</p></td></tr>`
+    return
   }
-}
+  const b = bitacoraActual
+  const editable = b.origen === 'MANUAL' && b.estado === 'ABIERTA'
+  tbody.innerHTML = detalles.map(d => {
+    const nombre   = d.producto?.nombre || '—'
+    const unidad   = d.producto?.unidadVenta || 'pz'
+    const cantidad = parseFloat(d.cantidad)
+    const todoDevuelto = cantidad <= 0.001
+    const filaStyle = todoDevuelto
+      ? 'opacity:0.45;text-decoration:line-through;'
+      : ''
+    const sufijoNombre = todoDevuelto
+      ? ' <small style="color:#ff9999;text-decoration:none;display:inline-block;">(devuelto)</small>'
+      : ''
 
-// ════════════════════════════════════════════════════════════════════
-//  CAMBIAR ESTADO
-// ════════════════════════════════════════════════════════════════════
-window.cambiarEstado = async function(estado) {
-  const labels = { ABIERTA:'reactivar', CERRADA_INTERNA:'cerrar como uso interno', CERRADA_VENTA:'cerrar con venta' }
-  const ok = await jeshaConfirm({
-    title: 'Cambiar estado',
-    message: `¿${labels[estado] || 'Cambiar estado de'} la bitácora <strong>${bitacoraActual.folio}</strong>?`,
-    confirmText: 'Confirmar', type: 'warning'
-  })
-  if (!ok) return
-  try {
-    const data = await apiFetch(`/bitacoras/${bitacoraActual.id}/estado`, { method:'PATCH', body: JSON.stringify({ estado }) })
-    bitacoraActual = data.data
-    renderDetalle()
-    cargarBitacoras()
-  } catch (err) { jeshaToast('Error: ' + err.message, 'error') }
-}
+    const origen = d.venta
+      ? `<small style="color:var(--muted);">VTA: ${d.venta.folio}</small>`
+      : (d.inventarioDescontado
+          ? '<small style="color:#60d080;">Descontado</small>'
+          : '<small style="color:#ff9999;">⚠️ sin stock</small>')
 
-// ════════════════════════════════════════════════════════════════════
-//  AGREGAR PRODUCTO
-// ════════════════════════════════════════════════════════════════════
-async function buscarProductosDet(q) {
-  const lista = document.getElementById('lista-prod-det')
-  if (!q || q.length < 2) { lista.innerHTML = '<p class="muted-hint">Escribe para buscar...</p>'; return }
-  lista.innerHTML = '<p class="muted-hint">Buscando...</p>'
-  try {
-    const data = await apiFetch(`/productos?buscar=${encodeURIComponent(q)}&take=20`)
-    const prods = data.data || data
-    if (!prods?.length) { lista.innerHTML = '<p class="muted-hint">Sin resultados</p>'; return }
-    window._prodDetCache = {}
-    prods.forEach(p => { window._prodDetCache[p.id] = p })
-    lista.innerHTML = prods.map(p => {
-      const stock = p.inventarios?.[0]?.stockActual ?? p.stock ?? '—'
-      const cls   = typeof stock === 'number' && stock > 0 ? 'pi-stock-ok' : 'pi-stock-no'
-      return `<div class="prod-item-inline" onclick="seleccionarProd(${p.id})">
-        <span class="pi-nombre">${p.nombre}</span>
-        <span style="display:flex;flex-direction:column;align-items:flex-end;gap:2px">
-          <span class="pi-precio">${fmt(p.precioVenta || p.precioBase)}</span>
-          <span class="${cls}">Stock: ${stock}</span>
-        </span>
-      </div>`
-    }).join('')
-  } catch (err) { lista.innerHTML = `<p class="muted-hint" style="color:#f44336">Error: ${err.message}</p>` }
-}
+    // Celdas editables solo si la bitácora es MANUAL y está ABIERTA
+    const celdaCantidad = (editable && !todoDevuelto)
+      ? `<td class="celda-editable" data-detid="${d.id}" data-campo="cantidad" data-original="${cantidad}" title="Click para editar">${cantidad.toLocaleString('es-MX')} <span class="edit-icon">✎</span></td>`
+      : `<td>${cantidad.toLocaleString('es-MX')}</td>`
 
-window.seleccionarProd = function(id) {
-  prodSeleccionado = window._prodDetCache?.[id]
-  if (!prodSeleccionado) return
-  document.getElementById('prod-seleccionado-nombre').textContent = `${prodSeleccionado.nombre} — ${fmt(prodSeleccionado.precioVenta || prodSeleccionado.precioBase)}`
-  document.getElementById('prod-precio').value   = parseFloat(prodSeleccionado.precioVenta || prodSeleccionado.precioBase).toFixed(2)
-  document.getElementById('prod-cantidad').value = 1
-  document.getElementById('form-cantidad-prod').style.display = 'block'
-  document.getElementById('prod-error').classList.remove('show')
-}
+    const celdaPrecio = (editable && !todoDevuelto)
+      ? `<td class="celda-editable" data-detid="${d.id}" data-campo="precioUnitario" data-original="${d.precioUnitario}" title="Click para editar">${formatMoney(d.precioUnitario)} <span class="edit-icon">✎</span></td>`
+      : `<td>${formatMoney(d.precioUnitario)}</td>`
 
-async function confirmarAgregarProd() {
-  if (!prodSeleccionado) return
-  const cantidad = parseInt(document.getElementById('prod-cantidad').value)
-  const precio   = parseFloat(document.getElementById('prod-precio').value)
-  if (!cantidad || cantidad <= 0) { mostrarError('prod-error', 'Cantidad debe ser mayor a 0'); return }
-  if (!precio   || precio   <  0) { mostrarError('prod-error', 'Precio inválido'); return }
+    const btnQuitar = (editable && !todoDevuelto)
+      ? `<button class="btn-quitar-prod" data-detid="${d.id}" title="Quitar línea completa y reintegrar stock">✕</button>`
+      : ''
 
-  const btn = document.getElementById('btn-confirmar-prod')
-  btn.disabled = true; btn.textContent = 'Agregando...'
+    return `
+      <tr style="${filaStyle}">
+        <td>${nombre}${sufijoNombre}</td>
+        <td>${unidad}</td>
+        ${celdaCantidad}
+        ${celdaPrecio}
+        <td><strong>${formatMoney(d.subtotal)}</strong></td>
+        <td>${origen}</td>
+        <td>${btnQuitar}</td>
+      </tr>`
+  }).join('')
 
-  try {
-    const data = await apiFetch(`/bitacoras/${bitacoraActual.id}/productos`, {
-      method: 'POST',
-      body: JSON.stringify({ productoId: prodSeleccionado.id, cantidad, precioUnitario: precio })
+  // Conectar eventos de quitar
+  tbody.querySelectorAll('.btn-quitar-prod').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation()
+      quitarProducto(parseInt(btn.dataset.detid))
     })
-    bitacoraActual = data.data
-    renderDetalle()
-    cargarBitacoras()
-  } catch (err) {
-    mostrarError('prod-error', err.message)
-  } finally {
-    btn.disabled = false; btn.textContent = 'Agregar'
-  }
-}
-
-window.quitarProducto = async function(detalleId) {
-  const ok2 = await jeshaConfirm({
-    title: 'Quitar producto',
-    message: '¿Quitar este producto de la bitácora? El stock será reintegrado.',
-    confirmText: 'Quitar', type: 'danger'
   })
-  if (!ok2) return
-  try {
-    const data = await apiFetch(`/bitacoras/${bitacoraActual.id}/productos/${detalleId}`, { method: 'DELETE' })
-    bitacoraActual = data.data
-    renderDetalle()
-    cargarBitacoras()
-  } catch (err) { jeshaToast('Error: ' + err.message, 'error') }
+
+  // Conectar eventos de edición inline
+  tbody.querySelectorAll('.celda-editable').forEach(td => {
+    td.addEventListener('click', () => activarEdicionCelda(td))
+  })
 }
 
-// ════════════════════════════════════════════════════════════════════
-//  REGISTRAR ABONO
-// ════════════════════════════════════════════════════════════════════
-async function registrarAbono() {
-  const monto    = parseFloat(document.getElementById('abono-monto').value)
-  const metodo   = document.getElementById('abono-metodo').value
-  const notas    = document.getElementById('abono-notas').value.trim() || null
+// ── Edición inline de cantidad / precio ──
+function activarEdicionCelda(td) {
+  if (td.querySelector('input')) return  // ya está activa
+  const detid    = parseInt(td.dataset.detid)
+  const campo    = td.dataset.campo
+  const original = parseFloat(td.dataset.original)
 
-  if (!monto || monto <= 0) { jeshaToast('Ingresa un monto válido', 'warning'); return }
+  const inp = document.createElement('input')
+  inp.type  = 'number'
+  inp.step  = campo === 'cantidad' ? '0.001' : '0.01'
+  inp.min   = '0'
+  inp.value = original
+  inp.style.cssText = 'width:80px;padding:4px 8px;background:rgba(255,255,255,0.08);border:1px solid var(--accent);border-radius:5px;color:var(--text);font-family:inherit;font-size:0.875rem;'
 
-  const btn = document.getElementById('btn-abonar')
-  btn.disabled = true; btn.textContent = 'Registrando...'
+  td.innerHTML = ''
+  td.appendChild(inp)
+  inp.focus()
+  inp.select()
 
-  try {
-    const data = await apiFetch(`/bitacoras/${bitacoraActual.id}/abonos`, {
-      method: 'POST',
-      body: JSON.stringify({ monto, metodoPago: metodo, notas })
-    })
-    bitacoraActual = data.data
-    // Refrescar saldo del cliente si es bitácora de crédito
-    // (el backend ya hace el decrement en Cliente al registrar el abono)
-    if (bitacoraActual.ventaId && bitacoraActual.cliente?.id) {
-      cargarCreditoCliente(bitacoraActual.cliente.id)
+  const guardar = async () => {
+    const nuevo = parseFloat(inp.value)
+    if (isNaN(nuevo) || nuevo < 0) {
+      toast('Valor inválido', 'warning')
+      renderDetalle()
+      return
     }
-    document.getElementById('abono-monto').value = ''
-    document.getElementById('abono-notas').value = ''
+    if (nuevo === original) {
+      renderDetalle()
+      return
+    }
+    await editarDetalleBitacora(detid, campo, nuevo)
+  }
+
+  inp.addEventListener('blur', guardar)
+  inp.addEventListener('keydown', ev => {
+    if (ev.key === 'Enter') { ev.preventDefault(); inp.blur() }
+    if (ev.key === 'Escape') { ev.preventDefault(); renderDetalle() }
+  })
+}
+
+async function editarDetalleBitacora(detalleId, campo, nuevoValor) {
+  try {
+    const body = { [campo]: nuevoValor }
+    const res = await apiFetch(`/bitacoras/${bitacoraActual.id}/productos/${detalleId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body)
+    })
+    if (res?.stockInsuficiente) toast(res.mensaje || 'Aplicado con stock insuficiente', 'warning')
+    else toast('Cambio guardado', 'success')
+    bitacoraActual = res.data
     renderDetalle()
-    cargarBitacoras()
-  } catch (err) { jeshaToast('Error: ' + err.message, 'error') } 
-  finally { btn.disabled = false; btn.textContent = '+ Registrar abono' }
+    cargarBitacoras(paginaActual)
+  } catch (e) {
+    toast('Error: ' + e.message, 'error')
+    renderDetalle()
+  }
+}
+
+function renderAbonos(abonos) {
+  const cont = document.getElementById('lista-abonos')
+  if (!abonos.length) { cont.innerHTML = '<p class="muted-hint">Sin abonos registrados</p>'; return }
+  cont.innerHTML = abonos.map(a => `
+    <div class="abono-item">
+      <div style="flex:1;">
+        <div class="abono-monto">+ ${formatMoney(a.monto)}</div>
+        <div class="abono-meta">${a.metodoPago} • ${formatFecha(a.creadoEn, true)} • ${a.usuario?.nombre || ''}</div>
+        ${a.notas ? `<div class="abono-meta" style="margin-top:3px;">${a.notas}</div>` : ''}
+      </div>
+      <button class="btn-reimprimir" data-abono-id="${a.id}" title="Reimprimir comprobante">🖨️</button>
+    </div>`).join('')
+  cont.querySelectorAll('.btn-reimprimir').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation()
+      abrirTicketAbono(parseInt(btn.dataset.abonoId))
+    })
+  })
+}
+
+function renderAcciones() {
+  const cont = document.getElementById('det-acciones')
+  const b = bitacoraActual
+  const acciones = []
+
+  // ABIERTA o PAUSADA → botón "Cerrar manualmente"
+  if (b.estado === 'ABIERTA' || b.estado === 'PAUSADA') {
+    acciones.push(`<button class="btn-danger" id="btn-abrir-cierre">🔒 Cerrar manualmente</button>`)
+  }
+
+  // Cerradas → botón "Reabrir" (solo SUPERADMIN dentro de 30 días)
+  if (['CERRADA_VENTA', 'CERRADA_INTERNA'].includes(b.estado) && esSUPER) {
+    const diasDesdeCierre = b.cerradaEn
+      ? (Date.now() - new Date(b.cerradaEn).getTime()) / 86400000
+      : 999
+    if (diasDesdeCierre <= 30) {
+      acciones.push(`<button class="btn-warning" id="btn-abrir-reapertura">🔓 Reabrir bitácora</button>`)
+    } else {
+      acciones.push(`<button class="btn-warning" disabled style="opacity:0.4;cursor:not-allowed;" title="Han pasado más de 30 días desde el cierre">🔓 Ventana de reapertura expirada</button>`)
+    }
+  }
+
+  cont.innerHTML = acciones.join('')
+
+  const btnCierre = document.getElementById('btn-abrir-cierre')
+  if (btnCierre) btnCierre.addEventListener('click', abrirModalCierre)
+
+  const btnReabrir = document.getElementById('btn-abrir-reapertura')
+  if (btnReabrir) btnReabrir.addEventListener('click', abrirModalReabrir)
 }
 
 // ════════════════════════════════════════════════════════════════════
-//  CREAR BITÁCORA
+//  CREAR BITÁCORA MANUAL
 // ════════════════════════════════════════════════════════════════════
 function abrirModalCrear() {
-  document.getElementById('bit-titulo').value         = ''
+  document.getElementById('bit-titulo').value        = ''
+  document.getElementById('bit-descripcion').value   = ''
+  document.getElementById('bit-notas').value         = ''
   document.getElementById('bit-cliente-buscar').value = ''
   document.getElementById('bit-cliente-id').value     = ''
-  document.getElementById('bit-descripcion').value    = ''
-  document.getElementById('bit-notas').value          = ''
   document.getElementById('crear-error').classList.remove('show')
-  cerrarBitDD()
   document.getElementById('modal-crear').classList.add('active')
-  setTimeout(() => document.getElementById('bit-titulo').focus(), 100)
 }
+
+function cerrarModalCrear() { document.getElementById('modal-crear').classList.remove('active') }
 
 async function guardarNuevaBitacora() {
   const titulo      = document.getElementById('bit-titulo').value.trim()
+  const descripcion = document.getElementById('bit-descripcion').value.trim()
+  const notas       = document.getElementById('bit-notas').value.trim()
   const clienteId   = document.getElementById('bit-cliente-id').value || null
-  const descripcion = document.getElementById('bit-descripcion').value.trim() || null
-  const notas       = document.getElementById('bit-notas').value.trim() || null
+  const errorDiv    = document.getElementById('crear-error')
+  errorDiv.classList.remove('show')
 
-  if (!titulo) { mostrarError('crear-error', 'El título es requerido'); return }
+  if (!titulo) {
+    errorDiv.textContent = 'El título es obligatorio'
+    errorDiv.classList.add('show')
+    return
+  }
 
   const btn = document.getElementById('crear-guardar')
   btn.disabled = true; btn.textContent = 'Creando...'
 
   try {
-    const data = await apiFetch('/bitacoras', {
-      method: 'POST',
-      body: JSON.stringify({ titulo, clienteId, descripcion, notas })
-    })
-    document.getElementById('modal-crear').classList.remove('active')
-    paginaActual = 1
-    cargarBitacoras()
-    // Abrir directo el detalle de la nueva bitácora
-    bitacoraActual = data.data
-    renderDetalle()
-    document.getElementById('modal-detalle').classList.add('active')
-  } catch (err) {
-    mostrarError('crear-error', err.message)
+    const body = { titulo }
+    if (descripcion) body.descripcion = descripcion
+    if (notas)       body.notas       = notas
+    if (clienteId)   body.clienteId   = parseInt(clienteId)
+
+    const res = await apiFetch('/bitacoras', { method: 'POST', body: JSON.stringify(body) })
+    toast('Bitácora creada: ' + res.data.folio, 'success')
+    cerrarModalCrear()
+    await cargarBitacoras(1)
+    abrirDetalle(res.data.id)
+  } catch (e) {
+    errorDiv.textContent = e.message || 'Error al crear bitácora'
+    errorDiv.classList.add('show')
   } finally {
     btn.disabled = false; btn.textContent = 'Crear Bitácora'
   }
 }
 
 // ════════════════════════════════════════════════════════════════════
-//  AUTOCOMPLETE CLIENTES
+//  AGREGAR / QUITAR PRODUCTO (solo MANUAL)
+// ════════════════════════════════════════════════════════════════════
+function abrirBuscadorProducto() {
+  document.getElementById('buscador-prod-panel').style.display = 'block'
+  document.getElementById('form-cantidad-prod').style.display  = 'none'
+  document.getElementById('search-prod-det').value             = ''
+  document.getElementById('search-prod-det').focus()
+  document.getElementById('lista-prod-det').innerHTML = '<p class="muted-hint">Escribe para buscar...</p>'
+}
+
+let timerBusqueda = null
+async function buscarProductosDet(q) {
+  if (timerBusqueda) clearTimeout(timerBusqueda)
+  timerBusqueda = setTimeout(async () => {
+    if (!q || q.length < 2) {
+      document.getElementById('lista-prod-det').innerHTML = '<p class="muted-hint">Escribe al menos 2 caracteres...</p>'
+      return
+    }
+    try {
+      const res = await apiFetch(`/productos?buscar=${encodeURIComponent(q)}&limit=10`, { method: 'GET' })
+      productosCache = res.data || []
+      renderListaProductos(productosCache)
+    } catch (e) {
+      document.getElementById('lista-prod-det').innerHTML = `<p class="muted-hint" style="color:#ff6b6b;">Error: ${e.message}</p>`
+    }
+  }, 300)
+}
+
+function renderListaProductos(productos) {
+  const cont = document.getElementById('lista-prod-det')
+  if (!productos.length) { cont.innerHTML = '<p class="muted-hint">Sin resultados</p>'; return }
+  cont.innerHTML = productos.map(p => {
+    const stock = p.inventarios?.[0]?.stockActual || 0
+    const stockClass = stock > 0 ? 'pi-stock-ok' : 'pi-stock-no'
+    const stockText  = stock > 0 ? `${stock} disp.` : 'sin stock'
+    return `
+      <div class="prod-item-inline" data-prodid="${p.id}">
+        <div>
+          <div class="pi-nombre">${p.nombre}</div>
+          <small style="color:var(--muted);font-size:0.7rem;">${p.codigoInterno || ''} • <span class="${stockClass}">${stockText}</span></small>
+        </div>
+        <div class="pi-precio">${formatMoney(p.precioVenta || 0)}</div>
+      </div>`
+  }).join('')
+  cont.querySelectorAll('.prod-item-inline').forEach(it => {
+    it.addEventListener('click', () => seleccionarProducto(parseInt(it.dataset.prodid)))
+  })
+}
+
+function seleccionarProducto(productoId) {
+  const p = productosCache.find(x => x.id === productoId)
+  if (!p) return
+  productoSeleccionado = p
+  const stock = p.inventarios?.[0]?.stockActual || 0
+  document.getElementById('prod-seleccionado-nombre').textContent = p.nombre
+  document.getElementById('prod-stock-info').innerHTML =
+    stock > 0
+      ? `Stock disponible: <strong style="color:#60d080;">${stock} ${p.unidadVenta || 'pz'}</strong>`
+      : `<strong style="color:#ff9999;">⚠️ Sin stock — se permitirá agregar pero quedará marcado</strong>`
+  document.getElementById('prod-cantidad').value = '1'
+  document.getElementById('prod-precio').value   = parseFloat(p.precioVenta || 0).toFixed(2)
+  document.getElementById('form-cantidad-prod').style.display = 'block'
+  document.getElementById('prod-cantidad').focus()
+}
+
+async function confirmarAgregarProducto() {
+  const cantidad       = parseFloat(document.getElementById('prod-cantidad').value)
+  const precioUnitario = parseFloat(document.getElementById('prod-precio').value)
+  const errorDiv       = document.getElementById('prod-error')
+  errorDiv.classList.remove('show')
+
+  if (!cantidad || cantidad <= 0)        { errorDiv.textContent = 'Cantidad debe ser > 0'; errorDiv.classList.add('show'); return }
+  if (isNaN(precioUnitario) || precioUnitario < 0) { errorDiv.textContent = 'Precio inválido';  errorDiv.classList.add('show'); return }
+
+  const btn = document.getElementById('btn-confirmar-prod')
+  btn.disabled = true; btn.textContent = 'Agregando...'
+
+  try {
+    const res = await apiFetch(`/bitacoras/${bitacoraActual.id}/productos`, {
+      method: 'POST',
+      body: JSON.stringify({
+        productoId: productoSeleccionado.id,
+        cantidad,
+        precioUnitario
+      })
+    })
+    if (res.stockInsuficiente) toast(res.mensaje, 'warning')
+    else                        toast('Producto agregado', 'success')
+    bitacoraActual = res.data
+    renderDetalle()
+    document.getElementById('buscador-prod-panel').style.display = 'none'
+    cargarBitacoras(paginaActual)
+  } catch (e) {
+    errorDiv.textContent = e.message
+    errorDiv.classList.add('show')
+  } finally {
+    btn.disabled = false; btn.textContent = 'Agregar'
+  }
+}
+
+async function quitarProducto(detalleId) {
+  const ok = await confirmarAccion('¿Quitar este producto y reintegrar el stock?')
+  if (!ok) return
+  try {
+    const res = await apiFetch(`/bitacoras/${bitacoraActual.id}/productos/${detalleId}`, { method: 'DELETE' })
+    toast('Producto eliminado', 'success')
+    bitacoraActual = res.data
+    renderDetalle()
+    cargarBitacoras(paginaActual)
+  } catch (e) {
+    toast('Error: ' + e.message, 'error')
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  ABONO (con turnoId + ticket opcional)
+// ════════════════════════════════════════════════════════════════════
+async function registrarAbono() {
+  if (!turnoActual?.abierto) {
+    toast('Debes abrir un turno de caja para registrar abonos', 'warning')
+    return
+  }
+  const monto  = parseFloat(document.getElementById('abono-monto').value)
+  const metodo = document.getElementById('abono-metodo').value
+  const notas  = document.getElementById('abono-notas').value.trim()
+
+  if (!monto || monto <= 0) { toast('Ingresa un monto válido', 'warning'); return }
+
+  const btn = document.getElementById('btn-abonar')
+  btn.disabled = true
+
+  try {
+    const res = await apiFetch(`/bitacoras/${bitacoraActual.id}/abonos`, {
+      method: 'POST',
+      body: JSON.stringify({ monto, metodoPago: metodo, notas, turnoId: turnoActual.id })
+    })
+    toast(res.mensaje || 'Abono registrado', res.cerrada ? 'success' : 'info')
+    document.getElementById('abono-monto').value = ''
+    document.getElementById('abono-notas').value = ''
+    bitacoraActual = res.data
+    renderDetalle()
+    cargarBitacoras(paginaActual)
+
+    // Preguntar si desea imprimir (modal estilizado del sistema)
+    const ultimoAbono = (res.data.abonos || []).slice(-1)[0]
+    if (ultimoAbono) {
+      mostrarModalImprimir(monto, ultimoAbono.id)
+    }
+  } catch (e) {
+    toast('Error: ' + e.message, 'error')
+  } finally {
+    btn.disabled = false
+  }
+}
+
+function abrirTicketAbono(abonoId) {
+  const base = (typeof API_URL !== 'undefined' ? API_URL : window.__JESHA_API_URL__ || '').replace(/\/$/, '')
+  const token = localStorage.getItem('jesha_token')
+  // Ventana nueva — pasa el token como query param porque es ventana popup
+  // (fetch no aplica para HTML directo)
+  const url = `${base}/bitacoras/abonos/${abonoId}/ticket?token=${token}`
+  window.open(url, '_blank', 'width=380,height=700')
+}
+
+// ── Modal estilizado para preguntar si imprimir ──
+function mostrarModalImprimir(monto, abonoId) {
+  // Crear modal si no existe
+  let modal = document.getElementById('modal-imprimir')
+  if (!modal) {
+    modal = document.createElement('div')
+    modal.id = 'modal-imprimir'
+    modal.className = 'modal'
+    modal.innerHTML = `
+      <div class="modal-content" style="max-width:420px;">
+        <div class="modal-header">
+          <h3>Abono registrado</h3>
+          <button class="modal-close" id="imp-close">&times;</button>
+        </div>
+        <div style="padding:22px;text-align:center;">
+          <div style="font-size:2.4rem;margin-bottom:8px;">✅</div>
+          <p style="font-size:0.95rem;margin-bottom:6px;">Abono de <strong id="imp-monto" style="color:#60d080;">$0.00</strong> registrado correctamente.</p>
+          <p style="font-size:0.85rem;color:var(--muted);margin-bottom:20px;">¿Deseas imprimir el comprobante?</p>
+          <div style="display:flex;gap:10px;justify-content:center;">
+            <button class="btn-secondary" id="imp-cancelar">No imprimir</button>
+            <button class="btn-primary" id="imp-imprimir">🖨️ Imprimir comprobante</button>
+          </div>
+        </div>
+      </div>`
+    document.body.appendChild(modal)
+  }
+  document.getElementById('imp-monto').textContent = formatMoney(monto)
+  modal.classList.add('active')
+
+  const cerrar = () => modal.classList.remove('active')
+  document.getElementById('imp-close').onclick    = cerrar
+  document.getElementById('imp-cancelar').onclick = cerrar
+  document.getElementById('imp-imprimir').onclick = () => {
+    cerrar()
+    abrirTicketAbono(abonoId)
+  }
+}
+
+// ── Modal de confirmación genérico (reemplaza confirm() nativo) ──
+function confirmarAccion(mensaje, tipoBoton = 'danger') {
+  return new Promise(resolve => {
+    let modal = document.getElementById('modal-confirmar')
+    if (!modal) {
+      modal = document.createElement('div')
+      modal.id = 'modal-confirmar'
+      modal.className = 'modal'
+      modal.innerHTML = `
+        <div class="modal-content" style="max-width:400px;">
+          <div class="modal-header">
+            <h3>Confirmar acción</h3>
+            <button class="modal-close" id="conf-close">&times;</button>
+          </div>
+          <div style="padding:22px;">
+            <p id="conf-msg" style="font-size:0.92rem;text-align:center;margin-bottom:20px;line-height:1.5;"></p>
+            <div style="display:flex;gap:10px;justify-content:center;">
+              <button class="btn-secondary" id="conf-no">Cancelar</button>
+              <button class="btn-danger" id="conf-si">Sí, continuar</button>
+            </div>
+          </div>
+        </div>`
+      document.body.appendChild(modal)
+    }
+    document.getElementById('conf-msg').textContent = mensaje
+    const btnSi = document.getElementById('conf-si')
+    btnSi.className = tipoBoton === 'danger' ? 'btn-danger' : 'btn-primary'
+    modal.classList.add('active')
+
+    const cerrar = (resultado) => {
+      modal.classList.remove('active')
+      resolve(resultado)
+    }
+    document.getElementById('conf-close').onclick = () => cerrar(false)
+    document.getElementById('conf-no').onclick    = () => cerrar(false)
+    btnSi.onclick                                  = () => cerrar(true)
+  })
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  CIERRE MANUAL
+// ════════════════════════════════════════════════════════════════════
+function abrirModalCierre() {
+  const b = bitacoraActual
+  document.getElementById('cierre-motivo').value = ''
+  document.getElementById('cierre-error').classList.remove('show')
+  const saldo = parseFloat(b.saldoPendiente)
+  const aviso = document.getElementById('cierre-aviso-saldo')
+  if (saldo > 0 && b.clienteId) {
+    aviso.innerHTML = `⚠️ Esta bitácora tiene saldo pendiente de <strong>${formatMoney(saldo)}</strong>. Al cerrarla, este monto se perdonará y se restará del saldo del cliente.`
+    aviso.style.display = 'block'
+  } else {
+    aviso.style.display = 'none'
+  }
+  document.getElementById('modal-cierre').classList.add('active')
+}
+
+function cerrarModalCierre() { document.getElementById('modal-cierre').classList.remove('active') }
+
+async function confirmarCierre() {
+  const motivo = document.getElementById('cierre-motivo').value.trim()
+  const errorDiv = document.getElementById('cierre-error')
+  errorDiv.classList.remove('show')
+  if (!motivo) {
+    errorDiv.textContent = 'El motivo es obligatorio'
+    errorDiv.classList.add('show')
+    return
+  }
+  const btn = document.getElementById('cierre-confirmar')
+  btn.disabled = true; btn.textContent = 'Cerrando...'
+  try {
+    const res = await apiFetch(`/bitacoras/${bitacoraActual.id}/estado`, {
+      method: 'PATCH',
+      body: JSON.stringify({ estado: 'CERRADA_INTERNA', motivo })
+    })
+    toast('Bitácora cerrada manualmente', 'success')
+    cerrarModalCierre()
+    bitacoraActual = res.data
+    renderDetalle()
+    cargarBitacoras(paginaActual)
+  } catch (e) {
+    errorDiv.textContent = e.message
+    errorDiv.classList.add('show')
+  } finally {
+    btn.disabled = false; btn.textContent = 'Cerrar bitácora'
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  REAPERTURA (solo SUPERADMIN)
+// ════════════════════════════════════════════════════════════════════
+function abrirModalReabrir() {
+  const b = bitacoraActual
+  document.getElementById('reabrir-motivo').value = ''
+  document.getElementById('reabrir-error').classList.remove('show')
+  const info = document.getElementById('reabrir-info')
+  const saldoAlCerrar = parseFloat(b.saldoAlCerrar || 0)
+  let html = `<strong>${b.folio}</strong> — cerrada el ${formatFecha(b.cerradaEn)}<br>`
+  if (b.estado === 'CERRADA_INTERNA' && saldoAlCerrar > 0 && b.cliente) {
+    html += `Al reabrir se restaurarán <strong>${formatMoney(saldoAlCerrar)}</strong> al saldo pendiente de <strong>${b.cliente.nombre}</strong>.`
+  } else if (b.estado === 'CERRADA_VENTA') {
+    html += `Esta bitácora se cerró por pago completo. Al reabrir no se modificará el saldo del cliente.`
+  } else {
+    html += `Al reabrir, la bitácora volverá a estado ABIERTA.`
+  }
+  info.innerHTML = html
+  document.getElementById('modal-reabrir').classList.add('active')
+}
+
+function cerrarModalReabrir() { document.getElementById('modal-reabrir').classList.remove('active') }
+
+async function confirmarReapertura() {
+  const motivo = document.getElementById('reabrir-motivo').value.trim()
+  const errorDiv = document.getElementById('reabrir-error')
+  errorDiv.classList.remove('show')
+  if (!motivo) {
+    errorDiv.textContent = 'El motivo es obligatorio'
+    errorDiv.classList.add('show')
+    return
+  }
+  const btn = document.getElementById('reabrir-confirmar')
+  btn.disabled = true; btn.textContent = 'Reabriendo...'
+  try {
+    const res = await apiFetch(`/bitacoras/${bitacoraActual.id}/estado`, {
+      method: 'PATCH',
+      body: JSON.stringify({ estado: 'ABIERTA', motivo })
+    })
+    toast(res.mensaje || 'Bitácora reabierta', 'success')
+    cerrarModalReabrir()
+    bitacoraActual = res.data
+    renderDetalle()
+    cargarBitacoras(paginaActual)
+  } catch (e) {
+    errorDiv.textContent = e.message
+    errorDiv.classList.add('show')
+  } finally {
+    btn.disabled = false; btn.textContent = 'Reabrir'
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  CLIENTES — dropdown
 // ════════════════════════════════════════════════════════════════════
 async function cargarClientes() {
   try {
-    const data = await apiFetch('/clientes?activo=true')
-    clientesLista = Array.isArray(data) ? data : (data.data || [])
+    const res = await apiFetch('/clientes?limit=500', { method: 'GET' })
+    // Manejar múltiples formatos de respuesta posibles
+    const lista = Array.isArray(res) ? res
+                : Array.isArray(res?.data) ? res.data
+                : Array.isArray(res?.clientes) ? res.clientes
+                : []
+    clientesCache = lista.filter(c => c.activo !== false)
+
     const sel = document.getElementById('filtro-cliente')
-    clientesLista.filter(c => c.nombre.toLowerCase() !== 'cliente general')
-      .sort((a,b) => a.nombre.localeCompare(b.nombre))
-      .forEach(c => {
-        const opt = document.createElement('option')
-        opt.value = c.id; opt.textContent = c.nombre
-        sel.appendChild(opt)
-      })
-  } catch(e) { console.warn('No se cargaron clientes:', e.message) }
-}
-
-// ════════════════════════════════════════════════════════════════════
-//  DROPDOWN CLIENTES — patrón portal (body-level, escapa overflow)
-// ════════════════════════════════════════════════════════════════════
-
-;(function() {
-  if (document.getElementById('bit-dd-styles')) return
-  const s = document.createElement('style')
-  s.id = 'bit-dd-styles'
-  s.textContent = `
-    #bit-dd-portal {
-      position: fixed;
-      z-index: 999999;
-      background: #1a1d23;
-      border: 1px solid rgba(255,255,255,0.1);
-      border-radius: 8px;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.6);
-      flex-direction: column;
-      overflow: hidden;
+    if (sel) {
+      sel.innerHTML = '<option value="">Todos los clientes</option>' +
+        clientesCache.map(c => `<option value="${c.id}">${c.nombre}</option>`).join('')
     }
-    #bit-dd-portal .dd-search-wrap {
-      padding: 8px 10px;
-      border-bottom: 1px solid rgba(255,255,255,0.08);
-      flex-shrink: 0;
-    }
-    #bit-dd-portal .dd-search-wrap input {
-      width: 100%;
-      box-sizing: border-box;
-      background: rgba(255,255,255,0.05);
-      border: 1px solid rgba(255,255,255,0.1);
-      border-radius: 6px;
-      padding: 6px 10px;
-      color: #e9edf4;
-      font-size: 0.875rem;
-      outline: none;
-    }
-    #bit-dd-portal .dd-list { overflow-y: auto; max-height: 220px; }
-    #bit-dd-portal .dd-item {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 9px 14px;
-      cursor: pointer;
-      font-size: 0.875rem;
-      color: #e9edf4;
-      transition: background 0.12s;
-      gap: 12px;
-    }
-    #bit-dd-portal .dd-item:hover { background: rgba(255,255,255,0.06); }
-    #bit-dd-portal .dd-item .dd-tel { color: #6b7280; font-size: 0.78rem; white-space: nowrap; }
-    #bit-dd-portal .dd-item .dd-sin { color: #6b7280; }
-  `
-  document.head.appendChild(s)
-})()
-
-function obtenerPortal() {
-  let p = document.getElementById('bit-dd-portal')
-  if (!p) {
-    p = document.createElement('div')
-    p.id = 'bit-dd-portal'
-    p.style.display = 'none'
-    document.body.appendChild(p)
+    console.log(`✅ ${clientesCache.length} clientes cargados`)
+  } catch(e) {
+    console.warn('No se cargaron clientes:', e.message)
+    clientesCache = []
   }
-  return p
 }
 
-function filtrarClientes(q) {
-  const s = (q || '').toLowerCase().trim()
-  if (!s) return clientesLista.slice(0, 60)
-  return clientesLista.filter(c =>
-    c.nombre?.toLowerCase().includes(s) ||
-    c.apodo?.toLowerCase().includes(s)  ||
-    c.telefono?.includes(s)
-  ).slice(0, 60)
-}
+function mostrarDropdownClientes(e) {
+  if (e) { e.stopPropagation() }
+  const inp = document.getElementById('bit-cliente-buscar')
+  const dd  = document.getElementById('dd-bit-clientes')
 
-function renderItemsPortal(clientes) {
-  const list = document.querySelector('#bit-dd-portal .dd-list')
-  if (!list) return
-  list.innerHTML =
-    `<div class="dd-item" onclick="selBitCliente(null,'')">
-       <span class="dd-sin">👤 Sin cliente</span>
-     </div>` +
-    clientes.map(c => `
-      <div class="dd-item" onclick="selBitCliente(${c.id},'${c.nombre.replace(/'/g,"\\'")}')">
-        <span>${c.nombre}</span>
-        ${c.telefono ? `<span class="dd-tel">${c.telefono}</span>` : ''}
-      </div>`
+  // Si no hay clientes cacheados, intentar cargarlos
+  if (!clientesCache.length) {
+    dd.innerHTML = '<div class="dropdown-item" style="color:var(--muted);">Cargando clientes...</div>'
+    cargarClientes().then(() => mostrarDropdownClientes())
+    return
+  }
+
+  const rect = inp.getBoundingClientRect()
+  dd.style.left  = rect.left + 'px'
+  dd.style.top   = (rect.bottom + 2) + 'px'
+  dd.style.width = rect.width + 'px'
+  dd.style.maxHeight = '260px'
+  dd.style.overflowY = 'auto'
+  dd.style.background = 'var(--sidebar-bg, #1a1a1a)'
+  dd.style.border = '1px solid var(--panel-border)'
+  dd.style.borderRadius = '8px'
+  dd.style.boxShadow = '0 8px 24px rgba(0,0,0,0.4)'
+
+  // Filtro por texto si el usuario escribió algo
+  const filtro = (inp.value || '').toLowerCase().trim()
+  const filtrados = filtro
+    ? clientesCache.filter(c =>
+        c.nombre.toLowerCase().includes(filtro) ||
+        (c.telefono || '').includes(filtro)
+      )
+    : clientesCache
+
+  let html = '<div class="dropdown-item" data-cid="">— Sin cliente —</div>'
+  if (filtrados.length === 0) {
+    html += '<div class="dropdown-item" style="color:var(--muted);">Sin coincidencias</div>'
+  } else {
+    html += filtrados.map(c =>
+      `<div class="dropdown-item" data-cid="${c.id}">${c.nombre}${c.telefono ? ' · ' + c.telefono : ''}</div>`
     ).join('')
-}
+  }
+  dd.innerHTML = html
+  dd.style.display = 'flex'
 
-function abrirBitDD() {
-  const input  = document.getElementById('bit-cliente-buscar')
-  const portal = obtenerPortal()
-  if (!input) return
-
-  if (portal.style.display === 'flex') { cerrarBitDD(); return }
-
-  const rect = input.getBoundingClientRect()
-  Object.assign(portal.style, {
-    display: 'flex',
-    top:     `${rect.bottom + 4}px`,
-    left:    `${rect.left}px`,
-    width:   `${rect.width}px`
+  dd.querySelectorAll('.dropdown-item').forEach(it => {
+    it.addEventListener('click', ev => {
+      ev.stopPropagation()
+      const cid = it.dataset.cid
+      document.getElementById('bit-cliente-id').value = cid
+      document.getElementById('bit-cliente-buscar').value = cid ? it.textContent : ''
+      dd.style.display = 'none'
+    })
   })
-
-  portal.innerHTML = `
-    <div class="dd-search-wrap">
-      <input type="text" id="dd-bit-search" placeholder="Buscar cliente..." autocomplete="off" />
-    </div>
-    <div class="dd-list"></div>
-  `
-  renderItemsPortal(filtrarClientes(''))
-
-  const inp = document.getElementById('dd-bit-search')
-  inp?.addEventListener('input', e => renderItemsPortal(filtrarClientes(e.target.value)))
-  inp?.addEventListener('mousedown', e => e.stopPropagation())
-  setTimeout(() => inp?.focus(), 40)
 }
 
-function cerrarBitDD() {
-  const p = document.getElementById('bit-dd-portal')
-  if (p) p.style.display = 'none'
-}
-
-window.selBitCliente = function(id, nombre) {
-  document.getElementById('bit-cliente-id').value     = id || ''
-  document.getElementById('bit-cliente-buscar').value = nombre || ''
-  cerrarBitDD()
-}
-
-function mostrarError(id, msg) {
-  const el = document.getElementById(id)
-  if (el) { el.textContent = msg; el.classList.add('show') }
-}
+document.addEventListener('click', e => {
+  const dd = document.getElementById('dd-bit-clientes')
+  if (!dd) return
+  if (!e.target.closest('#btn-lista-bit-clientes')
+      && !e.target.closest('#bit-cliente-buscar')
+      && !e.target.closest('#dd-bit-clientes')) {
+    dd.style.display = 'none'
+  }
+})
 
 // ════════════════════════════════════════════════════════════════════
-//  INICIALIZACIÓN
+//  INIT
 // ════════════════════════════════════════════════════════════════════
-
-// ════════════════════════════════════════════════════════════════════
-//  CRÉDITO DEL CLIENTE — mostrar en card de bitácora
-// ════════════════════════════════════════════════════════════════════
-async function cargarCreditoCliente(clienteId) {
-  try {
-    const data    = await apiFetch(`/clientes/${clienteId}`)
-    const cliente = data.data || data
-    const limite     = parseFloat(cliente.limiteCredito  || 0)
-    const saldo      = parseFloat(cliente.saldoPendiente || 0)
-    const usado      = parseFloat(cliente.totalCreditoUsado || 0)
-    const disponible = parseFloat((limite - saldo).toFixed(2))
-
-    const el = id => document.getElementById(id)
-    if (el('cred-limite'))     el('cred-limite').textContent     = fmt(limite)
-    if (el('cred-usado'))      el('cred-usado').textContent      = fmt(saldo)
-    if (el('cred-disponible')) {
-      el('cred-disponible').textContent = fmt(disponible)
-      el('cred-disponible').style.color = disponible > 0 ? 'var(--verde)' : '#e8710a'
-    }
-  } catch(e) { console.warn('Error cargando crédito:', e.message) }
-}
-
 document.addEventListener('DOMContentLoaded', async () => {
-  const fechaEl = document.getElementById('fecha-actual')
-  if (fechaEl) fechaEl.textContent = new Date().toLocaleDateString('es-MX',{ weekday:'long', year:'numeric', month:'long', day:'numeric' })
+  // Fecha
+  const f = new Date()
+  document.getElementById('fecha-actual').textContent =
+    f.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
 
+  await cargarTurnoActivo()
   await cargarClientes()
-  cargarBitacoras()
+  await cargarBitacoras(1)
 
-  // Toolbar filtros
-  document.getElementById('search-input')?.addEventListener('input', () => {
-    clearTimeout(debounceSearch); debounceSearch = setTimeout(() => { paginaActual=1; cargarBitacoras() }, 400)
+  // ── Filtros ──
+  let timerFiltro
+  document.getElementById('search-input').addEventListener('input', () => {
+    clearTimeout(timerFiltro)
+    timerFiltro = setTimeout(() => cargarBitacoras(1), 400)
   })
-  ;['filtro-estado','filtro-cliente'].forEach(id => {
-    document.getElementById(id)?.addEventListener('change', () => { paginaActual=1; cargarBitacoras() })
+  document.getElementById('filtro-estado').addEventListener('change',  () => cargarBitacoras(1))
+  document.getElementById('filtro-origen').addEventListener('change',  () => cargarBitacoras(1))
+  document.getElementById('filtro-cliente').addEventListener('change', () => cargarBitacoras(1))
+
+  // ── Paginación ──
+  document.getElementById('btn-prev').addEventListener('click', () => cargarBitacoras(paginaActual - 1))
+  document.getElementById('btn-next').addEventListener('click', () => cargarBitacoras(paginaActual + 1))
+
+  // ── Crear ──
+  document.getElementById('btn-nueva').addEventListener('click',      abrirModalCrear)
+  document.getElementById('crear-close').addEventListener('click',    cerrarModalCrear)
+  document.getElementById('crear-cancel').addEventListener('click',   cerrarModalCrear)
+  document.getElementById('crear-guardar').addEventListener('click',  guardarNuevaBitacora)
+  document.getElementById('btn-lista-bit-clientes').addEventListener('click', mostrarDropdownClientes)
+  document.getElementById('bit-cliente-buscar').addEventListener('click', mostrarDropdownClientes)
+  document.getElementById('bit-cliente-buscar').addEventListener('input', () => {
+    // Si el usuario está escribiendo, limpiar la selección previa y refiltrar
+    document.getElementById('bit-cliente-id').value = ''
+    mostrarDropdownClientes()
   })
 
-  // Paginación
-  document.getElementById('btn-prev')?.addEventListener('click', () => { if(paginaActual>1){paginaActual--;cargarBitacoras()} })
-  document.getElementById('btn-next')?.addEventListener('click', () => { paginaActual++;cargarBitacoras() })
+  // ── Detalle ──
+  document.getElementById('det-close').addEventListener('click', cerrarDetalle)
 
-  // Modal crear
-  document.getElementById('btn-nueva')?.addEventListener('click', abrirModalCrear)
-  document.getElementById('crear-close')?.addEventListener('click', () => document.getElementById('modal-crear').classList.remove('active'))
-  document.getElementById('crear-cancel')?.addEventListener('click', () => document.getElementById('modal-crear').classList.remove('active'))
-  document.getElementById('crear-guardar')?.addEventListener('click', guardarNuevaBitacora)
+  // ── Abono ──
+  document.getElementById('btn-abonar').addEventListener('click', registrarAbono)
 
-  // Dropdown cliente en modal crear
-  document.getElementById('bit-cliente-buscar')?.addEventListener('click', abrirBitDD)
-  document.getElementById('btn-lista-bit-clientes')?.addEventListener('click', abrirBitDD)
-  document.addEventListener('mousedown', e => {
-    if (!e.target.closest('#bit-cliente-buscar') &&
-        !e.target.closest('#btn-lista-bit-clientes') &&
-        !e.target.closest('#bit-dd-portal'))
-      cerrarBitDD()
-  })
-
-  // Modal detalle
-  document.getElementById('det-close')?.addEventListener('click', () => {
-    document.getElementById('modal-detalle').classList.remove('active')
+  // ── Agregar producto ──
+  document.getElementById('btn-agregar-prod').addEventListener('click', abrirBuscadorProducto)
+  document.getElementById('search-prod-det').addEventListener('input', e => buscarProductosDet(e.target.value))
+  document.getElementById('btn-confirmar-prod').addEventListener('click', confirmarAgregarProducto)
+  document.getElementById('btn-cancelar-prod').addEventListener('click',  () => {
     document.getElementById('buscador-prod-panel').style.display = 'none'
   })
 
-  // Botón agregar producto (toggle buscador)
-  document.getElementById('btn-agregar-prod')?.addEventListener('click', () => {
-    const panel = document.getElementById('buscador-prod-panel')
-    panel.style.display = panel.style.display === 'none' ? 'block' : 'none'
-    if (panel.style.display === 'block') document.getElementById('search-prod-det').focus()
-  })
+  // ── Cierre ──
+  document.getElementById('cierre-close').addEventListener('click',    cerrarModalCierre)
+  document.getElementById('cierre-cancel').addEventListener('click',   cerrarModalCierre)
+  document.getElementById('cierre-confirmar').addEventListener('click', confirmarCierre)
 
-  // Búsqueda de productos en detalle
-  document.getElementById('search-prod-det')?.addEventListener('input', e => {
-    clearTimeout(debounceProd); debounceProd = setTimeout(() => buscarProductosDet(e.target.value.trim()), 350)
-  })
-
-  // Confirmar / cancelar agregar producto
-  document.getElementById('btn-confirmar-prod')?.addEventListener('click', confirmarAgregarProd)
-  document.getElementById('btn-cancelar-prod')?.addEventListener('click', () => {
-    document.getElementById('form-cantidad-prod').style.display = 'none'
-    prodSeleccionado = null
-  })
-
-  // Registrar abono
-  document.getElementById('btn-abonar')?.addEventListener('click', registrarAbono)
-
-  // Escape
-  document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') {
-      document.getElementById('modal-crear')?.classList.remove('active')
-      document.getElementById('modal-detalle')?.classList.remove('active')
-    }
-  })
+  // ── Reabrir ──
+  document.getElementById('reabrir-close').addEventListener('click',    cerrarModalReabrir)
+  document.getElementById('reabrir-cancel').addEventListener('click',   cerrarModalReabrir)
+  document.getElementById('reabrir-confirmar').addEventListener('click', confirmarReapertura)
 })
-
-console.log('✅ bitacora.js cargado')

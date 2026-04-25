@@ -11,12 +11,23 @@
 .bit-table tbody tr:hover td { background:rgba(255,255,255,0.03); }
 .bit-table tbody tr:last-child td { border-bottom:none; }
 
-/* ── BADGES ── */
+/* ── BADGES DE ESTADO ── */
 .bit-estado-badge { display:inline-block; padding:3px 10px; border-radius:20px; font-size:0.72rem; font-weight:700; letter-spacing:0.04em; text-transform:uppercase; }
 .bit-estado-badge.abierta        { background:rgba(74,144,226,0.15);  color:#4a90e2; }
 .bit-estado-badge.pausada        { background:rgba(122,133,153,0.15); color:var(--muted); }
 .bit-estado-badge.cerrada_venta  { background:rgba(96,208,128,0.15);  color:#60d080; }
 .bit-estado-badge.cerrada_interna{ background:rgba(232,113,10,0.15);  color:var(--orange); }
+
+/* ── BADGES DE ORIGEN ── */
+.bit-origen-badge { display:inline-block; padding:3px 10px; border-radius:20px; font-size:0.72rem; font-weight:700; letter-spacing:0.04em; white-space:nowrap; }
+.bit-origen-badge.origen-venta  { background:rgba(100,180,255,0.12); color:#4a90e2; border:1px solid rgba(100,180,255,0.25); }
+.bit-origen-badge.origen-manual { background:rgba(180,140,255,0.12); color:#b48cff; border:1px solid rgba(180,140,255,0.25); }
+
+/* ── INDICADOR DE TURNO ── */
+.info-turno-chip { display:flex; align-items:center; gap:8px; font-size:0.82rem; padding:7px 14px; border-radius:20px; border:1px solid var(--panel-border); margin-left:auto; }
+.info-turno-loading { color:var(--muted); }
+.info-turno-abierto { background:rgba(96,208,128,0.1); border-color:rgba(96,208,128,0.3); color:#60d080; font-weight:600; }
+.info-turno-cerrado { background:rgba(255,193,7,0.1); border-color:rgba(255,193,7,0.3); color:#ffc107; font-weight:600; }
 
 /* ── SALDO COLORES ── */
 .saldo-ok  { color:#60d080; font-weight:600; }
@@ -58,9 +69,11 @@
 
 /* ── ABONOS ── */
 .lista-abonos { display:flex; flex-direction:column; gap:6px; max-height:200px; overflow-y:auto; }
-.abono-item { display:flex; justify-content:space-between; align-items:flex-start; padding:8px 10px; background:rgba(96,208,128,0.06); border:1px solid rgba(96,208,128,0.15); border-radius:7px; font-size:0.82rem; }
+.abono-item { display:flex; justify-content:space-between; align-items:flex-start; gap:6px; padding:8px 10px; background:rgba(96,208,128,0.06); border:1px solid rgba(96,208,128,0.15); border-radius:7px; font-size:0.82rem; }
 .abono-monto { font-family:'Barlow Condensed',sans-serif; font-size:1rem; font-weight:700; color:#60d080; white-space:nowrap; }
 .abono-meta  { color:var(--muted); font-size:0.75rem; }
+.btn-reimprimir { background:none; border:none; cursor:pointer; font-size:14px; padding:3px 6px; border-radius:4px; opacity:0.5; transition:all 0.15s; }
+.btn-reimprimir:hover { opacity:1; background:rgba(255,255,255,0.06); }
 
 /* ── PRODUCTOS INLINE ── */
 .lista-prod-inline { max-height:180px; overflow-y:auto; display:flex; flex-direction:column; gap:3px; margin-bottom:4px; }
@@ -77,7 +90,7 @@
 
 /* ── DESC Y NOTAS ── */
 .det-descripcion { font-size:0.875rem; color:var(--text); padding:8px 0; border-top:1px solid var(--panel-border); margin-top:6px; }
-.det-notas { font-size:0.82rem; color:var(--muted); padding:8px 10px; background:rgba(255,255,255,0.02); border-left:3px solid var(--accent); border-radius:4px; margin-top:6px; }
+.det-notas { font-size:0.82rem; color:var(--muted); padding:8px 10px; background:rgba(255,255,255,0.02); border-left:3px solid var(--accent); border-radius:4px; margin-top:6px; white-space:pre-wrap; }
 
 /* ── META ── */
 .ver-meta   { display:grid; gap:10px; }
@@ -116,9 +129,45 @@
 .btn-success  { display:inline-flex; align-items:center; justify-content:center; gap:7px; padding:9px 18px; background:rgba(96,208,128,0.15); border:1px solid rgba(96,208,128,0.3); border-radius:8px; color:#60d080; font-family:'Barlow',sans-serif; font-size:0.875rem; font-weight:600; cursor:pointer; transition:all 0.15s; }
 .btn-success:hover  { background:rgba(96,208,128,0.25); }
 .btn-warning  { display:inline-flex; align-items:center; justify-content:center; gap:7px; padding:9px 18px; background:rgba(255,193,7,0.12); border:1px solid rgba(255,193,7,0.3); border-radius:8px; color:#ffc107; font-family:'Barlow',sans-serif; font-size:0.875rem; font-weight:600; cursor:pointer; transition:all 0.15s; }
-.btn-warning:hover  { background:rgba(255,193,7,0.22); }
+.btn-warning:hover:not(:disabled) { background:rgba(255,193,7,0.22); }
 .btn-danger   { display:inline-flex; align-items:center; justify-content:center; gap:7px; padding:9px 18px; background:rgba(255,107,107,0.1); border:1px solid rgba(255,107,107,0.3); border-radius:8px; color:#ff6b6b; font-family:'Barlow',sans-serif; font-size:0.875rem; font-weight:600; cursor:pointer; transition:all 0.15s; }
 .btn-danger:hover   { background:rgba(255,107,107,0.2); }
 .btn-eliminar { background:none; border:none; cursor:pointer; color:#ff6b6b; font-size:13px; padding:2px 6px; opacity:0.6; transition:opacity 0.15s; }
 .btn-eliminar:hover { opacity:1; }
 
+/* ── Botón quitar producto (más visible que el .btn-eliminar) ── */
+.btn-quitar-prod {
+  background: rgba(255,107,107,0.1);
+  border: 1px solid rgba(255,107,107,0.3);
+  cursor: pointer;
+  color: #ff6b6b;
+  font-size: 14px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 5px;
+  transition: all 0.15s;
+}
+.btn-quitar-prod:hover {
+  background: rgba(255,107,107,0.25);
+  border-color: rgba(255,107,107,0.5);
+}
+
+/* ── Celdas editables inline (cantidad/precio en bitácora MANUAL) ── */
+.celda-editable {
+  cursor: pointer;
+  position: relative;
+  transition: background 0.15s;
+}
+.celda-editable:hover {
+  background: rgba(255,255,255,0.05);
+}
+.celda-editable .edit-icon {
+  opacity: 0;
+  font-size: 0.7rem;
+  color: var(--accent);
+  margin-left: 4px;
+  transition: opacity 0.15s;
+}
+.celda-editable:hover .edit-icon {
+  opacity: 1;
+}
