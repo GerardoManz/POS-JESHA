@@ -32,7 +32,7 @@ const COTIZACION_SELECT = {
   sucursal: { select: { id: true, nombre: true } },
   detalles: {
     select: {
-      id: true, cantidad: true, precioUnitario: true, descuento: true,
+      id: true, productoId: true, cantidad: true, precioUnitario: true, descuento: true,
       subtotal: true, concepto: true, unidad: true,
       producto: {
         select: { id: true, nombre: true, codigoInterno: true,

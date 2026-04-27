@@ -286,7 +286,7 @@ window.abrirEdicion = async function(id) {
     })
 
     itemsEdicion = (c.detalles || []).map(d => ({
-      productoId: d.productoId,
+      productoId: d.productoId || d.producto?.id,
       nombre:     d.producto?.nombre || d.concepto || '—',
       concepto:   d.concepto || '',
       unidad:     d.unidad || '',
