@@ -363,9 +363,18 @@
         </label>
         <input type="number" id="confirm-monto-recibido" min="0" step="0.01" placeholder="0.00"
           style="width:100%;padding:8px 12px;background:rgba(255,255,255,0.04);border:1px solid var(--panel-border);border-radius:8px;color:var(--text);font-family:'Barlow',sans-serif;font-size:0.9rem;outline:none;" />
-        <div id="confirm-cambio-wrap" style="display:none;margin-top:6px;padding:8px 12px;background:rgba(96,208,128,0.08);border:1px solid rgba(96,208,128,0.2);border-radius:8px;">
-          <span style="font-size:0.8rem;color:var(--muted);">Cambio: </span>
-          <span id="confirmacion-cambio" style="font-weight:700;color:#60d080;">$0.00</span>
+        <!-- Cambio destacado -->
+        <div id="confirm-cambio-wrap" class="cambio-destacado-confirm" style="display:none;">
+          <div class="cambio-destacado-label">Cambio</div>
+          <div class="cambio-destacado-monto" id="confirmacion-cambio">$0.00</div>
+        </div>
+        <!-- Pago exacto (cuando cambio = 0) -->
+        <div id="confirm-pago-exacto-wrap" class="pago-exacto-aviso" style="display:none;">
+          <span class="pago-exacto-icon">✓</span>
+          <div>
+            <div class="pago-exacto-titulo">Pago exacto</div>
+            <div class="pago-exacto-sub">Sin cambio a entregar</div>
+          </div>
         </div>
       </div>
 
@@ -489,14 +498,26 @@
 
     <!-- Resumen -->
     <div class="modal-confirm-body">
+
+      <!-- Bloque CAMBIO destacado (solo si hay cambio > 0) -->
+      <div id="exito-cambio-destacado" class="cambio-destacado-exito" style="display:none;">
+        <div class="cambio-destacado-exito-label">Cambio a entregar</div>
+        <div class="cambio-destacado-exito-monto" id="exito-cambio">$0.00</div>
+      </div>
+
+      <!-- Bloque Pago exacto (cuando cambio = 0 en EFECTIVO o MIXTO) -->
+      <div id="exito-pago-exacto" class="pago-exacto-aviso" style="display:none;margin-bottom:14px;">
+        <span class="pago-exacto-icon">✓</span>
+        <div>
+          <div class="pago-exacto-titulo">Pago exacto</div>
+          <div class="pago-exacto-sub">Sin cambio a entregar</div>
+        </div>
+      </div>
+
       <div class="modal-confirm-resumen">
         <div class="modal-confirm-row">
           <span class="modal-confirm-label">Total cobrado</span>
-          <span class="modal-confirm-valor total" id="exito-total">$0.00</span>
-        </div>
-        <div class="modal-confirm-row" id="exito-row-cambio" style="display:none;">
-          <span class="modal-confirm-label">Cambio a entregar</span>
-          <span class="modal-confirm-valor cambio" id="exito-cambio">$0.00</span>
+          <span class="modal-confirm-valor exito-total-secundario" id="exito-total">$0.00</span>
         </div>
         <div class="modal-confirm-row">
           <span class="modal-confirm-label">Método de pago</span>

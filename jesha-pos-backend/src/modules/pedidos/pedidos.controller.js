@@ -345,7 +345,6 @@ const cambiarEstado = async (req, res) => {
       data:  updateData,
       select: PEDIDO_SELECT
     })
-
     // FIX: usar sucursalId del pedido existente, no del JWT
     const sucAudit = sucursalId || existente.sucursalId
     await audit(usuarioId, sucAudit, `ESTADO_PEDIDO_${estado}`, existente.folio)

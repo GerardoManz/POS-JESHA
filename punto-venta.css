@@ -1069,13 +1069,130 @@
 }
 
 .modal-confirm-valor.total {
-  font-size: 1.5rem;
+  font-size: 1.2rem;
   font-weight: 700;
   color: #60d080;
 }
 
+/* Total cobrado del modal Venta Exitosa: se reduce porque ahora destaca el cambio */
+.modal-confirm-valor.exito-total-secundario {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #e9edf4;
+}
+
 .modal-confirm-valor.cambio {
   color: #4a90e2;
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   CAMBIO DESTACADO — Modal CONFIRMAR VENTA (verde, jerarquía suave)
+   ════════════════════════════════════════════════════════════════════ */
+.cambio-destacado-confirm {
+  margin-top: 10px;
+  padding: 14px 16px;
+  background: rgba(96, 208, 128, 0.10);
+  border: 1.5px solid rgba(96, 208, 128, 0.32);
+  border-radius: 10px;
+  text-align: center;
+}
+
+.cambio-destacado-label {
+  font-family: 'Barlow', sans-serif;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #7a8599;
+  margin-bottom: 4px;
+}
+
+.cambio-destacado-monto {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: #60d080;
+  letter-spacing: 0.02em;
+  line-height: 1.1;
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   CAMBIO DESTACADO — Modal VENTA EXITOSA (azul, jerarquía agresiva)
+   ════════════════════════════════════════════════════════════════════ */
+.cambio-destacado-exito {
+  margin-bottom: 14px;
+  padding: 22px 18px;
+  background: rgba(74, 144, 226, 0.10);
+  border: 2px solid rgba(74, 144, 226, 0.35);
+  border-radius: 12px;
+  text-align: center;
+  animation: cambioDestacadoIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes cambioDestacadoIn {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+.cambio-destacado-exito-label {
+  font-family: 'Barlow', sans-serif;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #7a8599;
+  margin-bottom: 6px;
+}
+
+.cambio-destacado-exito-monto {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 2.6rem;
+  font-weight: 700;
+  color: #4a90e2;
+  letter-spacing: 0.02em;
+  line-height: 1.05;
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   PAGO EXACTO — bloque gris discreto (cambio = 0)
+   ════════════════════════════════════════════════════════════════════ */
+.pago-exacto-aviso {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+}
+
+.pago-exacto-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  color: #7a8599;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.pago-exacto-titulo {
+  font-family: 'Barlow', sans-serif;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #e9edf4;
+  letter-spacing: 0.02em;
+}
+
+.pago-exacto-sub {
+  font-size: 0.74rem;
+  color: #7a8599;
+  margin-top: 1px;
 }
 
 .modal-confirm-aviso {

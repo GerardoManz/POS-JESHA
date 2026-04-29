@@ -1142,17 +1142,26 @@ function recalcularCambioModal() {
   const montoInput = document.getElementById('confirm-monto-recibido')
   const cambioWrap = document.getElementById('confirm-cambio-wrap')
   const cambioEl   = document.getElementById('confirmacion-cambio')
+  const exactoWrap = document.getElementById('confirm-pago-exacto-wrap')
 
   const monto  = parseFloat(montoInput?.value) || 0
   const cambio = parseFloat((monto - totalFinal).toFixed(2))
 
   if (!cambioWrap || !cambioEl) return
 
-  if (monto > 0 && cambio >= 0) {
-    cambioEl.textContent    = `$${cambio.toFixed(2)}`
+  // Pago exacto: monto >= totalFinal y diferencia despreciable
+  const esPagoExacto = monto > 0 && Math.abs(cambio) < 0.005 && totalFinal > 0
+
+  if (esPagoExacto) {
+    cambioWrap.style.display = 'none'
+    if (exactoWrap) exactoWrap.style.display = 'flex'
+  } else if (monto > 0 && cambio > 0) {
+    cambioEl.textContent     = `$${cambio.toFixed(2)}`
     cambioWrap.style.display = 'block'
+    if (exactoWrap) exactoWrap.style.display = 'none'
   } else {
     cambioWrap.style.display = 'none'
+    if (exactoWrap) exactoWrap.style.display = 'none'
   }
 }
 
@@ -1262,36 +1271,47 @@ function mostrarModalExito(ventaData, totalFinal) {
   document.getElementById('exito-metodo').textContent =
     metodoLabel[ventaData.metodoPago] || metodoLabel[metodoPagoSeleccionado] || ventaData.metodoPago || '—'
 
-  const rowCambio = document.getElementById('exito-row-cambio')
-  const montoRec  = parseFloat(document.getElementById('confirm-monto-recibido')?.value) || 0
-  
-  if (metodoPagoSeleccionado === 'EFECTIVO' && montoRec > 0) {
-    const cambio = montoRec - totalFinal
-    if (cambio >= 0) {
-      document.getElementById('exito-cambio').textContent = `$${cambio.toFixed(2)}`
-      rowCambio.style.display = 'flex'
-    } else {
-      rowCambio.style.display = 'none'
+  // ── Bloques de cambio destacado / pago exacto ──
+  const cambioDestacado = document.getElementById('exito-cambio-destacado')
+  const cambioEl        = document.getElementById('exito-cambio')
+  const pagoExactoEl    = document.getElementById('exito-pago-exacto')
+
+  // Reset
+  if (cambioDestacado) cambioDestacado.style.display = 'none'
+  if (pagoExactoEl)    pagoExactoEl.style.display    = 'none'
+
+  let cambioFinal = 0
+  let aplicaLogica = false
+
+  if (metodoPagoSeleccionado === 'EFECTIVO') {
+    const montoRec = parseFloat(document.getElementById('confirm-monto-recibido')?.value) || 0
+    if (montoRec > 0) {
+      cambioFinal = parseFloat((montoRec - totalFinal).toFixed(2))
+      aplicaLogica = true
     }
   } else if (metodoPagoSeleccionado === 'MIXTO') {
-    // Mostrar cambio del componente efectivo
     const pagos = obtenerDesgloseMixto()
     const pagoEfectivo = pagos.find(p => p.metodo === 'EFECTIVO')
     if (pagoEfectivo) {
-      const sumNoEfectivo = pagos.filter(p => p.metodo !== 'EFECTIVO').reduce((s, p) => s + parseFloat(p.monto), 0)
+      const sumNoEfectivo = pagos
+        .filter(p => p.metodo !== 'EFECTIVO')
+        .reduce((s, p) => s + parseFloat(p.monto), 0)
       const necesarioEfectivo = totalFinal - sumNoEfectivo
-      const sobraEfectivo = parseFloat(pagoEfectivo.monto) - necesarioEfectivo
-      if (sobraEfectivo > 0.005) {
-        document.getElementById('exito-cambio').textContent = `$${sobraEfectivo.toFixed(2)}`
-        rowCambio.style.display = 'flex'
-      } else {
-        rowCambio.style.display = 'none'
-      }
-    } else {
-      rowCambio.style.display = 'none'
+      cambioFinal = parseFloat((parseFloat(pagoEfectivo.monto) - necesarioEfectivo).toFixed(2))
+      aplicaLogica = true
     }
-  } else {
-    rowCambio.style.display = 'none'
+  }
+
+  if (aplicaLogica) {
+    if (Math.abs(cambioFinal) < 0.005) {
+      // Pago exacto
+      if (pagoExactoEl) pagoExactoEl.style.display = 'flex'
+    } else if (cambioFinal > 0) {
+      // Cambio destacado
+      if (cambioEl)         cambioEl.textContent         = `$${cambioFinal.toFixed(2)}`
+      if (cambioDestacado)  cambioDestacado.style.display = 'block'
+    }
+    // cambio < 0 (no debería pasar) → no muestra nada
   }
 
   overlay.style.display = 'flex'
