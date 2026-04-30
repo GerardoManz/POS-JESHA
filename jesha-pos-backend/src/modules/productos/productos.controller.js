@@ -279,7 +279,8 @@ async function crear(req, res) {
             costo, precioBase, precioVenta, categoriaId,
             unidadCompra, unidadVenta, factorConversion,
             claveSat, unidadSat, proveedorId,
-            tipoFacturaProv, costoSinIvaProveedor
+            tipoFacturaProv, costoSinIvaProveedor,
+            esGranel
         } = req.body
 
         if (!nombre || !codigoInterno || !categoriaId || !precioBase) {
@@ -312,6 +313,7 @@ async function crear(req, res) {
                 unidadSat:           unidadSat        || null,
                 tipoFacturaProv:     tipoFacturaProv  || 'NETO',
                 costoSinIvaProveedor: costoSinIvaProveedor ? parseFloat(costoSinIvaProveedor) : null,
+                esGranel:            esGranel === true || esGranel === 'true',
                 activo: true
             },
             include: {
@@ -359,7 +361,8 @@ async function editar(req, res) {
             costo, precioBase, precioVenta, categoriaId,
             unidadCompra, unidadVenta, factorConversion,
             claveSat, unidadSat, proveedorId,
-            tipoFacturaProv, costoSinIvaProveedor
+            tipoFacturaProv, costoSinIvaProveedor,
+            esGranel
         } = req.body
 
         if (!nombre || !codigoInterno || !categoriaId || !precioBase) {
@@ -392,6 +395,7 @@ async function editar(req, res) {
                 unidadSat:           unidadSat        || null,
                 tipoFacturaProv:     tipoFacturaProv  || 'NETO',
                 costoSinIvaProveedor: costoSinIvaProveedor ? parseFloat(costoSinIvaProveedor) : null,
+                esGranel:            esGranel === true || esGranel === 'true',
             },
             include: {
                 categoria: { include: { departamento: true } },

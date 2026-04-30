@@ -89,7 +89,7 @@ async function obtenerPorId(id) {
 // ═══════════════════════════════════════════════════════════════════
 
 async function crear(datos, usuarioId, sucursalId, ip) {
-    const { nombre, codigoInterno, codigoBarras, descripcion, precioBase, costo, categoriaId } = datos
+    const { nombre, codigoInterno, codigoBarras, descripcion, precioBase, costo, categoriaId, esGranel } = datos
 
     if (!nombre || !codigoInterno || !precioBase || !categoriaId) {
         throw new Error('Nombre, codigoInterno, precio y categoría son requeridos')
@@ -119,6 +119,7 @@ async function crear(datos, usuarioId, sucursalId, ip) {
             precioBase:   parseFloat(precioBase),
             costo:        costo ? parseFloat(costo) : null,
             categoriaId:  parseInt(categoriaId),
+            esGranel:     esGranel === true || esGranel === 'true',
             activo: true
         },
         select: {
@@ -138,7 +139,7 @@ async function crear(datos, usuarioId, sucursalId, ip) {
 // ═══════════════════════════════════════════════════════════════════
 
 async function editar(id, datos, usuarioId, sucursalId, ip) {
-    const { nombre, codigoInterno, codigoBarras, descripcion, precioBase, costo, categoriaId } = datos
+    const { nombre, codigoInterno, codigoBarras, descripcion, precioBase, costo, categoriaId, esGranel } = datos
 
     const producto = await obtenerPorId(id)
     if (!producto) throw new Error('Producto no encontrado')
@@ -167,7 +168,8 @@ async function editar(id, datos, usuarioId, sucursalId, ip) {
             descripcion:   descripcion   !== undefined ? descripcion            : producto.descripcion,
             precioBase:    precioBase    !== undefined ? parseFloat(precioBase) : producto.precioBase,
             costo:         costo         !== undefined ? parseFloat(costo)      : producto.costo,
-            categoriaId:   categoriaId   !== undefined ? parseInt(categoriaId)  : producto.categoria.id
+            categoriaId:   categoriaId   !== undefined ? parseInt(categoriaId)  : producto.categoria.id,
+            esGranel:      esGranel      !== undefined ? (esGranel === true || esGranel === 'true') : producto.esGranel
         },
         select: {
             id: true, nombre: true, codigoInterno: true, codigoBarras: true,
