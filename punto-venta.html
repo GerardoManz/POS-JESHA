@@ -619,6 +619,49 @@
   </div>
 </div>
 
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<!--  MODAL: AJUSTAR INVENTARIO (diseño minimalista)                    -->
+<!--                                                                    -->
+<!--  Insertar en punto-venta.html ANTES de <script src="config.js">   -->
+<!--  Si ya pegaste el modal anterior, BÓRRALO y reemplaza con éste.   -->
+<!-- ════════════════════════════════════════════════════════════════ -->
+<div id="modal-ajuste-rapido" style="display:none;align-items:center;justify-content:center;position:fixed;inset:0;background:rgba(0,0,0,0.55);backdrop-filter:blur(3px);z-index:9999;">
+  <div style="width:min(440px,92vw);background:#0f1420;border:1px solid rgba(255,255,255,0.06);border-radius:14px;box-shadow:0 24px 60px rgba(0,0,0,0.6);overflow:hidden;font-family:'Barlow',sans-serif;padding:28px 32px;">
+
+    <!-- Título -->
+    <h3 style="margin:0 0 22px;color:#ffffff;font-size:1.15rem;font-weight:700;letter-spacing:0.01em;">Ajustar inventario</h3>
+
+    <!-- Stock actual inline -->
+    <p id="ajuste-rapido-actual-label" style="margin:0 0 10px;color:#9aa3b2;font-size:0.92rem;font-weight:400;">Stock actual: <span id="ajuste-rapido-actual">0</span></p>
+
+    <!-- Input nuevo stock -->
+    <input id="ajuste-rapido-nuevo" type="number" min="0" step="0.001" placeholder="0"
+      style="width:100%;padding:12px 14px;background:#1a1f2e;border:2px solid #4f7fff;border-radius:8px;color:#ffffff;font-family:'Barlow',sans-serif;font-size:1rem;font-weight:600;outline:none;box-sizing:border-box;margin-bottom:14px;" />
+
+    <!-- Diferencia (preview) -->
+    <p id="ajuste-rapido-dif-label" style="margin:0 0 4px;font-size:0.88rem;font-weight:600;color:#9aa3b2;min-height:1.2em;">&nbsp;</p>
+
+    <!-- Aviso secundario -->
+    <p id="ajuste-rapido-aviso" style="margin:0 0 22px;color:#7a8599;font-size:0.78rem;min-height:1em;">&nbsp;</p>
+
+    <!-- Error inline (oculto por defecto) -->
+    <div id="ajuste-rapido-error" style="display:none;margin:0 0 14px;padding:8px 12px;border-radius:6px;background:rgba(232,107,107,0.1);border:1px solid rgba(232,107,107,0.25);color:#e86b6b;font-size:0.8rem;font-weight:600;"></div>
+
+    <!-- Acciones -->
+    <div style="display:flex;gap:10px;justify-content:flex-end;">
+      <button id="ajuste-rapido-cancelar" type="button"
+        style="padding:10px 22px;background:#3a4254;border:none;border-radius:8px;color:#ffffff;font-family:'Barlow',sans-serif;font-size:0.9rem;font-weight:600;cursor:pointer;">
+        Cancelar
+      </button>
+      <button id="ajuste-rapido-confirmar" type="button"
+        style="padding:10px 26px;background:#3b82f6;border:none;border-radius:8px;color:#ffffff;font-family:'Barlow',sans-serif;font-size:0.9rem;font-weight:600;cursor:pointer;">
+        Guardar
+      </button>
+    </div>
+  </div>
+</div>
+
 <script src="config.js"></script>
   <script src="sidebar.js"></script>
 <script src="punto-venta.js"></script>

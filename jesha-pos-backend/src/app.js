@@ -50,6 +50,7 @@ app.use('/facturas',     requireAuth, require('./modules/facturas/facturas.route
 app.use('/usuarios',     requireAuth, require('./modules/usuarios/usuarios.routes'))
 app.use('/clientes',     requireAuth, require('./modules/clientes/clientes.routes'))
 app.use('/productos',    requireAuth, require('./modules/productos/productos.routes'))
+app.use('/inventario',   requireAuth, require('./modules/inventario/inventario.routes'))
 app.use('/ventas',       requireAuth, require('./modules/ventas/ventas.routes'))
 app.use('/turnos-caja',  requireAuth, require('./modules/turnos-caja/turnos-caja.routes'))
 app.use('/cotizaciones', requireAuth, require('./modules/cotizaciones/cotizaciones.routes'))

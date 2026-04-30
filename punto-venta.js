@@ -496,6 +496,10 @@ function mostrarProductos(productos) {
             return Number.isInteger(s) ? s : s.toFixed(3).replace(/\.?0+$/, '')
           })()}${p.esGranel && p.unidadVenta ? ' ' + p.unidadVenta : ''}` : 'Agotado'}
         </p>
+        <button type="button" class="btn-ajustar-stock" data-action="ajustar"
+          style="display:block;width:100%;margin-top:8px;padding:8px 0;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:8px;color:#e8edf5;font-family:'Barlow',sans-serif;font-size:0.82rem;font-weight:600;cursor:pointer;transition:background 0.15s,border-color 0.15s;">
+          Ajustar
+        </button>
       </div>
     </div>`
   }).join('')
@@ -2058,3 +2062,213 @@ function obtenerDesgloseMixto() {
   })
   return pagos
 }
+
+// ══════════════════════════════════════════════════════════════════
+//  AJUSTE RÁPIDO DE INVENTARIO
+//  Disparador: CLICK en botón "Ajustar" de la tarjeta de producto
+//  Backend:    POST /inventario/ajuste-rapido
+// ══════════════════════════════════════════════════════════════════
+
+const modalAjusteRapido      = document.getElementById('modal-ajuste-rapido')
+const ajusteRapidoActual     = document.getElementById('ajuste-rapido-actual')
+const ajusteRapidoNuevo      = document.getElementById('ajuste-rapido-nuevo')
+const ajusteRapidoDifLabel   = document.getElementById('ajuste-rapido-dif-label')
+const ajusteRapidoAviso      = document.getElementById('ajuste-rapido-aviso')
+const ajusteRapidoError      = document.getElementById('ajuste-rapido-error')
+const ajusteRapidoCancelar   = document.getElementById('ajuste-rapido-cancelar')
+const ajusteRapidoConfirmar  = document.getElementById('ajuste-rapido-confirmar')
+
+let ajusteRapidoEstado = { productoId: null, stockActual: 0, esGranel: false, unidadVenta: '' }
+
+function formatearStockAjuste(valor) {
+  const n = parseFloat(valor)
+  if (isNaN(n)) return '0'
+  return Number.isInteger(n) ? String(n) : n.toFixed(3).replace(/\.?0+$/, '')
+}
+
+function abrirModalAjusteRapido(productoId, stockActual, esGranel, unidadVenta) {
+  if (!modalAjusteRapido) {
+    console.warn('⚠ modal-ajuste-rapido no existe en el DOM')
+    return
+  }
+  const stockNum = parseFloat(stockActual) || 0
+  ajusteRapidoEstado = {
+    productoId:   parseInt(productoId, 10),
+    stockActual:  stockNum,
+    esGranel:     !!esGranel,
+    unidadVenta:  unidadVenta || ''
+  }
+
+  ajusteRapidoActual.textContent       = formatearStockAjuste(stockNum)
+  ajusteRapidoNuevo.value              = ''
+  ajusteRapidoNuevo.step               = esGranel ? '0.001' : '1'
+  ajusteRapidoDifLabel.innerHTML       = '&nbsp;'
+  ajusteRapidoDifLabel.style.color     = '#9aa3b2'
+  ajusteRapidoAviso.innerHTML          = '&nbsp;'
+  ajusteRapidoError.style.display      = 'none'
+  ajusteRapidoError.textContent        = ''
+
+  modalAjusteRapido.style.display = 'flex'
+  setTimeout(() => ajusteRapidoNuevo.focus(), 50)
+}
+
+function cerrarModalAjusteRapido() {
+  if (!modalAjusteRapido) return
+  modalAjusteRapido.style.display = 'none'
+  ajusteRapidoEstado = { productoId: null, stockActual: 0, esGranel: false, unidadVenta: '' }
+}
+
+async function enviarAjusteRapido() {
+  const productoId  = ajusteRapidoEstado.productoId
+  const stockActual = ajusteRapidoEstado.stockActual
+  const nuevoStock  = parseFloat(ajusteRapidoNuevo.value)
+
+  if (!productoId) {
+    mostrarToast('No se identificó el producto', 'error')
+    return
+  }
+  if (isNaN(nuevoStock) || nuevoStock < 0) {
+    ajusteRapidoError.textContent   = 'Ingresa un número válido (>= 0)'
+    ajusteRapidoError.style.display = 'block'
+    ajusteRapidoNuevo.focus()
+    return
+  }
+  if (parseFloat(nuevoStock.toFixed(3)) === parseFloat(stockActual.toFixed(3))) {
+    ajusteRapidoError.textContent   = 'El nuevo stock es igual al actual'
+    ajusteRapidoError.style.display = 'block'
+    return
+  }
+
+  const sucursalId = turnoActivo?.sucursalId
+  if (!sucursalId) {
+    mostrarToast('No se pudo identificar la sucursal del turno', 'error')
+    return
+  }
+
+  ajusteRapidoConfirmar.disabled      = true
+  ajusteRapidoConfirmar.style.opacity = '0.6'
+
+  try {
+    const response = await fetch(`${API_URL}/inventario/ajuste-rapido`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
+      body:    JSON.stringify({ productoId, sucursalId, nuevoStock })
+    })
+
+    const data = await response.json()
+    if (!response.ok) {
+      ajusteRapidoError.textContent   = data.error || 'Error al ajustar inventario'
+      ajusteRapidoError.style.display = 'block'
+      return
+    }
+
+    const cached = productoCache.get(productoId)
+    if (cached) {
+      cached.stock = data.data.stockDespues
+      productoCache.set(productoId, cached)
+    }
+
+    const card = productosGrid?.querySelector(`[data-producto-id="${productoId}"]`)
+    if (card) {
+      const stockEl = card.querySelector('.producto-stock')
+      if (stockEl) {
+        const nuevo    = parseFloat(data.data.stockDespues)
+        const esGranel = cached?.esGranel || ajusteRapidoEstado.esGranel
+        const unidad   = cached?.unidadVenta || ajusteRapidoEstado.unidadVenta
+        if (nuevo > 0) {
+          stockEl.classList.remove('agotado')
+          stockEl.textContent = `Stock: ${formatearStockAjuste(nuevo)}${esGranel && unidad ? ' ' + unidad : ''}`
+        } else {
+          stockEl.classList.add('agotado')
+          stockEl.textContent = 'Agotado'
+        }
+      }
+    }
+
+    cerrarModalAjusteRapido()
+    const signo = data.data.diferencia > 0 ? '+' : ''
+    mostrarToast(`✓ Stock ajustado (${signo}${data.data.diferencia})`, 'success')
+
+  } catch (err) {
+    console.error('Error de red en ajuste rápido:', err)
+    ajusteRapidoError.textContent   = 'Error de conexión. Intenta de nuevo.'
+    ajusteRapidoError.style.display = 'block'
+  } finally {
+    ajusteRapidoConfirmar.disabled      = false
+    ajusteRapidoConfirmar.style.opacity = '1'
+  }
+}
+
+if (modalAjusteRapido) {
+  ajusteRapidoCancelar?.addEventListener('click',  cerrarModalAjusteRapido)
+  ajusteRapidoConfirmar?.addEventListener('click', enviarAjusteRapido)
+
+  modalAjusteRapido.addEventListener('click', (e) => {
+    if (e.target === modalAjusteRapido) cerrarModalAjusteRapido()
+  })
+
+  ajusteRapidoNuevo?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter')  { e.preventDefault(); enviarAjusteRapido() }
+    if (e.key === 'Escape') { e.preventDefault(); cerrarModalAjusteRapido() }
+  })
+
+  ajusteRapidoNuevo?.addEventListener('input', () => {
+    const nuevo = parseFloat(ajusteRapidoNuevo.value)
+    if (isNaN(nuevo)) {
+      ajusteRapidoDifLabel.innerHTML = '&nbsp;'
+      ajusteRapidoAviso.innerHTML    = '&nbsp;'
+      ajusteRapidoError.style.display = 'none'
+      return
+    }
+    const dif = parseFloat((nuevo - ajusteRapidoEstado.stockActual).toFixed(3))
+    if (dif > 0) {
+      ajusteRapidoDifLabel.textContent = `+${dif} entrada`
+      ajusteRapidoDifLabel.style.color = '#22c55e'
+      ajusteRapidoAviso.textContent    = `Se aplicará un ajuste de +${dif}`
+    } else if (dif < 0) {
+      ajusteRapidoDifLabel.textContent = `${dif} salida`
+      ajusteRapidoDifLabel.style.color = '#ef4444'
+      ajusteRapidoAviso.textContent    = `Se aplicará un ajuste de ${dif}`
+    } else {
+      ajusteRapidoDifLabel.innerHTML   = '&nbsp;'
+      ajusteRapidoAviso.innerHTML      = '&nbsp;'
+    }
+    ajusteRapidoError.style.display = 'none'
+  })
+}
+
+// Click en botón "Ajustar" de la tarjeta — usa capture:true + stopPropagation
+// para no chocar con el click de la tarjeta que agrega al carrito.
+productosGrid?.addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-action="ajustar"]')
+  if (!btn) return
+  e.preventDefault()
+  e.stopPropagation()
+
+  const card = btn.closest('[data-producto-id]')
+  if (!card) return
+  const id = parseInt(card.dataset.productoId, 10)
+  const producto = productoCache.get(id)
+  if (!producto) {
+    mostrarToast('Producto no encontrado en caché', 'warning')
+    return
+  }
+  if (producto.stock === null || producto.stock === undefined) {
+    mostrarToast('Stock no disponible para este producto', 'warning')
+    return
+  }
+  abrirModalAjusteRapido(producto.id, producto.stock, producto.esGranel, producto.unidadVenta)
+}, true)
+
+productosGrid?.addEventListener('mouseover', (e) => {
+  const btn = e.target.closest('button[data-action="ajustar"]')
+  if (!btn) return
+  btn.style.background  = 'rgba(59,130,246,0.15)'
+  btn.style.borderColor = 'rgba(59,130,246,0.4)'
+})
+productosGrid?.addEventListener('mouseout', (e) => {
+  const btn = e.target.closest('button[data-action="ajustar"]')
+  if (!btn) return
+  btn.style.background  = 'rgba(255,255,255,0.04)'
+  btn.style.borderColor = 'rgba(255,255,255,0.08)'
+})
