@@ -113,3 +113,14 @@
 .btn-danger:hover   { background:rgba(255,107,107,0.2); }
 .btn-eliminar { background:none; border:none; cursor:pointer; color:#ff6b6b; font-size:13px; padding:2px 6px; opacity:0.6; }
 .btn-eliminar:hover { opacity:1; }
+
+/* ── Fix overflow card-abono (select TRANSFERENCIA desborda panel 320px) ── */
+#card-abono select {
+  width: 120px;
+  min-width: 120px;
+  max-width: 120px;
+  flex-shrink: 0;
+}
+#card-abono input[type="number"] {
+  min-width: 0;
+}

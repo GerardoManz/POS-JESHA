@@ -668,14 +668,14 @@ model AbonoBitacora {
   id         Int        @id @default(autoincrement())
   bitacoraId Int
   usuarioId  Int
-  turnoId    Int
+  turnoId    Int?
   monto      Decimal    @db.Decimal(10, 2)
   metodoPago MetodoPago @default(EFECTIVO)
   notas      String?
   creadoEn   DateTime   @default(now())
   bitacora Bitacora  @relation(fields: [bitacoraId], references: [id], onDelete: Cascade)
   usuario  Usuario   @relation(fields: [usuarioId], references: [id])
-  turno    TurnoCaja @relation(fields: [turnoId], references: [id])
+  turno    TurnoCaja? @relation(fields: [turnoId], references: [id])
   @@index([bitacoraId])
   @@index([turnoId])
 }

@@ -234,7 +234,7 @@ function renderDetalle() {
     avisoVenta.style.display = (b.origen === 'VENTA') ? 'block' : 'none'
   }
 
-  // Abono — deshabilitar si no hay turno o estado no ABIERTA
+  // Abono — VENTA requiere turno, MANUAL permite abonar sin turno
   const btnAbonar   = document.getElementById('btn-abonar')
   const avisoTurno  = document.getElementById('aviso-sin-turno')
   const cardAbono   = document.getElementById('card-abono')
@@ -242,12 +242,15 @@ function renderDetalle() {
     cardAbono.style.display = 'none'
   } else {
     cardAbono.style.display = 'block'
-    if (!turnoActual?.abierto) {
+    if (b.origen === 'VENTA' && !turnoActual?.abierto) {
+      // Crédito POS: requiere turno para que el abono entre a caja
       btnAbonar.disabled  = true
       btnAbonar.style.opacity = '0.5'
       btnAbonar.style.cursor  = 'not-allowed'
       avisoTurno.style.display = 'block'
     } else {
+      // MANUAL: puede abonar sin turno (dinero aparte)
+      // VENTA con turno abierto: también puede abonar
       btnAbonar.disabled  = false
       btnAbonar.style.opacity = '1'
       btnAbonar.style.cursor  = 'pointer'
@@ -600,11 +603,14 @@ async function quitarProducto(detalleId) {
 }
 
 // ════════════════════════════════════════════════════════════════════
-//  ABONO (con turnoId + ticket opcional)
+//  ABONO (turnoId solo para VENTA + ticket opcional)
 // ════════════════════════════════════════════════════════════════════
 async function registrarAbono() {
-  if (!turnoActual?.abierto) {
-    toast('Debes abrir un turno de caja para registrar abonos', 'warning')
+  const esVenta = bitacoraActual?.origen === 'VENTA'
+
+  // Solo exigir turno para créditos POS
+  if (esVenta && !turnoActual?.abierto) {
+    toast('Debes abrir un turno de caja para abonar créditos POS', 'warning')
     return
   }
   const monto  = parseFloat(document.getElementById('abono-monto').value)
@@ -617,9 +623,15 @@ async function registrarAbono() {
   btn.disabled = true
 
   try {
+    const payload = { monto, metodoPago: metodo, notas }
+    // Solo enviar turnoId si hay turno abierto (VENTA lo requiere, MANUAL es opcional)
+    if (turnoActual?.abierto) {
+      payload.turnoId = turnoActual.id
+    }
+
     const res = await apiFetch(`/bitacoras/${bitacoraActual.id}/abonos`, {
       method: 'POST',
-      body: JSON.stringify({ monto, metodoPago: metodo, notas, turnoId: turnoActual.id })
+      body: JSON.stringify(payload)
     })
     toast(res.mensaje || 'Abono registrado', res.cerrada ? 'success' : 'info')
     document.getElementById('abono-monto').value = ''

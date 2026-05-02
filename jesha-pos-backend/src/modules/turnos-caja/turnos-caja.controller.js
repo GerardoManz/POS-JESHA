@@ -134,6 +134,14 @@ const cerrarTurno = async (req, res) => {
         // Ajustes manuales siempre afectan el efectivo
         return sum - parseFloat(m.monto)
       }
+      if (m.tipo === 'ABONO_BITACORA') {
+        // Abonos a créditos POS: solo afectan caja si el método fue EFECTIVO
+        // (Solo bitácoras VENTA generan MovimientoCaja, las MANUAL no llegan aquí)
+        if (m.metodoPago === 'EFECTIVO') {
+          return sum + parseFloat(m.monto)
+        }
+        return sum  // tarjeta/transferencia no afecta el efectivo físico
+      }
       return sum
     }, 0)
 

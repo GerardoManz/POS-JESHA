@@ -718,7 +718,9 @@ const quitarProducto = async (req, res) => {
 
 // ════════════════════════════════════════════════════════════════════
 //  POST /bitacoras/:id/abonos — Registrar abono
-//  Valida turno, crea MovimientoCaja, cierre automático si saldo=0.
+//  VENTA  → exige turno, crea MovimientoCaja (afecta corte de caja)
+//  MANUAL → turno opcional, NO crea MovimientoCaja (dinero aparte)
+//  Cierre automático si saldo llega a $0.
 // ════════════════════════════════════════════════════════════════════
 const registrarAbono = async (req, res) => {
   try {
@@ -731,23 +733,34 @@ const registrarAbono = async (req, res) => {
       return res.status(400).json({ success: false, error: 'El monto debe ser mayor a 0', codigo: 'MONTO_INVALIDO' })
     }
 
-    const turnoIdFinal = parseInt(turnoId)
-    if (!turnoIdFinal || isNaN(turnoIdFinal)) {
-      return res.status(400).json({ success: false, error: 'Se requiere turnoId para registrar abono', codigo: 'SIN_TURNO' })
-    }
-
-    const turno = await prisma.turnoCaja.findUnique({ where: { id: turnoIdFinal } })
-    if (!turno || !turno.abierto) {
-      return res.status(403).json({ success: false, error: 'Turno cerrado o no existe', codigo: 'TURNO_CERRADO' })
-    }
-
+    // ── Obtener bitácora CON origen ──
     const bitacora = await prisma.bitacora.findUnique({
       where: { id: parseInt(id) },
-      select: { id: true, folio: true, estado: true, totalAbonado: true, totalMateriales: true, saldoPendiente: true, clienteId: true }
+      select: { id: true, folio: true, estado: true, origen: true, totalAbonado: true, totalMateriales: true, saldoPendiente: true, clienteId: true }
     })
     if (!bitacora) return res.status(404).json({ success: false, error: 'Bitácora no encontrada' })
     if (bitacora.estado !== 'ABIERTA') {
       return res.status(400).json({ success: false, error: `No se pueden registrar abonos en estado ${bitacora.estado}`, codigo: 'ESTADO_INVALIDO' })
+    }
+
+    const esVenta = bitacora.origen === 'VENTA'
+
+    // ── Validar turno SOLO para bitácoras VENTA (crédito POS) ──
+    let turnoIdFinal = null
+    if (esVenta) {
+      turnoIdFinal = parseInt(turnoId)
+      if (!turnoIdFinal || isNaN(turnoIdFinal)) {
+        return res.status(400).json({ success: false, error: 'Se requiere turno de caja abierto para abonar créditos POS', codigo: 'SIN_TURNO' })
+      }
+      const turno = await prisma.turnoCaja.findUnique({ where: { id: turnoIdFinal } })
+      if (!turno || !turno.abierto) {
+        return res.status(403).json({ success: false, error: 'Turno cerrado o no existe', codigo: 'TURNO_CERRADO' })
+      }
+    } else {
+      // MANUAL: turno opcional (si viene se guarda para trazabilidad, pero no se exige)
+      if (turnoId && !isNaN(parseInt(turnoId))) {
+        turnoIdFinal = parseInt(turnoId)
+      }
     }
 
     const saldoActual = parseFloat(bitacora.saldoPendiente)
@@ -793,20 +806,25 @@ const registrarAbono = async (req, res) => {
         })
       }
 
-      await tx.movimientoCaja.create({
-        data: {
-          turnoId:    turnoIdFinal,
-          tipo:       'ABONO_BITACORA',
-          monto:      montoAbono,
-          metodoPago: metodoPago || 'EFECTIVO',
-          referencia: bitacora.folio,
-          notas:      `Abono a bitácora ${bitacora.folio}${cerrar ? ' (liquidación completa)' : ''}`
-        }
-      })
+      // ── MovimientoCaja SOLO para bitácoras VENTA (crédito POS) ──
+      // Las bitácoras MANUAL son servicios externos; ese dinero no entra a caja
+      if (esVenta && turnoIdFinal) {
+        await tx.movimientoCaja.create({
+          data: {
+            turnoId:    turnoIdFinal,
+            tipo:       'ABONO_BITACORA',
+            monto:      montoAbono,
+            metodoPago: metodoPago || 'EFECTIVO',
+            referencia: bitacora.folio,
+            notas:      `Abono a bitácora ${bitacora.folio}${cerrar ? ' (liquidación completa)' : ''}`
+          }
+        })
+      }
     })
 
     const accion = cerrar ? 'ABONO_BITACORA_CIERRE' : 'ABONO_BITACORA'
-    await audit(usuarioId, sucursalId, accion, `${bitacora.folio} +$${montoAbono.toFixed(2)}`)
+    const sufijo = esVenta ? '' : ' [MANUAL-sin caja]'
+    await audit(usuarioId, sucursalId, accion, `${bitacora.folio} +$${montoAbono.toFixed(2)}${sufijo}`)
 
     const bitacoraActualizada = await prisma.bitacora.findUnique({ where: { id: parseInt(id) }, select: BITACORA_SELECT })
     res.json({

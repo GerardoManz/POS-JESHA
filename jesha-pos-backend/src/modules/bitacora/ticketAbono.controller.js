@@ -169,7 +169,7 @@ html, body { width:100%; max-width:100%; margin:0; padding:1mm 3mm; font-family:
   <tr><td class="lbl">Abono N°:</td><td class="val">${abonoCorto}</td></tr>
   <tr><td class="lbl">Bitácora:</td><td class="val">${folioCorto}</td></tr>
   <tr><td class="lbl">Cajero:</td><td class="val">${abono.usuario?.nombre || '—'}</td></tr>
-  <tr><td class="lbl">Turno:</td><td class="val">#${abono.turnoId}</td></tr>
+  <tr><td class="lbl">Turno:</td><td class="val">${abono.turnoId ? '#' + abono.turnoId : 'Sin turno (servicio)'}</td></tr>
 </table>
 
 <hr class="sep"/>
