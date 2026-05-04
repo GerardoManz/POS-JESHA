@@ -12,7 +12,6 @@
   <link rel="stylesheet" href="dashboard.css" />
   <link rel="stylesheet" href="compras.css" />
   <style>
-    /* Cuadrícula bidireccional — inputs compactos estilo SICAR */
     .items-table input[type="number"] {
       width: 100%; padding: 5px 6px; background: rgba(255,255,255,0.05);
       border: 1px solid var(--panel-border,#444); border-radius: 5px;
@@ -98,7 +97,7 @@
 </div>
 
 <!-- ══ MODAL CREAR / EDITAR ══ -->
-<div id="modal-crear" class="modal">
+<div id="modal-crear" class="modal" style="z-index:1000;">
   <div class="modal-content modal-xl">
     <div class="modal-header">
       <h3 id="crear-titulo">Nueva Compra</h3>
@@ -178,30 +177,127 @@
   </div>
 </div>
 
-<!-- ══ MODAL PRODUCTO RÁPIDO ══ -->
-<div id="modal-prod-rapido" class="modal">
-  <div class="modal-content" style="max-width:520px;">
+<!-- ══ MODAL PRODUCTO RÁPIDO (z-index superior al modal-crear) ══ -->
+<div id="modal-prod-rapido" class="modal" style="z-index:1100;">
+  <div class="modal-content" style="max-width:600px;">
     <div class="modal-header">
       <h3>Alta rápida de producto</h3>
       <button class="modal-close" id="prod-rapido-close">&times;</button>
     </div>
     <div style="padding:18px 22px;">
+
+      <!-- Proveedor auto (readonly) -->
+      <div style="margin-bottom:12px;padding:8px 12px;background:rgba(100,180,255,0.06);border:1px solid rgba(100,180,255,0.15);border-radius:8px;font-size:0.82rem;color:var(--muted);display:flex;align-items:center;gap:8px;">
+        <span>Proveedor:</span>
+        <strong id="pr-prov-nombre" style="color:var(--text);">—</strong>
+        <input type="hidden" id="pr-prov-id" />
+      </div>
+
+      <!-- Nombre + Código -->
       <div class="form-row" style="margin-bottom:10px;">
         <div class="form-group" style="flex:2;"><label>Nombre *</label><input type="text" id="pr-nombre" class="search-input" style="width:100%;" placeholder="Ej: Niple galvanizado 1/2x10" /></div>
-        <div class="form-group" style="flex:1;"><label>Código *</label><input type="text" id="pr-codigo" class="search-input" style="width:100%;" placeholder="Ej: NIP-G12" /></div>
+        <div class="form-group" style="flex:1;"><label>Código Interno *</label><input type="text" id="pr-codigo" class="search-input" style="width:100%;" placeholder="Ej: NIP-G12" /></div>
       </div>
+
+      <!-- Departamento + Categoría -->
       <div class="form-row" style="margin-bottom:10px;">
         <div class="form-group"><label>Departamento *</label><select id="pr-depto" class="filter-select" style="width:100%;"><option value="">Seleccionar...</option></select></div>
         <div class="form-group"><label>Categoría *</label><select id="pr-cat" class="filter-select" style="width:100%;"><option value="">Seleccionar depto primero</option></select></div>
       </div>
-      <div class="form-row" style="margin-bottom:10px;">
-        <div class="form-group"><label>Costo (C. Neto) *</label><input type="number" id="pr-costo" class="search-input" style="width:100%;" min="0" step="0.01" placeholder="0.00" /></div>
-        <div class="form-group"><label>Precio Venta *</label><input type="number" id="pr-pventa" class="search-input" style="width:100%;" min="0" step="0.01" placeholder="0.00" /></div>
+
+      <!-- ══ TIPO DE FACTURA ══ -->
+      <div style="margin-bottom:10px;">
+        <label style="font-size:0.78rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;display:block;margin-bottom:8px;">Tipo de factura del proveedor</label>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          <label id="pr-radio-label-a" style="display:flex;align-items:flex-start;gap:8px;padding:10px 14px;border-radius:8px;cursor:pointer;border:1px solid #6b9de8;flex:1;min-width:180px;background:rgba(107,157,232,0.08);">
+            <input type="radio" name="pr-tipo-factura" id="pr-radio-a" value="A" style="margin-top:3px;accent-color:#6b9de8;flex-shrink:0;" checked />
+            <div>
+              <div style="font-size:0.82rem;font-weight:600;color:var(--text);">Precio neto final</div>
+              <div style="font-size:0.7rem;color:var(--muted);margin-top:2px;">Factura muestra total (ej. Truper)</div>
+            </div>
+          </label>
+          <label id="pr-radio-label-b" style="display:flex;align-items:flex-start;gap:8px;padding:10px 14px;border-radius:8px;cursor:pointer;border:1px solid var(--panel-border);flex:1;min-width:180px;">
+            <input type="radio" name="pr-tipo-factura" id="pr-radio-b" value="B" style="margin-top:3px;accent-color:#6b9de8;flex-shrink:0;" />
+            <div>
+              <div style="font-size:0.82rem;font-weight:600;color:var(--text);">Desglose de IVA</div>
+              <div style="font-size:0.7rem;color:var(--muted);margin-top:2px;">Factura desglosa precio sin IVA</div>
+            </div>
+          </label>
+        </div>
       </div>
-      <div class="form-row" style="margin-bottom:10px;">
-        <div class="form-group"><label>Unidad compra</label><input type="text" id="pr-unidad" class="search-input" style="width:100%;" placeholder="pza" value="pza" /></div>
-        <div class="form-group"><label>Código barras</label><input type="text" id="pr-barras" class="search-input" style="width:100%;" placeholder="Opcional" /></div>
+
+      <!-- Escenario A: Precio proveedor directo -->
+      <div class="form-row" id="pr-campos-a" style="margin-bottom:10px;">
+        <div class="form-group">
+          <label>Precio Proveedor (Costo) *</label>
+          <input type="number" id="pr-costo" class="search-input" style="width:100%;" min="0" step="0.01" placeholder="0.00" />
+          <small style="font-size:0.7rem;color:var(--muted);margin-top:3px;display:block;">Total que aparece en la factura</small>
+        </div>
       </div>
+
+      <!-- Escenario B: Precio sin IVA → calcula proveedor -->
+      <div class="form-row" id="pr-campos-b" style="margin-bottom:10px;display:none;">
+        <div class="form-group">
+          <label>Precio sin IVA de proveedor *</label>
+          <input type="number" id="pr-costoSinIva" class="search-input" style="width:100%;" min="0" step="0.01" placeholder="0.00" />
+          <small style="font-size:0.7rem;color:var(--muted);margin-top:3px;display:block;">Desglose de la factura (antes de IVA)</small>
+        </div>
+        <div class="form-group">
+          <label>Precio Proveedor</label>
+          <input type="number" id="pr-costo-b-display" class="search-input" style="width:100%;background:rgba(255,255,255,0.03);color:var(--muted);" readonly placeholder="0.00" />
+          <small style="font-size:0.7rem;color:var(--muted);margin-top:3px;display:block;">Calculado (sin IVA × 1.16)</small>
+        </div>
+      </div>
+
+      <!-- Precio Venta + Precio Base (siempre visibles) -->
+      <div class="form-row" style="margin-bottom:10px;">
+        <div class="form-group">
+          <label>Precio Venta al Público *</label>
+          <input type="number" id="pr-pventa" class="search-input" style="width:100%;" min="0" step="0.01" placeholder="0.00" />
+          <small style="font-size:0.7rem;color:var(--muted);margin-top:3px;display:block;">Con IVA — se muestra en POS</small>
+        </div>
+        <div class="form-group">
+          <label>Precio Base (sin IVA)</label>
+          <input type="number" id="pr-precioBase" class="search-input" style="width:100%;background:rgba(255,255,255,0.03);color:var(--muted);" readonly placeholder="0.00" />
+          <small style="font-size:0.7rem;color:var(--muted);margin-top:3px;display:block;">Calculado (P.Venta ÷ 1.16)</small>
+        </div>
+      </div>
+
+      <!-- Margen calculado -->
+      <div id="pr-margen-wrap" style="display:none;margin-bottom:10px;padding:8px 12px;background:rgba(255,255,255,0.03);border:1px solid var(--panel-border);border-radius:8px;font-size:0.82rem;color:var(--muted);display:none;">
+        <span>Margen sobre costo: <strong id="pr-margen-valor" style="color:var(--text);">0%</strong></span>
+        <span style="margin-left:16px;">Utilidad: <strong id="pr-utilidad-valor" style="color:#60d080;">$0.00</strong></span>
+      </div>
+
+      <!-- Unidad de venta + Granel -->
+      <div class="form-row" style="margin-bottom:10px;">
+        <div class="form-group">
+          <label>Unidad de Venta</label>
+          <input type="text" id="pr-unidadVenta" class="search-input" style="width:100%;" placeholder="pza" value="pza" />
+        </div>
+        <div class="form-group" style="justify-content:flex-end;">
+          <label style="font-size:0.78rem;font-weight:600;color:var(--muted);text-transform:uppercase;">Producto a granel</label>
+          <div style="display:flex;align-items:center;gap:10px;padding:8px 0;">
+            <label class="toggle-switch" style="position:relative;display:inline-block;width:44px;height:24px;flex-shrink:0;">
+              <input type="checkbox" id="pr-esGranel" style="opacity:0;width:0;height:0;" />
+              <span style="position:absolute;cursor:pointer;inset:0;background:rgba(255,255,255,0.1);border-radius:24px;transition:background 0.25s;">
+                <span id="pr-granel-knob" style="position:absolute;height:18px;width:18px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:transform 0.25s;"></span>
+              </span>
+            </label>
+            <span style="font-size:0.8rem;color:var(--muted);">Se vende por metro, kg, litro, etc.</span>
+          </div>
+        </div>
+      </div>
+      <div id="pr-granel-hint" style="display:none;margin-bottom:10px;padding:8px 12px;background:rgba(107,157,232,0.08);border:1px solid rgba(107,157,232,0.2);border-radius:8px;font-size:0.78rem;color:#6b9de8;">
+        La unidad de venta (arriba) se usará como unidad de granel. Ej: <strong>mts</strong>, <strong>kg</strong>, <strong>lts</strong>
+      </div>
+
+      <!-- Claves SAT -->
+      <div class="form-row" style="margin-bottom:12px;">
+        <div class="form-group"><label>Clave SAT</label><input type="text" id="pr-claveSat" class="search-input" style="width:100%;" placeholder="8 dígitos" maxlength="8" /></div>
+        <div class="form-group"><label>Unidad SAT</label><input type="text" id="pr-unidadSat" class="search-input" style="width:100%;" placeholder="ej: H87" /></div>
+      </div>
+
       <div id="pr-error" class="error-message" style="margin-bottom:8px;"></div>
       <div class="form-actions" style="justify-content:flex-end;gap:10px;">
         <button class="btn-secondary" id="prod-rapido-cancel" style="padding:8px 18px;font-size:0.85rem;">Cancelar</button>
@@ -211,8 +307,8 @@
   </div>
 </div>
 
-<!-- ══ MODAL NUEVO PROVEEDOR ══ -->
-<div id="modal-prov" class="modal">
+<!-- ══ MODAL NUEVO PROVEEDOR (z-index superior) ══ -->
+<div id="modal-prov" class="modal" style="z-index:1100;">
   <div class="modal-content" style="max-width:460px;">
     <div class="modal-header">
       <h3>Nuevo Proveedor</h3>
@@ -235,7 +331,7 @@
 </div>
 
 <!-- ══ MODAL DETALLE COMPRA ══ -->
-<div id="modal-detalle" class="modal">
+<div id="modal-detalle" class="modal" style="z-index:1000;">
   <div class="modal-content modal-detalle-xl">
     <div class="modal-header">
       <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
@@ -269,8 +365,8 @@
         <div class="det-card" id="card-abono">
           <div class="det-card-header">💳 Registrar pago</div>
           <div style="display:flex;gap:8px;margin-bottom:8px;">
-            <input type="number" id="abono-monto" min="0.01" step="0.01" placeholder="Monto ($)" style="flex:1;padding:8px 10px;background:rgba(255,255,255,0.04);border:1px solid var(--panel-border);border-radius:7px;color:var(--text);font-family:'Barlow',sans-serif;font-size:0.9rem;outline:none;" />
-            <select id="abono-metodo" style="padding:8px 10px;background:rgba(255,255,255,0.04);border:1px solid var(--panel-border);border-radius:7px;color:var(--text);font-family:'Barlow',sans-serif;font-size:0.85rem;">
+            <input type="number" id="abono-monto" min="0.01" step="0.01" placeholder="Monto ($)" style="flex:1;min-width:0;padding:8px 10px;background:rgba(255,255,255,0.04);border:1px solid var(--panel-border);border-radius:7px;color:var(--text);font-family:'Barlow',sans-serif;font-size:0.9rem;outline:none;" />
+            <select id="abono-metodo" style="width:120px;min-width:120px;max-width:120px;flex-shrink:0;padding:8px 10px;background:rgba(255,255,255,0.04);border:1px solid var(--panel-border);border-radius:7px;color:var(--text);font-family:'Barlow',sans-serif;font-size:0.85rem;">
               <option value="EFECTIVO">💵 Efectivo</option>
               <option value="TRANSFERENCIA">🔄 Transf.</option>
               <option value="CREDITO">💳 Tarjeta</option>
@@ -317,9 +413,8 @@
   </div>
 </div>
 
-
 <script src="config.js"></script>
-  <script src="sidebar.js"></script>
+<script src="sidebar.js"></script>
 <script src="compras.js"></script>
 </body>
 </html>

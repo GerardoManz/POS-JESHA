@@ -146,7 +146,6 @@ function renderDetalle() {
   const recibiendo   = ocActual._recibiendo || false
   const showRecibido = !esPendiente || recibiendo
 
-  // Mostrar/ocultar columnas según modo
   document.getElementById('col-recibido-header').style.display = showRecibido ? '' : 'none'
   const colPend = document.getElementById('col-pendiente-header')
   if (colPend) colPend.style.display = recibiendo ? '' : 'none'
@@ -162,7 +161,6 @@ function renderDetalle() {
     const rowStyle     = yaCompleto && recibiendo ? 'opacity:0.45;' : ''
     const unidad       = d.producto?.unidadCompra || 'pza'
 
-    // Costo anterior vs nuevo
     const costoOrden    = parseFloat(d.precioCosto)
     const costoAnterior = parseFloat(d.producto?.costo || costoOrden)
     const costoSubio    = costoOrden > costoAnterior
@@ -172,7 +170,6 @@ function renderDetalle() {
       ? `<div style="font-size:0.68rem;color:var(--muted);margin-top:2px;">ant: ${fmt(costoAnterior)}</div>`
       : ''
 
-    // Badge de estado por fila (solo en modo vista)
     let estadoFila = ''
     if (!recibiendo) {
       if (yaCompleto)
@@ -181,7 +178,6 @@ function renderDetalle() {
         estadoFila = `<span style="font-size:0.7rem;background:rgba(255,193,7,0.1);color:#ffc107;border:1px solid rgba(255,193,7,0.25);border-radius:4px;padding:1px 6px;margin-left:6px;">parcial ${cantRecibida}/${cantPedida}</span>`
     }
 
-    // Celda de recibir (input decimal) / vista
     const celdaRecibido = showRecibido ? `<td style="text-align:center">
       ${recibiendo
         ? yaCompleto
@@ -198,7 +194,6 @@ function renderDetalle() {
       }
     </td>` : ''
 
-    // Celda pendiente (solo en modo recibir, solo si no está completo)
     const celdaPendiente = recibiendo ? `<td style="text-align:center">
       ${yaCompleto
         ? `<span style="color:#60d080;font-size:0.78rem;">—</span>`
@@ -206,7 +201,6 @@ function renderDetalle() {
       }
     </td>` : ''
 
-    // Celda margen + precio venta calculado (por producto)
     const precioVentaActual = parseFloat(d.producto?.precioVenta || d.producto?.precioBase || 0)
     const celdaMargen = recibiendo ? `<td>
       ${yaCompleto
@@ -248,16 +242,14 @@ function renderDetalle() {
     </tr>`
   }).join('')
 
-  // Banner informativo cuando hay recepción parcial previa
   if (recibiendo && oc.estado === 'RECIBIDO_PARCIAL') {
     const pendientesCount = (oc.detalles || []).filter(d => d.cantidadRecibida < d.cantidadPedida).length
     tbody.insertAdjacentHTML('beforebegin',
       `<div style="margin-bottom:10px;padding:9px 14px;background:rgba(255,193,7,0.07);border:1px solid rgba(255,193,7,0.2);border-radius:8px;font-size:0.82rem;color:#ffc107;">
-        ⚠️ Recepción parcial — ${pendientesCount} producto${pendientesCount !== 1 ? 's' : ''} pendiente${pendientesCount !== 1 ? 's' : ''} de recibir. Los productos en gris ya fueron recibidos.
+        ⚠️ Recepción parcial — ${pendientesCount} producto${pendientesCount !== 1 ? 's' : ''} pendiente${pendientesCount !== 1 ? 's' : ''} de recibir.
        </div>`)
   }
 
-  // Botones superiores
   const btns = document.getElementById('det-botones-superiores')
   btns.innerHTML = ''
   if (esPendiente) {
@@ -271,7 +263,6 @@ function renderDetalle() {
     }
   }
 
-  // Acciones
   const accDiv = document.getElementById('det-acciones')
   accDiv.innerHTML = ''
   if (esPendiente)
@@ -283,7 +274,6 @@ function renderDetalle() {
       </div>`
 }
 
-// Calcula y muestra el precio de venta en base al margen % ingresado
 window.calcPrecioVenta = function(detalleId, costoOrden) {
   const mgInput = document.getElementById(`mg-${detalleId}`)
   const pvCalc  = document.getElementById(`pv-calc-${detalleId}`)
@@ -291,14 +281,12 @@ window.calcPrecioVenta = function(detalleId, costoOrden) {
   const mg = parseFloat(mgInput.value) || 0
   if (mg <= 0) {
     pvCalc.textContent = ''
-    // Resetear en panel resumen
     const resumenPv = document.getElementById(`resumen-pvnuevo-${detalleId}`)
     if (resumenPv) { resumenPv.textContent = 'sin cambio'; resumenPv.style.color = 'var(--muted)'; resumenPv.style.fontStyle = 'italic'; resumenPv.style.fontWeight = 'normal' }
     return
   }
   const pv = costoOrden * (1 + mg / 100)
   pvCalc.textContent = `→ ${fmt(pv)}`
-  // Actualizar panel resumen en tiempo real
   const resumenPv = document.getElementById(`resumen-pvnuevo-${detalleId}`)
   if (resumenPv) {
     resumenPv.textContent = fmt(pv)
@@ -429,23 +417,29 @@ window.cancelarCompra = async function(id) {
 }
 
 // ════════════════════════════════════════════════════════════════════
-//  ABONO
+//  ABONO — FIX: validación robusta del monto
 // ════════════════════════════════════════════════════════════════════
 async function registrarAbono() {
-  const monto  = parseFloat(document.getElementById('abono-monto').value)
+  const montoInput = document.getElementById('abono-monto')
+  const rawValue   = montoInput?.value?.trim()
+  if (!rawValue || rawValue === '') { jeshaToast('Ingresa un monto', 'warning'); return }
+
+  const monto  = parseFloat(rawValue)
+  if (isNaN(monto) || monto <= 0) { jeshaToast('Monto inválido', 'warning'); return }
+
   const metodo = document.getElementById('abono-metodo').value
   const notas  = document.getElementById('abono-notas').value.trim() || null
-  if (!monto || monto <= 0) { jeshaToast('Monto inválido', 'warning'); return }
 
   const btn = document.getElementById('btn-abonar')
   btn.disabled = true; btn.textContent = 'Registrando...'
   try {
     const data = await apiFetch(`/compras/${ocActual.id}/abonos`, { method:'POST', body: JSON.stringify({ monto, metodoPago: metodo, notas }) })
     ocActual = data.data
-    document.getElementById('abono-monto').value = ''
+    montoInput.value = ''
     document.getElementById('abono-notas').value = ''
     renderDetalle()
     cargarCompras()
+    jeshaToast('Pago registrado', 'success')
   } catch (err) { jeshaToast('Error: ' + err.message, 'error') }
   finally { btn.disabled = false; btn.textContent = '+ Registrar pago' }
 }
@@ -463,7 +457,6 @@ function abrirModalCrear() {
   document.getElementById('search-prod-modal').value = ''
   document.getElementById('lista-prod-modal').innerHTML = '<p class="muted-hint">Selecciona un proveedor primero...</p>'
   document.getElementById('crear-error').classList.remove('show')
-  // Bloquear búsqueda hasta que se seleccione proveedor
   const searchProd = document.getElementById('search-prod-modal')
   if (searchProd) { searchProd.disabled = true; searchProd.placeholder = 'Selecciona un proveedor primero...' }
   renderItemsEdicion()
@@ -549,14 +542,6 @@ function renderItemsEdicion() {
   actualizarTotalEdicion()
 }
 
-// ═══ Lógica bidireccional estilo SICAR ═══
-// Reglas:
-// - Editar C.Base  → C.Neto = CBase * 1.16, recalcular PVenta desde Margen
-// - Editar C.Neto  → C.Base = CNeto / 1.16, recalcular PVenta desde Margen
-// - Editar Margen  → PVenta = CNeto * (1 + Margen/100)
-// - Editar PVenta  → Margen = (PVenta/CNeto - 1) * 100
-// - Editar Cantidad → solo recalcular Subtotal
-// - Subtotal siempre = Cantidad * C.Neto
 window.editItem = function(i, campo, v) {
   const n = parseFloat(v)
   if (isNaN(n) || n < 0) return
@@ -569,7 +554,6 @@ window.editItem = function(i, campo, v) {
     case 'costoBase':
       item.costoBase = n
       item.costoNeto = +(n * 1.16).toFixed(4)
-      // Recalcular PVenta manteniendo margen
       if (item.margen > 0) {
         item.precioVenta = +(item.costoNeto * (1 + item.margen / 100)).toFixed(2)
       }
@@ -577,7 +561,6 @@ window.editItem = function(i, campo, v) {
     case 'costoNeto':
       item.costoNeto = n
       item.costoBase = +(n / 1.16).toFixed(4)
-      // Recalcular PVenta manteniendo margen
       if (item.margen > 0) {
         item.precioVenta = +(n * (1 + item.margen / 100)).toFixed(2)
       }
@@ -592,11 +575,8 @@ window.editItem = function(i, campo, v) {
       break
   }
 
-  // Actualización inline rápida sin re-render completo
   if (campo !== 'cantidad') {
-    // Refrescar solo las celdas que cambiaron (evitar perder focus del input activo)
     renderItemsEdicion()
-    // Restaurar focus al input editado
     const row = document.querySelector(`#comp-items-tbody tr:nth-child(${i + 1})`)
     if (row) {
       const colMap = { costoBase: 2, costoNeto: 3, margen: 4, precioVenta: 5 }
@@ -607,7 +587,6 @@ window.editItem = function(i, campo, v) {
       }
     }
   } else {
-    // Solo actualizar subtotal y total
     const cel = document.getElementById(`item-sub-${i}`)
     if (cel) cel.textContent = fmt(item.costoNeto * item.cantidad)
     actualizarTotalEdicion()
@@ -647,7 +626,6 @@ async function guardarCompra() {
   if (!provId) { mostrarError('crear-error', 'Selecciona un proveedor'); return }
   if (itemsEdicion.length === 0) { mostrarError('crear-error', 'Agrega al menos un producto'); return }
 
-  // El backend recibe costoNeto como precioCosto (valor real con IVA para inventario)
   const detalles = itemsEdicion.map(i => ({
     productoId: i.productoId,
     cantidadPedida: i.cantidad,
@@ -676,7 +654,6 @@ async function cargarProveedores() {
   try {
     const data = await apiFetch('/compras/proveedores')
     proveedores = data.data || []
-    // Poblar select de filtro en toolbar
     const sel = document.getElementById('filtro-proveedor')
     if (sel) {
       sel.innerHTML = '<option value="">Todos los proveedores</option>'
@@ -691,7 +668,6 @@ async function cargarProveedores() {
   } catch(e) { console.warn('No se cargaron proveedores:', e.message) }
 }
 
-// Filtra en memoria — sin mínimo de caracteres para poder mostrar toda la lista
 function filtrarProveedores(q) {
   const l = (q || '').toLowerCase().trim()
   if (!l) return proveedores.slice(0, 50)
@@ -701,7 +677,6 @@ function filtrarProveedores(q) {
   ).slice(0, 50)
 }
 
-// Renderiza el dropdown con buscador interno integrado
 function renderDDProv(lista) {
   const dd = document.getElementById('dd-proveedores')
   if (!dd) return
@@ -733,7 +708,6 @@ function renderDDProv(lista) {
   }
   renderItems(lista)
 
-  // Buscador interno
   const ddInput = document.getElementById('dd-prov-search')
   if (ddInput) {
     ddInput.addEventListener('input', e => renderItems(filtrarProveedores(e.target.value)))
@@ -759,14 +733,14 @@ window.selProv = (id, alias, nombre) => {
   document.getElementById('prov-id').value     = id
   document.getElementById('prov-buscar').value = alias
   cerrarDDProv()
-  // Habilitar búsqueda de productos filtrada por este proveedor
+  // FIX: Habilitar búsqueda GLOBAL (no filtrada por proveedor)
   const searchProd = document.getElementById('search-prod-modal')
   if (searchProd) {
     searchProd.disabled    = false
     searchProd.placeholder = 'Nombre o código...'
     searchProd.focus()
   }
-  document.getElementById('lista-prod-modal').innerHTML = '<p class="muted-hint">Escribe para buscar productos de este proveedor...</p>'
+  document.getElementById('lista-prod-modal').innerHTML = '<p class="muted-hint">Escribe para buscar productos...</p>'
 }
 
 async function guardarProveedor() {
@@ -790,16 +764,15 @@ async function guardarProveedor() {
 }
 
 // ════════════════════════════════════════════════════════════════════
-//  BÚSQUEDA PRODUCTOS EN MODAL
+//  BÚSQUEDA PRODUCTOS EN MODAL — FIX: búsqueda GLOBAL (sin proveedorId)
 // ════════════════════════════════════════════════════════════════════
 async function buscarProductosModal(q) {
   const lista = document.getElementById('lista-prod-modal')
   if (!q || q.length < 2) { lista.innerHTML = '<p class="muted-hint">Escribe para buscar...</p>'; return }
   lista.innerHTML = '<p class="muted-hint">Buscando...</p>'
   try {
-    const provId = document.getElementById('prov-id').value
+    // FIX: Búsqueda global — NO enviar proveedorId para mostrar todo el catálogo
     const params = new URLSearchParams({ buscar: q, take: 30 })
-    if (provId) params.set('proveedorId', provId)
     const data = await apiFetch(`/productos?${params}`)
     const prods = data.data || data
     if (!prods?.length) { lista.innerHTML = '<p class="muted-hint">Sin resultados</p>'; return }
@@ -819,7 +792,7 @@ function mostrarError(id, msg) {
 }
 
 // ════════════════════════════════════════════════════════════════════
-//  PRODUCTO RÁPIDO (Alta desde compras)
+//  PRODUCTO RÁPIDO — Lógica financiera idéntica a productos.js
 // ════════════════════════════════════════════════════════════════════
 async function cargarDeptosYCats() {
   try {
@@ -852,50 +825,179 @@ function llenarSelectCats(deptoId) {
 }
 
 function abrirModalProdRapido() {
-  document.getElementById('pr-nombre').value = ''
-  document.getElementById('pr-codigo').value = ''
-  document.getElementById('pr-costo').value  = ''
-  document.getElementById('pr-pventa').value = ''
-  document.getElementById('pr-unidad').value = 'pza'
-  document.getElementById('pr-barras').value = ''
-  document.getElementById('pr-depto').value  = ''
-  document.getElementById('pr-cat').innerHTML = '<option value="">Seleccionar depto primero</option>'
+  // Limpiar campos
+  document.getElementById('pr-nombre').value      = ''
+  document.getElementById('pr-codigo').value       = ''
+  document.getElementById('pr-costo').value        = ''
+  document.getElementById('pr-costoSinIva').value  = ''
+  document.getElementById('pr-costo-b-display').value = ''
+  document.getElementById('pr-pventa').value       = ''
+  document.getElementById('pr-precioBase').value   = ''
+  document.getElementById('pr-unidadVenta').value  = 'pza'
+  document.getElementById('pr-claveSat').value     = ''
+  document.getElementById('pr-unidadSat').value    = ''
+  document.getElementById('pr-esGranel').checked   = false
+  document.getElementById('pr-depto').value        = ''
+  document.getElementById('pr-cat').innerHTML      = '<option value="">Seleccionar depto primero</option>'
   document.getElementById('pr-error').classList.remove('show')
+
+  // Reset tipo factura a A
+  document.getElementById('pr-radio-a').checked = true
+  prAplicarTipoFactura('A')
+
+  // Reset margen
+  document.getElementById('pr-margen-wrap').style.display = 'none'
+
+  // Reset granel
+  prActualizarGranel()
+
+  // Proveedor automático desde la compra
+  const provId    = document.getElementById('prov-id').value
+  const provNombre = document.getElementById('prov-buscar').value
+  document.getElementById('pr-prov-id').value      = provId
+  document.getElementById('pr-prov-nombre').textContent = provNombre || '—'
+
   llenarSelectDeptos()
   document.getElementById('modal-prod-rapido').classList.add('active')
   setTimeout(() => document.getElementById('pr-nombre')?.focus(), 100)
 }
 
-async function guardarProdRapido() {
-  const nombre = document.getElementById('pr-nombre').value.trim()
-  const codigo = document.getElementById('pr-codigo').value.trim()
-  const catId  = document.getElementById('pr-cat').value
-  const costo  = parseFloat(document.getElementById('pr-costo').value)
-  const pventa = parseFloat(document.getElementById('pr-pventa').value)
-  const unidad = document.getElementById('pr-unidad').value.trim() || 'pza'
-  const barras = document.getElementById('pr-barras').value.trim() || null
+// ── Tipo factura (replicado de productos.js) ──
+function prAplicarTipoFactura(tipo) {
+  const esB = tipo === 'B'
+  document.getElementById('pr-campos-a').style.display = esB ? 'none' : ''
+  document.getElementById('pr-campos-b').style.display = esB ? ''     : 'none'
 
+  const labelA = document.getElementById('pr-radio-label-a')
+  const labelB = document.getElementById('pr-radio-label-b')
+  if (labelA) {
+    labelA.style.background  = esB ? '' : 'rgba(107,157,232,0.08)'
+    labelA.style.borderColor = esB ? 'var(--panel-border)' : '#6b9de8'
+  }
+  if (labelB) {
+    labelB.style.background  = esB ? 'rgba(107,157,232,0.08)' : ''
+    labelB.style.borderColor = esB ? '#6b9de8' : 'var(--panel-border)'
+  }
+
+  if (!esB) {
+    document.getElementById('pr-costoSinIva').value     = ''
+    document.getElementById('pr-costo-b-display').value = ''
+  }
+
+  prCalcularMargen()
+}
+
+// sinIVA × 1.16 = Precio Proveedor (Escenario B)
+function prCalcularCostoDesdeB() {
+  const sinIva  = parseFloat(document.getElementById('pr-costoSinIva')?.value) || 0
+  const display = document.getElementById('pr-costo-b-display')
+  const inputCosto = document.getElementById('pr-costo')
+
+  const precioProveedor = sinIva > 0 ? parseFloat((sinIva * 1.16).toFixed(2)) : 0
+
+  if (display) display.value = precioProveedor > 0 ? precioProveedor : ''
+  if (inputCosto) inputCosto.value = precioProveedor > 0 ? precioProveedor : ''
+
+  prCalcularMargen()
+}
+
+// Precio Base = Precio Venta / 1.16
+function prCalcularPrecioBase() {
+  const pv = parseFloat(document.getElementById('pr-pventa')?.value) || 0
+  const pbInput = document.getElementById('pr-precioBase')
+  if (!pbInput) return
+  pbInput.value = pv > 0 ? (pv / 1.16).toFixed(2) : ''
+}
+
+// Margen = ((PVenta - Costo) / Costo) × 100
+function prCalcularMargen() {
+  const costo = parseFloat(document.getElementById('pr-costo')?.value) || 0
+  const pv    = parseFloat(document.getElementById('pr-pventa')?.value) || 0
+  const wrap  = document.getElementById('pr-margen-wrap')
+  if (!wrap) return
+
+  if (costo > 0 && pv > 0) {
+    const utilidad = pv - costo
+    const margen   = (utilidad / costo) * 100
+    document.getElementById('pr-margen-valor').textContent   = margen.toFixed(2) + '%'
+    document.getElementById('pr-utilidad-valor').textContent = '$' + utilidad.toFixed(2)
+    wrap.style.display = 'block'
+  } else {
+    wrap.style.display = 'none'
+  }
+}
+
+// Toggle granel
+function prActualizarGranel() {
+  const checked = document.getElementById('pr-esGranel')?.checked || false
+  const knob    = document.getElementById('pr-granel-knob')
+  const hint    = document.getElementById('pr-granel-hint')
+  if (knob) knob.style.transform = checked ? 'translateX(20px)' : 'translateX(0)'
+  if (knob?.parentElement) knob.parentElement.style.background = checked ? '#6b9de8' : 'rgba(255,255,255,0.1)'
+  if (hint) hint.style.display = checked ? 'block' : 'none'
+}
+
+async function guardarProdRapido() {
+  const nombre   = document.getElementById('pr-nombre').value.trim()
+  const codigo   = document.getElementById('pr-codigo').value.trim()
+  const catId    = document.getElementById('pr-cat').value
+  const costo    = parseFloat(document.getElementById('pr-costo').value)
+  const pventa   = parseFloat(document.getElementById('pr-pventa').value)
+  const provId   = document.getElementById('pr-prov-id').value || null
+
+  // Tipo de factura
+  const esDesgloseB = document.getElementById('pr-radio-b')?.checked
+  const tipoFactura = esDesgloseB ? 'DESGLOSE' : 'NETO'
+  const costoSinIva = esDesgloseB ? (parseFloat(document.getElementById('pr-costoSinIva').value) || null) : null
+
+  // Precio base calculado
+  const precioBase = pventa > 0 ? parseFloat((pventa / 1.16).toFixed(2)) : 0
+
+  // Unidad de venta + granel
+  const unidadVenta = document.getElementById('pr-unidadVenta').value.trim() || 'pza'
+  const esGranel    = document.getElementById('pr-esGranel')?.checked || false
+
+  // SAT
+  const claveSat  = document.getElementById('pr-claveSat').value.trim() || null
+  const unidadSat = document.getElementById('pr-unidadSat').value.trim() || null
+
+  // Validaciones
   if (!nombre) { mostrarError('pr-error', 'Nombre requerido'); return }
-  if (!codigo) { mostrarError('pr-error', 'Código requerido'); return }
+  if (!codigo) { mostrarError('pr-error', 'Código interno requerido'); return }
   if (!catId)  { mostrarError('pr-error', 'Categoría requerida'); return }
-  if (!costo || costo <= 0) { mostrarError('pr-error', 'Costo inválido'); return }
-  if (!pventa || pventa <= 0) { mostrarError('pr-error', 'Precio venta inválido'); return }
+  if (!precioBase || precioBase <= 0) { mostrarError('pr-error', 'Precio de venta requerido'); return }
+
+  // Validar costo según escenario
+  if (esDesgloseB) {
+    if (!costoSinIva || costoSinIva <= 0) { mostrarError('pr-error', 'Precio sin IVA requerido en escenario desglose'); return }
+  } else {
+    if (!costo || costo <= 0) { mostrarError('pr-error', 'Precio proveedor (costo) requerido'); return }
+  }
 
   const btn = document.getElementById('prod-rapido-guardar')
   btn.disabled = true; btn.textContent = 'Creando...'
 
   try {
-    const provId = document.getElementById('prov-id').value || null
     const datos = {
-      nombre, codigoInterno: codigo, codigoBarras: barras,
-      costo, precioBase: pventa, precioVenta: pventa,
-      categoriaId: parseInt(catId), unidadCompra: unidad,
-      proveedorId: provId ? parseInt(provId) : null
+      nombre,
+      codigoInterno:        codigo,
+      costo:                costo || null,
+      costoSinIvaProveedor: costoSinIva,
+      tipoFacturaProv:      tipoFactura,
+      precioBase:           precioBase,
+      precioVenta:          pventa || null,
+      categoriaId:          parseInt(catId),
+      proveedorId:          provId ? parseInt(provId) : null,
+      unidadCompra:         'pza',
+      unidadVenta:          unidadVenta,
+      esGranel:             esGranel,
+      claveSat:             claveSat,
+      unidadSat:            unidadSat
     }
+
     const data = await apiFetch('/productos', { method: 'POST', body: JSON.stringify(datos) })
     const prod = data.data || data
 
-    // Inyectar automáticamente en la compra actual
     agregarProductoEdicion(prod)
     document.getElementById('modal-prod-rapido').classList.remove('active')
     jeshaToast(`Producto "${nombre}" creado y agregado`, 'success')
@@ -934,6 +1036,21 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('prod-rapido-guardar')?.addEventListener('click', guardarProdRapido)
   document.getElementById('pr-depto')?.addEventListener('change', e => llenarSelectCats(e.target.value))
 
+  // Tipo de factura — radios
+  document.getElementById('pr-radio-a')?.addEventListener('change', () => prAplicarTipoFactura('A'))
+  document.getElementById('pr-radio-b')?.addEventListener('change', () => prAplicarTipoFactura('B'))
+
+  // Cálculos financieros en vivo
+  document.getElementById('pr-costoSinIva')?.addEventListener('input', prCalcularCostoDesdeB)
+  document.getElementById('pr-costo')?.addEventListener('input', prCalcularMargen)
+  document.getElementById('pr-pventa')?.addEventListener('input', () => {
+    prCalcularPrecioBase()
+    prCalcularMargen()
+  })
+
+  // Granel toggle
+  document.getElementById('pr-esGranel')?.addEventListener('change', prActualizarGranel)
+
   // Cargar catálogo para producto rápido
   cargarDeptosYCats()
 
@@ -941,13 +1058,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     clearTimeout(debounceProd); debounceProd = setTimeout(() => buscarProductosModal(e.target.value.trim()), 350)
   })
 
-  // Proveedor — buscador + chevron para ver lista completa
+  // Proveedor — buscador + chevron
   document.getElementById('prov-buscar')?.addEventListener('input', e => {
     const q = e.target.value
     if (q.length === 0) {
       cerrarDDProv()
       document.getElementById('prov-id').value = ''
-      // Bloquear búsqueda de productos si se borra el proveedor
       const searchProd = document.getElementById('search-prod-modal')
       if (searchProd) {
         searchProd.disabled    = true

@@ -99,7 +99,6 @@ const crear = async (req, res) => {
 
     const rows = detalles.map(d => {
       const costo    = parseFloat(d.precioCosto || 0)
-      // FIX: parseFloat para soportar cantidades decimales (ej. 1.5 metros de alambre)
       const cantidad = parseFloat(d.cantidadPedida) || 1
       return {
         productoId:       parseInt(d.productoId),
@@ -167,10 +166,8 @@ const editar = async (req, res) => {
 
       const rows = detalles.map(d => {
         const costo    = parseFloat(d.precioCosto || 0)
-        // FIX: parseFloat para soportar cantidades decimales
         const qty      = parseFloat(d.cantidadPedida) || 1
         const detExist = existente.detalles.find(e => e.productoId === parseInt(d.productoId))
-        // FIX: parseFloat en cantidadRecibida que viene de Prisma como Decimal
         const cantRec  = parseFloat(detExist?.cantidadRecibida || 0)
         return {
           productoId:       parseInt(d.productoId),
@@ -208,7 +205,7 @@ const editar = async (req, res) => {
 const recibir = async (req, res) => {
   try {
     const { id }       = req.params
-    const { detalles } = req.body  // [{ detalleId, cantidadRecibida, precioVenta? }]
+    const { detalles } = req.body
     const { id: usuarioId, sucursalId: sucursalIdToken } = req.usuario
     const sucursalId = sucursalIdToken || 1
 
@@ -238,11 +235,9 @@ const recibir = async (req, res) => {
         const detalle = oc.detalles.find(d => d.id === parseInt(item.detalleId))
         if (!detalle) continue
 
-        // FIX: parseFloat para soportar recepciones parciales decimales (ej. 0.5 kg)
         const cantNueva = parseFloat(item.cantidadRecibida) || 0
         if (cantNueva <= 0) continue
 
-        // FIX: parseFloat en cantidadRecibida que viene de Prisma como tipo Decimal
         const cantYaRecibida    = parseFloat(detalle.cantidadRecibida)
         const cantTotalRecibida = parseFloat((cantYaRecibida + cantNueva).toFixed(3))
         const costoUnit         = parseFloat(detalle.precioCosto)
@@ -289,10 +284,11 @@ const recibir = async (req, res) => {
             }
           })
 
-          // Actualizar precioCosto en ProveedorProducto (precio vigente por proveedor)
-          await tx.proveedorProducto.updateMany({
-            where: { proveedorId: oc.proveedorId, productoId: detalle.productoId },
-            data:  { precioCosto: costoUnit }
+          // FIX: upsert en ProveedorProducto para soportar productos nuevos del proveedor
+          await tx.proveedorProducto.upsert({
+            where: { proveedorId_productoId: { proveedorId: oc.proveedorId, productoId: detalle.productoId } },
+            update: { precioCosto: costoUnit, activo: true },
+            create: { proveedorId: oc.proveedorId, productoId: detalle.productoId, precioCosto: costoUnit, activo: true }
           })
 
           await tx.movimientoInventario.create({
@@ -310,8 +306,7 @@ const recibir = async (req, res) => {
         }
       }
 
-      // Determinar nuevo estado comparando con cantidadPedida
-      // FIX: parseFloat en ambos lados de la comparación
+      // Determinar nuevo estado
       const totalRecibMap = Object.fromEntries(
         detalles.map(d => [d.detalleId, parseFloat(d.cantidadRecibida) || 0])
       )
@@ -341,6 +336,7 @@ const recibir = async (req, res) => {
 }
 
 // ── POST /compras/:id/abonos ──
+// FIX: Validación de saldo pendiente para evitar cobros excesivos
 const registrarAbono = async (req, res) => {
   try {
     const { id }                        = req.params
@@ -354,9 +350,21 @@ const registrarAbono = async (req, res) => {
     const oc = await prisma.ordenCompra.findUnique({ where: { id: parseInt(id) }, select: { id: true, folio: true, totalPagado: true, totalEstimado: true } })
     if (!oc) return res.status(404).json({ success: false, error: 'Orden no encontrada' })
 
-    const montoAbono = parseFloat(parseFloat(monto).toFixed(2))
+    const montoAbono     = parseFloat(parseFloat(monto).toFixed(2))
+    const saldoPendiente = parseFloat((parseFloat(oc.totalEstimado) - parseFloat(oc.totalPagado)).toFixed(2))
+
+    // FIX: Bloquear abonos que excedan el saldo pendiente
+    if (montoAbono > saldoPendiente + 0.005) {
+      return res.status(400).json({
+        success: false,
+        error: `Monto excede saldo pendiente. Saldo: $${saldoPendiente.toFixed(2)}, Intento: $${montoAbono.toFixed(2)}`,
+        codigo: 'EXCEDE_SALDO',
+        saldoPendiente
+      })
+    }
+
     const nuevoTotal = parseFloat((parseFloat(oc.totalPagado) + montoAbono).toFixed(2))
-    const pagada     = nuevoTotal >= parseFloat(oc.totalEstimado)
+    const pagada     = nuevoTotal >= parseFloat(oc.totalEstimado) - 0.005
 
     await prisma.$transaction(async tx => {
       await tx.abonoCompra.create({
