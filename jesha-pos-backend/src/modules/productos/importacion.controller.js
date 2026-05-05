@@ -44,20 +44,46 @@ function parseCSVLine(line) {
  * Parsea buffer CSV completo → array de objetos {header: valor}
  */
 function parsearCSVBuffer(buffer) {
-    const texto = buffer.toString('utf-8')
-    const lineas = texto.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n')
+    const texto = buffer.toString('utf-8').replace(/\r\n/g, '\n').replace(/\r/g, '\n')
 
-    // Buscar header (primera línea no vacía)
+    // ── Tokenizar carácter a carácter (RFC 4180) ──────────────────────────
+    // Respeta campos multilinea entre comillas: \n dentro de " " NO corta fila
+    const lineasReales = []
+    let current = ''
+    let insideQuotes = false
+
+    for (let i = 0; i < texto.length; i++) {
+        const char = texto[i]
+        const next = texto[i + 1]
+
+        if (char === '"') {
+            if (insideQuotes && next === '"') {
+                current += '"' // comilla escapada ("")
+                i++
+            } else {
+                insideQuotes = !insideQuotes
+            }
+        } else if (char === '\n' && !insideQuotes) {
+            // Salto de línea FUERA de comillas → nueva fila real
+            lineasReales.push(current)
+            current = ''
+        } else {
+            current += char
+        }
+    }
+    if (current.trim()) lineasReales.push(current)
+
+    // ── Buscar header (primera línea no vacía) ────────────────────────────
     let headerIdx = 0
-    while (headerIdx < lineas.length && !lineas[headerIdx].trim()) {
+    while (headerIdx < lineasReales.length && !lineasReales[headerIdx].trim()) {
         headerIdx++
     }
 
-    const headers = parseCSVLine(lineas[headerIdx])
+    const headers = parseCSVLine(lineasReales[headerIdx])
     const filas = []
 
-    for (let i = headerIdx + 1; i < lineas.length; i++) {
-        const linea = lineas[i].trim()
+    for (let i = headerIdx + 1; i < lineasReales.length; i++) {
+        const linea = lineasReales[i].trim()
         if (!linea) continue
 
         const valores = parseCSVLine(linea)
@@ -1086,4 +1112,3 @@ exports.importarSoloNuevos = async (req, res) => {
         })
     }
 }
-
