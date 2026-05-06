@@ -1,10 +1,13 @@
 // ═══════════════════════════════════════════════════════════════════
-// PRODUCTOS.CONTROLLER.JS — CORREGIDO
+// PRODUCTOS.CONTROLLER.JS — INTEGRADO CON CLOUDINARY
 // FIX: Usa instancia centralizada de Prisma (no crea una propia)
 // FIX: Agrega tipoFacturaProv y costoSinIvaProveedor en crear/editar
+// FEAT: actualizarImagen guarda url + public_id de Cloudinary
+// FEAT: Nueva función eliminarImagen (para botón "quitar imagen")
 // ═══════════════════════════════════════════════════════════════════
 
 const prisma = require('../../lib/prisma')
+const { eliminarImagenProducto } = require('../../lib/cloudinary')
 
 // ═══════════════════════════════════════════════════════════════════
 // DEPARTAMENTOS
@@ -440,6 +443,7 @@ async function editar(req, res) {
 
 // ═══════════════════════════════════════════════════════════════════
 // CAMBIAR ESTADO
+// NOTA: Opción suave — NO borra la imagen de Cloudinary aunque se desactive
 // ═══════════════════════════════════════════════════════════════════
 
 async function cambiarEstado(req, res) {
@@ -465,22 +469,75 @@ async function cambiarEstado(req, res) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// ACTUALIZAR IMAGEN
+// ACTUALIZAR IMAGEN — INTEGRADO CON CLOUDINARY
+// Recibe { url, public_id } desde productos.routes.js (tras subir a Cloudinary)
+// Guarda ambos campos para permitir borrar/reemplazar después
 // ═══════════════════════════════════════════════════════════════════
 
-async function actualizarImagen(id, urlImagen) {
+async function actualizarImagen(id, { url, public_id }) {
     const producto = await prisma.producto.update({
         where: { id: parseInt(id) },
-        data: { imagenUrl: urlImagen },
+        data: {
+            imagenUrl:      url,
+            imagenPublicId: public_id
+        },
         include: {
             categoria: { include: { departamento: true } },
             inventarios: { where: { sucursalId: 1 }, take: 1 }
         }
     })
-    console.log(`✅ Imagen actualizada: ${producto.nombre}`)
+    console.log(`✅ Imagen actualizada (Cloudinary): ${producto.nombre}`)
     return {
         ...producto,
         inventario: producto.inventarios?.length > 0 ? producto.inventarios[0] : null
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ELIMINAR IMAGEN — NUEVO
+// Endpoint listo para usar cuando se añada un botón "quitar imagen" en UI
+// Borra de Cloudinary Y limpia los campos en BD
+// (Si falla el borrado remoto, igual limpia BD para no dejar referencia rota)
+// ═══════════════════════════════════════════════════════════════════
+
+async function eliminarImagen(req, res) {
+    try {
+        const { id } = req.params
+        const producto = await prisma.producto.findUnique({
+            where: { id: parseInt(id) }
+        })
+
+        if (!producto) {
+            return res.status(404).json({ success: false, error: 'Producto no encontrado' })
+        }
+
+        // Si tiene public_id, intentar borrar de Cloudinary
+        if (producto.imagenPublicId) {
+            await eliminarImagenProducto(producto.imagenPublicId)
+        }
+
+        // Limpiar campos en BD (independiente del resultado de Cloudinary)
+        const actualizado = await prisma.producto.update({
+            where: { id: parseInt(id) },
+            data: { imagenUrl: null, imagenPublicId: null },
+            include: {
+                categoria: { include: { departamento: true } },
+                inventarios: { where: { sucursalId: 1 }, take: 1 }
+            }
+        })
+
+        console.log(`✅ Imagen eliminada: ${actualizado.nombre}`)
+        res.json({
+            success: true,
+            mensaje: 'Imagen eliminada',
+            data: {
+                ...actualizado,
+                inventario: actualizado.inventarios?.length > 0 ? actualizado.inventarios[0] : null
+            }
+        })
+    } catch (error) {
+        console.error('❌ Error eliminando imagen:', error.message)
+        res.status(500).json({ success: false, error: error.message })
     }
 }
 
@@ -568,23 +625,9 @@ async function crearCategoria(req, res) {
 
 // ═══════════════════════════════════════════════════════════════════
 // AJUSTAR INVENTARIO
+// FIX: parseFloat con toFixed(3) para soportar granel
+// FIX: stock con decimales ya no se trunca silenciosamente
 // ═══════════════════════════════════════════════════════════════════
-
-// ════════════════════════════════════════════════════════════════════
-//  REEMPLAZA SOLO LA FUNCIÓN ajustarInventario en productos.controller.js
-//  (líneas ~569-665). El resto del archivo NO se toca.
-//
-//  FIX: parseInt → parseFloat con toFixed(3) para soportar granel
-//  FIX: stock con decimales ya no se trunca silenciosamente
-// ════════════════════════════════════════════════════════════════════
-
-// ════════════════════════════════════════════════════════════════════
-//  REEMPLAZA SOLO LA FUNCIÓN ajustarInventario en productos.controller.js
-//  (líneas ~569-665). El resto del archivo NO se toca.
-//
-//  FIX: parseInt → parseFloat con toFixed(3) para soportar granel
-//  FIX: stock con decimales ya no se trunca silenciosamente
-// ════════════════════════════════════════════════════════════════════
 
 async function ajustarInventario(req, res) {
   try {
@@ -689,6 +732,10 @@ async function ajustarInventario(req, res) {
   }
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// EXPORTS
+// ═══════════════════════════════════════════════════════════════════
+
 module.exports = {
     listarDepartamentos,
     listarCategorias,
@@ -701,5 +748,6 @@ module.exports = {
     editar,
     cambiarEstado,
     actualizarImagen,
+    eliminarImagen,
     ajustarInventario
 }

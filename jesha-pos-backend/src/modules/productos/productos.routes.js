@@ -1,50 +1,42 @@
 // ═══════════════════════════════════════════════════════════════════
-// PRODUCTOS.ROUTES.JS — CORREGIDO
-// FIX: importacionController.importarCSV ahora SÍ existe
-// FIX: Ruta de importar coincide con lo que el frontend envía
-// FEAT: Nueva ruta /importar/solo-nuevos
+// PRODUCTOS.ROUTES.JS — CON CLOUDINARY
+// Cambios: quitados path/fs/sharp, handler de imagen simplificado
 // ═══════════════════════════════════════════════════════════════════
 
 const express = require('express')
-const router = express.Router()
-const multer = require('multer')
-const path = require('path')
-const fs = require('fs')
-const sharp = require('sharp')
+const router  = express.Router()
+const multer  = require('multer')
 
-const productosController = require('./productos.controller')
+const productosController   = require('./productos.controller')
 const importacionController = require('./importacion.controller')
+const { subirImagenProducto } = require('../../lib/cloudinary')
 
 // ═══════════════════════════════════════════════════════════════════
-// MULTER — PARA IMÁGENES
+// MULTER — IMÁGENES (memoryStorage para enviar buffer a Cloudinary)
 // ═══════════════════════════════════════════════════════════════════
 
 const uploadImagen = multer({
     storage: multer.memoryStorage(),
-    limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB
+    limits:  { fileSize: 5 * 1024 * 1024 },
     fileFilter: (req, file, cb) => {
         const permitidos = ['image/jpeg', 'image/png', 'image/webp']
-        if (permitidos.includes(file.mimetype)) {
-            cb(null, true)
-        } else {
-            cb(new Error('Solo JPEG, PNG o WebP permitidos'))
-        }
+        if (permitidos.includes(file.mimetype)) cb(null, true)
+        else cb(new Error('Solo JPEG, PNG o WebP permitidos'))
     }
 })
 
 // ═══════════════════════════════════════════════════════════════════
-// MULTER — PARA ARCHIVOS CSV
+// MULTER — CSV (sin cambios)
 // ═══════════════════════════════════════════════════════════════════
 
 const uploadCSV = multer({
     storage: multer.memoryStorage(),
-    limits: { fileSize: 50 * 1024 * 1024 }, // 50 MB
+    limits:  { fileSize: 50 * 1024 * 1024 },
     fileFilter: (req, file, cb) => {
-        // Aceptar CSV por mimetype O por extensión (algunos sistemas reportan mal el mimetype)
         const mimePermitidos = [
             'text/csv',
             'application/vnd.ms-excel',
-            'text/plain',                                                    // algunos OS reportan .csv como text/plain
+            'text/plain',
             'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         ]
         if (mimePermitidos.includes(file.mimetype) || file.originalname.endsWith('.csv')) {
@@ -59,15 +51,14 @@ const uploadCSV = multer({
 // DEPARTAMENTOS Y CATEGORÍAS
 // ═══════════════════════════════════════════════════════════════════
 
-router.get('/departamentos',                    productosController.listarDepartamentos)
-router.post('/departamentos',                   productosController.crearDepartamento)
-router.get('/categorias',                       productosController.listarCategorias)
+router.get('/departamentos',     productosController.listarDepartamentos)
+router.post('/departamentos',    productosController.crearDepartamento)
+router.get('/categorias',        productosController.listarCategorias)
 router.get('/departamentos/:departamentoId/categorias', productosController.categoriasPorDepartamento)
-router.post('/categorias',                      productosController.crearCategoria)
+router.post('/categorias',       productosController.crearCategoria)
 
 // ═══════════════════════════════════════════════════════════════════
-// IMPORTACIÓN CSV — DEBE IR ANTES DE /:id PARA QUE NO CONFUNDA
-// "importar" como un :id
+// IMPORTACIÓN CSV
 // ═══════════════════════════════════════════════════════════════════
 
 router.post('/importar/csv',            uploadCSV.single('archivo'), importacionController.importarCSV)
@@ -78,42 +69,34 @@ router.post('/importar/datos-fiscales', uploadCSV.single('archivo'), importacion
 // CRUD PRODUCTOS
 // ═══════════════════════════════════════════════════════════════════
 
-router.get('/',             productosController.listar)
-router.get('/:id',          productosController.obtener)
-router.post('/',            productosController.crear)
-router.put('/:id',          productosController.editar)
+router.get('/',                  productosController.listar)
+router.get('/:id',               productosController.obtener)
+router.post('/',                 productosController.crear)
+router.put('/:id',               productosController.editar)
 router.patch('/:id/estado',      productosController.cambiarEstado)
 router.patch('/:id/inventario',  productosController.ajustarInventario)
 
 // ═══════════════════════════════════════════════════════════════════
-// SUBIR IMAGEN
+// IMAGEN — SUBIR (ahora va a Cloudinary, sin tocar disco)
 // ═══════════════════════════════════════════════════════════════════
 
 router.post('/:id/imagen', uploadImagen.single('imagen'), async (req, res) => {
     try {
         const { id } = req.params
 
-        if (!req.file) {
-            return res.status(400).json({ error: 'Imagen requerida' })
-        }
+        if (!req.file) return res.status(400).json({ error: 'Imagen requerida' })
 
-        const dirProductos = path.join(__dirname, '../../public/imagenes/productos')
-        if (!fs.existsSync(dirProductos)) {
-            fs.mkdirSync(dirProductos, { recursive: true })
-        }
+        // Sube a Cloudinary (resize + WebP los hace Cloudinary, no nosotros)
+        const { url, public_id } = await subirImagenProducto(req.file.buffer, id)
 
-        const nombreImagen = `${id}-${Date.now()}.webp`
-        const rutaImagen = path.join(dirProductos, nombreImagen)
+        // Guarda url + public_id en BD
+        const producto = await productosController.actualizarImagen(id, { url, public_id })
 
-        await sharp(req.file.buffer)
-            .resize(800, 800, { fit: 'contain', background: { r: 255, g: 255, b: 255 } })
-            .webp({ quality: 80 })
-            .toFile(rutaImagen)
-
-        const urlImagen = `/imagenes/productos/${nombreImagen}`
-        const producto = await productosController.actualizarImagen(id, urlImagen)
-
-        res.json({ mensaje: 'Imagen subida exitosamente', imagenUrl: urlImagen, producto })
+        res.json({
+            mensaje:    'Imagen subida exitosamente',
+            imagenUrl:  url,
+            producto
+        })
     } catch (err) {
         console.error('❌ Error subiendo imagen:', err)
         res.status(400).json({ error: err.message })
@@ -121,7 +104,9 @@ router.post('/:id/imagen', uploadImagen.single('imagen'), async (req, res) => {
 })
 
 // ═══════════════════════════════════════════════════════════════════
-// EXPORTAR
+// IMAGEN — ELIMINAR (opcional, listo para usar cuando lo conectes al frontend)
 // ═══════════════════════════════════════════════════════════════════
+
+router.delete('/:id/imagen', productosController.eliminarImagen)
 
 module.exports = router

@@ -5,6 +5,7 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
+    "build": "npx prisma generate && npx prisma migrate deploy",
     "seed": "node prisma/seed.js",
     "studio": "npx prisma studio",
     "migrate": "npx prisma migrate dev"
@@ -13,6 +14,7 @@
     "@prisma/adapter-pg": "^7.4.2",
     "@prisma/client": "^7.4.2",
     "bcryptjs": "^3.0.3",
+    "cloudinary": "^2.10.0",
     "cors": "^2.8.5",
     "csv-parse": "^6.1.0",
     "dotenv": "^16.4.5",

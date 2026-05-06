@@ -269,6 +269,7 @@ model Producto {
   codigoBarras         String?  @unique
   descripcion          String?
   imagenUrl            String?
+  imagenPublicId       String?
   imagenOriginal       String?
   precioBase           Decimal  @db.Decimal(10, 2)
   precioVenta          Decimal? @db.Decimal(10, 2)
