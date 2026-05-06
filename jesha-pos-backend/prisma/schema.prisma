@@ -80,6 +80,8 @@ enum TipoMovimientoInventario {
   DEVOLUCION_ENTRADA
   DEVOLUCION_SALIDA
   SALIDA_BITACORA
+  CANCELACION_VENTA
+  REINTEGRO_BITACORA
 }
 
 enum TipoMovimientoCaja {
@@ -107,6 +109,14 @@ enum EstadoAlerta {
   PENDIENTE
   VISTA
   RESUELTA
+}
+
+enum EstadoReporteStock {
+  PENDIENTE
+  GENERANDO
+  LISTO
+  ERROR
+  EXPIRADO
 }
 
 enum EstadoBitacora {
@@ -143,6 +153,7 @@ model Sucursal {
   alertasStock  AlertaStock[]
   auditorias    Auditoria[]
   bitacoras     Bitacora[]
+  movimientos   MovimientoInventario[]
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -327,22 +338,27 @@ model InventarioSucursal {
 }
 
 model MovimientoInventario {
-  id           Int                      @id @default(autoincrement())
-  productoId   Int
-  sucursalId   Int
-  usuarioId    Int?
-  tipo         TipoMovimientoInventario
-  cantidad     Decimal @db.Decimal(10,3)
-  stockAntes   Decimal @db.Decimal(10,3)
-  stockDespues Decimal @db.Decimal(10,3)
-  referencia   String?
-  notas        String?
-  creadoEn     DateTime                 @default(now())
+  id                      Int                      @id @default(autoincrement())
+  productoId              Int
+  sucursalId              Int
+  usuarioId               Int?
+  turnoId                 Int?
+  tipo                    TipoMovimientoInventario
+  cantidad                Decimal @db.Decimal(10,3)
+  stockAntes              Decimal @db.Decimal(10,3)
+  stockDespues            Decimal @db.Decimal(10,3)
+  stockMinimoEnEseMomento Decimal? @db.Decimal(10,3)
+  referencia              String?
+  notas                   String?
+  creadoEn                DateTime                 @default(now())
   producto Producto  @relation(fields: [productoId], references: [id], onDelete: Cascade)
+  sucursal Sucursal  @relation(fields: [sucursalId], references: [id])
   usuario  Usuario?  @relation(fields: [usuarioId], references: [id])
+  turno    TurnoCaja? @relation(fields: [turnoId], references: [id])
   @@index([productoId])
   @@index([sucursalId])
   @@index([usuarioId])
+  @@index([turnoId])
   @@index([tipo])
   @@index([creadoEn])
 }
@@ -351,17 +367,20 @@ model AlertaStock {
   id         Int          @id @default(autoincrement())
   productoId Int
   sucursalId Int
+  turnoId    Int?
   stockActual Decimal @db.Decimal(10,3)
   stockMinimo Decimal @db.Decimal(10,3)
   estado     EstadoAlerta @default(PENDIENTE)
   creadaEn   DateTime     @default(now())
   vistaEn    DateTime?
   resueltaEn DateTime?
-  producto Producto @relation(fields: [productoId], references: [id])
-  sucursal Sucursal @relation(fields: [sucursalId], references: [id])
-  @@unique([productoId, sucursalId])
+  producto Producto   @relation(fields: [productoId], references: [id])
+  sucursal Sucursal   @relation(fields: [sucursalId], references: [id])
+  turno    TurnoCaja? @relation(fields: [turnoId], references: [id])
+  @@unique([productoId, sucursalId, turnoId])
   @@index([productoId])
   @@index([sucursalId])
+  @@index([turnoId])
   @@index([estado])
 }
 
@@ -369,21 +388,26 @@ model AlertaStock {
 // CAJA
 // ══════════════════════════════════════════════════════════════════
 model TurnoCaja {
-  id                   Int       @id @default(autoincrement())
-  sucursalId           Int
-  usuarioId            Int
-  montoInicial         Decimal   @db.Decimal(10, 2)
-  montoFinalDeclarado  Decimal?  @db.Decimal(10, 2)
-  montoCalculado       Decimal?  @db.Decimal(10, 2)
-  diferencia           Decimal?  @db.Decimal(10, 2)
-  abierto              Boolean   @default(true)
-  abiertaEn            DateTime  @default(now())
-  cerradaEn            DateTime?
-  sucursal  Sucursal @relation(fields: [sucursalId], references: [id])
-  usuario   Usuario  @relation(fields: [usuarioId], references: [id])
-  ventas    Venta[]
-  movimientos MovimientoCaja[]
+  id                      Int                  @id @default(autoincrement())
+  sucursalId              Int
+  usuarioId               Int
+  montoInicial            Decimal              @db.Decimal(10, 2)
+  montoFinalDeclarado     Decimal?             @db.Decimal(10, 2)
+  montoCalculado          Decimal?             @db.Decimal(10, 2)
+  diferencia              Decimal?             @db.Decimal(10, 2)
+  abierto                 Boolean              @default(true)
+  abiertaEn               DateTime             @default(now())
+  cerradaEn               DateTime?
+  reporteStockUrl         String?
+  reporteStockEstado      EstadoReporteStock?
+  reporteStockGeneradoEn  DateTime?
+  sucursal       Sucursal               @relation(fields: [sucursalId], references: [id])
+  usuario        Usuario                @relation(fields: [usuarioId], references: [id])
+  ventas         Venta[]
+  movimientos    MovimientoCaja[]
   abonosBitacora AbonoBitacora[]
+  movimientosInventario MovimientoInventario[]
+  alertasStock   AlertaStock[]
   @@index([sucursalId, abierto])
 }
 
