@@ -23,18 +23,18 @@ const login = async (req, res) => {
       return res.status(401).json({ error: 'Credenciales inválidas' })
     }
 
-    const Sucursal = usuario.SucursalId
-      ? await prisma.Sucursal.findUnique({ where: { id: usuario.SucursalId }, select: { id: true, nombre: true } })
+    const Sucursal = usuario.sucursalId
+      ? await prisma.sucursal.findUnique({ where: { id: usuario.sucursalId }, select: { id: true, nombre: true } })
       : null
 
     const token = jwt.sign(
-      { id: usuario.id, username: usuario.username, nombre: usuario.nombre, rol: usuario.rol, SucursalId: usuario.SucursalId },
+      { id: usuario.id, username: usuario.username, nombre: usuario.nombre, rol: usuario.rol, sucursalId: usuario.sucursalId },
       process.env.JWT_SECRET,
       { expiresIn: '8h' }
     )
 
     await prisma.auditoria.create({
-      data: { usuarioId: usuario.id, SucursalId: usuario.SucursalId, accion: 'LOGIN', modulo: 'auth', ip: req.ip }
+      data: { usuarioId: usuario.id, sucursalId: usuario.sucursalId, accion: 'LOGIN', modulo: 'auth', ip: req.ip }
     })
 
     res.json({
@@ -52,10 +52,10 @@ const me = async (req, res) => {
   try {
     const usuario = await prisma.usuario.findUnique({
       where: { id: req.usuario.id },
-      select: { id: true, nombre: true, username: true, rol: true, SucursalId: true }
+      select: { id: true, nombre: true, username: true, rol: true, sucursalId: true }
     })
-    const Sucursal = usuario.SucursalId
-      ? await prisma.Sucursal.findUnique({ where: { id: usuario.SucursalId }, select: { id: true, nombre: true } })
+    const Sucursal = usuario.sucursalId
+      ? await prisma.sucursal.findUnique({ where: { id: usuario.sucursalId }, select: { id: true, nombre: true } })
       : null
     res.json({ usuario: { ...usuario, Sucursal } })
   } catch (err) {
