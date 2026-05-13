@@ -187,10 +187,10 @@ exports.crearVenta = async (req, res) => {
       const ventaCreada = await tx.venta.create({
         data: {
           folio,
-          sucursal: { connect: { id: sucursalId } },
-          usuario:  { connect: { id: usuarioId } },
-          turno:    { connect: { id: turnoId } },
-          ...(clienteId ? { cliente: { connect: { id: clienteId } } } : {}),
+          Sucursal: { connect: { id: sucursalId } },
+          Usuario:  { connect: { id: usuarioId } },
+          TurnoCaja:    { connect: { id: turnoId } },
+          ...(clienteId ? { Cliente: { connect: { id: clienteId } } } : {}),
           metodoPago,
           subtotal: totalRecalculado,
           descuento: descuentoAmt,
@@ -203,7 +203,7 @@ exports.crearVenta = async (req, res) => {
           tokenQr: generarUUID(),
           facturaEstado,
           ...(facturaLimite ? { facturaLimite } : {}),
-          detalles: {
+          DetalleVenta: {
             create: detallesValidados.map(d => ({
               productoId:     d.productoId,
               cantidad:       d.cantidad,
@@ -213,7 +213,7 @@ exports.crearVenta = async (req, res) => {
             }))
           }
         },
-        include: { detalles: { include: { producto: true } } }
+        include: { DetalleVenta: { include: { Producto: true } } }
       })
 
       for (const detalle of detallesValidados) {
@@ -384,7 +384,7 @@ exports.obtenerVentas = async (req, res) => {
     if (search) {
       where.OR = [
         { folio:   { contains: search, mode: 'insensitive' } },
-        { cliente: { nombre: { contains: search, mode: 'insensitive' } } }
+        { Cliente: { nombre: { contains: search, mode: 'insensitive' } } }
       ]
     }
     if (metodoPago) where.metodoPago = metodoPago
@@ -403,9 +403,9 @@ exports.obtenerVentas = async (req, res) => {
       prisma.venta.findMany({
         where, skip: parseInt(skip), take: parseInt(take), orderBy: { creadaEn: 'desc' },
         include: {
-          cliente: { select: { id: true, nombre: true } },
-          usuario: { select: { id: true, nombre: true } },
-          detalles: true
+          Cliente: { select: { id: true, nombre: true } },
+          Usuario: { select: { id: true, nombre: true } },
+          DetalleVenta: true
         }
       }),
       prisma.venta.count({ where })
@@ -417,12 +417,12 @@ exports.obtenerVentas = async (req, res) => {
         id:             v.id,
         folio:          v.folio,
         fecha:          v.creadaEn,
-        cliente:        v.cliente ? v.cliente.nombre : 'Público general',
+        cliente:        v.Cliente ? v.Cliente.nombre : 'Público general',
         clienteId:      v.clienteId,
-        usuario:        v.usuario.nombre,
+        usuario:        v.Usuario.nombre,
         metodoPago:     v.metodoPago,
         total:          v.total,
-        productosCount: v.detalles.length,
+        productosCount: v.DetalleVenta.length,
         estado:         v.estado,
         facturaEstado:  v.facturaEstado
       })),
@@ -443,10 +443,10 @@ exports.obtenerVenta = async (req, res) => {
     const venta = await prisma.venta.findUnique({
       where: { id: parseInt(id) },
       include: {
-        usuario:  { select: { id: true, nombre: true } },
-        cliente:  true,
-        sucursal: true,
-        detalles: { include: { producto: true } }
+        Usuario:  { select: { id: true, nombre: true } },
+        Cliente:  true,
+        Sucursal: true,
+        DetalleVenta: { include: { Producto: true } }
       }
     })
     if (!venta) return res.status(404).json({ error: 'Venta no encontrada' })
@@ -457,9 +457,9 @@ exports.obtenerVenta = async (req, res) => {
         id:            venta.id,
         folio:         venta.folio,
         fecha:         venta.creadaEn,
-        usuario:       venta.usuario.nombre,
-        cliente:       venta.cliente ? { id: venta.cliente.id, nombre: venta.cliente.nombre, rfc: venta.cliente.rfc } : null,
-        sucursal:      venta.sucursal.nombre,
+        usuario:       venta.Usuario.nombre,
+        cliente:       venta.Cliente ? { id: venta.Cliente.id, nombre: venta.Cliente.nombre, rfc: venta.Cliente.rfc } : null,
+        sucursal:      venta.Sucursal.nombre,
         metodoPago:    venta.metodoPago,
         subtotal:      venta.subtotal,
         iva:           venta.iva,
@@ -472,10 +472,10 @@ exports.obtenerVenta = async (req, res) => {
         facturaEstado: venta.facturaEstado,
         desglosePagos: venta.desglosePagos || null,
         notas:         venta.notas,
-        detalles: venta.detalles.map(d => ({
+        detalles: venta.DetalleVenta.map(d => ({
           productoId:     d.productoId,
-          nombre:         d.producto.nombre,
-          codigo:         d.producto.codigoInterno,
+          nombre:         d.Producto.nombre,
+          codigo:         d.Producto.codigoInterno,
           cantidad:       d.cantidad,
           precioUnitario: d.precioUnitario,
           subtotal:       d.subtotal
@@ -529,7 +529,7 @@ exports.cancelarVenta = async (req, res) => {
 
     const venta = await prisma.venta.findUnique({
       where:   { id },
-      include: { detalles: true }
+      include: { DetalleVenta: true }
     })
 
     if (!venta)
@@ -551,7 +551,7 @@ exports.cancelarVenta = async (req, res) => {
         data:  { estado: 'CANCELADA', facturaEstado: 'BLOQUEADA' }
       })
 
-      for (const detalle of venta.detalles) {
+      for (const detalle of venta.DetalleVenta) {
         const inv = await tx.inventarioSucursal.findUnique({
           where: { productoId_sucursalId: { productoId: detalle.productoId, sucursalId: venta.sucursalId } }
         })
@@ -667,7 +667,7 @@ exports.actualizarMetodoPago = async (req, res) => {
     // ── Obtener venta ──
     const venta = await prisma.venta.findUnique({
       where:   { id: ventaId },
-      include: { cliente: true }
+      include: { Cliente: true }
     })
 
     if (!venta) {
@@ -706,7 +706,7 @@ exports.actualizarMetodoPago = async (req, res) => {
 
     // ── VALIDACIÓN 5: Límite de crédito ──
     if (nuevoMetodo === 'CREDITO_CLIENTE' && venta.clienteId && venta.metodoPago !== 'CREDITO_CLIENTE') {
-      const cliente    = venta.cliente
+      const cliente    = venta.Cliente
       const montoVenta = parseFloat(venta.total)
       const nuevoSaldo = parseFloat(cliente.saldoPendiente) + montoVenta
 
@@ -821,10 +821,10 @@ exports.actualizarMetodoPago = async (req, res) => {
           notas:         venta.notas ? `${venta.notas}\n${notaAudit}` : notaAudit
         },
         include: {
-          cliente:  { select: { nombre: true } },
-          usuario:  { select: { nombre: true } },
-          sucursal: { select: { nombre: true } },
-          detalles: { include: { producto: { select: { nombre: true, codigoInterno: true } } } }
+          Cliente:  { select: { nombre: true } },
+          Usuario:  { select: { nombre: true } },
+          Sucursal: { select: { nombre: true } },
+          DetalleVenta: { include: { Producto: { select: { nombre: true, codigoInterno: true } } } }
         }
       })
 

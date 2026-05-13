@@ -60,13 +60,13 @@ const TRANSICIONES_VALIDAS = {
 const PEDIDO_SELECT = {
   id: true, folio: true, estado: true, totalEstimado: true,
   motivoBloqueo: true, notas: true, creadoEn: true, actualizadoEn: true,
-  cliente:  { select: { id: true, nombre: true, telefono: true } },
-  usuario:  { select: { id: true, nombre: true } },
-  sucursal: { select: { id: true, nombre: true } },
-  detalles: {
+  Cliente:  { select: { id: true, nombre: true, telefono: true } },
+  Usuario:  { select: { id: true, nombre: true } },
+  Sucursal: { select: { id: true, nombre: true } },
+  DetallePedido: {
     select: {
       id: true, cantidad: true, precioAcordado: true, subtotal: true,
-      producto: { select: { id: true, nombre: true, codigoInterno: true, unidadVenta: true } }
+      Producto: { select: { id: true, nombre: true, codigoInterno: true, unidadVenta: true } }
     }
   }
 }
@@ -89,7 +89,7 @@ const listar = async (req, res) => {
     if (buscar) {
       where.OR = [
         { folio:   { contains: buscar, mode: 'insensitive' } },
-        { cliente: { nombre: { contains: buscar, mode: 'insensitive' } } },
+        { Cliente: { nombre: { contains: buscar, mode: 'insensitive' } } },
         { notas:   { contains: buscar, mode: 'insensitive' } }
       ]
     }
@@ -194,7 +194,7 @@ const crear = async (req, res) => {
         estado: 'BORRADOR',
         totalEstimado,
         notas: notas || null,
-        detalles: { create: rows }
+        detallePedido: { create: rows }
       },
       select: PEDIDO_SELECT
     })

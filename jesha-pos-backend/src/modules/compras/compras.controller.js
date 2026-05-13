@@ -22,21 +22,21 @@ const OC_SELECT = {
   id: true, folio: true, estado: true, pagada: true,
   totalEstimado: true, totalRecibido: true, totalPagado: true,
   notas: true, creadaEn: true, recibidaEn: true,
-  proveedor: { select: { id: true, nombreOficial: true, alias: true, telefono: true, celular: true } },
-  usuario:   { select: { id: true, nombre: true } },
-  sucursal:  { select: { id: true, nombre: true } },
-  detalles: {
+  Proveedor: { select: { id: true, nombreOficial: true, alias: true, telefono: true, celular: true } },
+  Usuario:   { select: { id: true, nombre: true } },
+  Sucursal:  { select: { id: true, nombre: true } },
+  DetalleOrdenCompra: {
     select: {
       id: true, cantidadPedida: true, cantidadRecibida: true,
       precioCosto: true, subtotalPedido: true, subtotalRecibido: true,
-      producto: { select: { id: true, nombre: true, codigoInterno: true, unidadCompra: true, costo: true, costoPromedio: true, precioVenta: true, precioBase: true } }
+       Producto: { select: { id: true, nombre: true, codigoInterno: true, unidadCompra: true, costo: true, costoPromedio: true, precioVenta: true, precioBase: true } }
     }
   },
-  abonos: {
+  AbonoCompra: {
     orderBy: { creadoEn: 'asc' },
     select: {
       id: true, monto: true, metodoPago: true, notas: true, creadoEn: true,
-      usuario: { select: { id: true, nombre: true } }
+      Usuario: { select: { id: true, nombre: true } }
     }
   }
 }
@@ -54,9 +54,9 @@ const listar = async (req, res) => {
     if (pagada !== undefined) where.pagada = pagada === 'true'
     if (buscar) {
       where.OR = [
-        { folio:     { contains: buscar, mode: 'insensitive' } },
-        { proveedor: { nombreOficial: { contains: buscar, mode: 'insensitive' } } },
-        { proveedor: { alias:         { contains: buscar, mode: 'insensitive' } } }
+        { folio:    { contains: buscar, mode: 'insensitive' } },
+        { Proveedor: { nombreOficial: { contains: buscar, mode: 'insensitive' } } },
+        { Proveedor: { alias:         { contains: buscar, mode: 'insensitive' } } }
       ]
     }
 
@@ -115,7 +115,7 @@ const crear = async (req, res) => {
 
     const oc = await prisma.ordenCompra.create({
       data: { folio, sucursalId, proveedorId: parseInt(proveedorId), usuarioId, estado: 'ENVIADO',
-              totalEstimado, notas: notas || null, detalles: { create: rows } },
+              totalEstimado, notas: notas || null, detalleOrdenCompra: { create: rows } },
       select: OC_SELECT
     })
     await audit(usuarioId, sucursalId, 'CREAR_COMPRA', folio)
@@ -137,13 +137,13 @@ const editar = async (req, res) => {
     const existente = await prisma.ordenCompra.findUnique({
       where:  { id: parseInt(id) },
       select: { id: true, folio: true, estado: true,
-                detalles: { select: { id: true, productoId: true, cantidadRecibida: true } } }
+                DetalleOrdenCompra: { select: { id: true, productoId: true, cantidadRecibida: true } } }
     })
     if (!existente) return res.status(404).json({ success: false, error: 'Orden no encontrada' })
     if (!['ENVIADO','RECIBIDO_PARCIAL'].includes(existente.estado))
       return res.status(400).json({ success: false, error: 'Solo se puede editar en estado Pendiente o Recibido parcial' })
 
-    const detallesConRecepcion = existente.detalles.filter(d => parseFloat(d.cantidadRecibida) > 0)
+    const detallesConRecepcion = existente.DetalleOrdenCompra.filter(d => parseFloat(d.cantidadRecibida) > 0)
     const idsProtegidos        = new Set(detallesConRecepcion.map(d => d.productoId))
 
     const updateData = {}
@@ -167,7 +167,7 @@ const editar = async (req, res) => {
       const rows = detalles.map(d => {
         const costo    = parseFloat(d.precioCosto || 0)
         const qty      = parseFloat(d.cantidadPedida) || 1
-        const detExist = existente.detalles.find(e => e.productoId === parseInt(d.productoId))
+        const detExist = existente.DetalleOrdenCompra.find(e => e.productoId === parseInt(d.productoId))
         const cantRec  = parseFloat(detExist?.cantidadRecibida || 0)
         return {
           productoId:       parseInt(d.productoId),
@@ -184,7 +184,7 @@ const editar = async (req, res) => {
         await tx.detalleOrdenCompra.deleteMany({ where: { ordenCompraId: parseInt(id) } })
         return tx.ordenCompra.update({
           where: { id: parseInt(id) },
-          data:  { ...updateData, detalles: { create: rows } },
+          data:  { ...updateData, detalleOrdenCompra: { create: rows } },
           select: OC_SELECT
         })
       })
@@ -216,7 +216,7 @@ const recibir = async (req, res) => {
       where:  { id: parseInt(id) },
       select: {
         id: true, folio: true, estado: true, sucursalId: true, proveedorId: true,
-        detalles: { select: { id: true, productoId: true, cantidadPedida: true, cantidadRecibida: true, precioCosto: true } }
+        DetalleOrdenCompra: { select: { id: true, productoId: true, cantidadPedida: true, cantidadRecibida: true, precioCosto: true } }
       }
     })
     if (!oc)                         return res.status(404).json({ success: false, error: 'Orden no encontrada' })
@@ -232,7 +232,7 @@ const recibir = async (req, res) => {
 
     await prisma.$transaction(async tx => {
       for (const item of detalles) {
-        const detalle = oc.detalles.find(d => d.id === parseInt(item.detalleId))
+        const detalle = oc.DetalleOrdenCompra.find(d => d.id === parseInt(item.detalleId))
         if (!detalle) continue
 
         const cantNueva = parseFloat(item.cantidadRecibida) || 0
@@ -310,7 +310,7 @@ const recibir = async (req, res) => {
       const totalRecibMap = Object.fromEntries(
         detalles.map(d => [d.detalleId, parseFloat(d.cantidadRecibida) || 0])
       )
-      const todoCompleto = oc.detalles.every(d => {
+      const todoCompleto = oc.DetalleOrdenCompra.every(d => {
         const yaRecibido = parseFloat(d.cantidadRecibida)
         const nuevaRec   = totalRecibMap[d.id] || 0
         return (yaRecibido + nuevaRec) >= parseFloat(d.cantidadPedida)

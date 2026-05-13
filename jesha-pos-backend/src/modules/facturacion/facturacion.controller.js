@@ -58,15 +58,15 @@ function buildInvoicePayload({ rfc, razonSocial, regimenFiscal, codigoPostal, us
 
   const items = detalles.map(d => {
     let productKey = '31161500'
-    if (d.producto?.claveSat && /^\d{8}$/.test(d.producto.claveSat)) {
-      productKey = d.producto.claveSat
+    if (d.Producto?.claveSat && /^\d{8}$/.test(d.Producto.claveSat)) {
+      productKey = d.Producto.claveSat
     }
     return {
       quantity: parseFloat(d.cantidad),
       product: {
-        description:  d.producto?.nombre || 'Mercancía',
+        description:  d.Producto?.nombre || 'Mercancía',
         product_key:  productKey,
-        unit_key:     d.producto?.unidadSat || 'H87',
+        unit_key:     d.Producto?.unidadSat || 'H87',
         price:        parseFloat(d.precioUnitario),
         tax_included: true,
         taxes: [{ type: 'IVA', rate: TASA_IVA, factor: 'Tasa', withholding: false }]
@@ -168,14 +168,14 @@ exports.obtenerVentaPorToken = async (req, res) => {
     const venta = await prisma.venta.findFirst({
       where: { tokenQr: token },
       include: {
-        cliente: {
+        Cliente: {
           select: {
             id: true, nombre: true, rfc: true, razonSocial: true,
             regimenFiscal: true, codigoPostalFiscal: true, usoCfdi: true, email: true
           }
         },
-        detalles: { include: { producto: { select: { nombre: true } } } },
-        factura:  true
+        DetalleVenta: { include: { Producto: { select: { nombre: true } } } },
+        FacturaCfdi:  true
       }
     })
 
@@ -185,7 +185,7 @@ exports.obtenerVentaPorToken = async (req, res) => {
     const fechaVenta  = new Date(venta.creadaEn)
     const horas      = (ahora - fechaVenta) / (1000 * 60 * 60)
 
-    if (venta.factura) return res.status(409).json({ error: 'Esta venta ya fue facturada.', uuid: venta.factura.folioFiscal || null })
+    if (venta.FacturaCfdi) return res.status(409).json({ error: 'Esta venta ya fue facturada.', uuid: venta.FacturaCfdi.folioFiscal || null })
     if (venta.estado === 'CANCELADA') return res.status(400).json({ error: 'Esta venta fue cancelada y no puede facturarse.' })
     if (venta.facturaEstado === 'BLOQUEADA') return res.status(400).json({ error: 'Esta venta no puede facturarse en línea (efectivo mayor a $2,000). Solicita tu factura directamente en sucursal.' })
     if (venta.facturaEstado === 'VENCIDA' || ahora > new Date(venta.facturaLimite)) return res.status(400).json({ error: 'El plazo para solicitar factura venció. Contacta a la sucursal si necesitas ayuda.' })
@@ -196,16 +196,16 @@ exports.obtenerVentaPorToken = async (req, res) => {
         id: venta.id, folio: venta.folio, fecha: fechaVenta,
         total: parseFloat(venta.total), metodoPago: venta.metodoPago,
         horasTranscurridas: Math.floor(horas),
-        productos: venta.detalles.map(d => ({
-          nombre: d.producto?.nombre || '—', cantidad: d.cantidad,
+        productos: venta.DetalleVenta.map(d => ({
+          nombre: d.Producto?.nombre || '—', cantidad: d.cantidad,
           precio: parseFloat(d.precioUnitario),
           subtotal: parseFloat(d.subtotal || (d.precioUnitario * d.cantidad))
         }))
       },
-      clienteDatos: venta.cliente ? {
-        rfc: venta.cliente.rfc || '', razonSocial: venta.cliente.razonSocial || venta.cliente.nombre || '',
-        regimenFiscal: venta.cliente.regimenFiscal || '', codigoPostal: venta.cliente.codigoPostalFiscal || '',
-        usoCfdi: venta.cliente.usoCfdi || 'G03', email: venta.cliente.email || '',
+      clienteDatos: venta.Cliente ? {
+        rfc: venta.Cliente.rfc || '', razonSocial: venta.Cliente.razonSocial || venta.Cliente.nombre || '',
+        regimenFiscal: venta.Cliente.regimenFiscal || '', codigoPostal: venta.Cliente.codigoPostalFiscal || '',
+        usoCfdi: venta.Cliente.usoCfdi || 'G03', email: venta.Cliente.email || '',
       } : null,
       catalogos: { regimenes: REGIMENES_FISCALES, usosCfdi: USOS_CFDI }
     })
@@ -235,11 +235,11 @@ exports.solicitarFactura = async (req, res) => {
 
     const venta = await prisma.venta.findFirst({
       where: { tokenQr: token },
-      include: { factura: true, detalles: { include: { producto: true } } }
+      include: { FacturaCfdi: true, DetalleVenta: { include: { Producto: true } } }
     })
 
     if (!venta)        return res.status(404).json({ error: 'Venta no encontrada' })
-    if (venta.factura) return res.status(409).json({ error: 'Esta venta ya fue facturada.' })
+    if (venta.FacturaCfdi) return res.status(409).json({ error: 'Esta venta ya fue facturada.' })
     if (venta.estado === 'CANCELADA') return res.status(400).json({ error: 'Venta cancelada.' })
     if (venta.facturaEstado === 'BLOQUEADA') return res.status(400).json({ error: 'Venta no facturable en línea.' })
     if (new Date() > new Date(venta.facturaLimite)) return res.status(400).json({ error: 'Plazo de facturación vencido.' })
@@ -263,7 +263,7 @@ exports.solicitarFactura = async (req, res) => {
           usoCfdi,
           email: emailTrimmed,
           metodoPago: venta.metodoPago,
-          detalles: venta.detalles
+          detalles: venta.DetalleVenta
         })
 
         const invoice = await fp.invoices.create(invoicePayload)
@@ -342,7 +342,7 @@ exports.timbrarManual = async (req, res) => {
     const id = parseInt(req.params.id)
     const factura = await prisma.facturaCfdi.findUnique({
       where: { id },
-      include: { venta: { include: { detalles: { include: { producto: true } } } } }
+      include: { Venta: { include: { DetalleVenta: { include: { Producto: true } } } } }
     })
 
     if (!factura) return res.status(404).json({ error: 'Factura no encontrada' })
@@ -351,7 +351,7 @@ exports.timbrarManual = async (req, res) => {
     const fp = getFacturapi()
     if (!fp) return res.status(503).json({ error: 'Facturapi no configurada. Agrega FACTURAPI_KEY al .env' })
 
-    const venta = factura.venta
+    const venta = factura.Venta
 
     // ── Usar helper centralizado que incluye global_information si aplica ──
     const invoicePayload = buildInvoicePayload({
@@ -362,7 +362,7 @@ exports.timbrarManual = async (req, res) => {
       usoCfdi:       factura.usoCfdi,
       email:         factura.emailReceptor,
       metodoPago:    venta.metodoPago,
-      detalles:      venta.detalles
+      detalles:      venta.DetalleVenta
     })
 
     const invoice = await fp.invoices.create(invoicePayload)

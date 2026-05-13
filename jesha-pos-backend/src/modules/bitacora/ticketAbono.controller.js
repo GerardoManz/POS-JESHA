@@ -50,13 +50,13 @@ const generarTicketAbono = async (req, res) => {
     const abono = await prisma.abonoBitacora.findUnique({
       where: { id: abonoId },
       include: {
-        usuario:  { select: { nombre: true } },
-        turno:    { select: { id: true } },
-        bitacora: {
+        Usuario:  { select: { nombre: true } },
+        TurnoCaja:    { select: { id: true } },
+        Bitacora: {
           select: {
             id: true, folio: true, titulo: true, estado: true,
             totalMateriales: true, totalAbonado: true, saldoPendiente: true,
-            cliente: { select: { nombre: true, telefono: true, saldoPendiente: true } }
+            Cliente: { select: { nombre: true, telefono: true, saldoPendiente: true } }
           }
         }
       }
@@ -92,7 +92,7 @@ function generarHTMLTicketAbono(abono, fechaStr, horaStr) {
   }[abono.metodoPago] || abono.metodoPago
 
   const bitacoraLiquidada = bitacora.estado === 'CERRADA_VENTA'
-  const saldoCliente      = bitacora.cliente ? parseFloat(bitacora.cliente.saldoPendiente || 0) : null
+  const saldoCliente      = bitacora.Cliente ? parseFloat(bitacora.Cliente.saldoPendiente || 0) : null
 
   const logoHTML = LOGO_BASE64
     ? `<img src="${LOGO_BASE64}" alt="JESHA" class="logo" />`
@@ -168,7 +168,7 @@ html, body { width:100%; max-width:100%; margin:0; padding:1mm 3mm; font-family:
   <tr><td class="lbl">Fecha:</td><td class="val">${fechaStr} ${horaStr}</td></tr>
   <tr><td class="lbl">Abono N°:</td><td class="val">${abonoCorto}</td></tr>
   <tr><td class="lbl">Bitácora:</td><td class="val">${folioCorto}</td></tr>
-  <tr><td class="lbl">Cajero:</td><td class="val">${abono.usuario?.nombre || '—'}</td></tr>
+  <tr><td class="lbl">Cajero:</td><td class="val">${abono.Usuario?.nombre || '—'}</td></tr>
   <tr><td class="lbl">Turno:</td><td class="val">${abono.turnoId ? '#' + abono.turnoId : 'Sin turno (servicio)'}</td></tr>
 </table>
 
@@ -180,10 +180,10 @@ ${bitacora.titulo ? `
 </table>
 <hr class="sep"/>` : ''}
 
-${bitacora.cliente ? `
+${bitacora.Cliente ? `
 <table class="info-tbl">
-  <tr><td class="lbl">Cliente:</td><td class="val">${bitacora.cliente.nombre}</td></tr>
-  ${bitacora.cliente.telefono ? `<tr><td class="lbl">Tel:</td><td class="val">${bitacora.cliente.telefono}</td></tr>` : ''}
+  <tr><td class="lbl">Cliente:</td><td class="val">${bitacora.Cliente.nombre}</td></tr>
+  ${bitacora.Cliente.telefono ? `<tr><td class="lbl">Tel:</td><td class="val">${bitacora.Cliente.telefono}</td></tr>` : ''}
 </table>
 <hr class="sep"/>` : ''}
 
@@ -215,7 +215,7 @@ ${bitacoraLiquidada
 
 ${(saldoCliente !== null && saldoCliente > 0 && !bitacoraLiquidada) ? `
 <table class="info-tbl">
-  <tr><td class="lbl">Saldo total cliente:</td><td class="val">${fmt(saldoCliente)}</td></tr>
+  <tr><td class="lbl">Saldo total Cliente:</td><td class="val">${fmt(saldoCliente)}</td></tr>
 </table>
 <hr class="sep"/>` : ''}
 

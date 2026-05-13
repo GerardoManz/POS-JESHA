@@ -93,8 +93,8 @@ async function cargarCotizaciones() {
         <td><strong>${c.folio}</strong></td>
         <td>${tipoBadge(c.tipo)}</td>
         <td>${fmtFecha(c.creadaEn)}</td>
-        <td>${c.cliente?.nombre || '<span style="color:var(--muted)">Sin cliente</span>'}</td>
-        <td style="color:var(--muted)">${c.detalles?.length || 0}</td>
+        <td>${c.Cliente?.nombre || '<span style="color:var(--muted)">Sin cliente</span>'}</td>
+        <td style="color:var(--muted)">${c.DetalleCotizacion?.length || 0}</td>
         <td><strong>${fmt(c.total)}</strong></td>
         <td>${c.venceEn ? fmtFecha(c.venceEn) : '<span style="color:var(--muted)">—</span>'}</td>
         <td>${estadoBadge(c.estado)}</td>
@@ -146,10 +146,10 @@ window.verCotizacion = async function(id) {
     tipoBadgeEl.style.background = c.tipo === 'SERVICIOS' ? 'rgba(232,113,10,0.15)' : 'rgba(31,58,102,0.25)'
     tipoBadgeEl.style.color      = c.tipo === 'SERVICIOS' ? 'var(--orange)' : '#7aa4e8'
 
-    document.getElementById('ver-cliente').textContent  = c.cliente?.nombre || '—'
+    document.getElementById('ver-cliente').textContent  = c.Cliente?.nombre || '—'
     document.getElementById('ver-fecha').textContent    = fmtFecha(c.creadaEn)
     document.getElementById('ver-vigencia').textContent = c.venceEn ? fmtFecha(c.venceEn) : '—'
-    document.getElementById('ver-usuario').textContent  = c.usuario?.nombre || '—'
+    document.getElementById('ver-usuario').textContent  = c.Usuario?.nombre || '—'
 
     const notasEl = document.getElementById('ver-notas')
     if (c.notas) { notasEl.textContent = c.notas; notasEl.style.display = 'block' }
@@ -161,7 +161,7 @@ window.verCotizacion = async function(id) {
       document.getElementById('ver-resumen-productos').style.display = 'none'
       document.getElementById('ver-resumen-servicios').style.display = 'block'
 
-      document.getElementById('ver-servicios-tbody').innerHTML = (c.detalles || []).map(d => `
+      document.getElementById('ver-servicios-tbody').innerHTML = (c.DetalleCotizacion || []).map(d => `
         <tr>
           <td>${d.concepto || '—'}</td>
           <td style="text-align:center">${d.unidad || '—'}</td>
@@ -178,16 +178,16 @@ window.verCotizacion = async function(id) {
       document.getElementById('ver-resumen-productos').style.display = 'block'
       document.getElementById('ver-resumen-servicios').style.display = 'none'
 
-      document.getElementById('ver-items-tbody').innerHTML = (c.detalles || []).map(d => {
-        const imgHtml = d.producto?.imagenUrl
-          ? `<img src="${d.producto.imagenUrl}" class="img-producto-ver" alt="${d.producto.nombre}" />`
+      document.getElementById('ver-items-tbody').innerHTML = (c.DetalleCotizacion || []).map(d => {
+        const imgHtml = d.Producto?.imagenUrl
+          ? `<img src="${d.Producto.imagenUrl}" class="img-producto-ver" alt="${d.Producto.nombre}" />`
           : `<div class="img-placeholder">📦</div>`
-        const clave = d.producto?.codigoInterno || '—'
+        const clave = d.Producto?.codigoInterno || '—'
         const importe = parseFloat(d.precioUnitario) * parseFloat(d.cantidad)
         return `
           <tr>
             <td style="text-align:center">${imgHtml}<div style="font-size:0.7rem;color:var(--muted);margin-top:2px">${clave}</div></td>
-            <td>${d.producto?.nombre || d.concepto || d.nombre || '—'}</td>
+            <td>${d.Producto?.nombre || d.concepto || d.nombre || '—'}</td>
             <td style="text-align:center">${d.unidad || '—'}</td>
             <td style="text-align:center">${d.cantidad}</td>
             <td>${fmt(d.precioUnitario)}</td>
@@ -201,7 +201,7 @@ window.verCotizacion = async function(id) {
       const totalConIva   = parseFloat(c.total)
       const baseGravable  = parseFloat((totalConIva / IVA_FACTOR).toFixed(2))
       const ivaAmount     = parseFloat((totalConIva - baseGravable).toFixed(2))
-      const descTotal     = (c.detalles || []).reduce((s, d) => s + parseFloat(d.descuento || 0), 0)
+      const descTotal     = (c.DetalleCotizacion || []).reduce((s, d) => s + parseFloat(d.descuento || 0), 0)
 
       document.getElementById('ver-subtotal').textContent       = fmt(baseGravable)
       document.getElementById('ver-descuento-total').textContent = fmt(descTotal)
@@ -272,8 +272,8 @@ window.abrirEdicion = async function(id) {
 
     // ── Cliente: bloqueado en edición ──
     const clienteInput = document.getElementById('cot-cliente-buscar')
-    const clienteId    = c.cliente?.id || c.clienteId || ''
-    clienteInput.value          = c.cliente?.nombre || ''
+    const clienteId    = c.Cliente?.id || c.clienteId || ''
+    clienteInput.value          = c.Cliente?.nombre || ''
     clienteInput.disabled       = true
     clienteInput.style.opacity  = '0.6'
     clienteInput.style.cursor   = 'not-allowed'
@@ -285,9 +285,9 @@ window.abrirEdicion = async function(id) {
       tab.style.display = tab.dataset.tipo === tipoActual ? '' : 'none'
     })
 
-    itemsEdicion = (c.detalles || []).map(d => ({
-      productoId: d.productoId || d.producto?.id,
-      nombre:     d.producto?.nombre || d.concepto || '—',
+    itemsEdicion = (c.DetalleCotizacion || []).map(d => ({
+      productoId: d.productoId || d.Producto?.id,
+      nombre:     d.Producto?.nombre || d.concepto || '—',
       concepto:   d.concepto || '',
       unidad:     d.unidad || '',
       cantidad:   d.cantidad,
@@ -647,21 +647,21 @@ function generarPdf(c) {
 
   if (esProductos) {
     // Tabla con imagen + clave + descuento + IVA desglosado
-    const lineas = (c.detalles || []).map(d => {
+    const lineas = (c.DetalleCotizacion || []).map(d => {
       const importe  = parseFloat(d.precioUnitario) * parseFloat(d.cantidad)
       const descuento = parseFloat(d.descuento || 0)
       const neto     = importe - descuento
-      const imgHtml  = d.producto?.imagenUrl
-        ? `<img src="${d.producto.imagenUrl}" style="width:48px;height:48px;object-fit:contain;display:block;margin:0 auto" />`
+      const imgHtml  = d.Producto?.imagenUrl
+        ? `<img src="${d.Producto.imagenUrl}" style="width:48px;height:48px;object-fit:contain;display:block;margin:0 auto" />`
         : `<div style="width:48px;height:48px;background:#f5f5f5;border:1px solid #ddd;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:18px;margin:0 auto">📦</div>`
-      const clave    = d.producto?.codigoInterno || '—'
-      const unidad   = d.unidad || d.producto?.unidadVenta || 'PZA'
+      const clave    = d.Producto?.codigoInterno || '—'
+      const unidad   = d.unidad || d.Producto?.unidadVenta || 'PZA'
       return `
         <tr>
           <td style="text-align:center;padding:8px">${imgHtml}<div style="font-size:10px;color:#888;margin-top:2px">${clave}</div></td>
           <td style="text-align:center">${parseFloat(d.cantidad)}</td>
           <td style="text-align:center">${unidad}</td>
-          <td>${d.producto?.nombre || d.concepto || '—'}</td>
+          <td>${d.Producto?.nombre || d.concepto || '—'}</td>
           <td style="text-align:right">$${parseFloat(d.precioUnitario).toFixed(2)}</td>
           <td style="text-align:right">$${descuento.toFixed(2)}</td>
           <td style="text-align:right"><strong>$${neto.toFixed(2)}</strong></td>
@@ -671,7 +671,7 @@ function generarPdf(c) {
     const totalConIva  = parseFloat(c.total)
     const baseGravable = parseFloat((totalConIva / IVA_FACTOR).toFixed(2))
     const ivaAmount    = parseFloat((totalConIva - baseGravable).toFixed(2))
-    const descTotal    = (c.detalles || []).reduce((s, d) => s + parseFloat(d.descuento || 0), 0)
+    const descTotal    = (c.DetalleCotizacion || []).reduce((s, d) => s + parseFloat(d.descuento || 0), 0)
 
     tablaHtml = `
       <table>
@@ -698,7 +698,7 @@ function generarPdf(c) {
       </div>`
   } else {
     // SERVICIOS — tabla simple
-    const lineas = (c.detalles || []).map(d => `
+    const lineas = (c.DetalleCotizacion || []).map(d => `
       <tr>
         <td>${d.concepto || '—'}</td>
         <td style="text-align:center">${d.unidad || '—'}</td>
@@ -770,9 +770,9 @@ function generarPdf(c) {
   </div>
 
   <div class="meta">
-    <p><strong>Cliente:</strong> ${c.cliente?.nombre || 'Público General'}</p>
-    <p><strong>RFC:</strong> ${c.cliente?.rfc || '—'}</p>
-    <p><strong>Elaboró:</strong> ${c.usuario?.nombre || '—'}</p>
+    <p><strong>Cliente:</strong> ${c.Cliente?.nombre || 'Público General'}</p>
+    <p><strong>RFC:</strong> ${c.Cliente?.rfc || '—'}</p>
+    <p><strong>Elaboró:</strong> ${c.Usuario?.nombre || '—'}</p>
     <p><strong>Sucursal:</strong> ${c.sucursal?.nombre || '—'}</p>
   </div>
 

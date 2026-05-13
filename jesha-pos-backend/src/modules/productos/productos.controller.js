@@ -34,7 +34,7 @@ async function listarDepartamentos(req, res) {
 async function listarCategorias(req, res) {
     try {
         const categorias = await prisma.categoria.findMany({
-            include: { departamento: true },
+            include: { Departamento: true },
             orderBy: { nombre: 'asc' }
         })
         console.log(`✅ Categorías: ${categorias.length}`)
@@ -84,23 +84,17 @@ async function listar(req, res) {
 
         // ── Filtro por proveedor ──
         if (proveedorId) {
-            where.proveedores = { some: { proveedorId: parseInt(proveedorId), activo: true } }
+            where.ProveedorProducto = { some: { proveedorId: parseInt(proveedorId), activo: true } }
         }
 
         // ── Filtro por departamento (NUEVO — antes se hacía en frontend) ──
         if (departamentoId) {
-            where.categoria = { departamentoId: parseInt(departamentoId) }
+            where.Categoria = { Departamento: { id: parseInt(departamentoId) } }
         }
 
         // ── Filtro por categoría ──
         if (categoriaId) {
-            // Si ya hay where.categoria por departamento, mergeamos
-            if (where.categoria) {
-                where.categoriaId = parseInt(categoriaId)
-                delete where.categoria // categoriaId es más específico
-            } else {
-                where.categoriaId = parseInt(categoriaId)
-            }
+            where.categoriaId = parseInt(categoriaId)
         }
 
         // ── Filtro por búsqueda ──
@@ -143,9 +137,9 @@ async function listar(req, res) {
         // Soporta el nuevo param `stock` (con|sin|bajo) y el legacy `enStock`
         const stockFiltro = stock || (enStock === 'true' ? 'con' : '')
         if (stockFiltro === 'con') {
-            where.inventarios = { some: { sucursalId: 1, stockActual: { gt: 0 } } }
+            where.InventarioSucursal = { some: { sucursalId: 1, stockActual: { gt: 0 } } }
         } else if (stockFiltro === 'sin') {
-            where.inventarios = { none: { sucursalId: 1, stockActual: { gt: 0 } } }
+            where.InventarioSucursal = { none: { sucursalId: 1, stockActual: { gt: 0 } } }
         }
         // 'bajo' se maneja post-query porque requiere comparar dos columnas
         // (stockActual <= stockMinimoAlerta) que Prisma no soporta en where
@@ -157,9 +151,9 @@ async function listar(req, res) {
             prisma.producto.findMany({
                 where,
                 include: {
-                    categoria: { include: { departamento: true } },
-                    inventarios: { where: { sucursalId: 1 }, take: 1 },
-                    proveedores: { include: { proveedor: true } }
+                    Categoria: { include: { Departamento: true } },
+                    InventarioSucursal: { where: { sucursalId: 1 }, take: 1 },
+                    ProveedorProducto: { include: { Proveedor: true } }
                 },
                 orderBy: { nombre: 'asc' },
                 skip: skipNum,
@@ -168,10 +162,10 @@ async function listar(req, res) {
             prisma.producto.count({ where: stockFiltro === 'bajo' ? { ...where } : where }),
             // Conteos globales para las estadísticas del header
             prisma.producto.count({
-                where: { ...whereGlobal, inventarios: { some: { sucursalId: 1, stockActual: { gt: 0 } } } }
+                where: { ...whereGlobal, InventarioSucursal: { some: { sucursalId: 1, stockActual: { gt: 0 } } } }
             }),
             prisma.producto.count({
-                where: { ...whereGlobal, inventarios: { none: { sucursalId: 1, stockActual: { gt: 0 } } } }
+                where: { ...whereGlobal, InventarioSucursal: { none: { sucursalId: 1, stockActual: { gt: 0 } } } }
             }),
             prisma.$queryRaw`
                 SELECT COUNT(*)::int AS count
@@ -189,7 +183,7 @@ async function listar(req, res) {
         // ── Post-filtro para "bajo stock" (requiere comparar columnas) ──
         if (stockFiltro === 'bajo') {
             productos = productos.filter(p => {
-                const inv = p.inventarios?.[0]
+                const inv = p.InventarioSucursal?.[0]
                 if (!inv) return false
                 const sa = parseFloat(inv.stockActual)
                 const sm = parseFloat(inv.stockMinimoAlerta)
@@ -202,12 +196,12 @@ async function listar(req, res) {
 
         const data = productos.map(prod => ({
             ...prod,
-            stock: prod.inventarios?.length > 0 ? parseFloat(prod.inventarios[0].stockActual) : 0,
-            inventario: prod.inventarios?.length > 0 ? {
-              ...prod.inventarios[0],
-              stockActual:       parseFloat(prod.inventarios[0].stockActual),
-              stockMinimoAlerta: parseFloat(prod.inventarios[0].stockMinimoAlerta),
-              stockMaximo:       prod.inventarios[0].stockMaximo ? parseFloat(prod.inventarios[0].stockMaximo) : null
+            stock: prod.InventarioSucursal?.length > 0 ? parseFloat(prod.InventarioSucursal[0].stockActual) : 0,
+            inventario: prod.InventarioSucursal?.length > 0 ? {
+              ...prod.InventarioSucursal[0],
+              stockActual:       parseFloat(prod.InventarioSucursal[0].stockActual),
+              stockMinimoAlerta: parseFloat(prod.InventarioSucursal[0].stockMinimoAlerta),
+              stockMaximo:       prod.InventarioSucursal[0].stockMaximo ? parseFloat(prod.InventarioSucursal[0].stockMaximo) : null
             } : null
         }))
 
@@ -246,10 +240,10 @@ async function obtener(req, res) {
         const producto = await prisma.producto.findUnique({
             where: { id: parseInt(id) },
             include: {
-                categoria: { include: { departamento: true } },
-                inventarios: { where: { sucursalId: 1 }, take: 1 },
-                proveedores: {
-                    include: { proveedor: true }
+                Categoria: { include: { Departamento: true } },
+                InventarioSucursal: { where: { sucursalId: 1 }, take: 1 },
+                ProveedorProducto: {
+                    include: { Proveedor: true }
                 }
             }
         })
@@ -262,7 +256,7 @@ async function obtener(req, res) {
             success: true,
             data: {
                 ...producto,
-                inventario: producto.inventarios?.length > 0 ? producto.inventarios[0] : null
+                inventario: producto.InventarioSucursal?.length > 0 ? producto.InventarioSucursal[0] : null
             }
         })
     } catch (error) {
@@ -320,8 +314,8 @@ async function crear(req, res) {
                 activo: true
             },
             include: {
-                categoria: { include: { departamento: true } },
-                inventarios: { where: { sucursalId: 1 }, take: 1 }
+                Categoria: { include: { Departamento: true } },
+                InventarioSucursal: { where: { sucursalId: 1 }, take: 1 }
             }
         })
 
@@ -343,7 +337,7 @@ async function crear(req, res) {
             success: true,
             data: {
                 ...producto,
-                inventario: producto.inventarios?.length > 0 ? producto.inventarios[0] : null
+                inventario: producto.InventarioSucursal?.length > 0 ? producto.InventarioSucursal[0] : null
             }
         })
     } catch (error) {
@@ -401,8 +395,8 @@ async function editar(req, res) {
                 esGranel:            esGranel === true || esGranel === 'true',
             },
             include: {
-                categoria: { include: { departamento: true } },
-                inventarios: { where: { sucursalId: 1 }, take: 1 }
+                Categoria: { include: { Departamento: true } },
+                InventarioSucursal: { where: { sucursalId: 1 }, take: 1 }
             }
         })
 
@@ -432,7 +426,7 @@ async function editar(req, res) {
             success: true,
             data: {
                 ...producto,
-                inventario: producto.inventarios?.length > 0 ? producto.inventarios[0] : null
+                inventario: producto.InventarioSucursal?.length > 0 ? producto.InventarioSucursal[0] : null
             }
         })
     } catch (error) {
@@ -482,14 +476,14 @@ async function actualizarImagen(id, { url, public_id }) {
             imagenPublicId: public_id
         },
         include: {
-            categoria: { include: { departamento: true } },
-            inventarios: { where: { sucursalId: 1 }, take: 1 }
+            Categoria: { include: { Departamento: true } },
+            InventarioSucursal: { where: { sucursalId: 1 }, take: 1 }
         }
     })
     console.log(`✅ Imagen actualizada (Cloudinary): ${producto.nombre}`)
     return {
         ...producto,
-        inventario: producto.inventarios?.length > 0 ? producto.inventarios[0] : null
+        inventario: producto.InventarioSucursal?.length > 0 ? producto.InventarioSucursal[0] : null
     }
 }
 
@@ -521,8 +515,8 @@ async function eliminarImagen(req, res) {
             where: { id: parseInt(id) },
             data: { imagenUrl: null, imagenPublicId: null },
             include: {
-                categoria: { include: { departamento: true } },
-                inventarios: { where: { sucursalId: 1 }, take: 1 }
+                Categoria: { include: { Departamento: true } },
+                InventarioSucursal: { where: { sucursalId: 1 }, take: 1 }
             }
         })
 
@@ -532,7 +526,7 @@ async function eliminarImagen(req, res) {
             mensaje: 'Imagen eliminada',
             data: {
                 ...actualizado,
-                inventario: actualizado.inventarios?.length > 0 ? actualizado.inventarios[0] : null
+                inventario: actualizado.InventarioSucursal?.length > 0 ? actualizado.InventarioSucursal[0] : null
             }
         })
     } catch (error) {
@@ -644,14 +638,15 @@ async function ajustarInventario(req, res) {
     }
 
     // ── Validar que el producto existe ──
-    const producto = await prisma.producto.findUnique({
-      where: { id: parseInt(id) },
-      include: {
-        inventarios: {
-          where: { sucursalId: usuario.sucursalId || 1 }
+const producto = await prisma.producto.findUnique({
+        where: { id: parseInt(id) },
+        include: {
+          Categoria: { include: { Departamento: true } },
+          inventarioSucursal: {
+            where: { sucursalId: usuario.sucursalId || 1 }
+          }
         }
-      }
-    })
+      })
     if (!producto) return res.status(404).json({ error: 'Producto no encontrado' })
 
     // ── Validar valores (soporta decimales para granel) ──
@@ -665,11 +660,11 @@ async function ajustarInventario(req, res) {
     const sucursalId = usuario.sucursalId || 1
 
     // ── Normalización a Decimal(10,3): parseFloat + toFixed(3) ──
-    const stockAnterior = producto.inventarios[0]
-      ? parseFloat(parseFloat(producto.inventarios[0].stockActual).toFixed(3))
+    const stockAnterior = producto.inventarioSucursal[0]
+      ? parseFloat(parseFloat(producto.inventarioSucursal[0].stockActual).toFixed(3))
       : 0
-    const minAnterior = producto.inventarios[0]
-      ? parseFloat(parseFloat(producto.inventarios[0].stockMinimoAlerta).toFixed(3))
+    const minAnterior = producto.inventarioSucursal[0]
+      ? parseFloat(parseFloat(producto.inventarioSucursal[0].stockMinimoAlerta).toFixed(3))
       : 5
 
     // ── Upsert inventario ──

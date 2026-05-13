@@ -27,24 +27,24 @@ const BITACORA_SELECT = {
   totalMateriales: true, totalAbonado: true, saldoPendiente: true, saldoAlCerrar: true,
   notas: true, creadaEn: true, actualizadoEn: true, cerradaEn: true,
   clienteId: true, sucursalId: true, usuarioId: true,
-  cliente:  { select: { id: true, nombre: true, telefono: true, limiteCredito: true, saldoPendiente: true } },
-  usuario:  { select: { id: true, nombre: true } },
-  sucursal: { select: { id: true, nombre: true } },
-  detalles: {
+  Cliente:  { select: { id: true, nombre: true, telefono: true, limiteCredito: true, saldoPendiente: true } },
+  Usuario:  { select: { id: true, nombre: true } },
+  Sucursal: { select: { id: true, nombre: true } },
+  DetalleBitacora: {
     orderBy: { creadoEn: 'asc' },
     select: {
       id: true, cantidad: true, precioUnitario: true, subtotal: true,
       inventarioDescontado: true, notas: true, creadoEn: true,
-      venta:    { select: { id: true, folio: true, creadaEn: true } },
-      producto: { select: { id: true, nombre: true, codigoInterno: true, unidadVenta: true } }
+      Venta:    { select: { id: true, folio: true, creadaEn: true } },
+      Producto: { select: { id: true, nombre: true, codigoInterno: true, unidadVenta: true } }
     }
   },
-  abonos: {
+  AbonoBitacora: {
     orderBy: { creadoEn: 'asc' },
     select: {
       id: true, monto: true, metodoPago: true, notas: true, creadoEn: true,
-      usuario: { select: { id: true, nombre: true } },
-      turno:   { select: { id: true, abiertaEn: true, cerradaEn: true } }
+      Usuario: { select: { id: true, nombre: true } },
+      TurnoCaja:   { select: { id: true, abiertaEn: true, cerradaEn: true } }
     }
   }
 }
@@ -66,7 +66,7 @@ const listar = async (req, res) => {
       where.OR = [
         { folio:   { contains: buscar, mode: 'insensitive' } },
         { titulo:  { contains: buscar, mode: 'insensitive' } },
-        { cliente: { nombre: { contains: buscar, mode: 'insensitive' } } }
+        { Cliente: { nombre: { contains: buscar, mode: 'insensitive' } } }
       ]
     }
 
@@ -487,7 +487,7 @@ const editarDetalle = async (req, res) => {
 
     const detalle = await prisma.detalleBitacora.findUnique({
       where: { id: parseInt(detalleId) },
-      select: { id: true, bitacoraId: true, productoId: true, cantidad: true, precioUnitario: true, subtotal: true, inventarioDescontado: true, producto: { select: { nombre: true } } }
+      select: { id: true, bitacoraId: true, productoId: true, cantidad: true, precioUnitario: true, subtotal: true, inventarioDescontado: true, Producto: { select: { nombre: true } } }
     })
     if (!detalle || detalle.bitacoraId !== parseInt(id)) {
       return res.status(404).json({ success: false, error: 'Detalle no encontrado en esta bitácora' })
@@ -636,7 +636,7 @@ const quitarProducto = async (req, res) => {
 
     const detalle = await prisma.detalleBitacora.findUnique({
       where: { id: parseInt(detalleId) },
-      select: { id: true, bitacoraId: true, productoId: true, cantidad: true, subtotal: true, inventarioDescontado: true, producto: { select: { nombre: true } } }
+      select: { id: true, bitacoraId: true, productoId: true, cantidad: true, subtotal: true, inventarioDescontado: true, Producto: { select: { nombre: true } } }
     })
     if (!detalle || detalle.bitacoraId !== parseInt(id)) {
       return res.status(404).json({ success: false, error: 'Detalle no encontrado en esta bitácora' })

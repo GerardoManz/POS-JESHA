@@ -36,7 +36,7 @@ exports.listar = async (req, res) => {
         take: parseInt(take),
         orderBy: { creadaEn: 'desc' },
         include: {
-          venta: { select: { folio: true, total: true, metodoPago: true } }
+          Venta: { select: { folio: true, total: true, metodoPago: true } }
         }
       }),
       prisma.facturaCfdi.count({ where })

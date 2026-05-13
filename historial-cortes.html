@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <script>
+    if (!localStorage.getItem('jesha_token') || !localStorage.getItem('jesha_usuario')) {
+      window.location.replace('login.html')
+    }
+  </script>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>JESHA POS - Historial de Cortes</title>
+  <link rel="stylesheet" href="dashboard.css"/>
+  <link rel="stylesheet" href="historial-cortes.css"/>
+</head>
+<body data-page="historial-cortes">
+<div class="app-shell">
+
+  <div id="sidebar-container"></div>
+
+  <main class="content">
+    <header class="content-header">
+      <h2>Historial de Cortes de Caja</h2>
+      <p id="fecha-actual"></p>
+    </header>
+
+    <!-- ── TABS ── -->
+    <div class="historial-tabs">
+      <button class="tab-btn active" data-tab="operativo">Operativo</button>
+      <button class="tab-btn" data-tab="contable">Contable</button>
+    </div>
+
+    <!-- ── TAB OPERATIVO ── -->
+    <div class="tab-panel active" id="tab-operativo">
+
+      <div class="filtros-row">
+        <div class="filtro-group">
+          <label>Fecha</label>
+          <input type="date" id="filtro-fecha" class="filtro-input"/>
+        </div>
+        <div class="filtro-group">
+          <label>Cajero</label>
+          <select id="filtro-cajero" class="filtro-input">
+            <option value="">Todos</option>
+          </select>
+        </div>
+        <button id="btn-buscar" class="btn-primary btn-sm">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          Buscar
+        </button>
+        <button id="btn-limpiar" class="btn-secondary btn-sm">Limpiar</button>
+      </div>
+
+      <section class="panel">
+        <div class="table-wrapper">
+          <table class="ped-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Fecha Cierre</th>
+                <th>Cajero</th>
+                <th>Sucursal</th>
+                <th>Efectivo</th>
+                <th>Tarjeta</th>
+                <th>Transferencia</th>
+                <th>Total</th>
+                <th>Diferencia</th>
+                <th>Acción</th>
+              </tr>
+            </thead>
+            <tbody id="tabla-cortes-body">
+              <tr class="spinner-row">
+                <td colspan="10">
+                  <div class="loading-spinner"></div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="pagination" id="pagination-operativo" style="display:none;">
+          <button class="btn-pag" id="btn-ant" disabled>&#8592; Anterior</button>
+          <span id="page-info" class="pag-info">Página 1 de 1</span>
+          <button class="btn-pag" id="btn-sig" disabled>Siguiente &#8594;</button>
+        </div>
+      </section>
+    </div>
+
+    <!-- ── TAB CONTABLE ── -->
+    <div class="tab-panel" id="tab-contable">
+
+      <div class="filtros-row">
+        <div class="filtro-group">
+          <label>Desde</label>
+          <input type="date" id="contable-desde" class="filtro-input"/>
+        </div>
+        <div class="filtro-group">
+          <label>Hasta</label>
+          <input type="date" id="contable-hasta" class="filtro-input"/>
+        </div>
+        <button id="btn-generar-resumen" class="btn-primary btn-sm">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+          </svg>
+          Generar Resumen
+        </button>
+        <button id="btn-exportar" class="btn-sm btn-export" style="display:none;">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          Exportar CSV
+        </button>
+      </div>
+
+      <div id="contable-empty" class="contable-empty">
+        <svg width="48" height="48" fill="none" stroke="var(--muted)" stroke-width="1.5" viewBox="0 0 24 24">
+          <rect x="3" y="3" width="18" height="18" rx="2"/>
+          <path d="M3 9h18M9 21V9"/>
+        </svg>
+        <p>Selecciona un rango de fechas y genera el resumen contable</p>
+      </div>
+
+      <div id="contable-resultados" style="display:none;">
+
+        <div class="kpi-grid contable-kpis">
+          <div class="kpi-card">
+            <div class="kpi-label">Total Ventas</div>
+            <div class="kpi-value" id="kc-total">—</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Cortes Cerrados</div>
+            <div class="kpi-value" id="kc-cortes">—</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Ingreso Efectivo</div>
+            <div class="kpi-value kpi-green" id="kc-efectivo">—</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Tarjeta</div>
+            <div class="kpi-value kpi-blue" id="kc-tarjeta">—</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Transferencia</div>
+            <div class="kpi-value kpi-purple" id="kc-transferencia">—</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">TOTAL GENERAL</div>
+            <div class="kpi-value kpi-gold" id="kc-general">—</div>
+          </div>
+        </div>
+
+        <section class="panel" style="margin-top:16px;">
+          <div class="table-wrapper">
+            <table class="ped-table">
+              <thead>
+                <tr>
+                  <th>Sucursal</th>
+                  <th>Cortes</th>
+                  <th>Total Inicial</th>
+                  <th>Declarado</th>
+                  <th>Calculado</th>
+                  <th>Diferencia Total</th>
+                </tr>
+              </thead>
+              <tbody id="tabla-resumen-body">
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ── OFF-CANVAS: TICKET DE CORTE ── -->
+<div class="offcanvas-overlay" id="offcanvas-overlay"></div>
+<div class="offcanvas" id="offcanvas-corte">
+  <div class="offcanvas-header">
+    <h3>Ticket de Cierre</h3>
+    <button class="offcanvas-close" id="offcanvas-close">&times;</button>
+  </div>
+  <div class="offcanvas-body">
+    <iframe id="ticket-iframe" src="" style="width:58mm;min-height:400px;border:none;background:#fff;"></iframe>
+  </div>
+  <div class="offcanvas-footer">
+    <div class="offcanvas-footer-actions">
+      <button class="btn-secondary" onclick="document.getElementById('ticket-iframe').contentWindow.print()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+        Imprimir
+      </button>
+      <button class="btn-success" onclick="descargarPDF()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Descargar PDF
+      </button>
+    </div>
+  </div>
+</div>
+
+<script src="config.js"></script>
+<script src="sidebar.js"></script>
+<script src="historial-cortes.js"></script>
+</body>
+</html>

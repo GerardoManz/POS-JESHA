@@ -52,7 +52,7 @@ exports.ajusteRapido = async (req, res) => {
     const resultado = await prisma.$transaction(async (tx) => {
       const inventario = await tx.inventarioSucursal.findUnique({
         where:   { productoId_sucursalId: { productoId, sucursalId } },
-        include: { producto: { select: { nombre: true, esGranel: true, unidadVenta: true } } }
+        include: { Producto: { select: { nombre: true, esGranel: true, unidadVenta: true } } }
       })
 
       if (!inventario) {
@@ -101,7 +101,7 @@ exports.ajusteRapido = async (req, res) => {
       return {
         productoId,
         sucursalId,
-        nombreProducto: inventario.producto.nombre,
+        nombreProducto: inventario.Producto.nombre,
         stockAntes,
         stockDespues,
         diferencia,

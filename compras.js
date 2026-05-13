@@ -66,7 +66,7 @@ async function cargarCompras() {
       return `
         <tr onclick="abrirDetalle(${oc.id})">
           <td><strong>${oc.folio}</strong></td>
-          <td>${oc.proveedor?.alias || oc.proveedor?.nombreOficial || '—'}</td>
+          <td>${oc.Proveedor?.alias || oc.Proveedor?.nombreOficial || '—'}</td>
           <td style="color:var(--muted);font-size:0.82rem">${fmtFecha(oc.creadaEn)}</td>
           <td><strong>${fmt(oc.totalEstimado)}</strong></td>
           <td style="color:#60d080">${fmt(oc.totalPagado || 0)}</td>
@@ -111,10 +111,10 @@ function renderDetalle() {
   pb.className = `comp-pago-badge ${oc.pagada ? 'pagada' : 'no-pagada'}`
   pb.textContent = oc.pagada ? 'Pagada' : 'No pagada'
 
-  document.getElementById('det-proveedor').textContent = oc.proveedor?.nombreOficial || '—'
-  document.getElementById('det-tel').textContent = oc.proveedor?.celular || oc.proveedor?.telefono || '—'
+  document.getElementById('det-proveedor').textContent = oc.Proveedor?.nombreOficial || '—'
+  document.getElementById('det-tel').textContent = oc.Proveedor?.celular || oc.Proveedor?.telefono || '—'
   document.getElementById('det-fecha').textContent   = fmtFecha(oc.creadaEn)
-  document.getElementById('det-usuario').textContent = oc.usuario?.nombre || '—'
+  document.getElementById('det-usuario').textContent = oc.Usuario?.nombre || '—'
 
   const notasEl = document.getElementById('det-notas-p')
   if (oc.notas) { notasEl.textContent = `📝 ${oc.notas}`; notasEl.style.display = 'block' }
@@ -131,13 +131,13 @@ function renderDetalle() {
 
   // Abonos
   const listaAbonos = document.getElementById('lista-abonos')
-  listaAbonos.innerHTML = (!oc.abonos || oc.abonos.length === 0)
+  listaAbonos.innerHTML = (!oc.AbonoCompra || oc.AbonoCompra.length === 0)
     ? '<p class="muted-hint">Sin pagos registrados</p>'
-    : oc.abonos.map(a => `
+    : oc.AbonoCompra.map(a => `
         <div class="abono-item">
           <div>
             <div class="abono-monto">+${fmt(a.monto)}</div>
-            <div class="abono-meta">${a.metodoPago} · ${fmtFecha(a.creadoEn)} · ${a.usuario?.nombre || '—'}</div>
+            <div class="abono-meta">${a.metodoPago} · ${fmtFecha(a.creadoEn)} · ${a.Usuario?.nombre || '—'}</div>
             ${a.notas ? `<div class="abono-meta">${a.notas}</div>` : ''}
           </div>
         </div>`).join('')
@@ -153,16 +153,16 @@ function renderDetalle() {
   if (colPV) colPV.style.display = recibiendo ? '' : 'none'
 
   const tbody = document.getElementById('det-items-tbody')
-  tbody.innerHTML = (oc.detalles || []).map(d => {
+  tbody.innerHTML = (oc.DetalleOrdenCompra || []).map(d => {
     const cantPedida   = parseFloat(d.cantidadPedida)
     const cantRecibida = parseFloat(d.cantidadRecibida)
     const pendiente    = parseFloat((cantPedida - cantRecibida).toFixed(3))
     const yaCompleto   = cantRecibida >= cantPedida
     const rowStyle     = yaCompleto && recibiendo ? 'opacity:0.45;' : ''
-    const unidad       = d.producto?.unidadCompra || 'pza'
+    const unidad       = d.Producto?.unidadCompra || 'pza'
 
     const costoOrden    = parseFloat(d.precioCosto)
-    const costoAnterior = parseFloat(d.producto?.costo || costoOrden)
+    const costoAnterior = parseFloat(d.Producto?.costo || costoOrden)
     const costoSubio    = costoOrden > costoAnterior
     const costoBajo     = costoOrden < costoAnterior
     const costoColor    = costoSubio ? '#f87171' : costoBajo ? '#60d080' : 'inherit'
@@ -201,7 +201,7 @@ function renderDetalle() {
       }
     </td>` : ''
 
-    const precioVentaActual = parseFloat(d.producto?.precioVenta || d.producto?.precioBase || 0)
+    const precioVentaActual = parseFloat(d.Producto?.precioVenta || d.Producto?.precioBase || 0)
     const celdaMargen = recibiendo ? `<td>
       ${yaCompleto
         ? `<span style="color:var(--muted);font-size:0.8rem;">—</span>`
@@ -224,7 +224,7 @@ function renderDetalle() {
     return `
     <tr style="${rowStyle}">
       <td>
-        ${d.producto?.nombre || '—'}
+        ${d.Producto?.nombre || '—'}
         ${estadoFila}
       </td>
       <td style="text-align:center">
@@ -243,7 +243,7 @@ function renderDetalle() {
   }).join('')
 
   if (recibiendo && oc.estado === 'RECIBIDO_PARCIAL') {
-    const pendientesCount = (oc.detalles || []).filter(d => d.cantidadRecibida < d.cantidadPedida).length
+    const pendientesCount = (oc.DetalleOrdenCompra || []).filter(d => d.cantidadRecibida < d.cantidadPedida).length
     tbody.insertAdjacentHTML('beforebegin',
       `<div style="margin-bottom:10px;padding:9px 14px;background:rgba(255,193,7,0.07);border:1px solid rgba(255,193,7,0.2);border-radius:8px;font-size:0.82rem;color:#ffc107;">
         ⚠️ Recepción parcial — ${pendientesCount} producto${pendientesCount !== 1 ? 's' : ''} pendiente${pendientesCount !== 1 ? 's' : ''} de recibir.
@@ -257,7 +257,7 @@ function renderDetalle() {
       btns.innerHTML += `<button class="btn-secondary btn-sm" onclick="abrirEdicion(${oc.id})">✏️ Editar</button>`
       btns.innerHTML += `<button class="btn-warning btn-sm" onclick="iniciarRecepcion()">📦 Recibir mercancía</button>`
     } else {
-      const pendientes = (oc.detalles || []).filter(d => d.cantidadRecibida < d.cantidadPedida).length
+      const pendientes = (oc.DetalleOrdenCompra || []).filter(d => d.cantidadRecibida < d.cantidadPedida).length
       btns.innerHTML += `<button class="btn-success btn-sm" onclick="confirmarRecepcion()">✓ Confirmar recepción (${pendientes} producto${pendientes !== 1 ? 's' : ''})</button>`
       btns.innerHTML += `<button class="btn-secondary btn-sm" onclick="cancelarRecepcion()">✕ Cancelar</button>`
     }
@@ -301,7 +301,7 @@ function renderPanelResumen() {
   if (existing) existing.remove()
 
   const oc = ocActual
-  const pendientes = (oc.detalles || []).filter(d =>
+  const pendientes = (oc.DetalleOrdenCompra || []).filter(d =>
     parseFloat(d.cantidadPedida) > parseFloat(d.cantidadRecibida)
   )
   if (pendientes.length === 0) return
@@ -329,9 +329,9 @@ function renderPanelResumen() {
         </thead>
         <tbody>
           ${pendientes.map(d => {
-            const costoAnt  = parseFloat(d.producto?.costo || d.precioCosto)
+            const costoAnt  = parseFloat(d.Producto?.costo || d.precioCosto)
             const costoNuevo = parseFloat(d.precioCosto)
-            const pvAnt     = parseFloat(d.producto?.precioVenta || d.producto?.precioBase || 0)
+            const pvAnt     = parseFloat(d.Producto?.precioVenta || d.Producto?.precioBase || 0)
             const subio     = costoNuevo > costoAnt + 0.001
             const bajo      = costoNuevo < costoAnt - 0.001
             const costoColor = subio ? '#f87171' : bajo ? '#60d080' : 'var(--text)'
@@ -339,8 +339,8 @@ function renderPanelResumen() {
             const costoTachado = subio || bajo
             return `
               <tr style="border-top:0.5px solid rgba(255,255,255,0.05);">
-                <td style="padding:6px 8px;color:var(--text);max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${d.producto?.nombre || ''}">
-                  ${d.producto?.nombre || '—'}
+                <td style="padding:6px 8px;color:var(--text);max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${d.Producto?.nombre || ''}">
+                  ${d.Producto?.nombre || '—'}
                 </td>
                 <td style="text-align:right;padding:6px 8px;color:var(--muted);${costoTachado ? 'text-decoration:line-through;' : ''}">${fmt(costoAnt)}</td>
                 <td style="text-align:right;padding:6px 8px;color:${costoColor};font-weight:500;">${fmt(costoNuevo)}${costoSufijo}</td>
@@ -371,7 +371,7 @@ window.cancelarRecepcion = function() {
   renderDetalle()
 }
 window.confirmarRecepcion = async function() {
-  const detalles = (ocActual.detalles || [])
+  const detalles = (ocActual.DetalleOrdenCompra || [])
     .filter(d => parseFloat(d.cantidadPedida) > parseFloat(d.cantidadRecibida))
     .map(d => {
       const cantNueva = parseFloat(document.getElementById(`rec-${d.id}`)?.value) || 0
@@ -469,21 +469,21 @@ window.abrirEdicion = async function(id) {
     const data = await apiFetch(`/compras/${id}`)
     ocActual = data.data
     document.getElementById('crear-titulo').textContent = `Editar ${ocActual.folio}`
-    document.getElementById('prov-buscar').value = ocActual.proveedor?.nombreOficial || ''
-    document.getElementById('prov-id').value     = ocActual.proveedor?.id || ''
+    document.getElementById('prov-buscar').value = ocActual.Proveedor?.nombreOficial || ''
+    document.getElementById('prov-id').value     = ocActual.Proveedor?.id || ''
     document.getElementById('comp-notas').value  = ocActual.notas || ''
     document.getElementById('search-prod-modal').value = ''
     document.getElementById('lista-prod-modal').innerHTML = '<p class="muted-hint">Escribe para buscar...</p>'
     document.getElementById('crear-error').classList.remove('show')
 
-    itemsEdicion = (ocActual.detalles || []).map(d => {
+    itemsEdicion = (ocActual.DetalleOrdenCompra || []).map(d => {
       const costoNeto = parseFloat(d.precioCosto)
-      const pv = parseFloat(d.producto?.precioVenta || d.producto?.precioBase || 0)
+      const pv = parseFloat(d.Producto?.precioVenta || d.Producto?.precioBase || 0)
       const margen = costoNeto > 0 && pv > 0 ? +((pv / costoNeto - 1) * 100).toFixed(2) : 0
       return {
-        productoId:       d.producto?.id,
-        nombre:           d.producto?.nombre || '—',
-        unidad:           d.producto?.unidadCompra || 'pza',
+        productoId:       d.Producto?.id,
+        nombre:           d.Producto?.nombre || '—',
+        unidad:           d.Producto?.unidadCompra || 'pza',
         cantidad:         d.cantidadPedida,
         costoBase:        +(costoNeto / 1.16).toFixed(4),
         costoNeto:        costoNeto,

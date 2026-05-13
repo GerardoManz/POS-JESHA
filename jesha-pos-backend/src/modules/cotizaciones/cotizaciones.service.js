@@ -27,14 +27,14 @@ async function audit(usuarioId, sucursalId, accion, referencia) {
 const COTIZACION_SELECT = {
   id: true, folio: true, estado: true, tipo: true, total: true,
   venceEn: true, notas: true, creadaEn: true,
-  cliente:  { select: { id: true, nombre: true, rfc: true, telefono: true } },
-  usuario:  { select: { id: true, nombre: true } },
-  sucursal: { select: { id: true, nombre: true } },
-  detalles: {
+  Cliente:  { select: { id: true, nombre: true, rfc: true, telefono: true } },
+  Usuario:  { select: { id: true, nombre: true } },
+  Sucursal: { select: { id: true, nombre: true } },
+  DetalleCotizacion: {
     select: {
       id: true, productoId: true, cantidad: true, precioUnitario: true, descuento: true,
       subtotal: true, concepto: true, unidad: true,
-      producto: {
+      Producto: {
         select: { id: true, nombre: true, codigoInterno: true,
                   codigoBarras: true, unidadVenta: true, imagenUrl: true }
       }
@@ -66,7 +66,7 @@ async function listar({ sucursalId, rol, estado, excluirCanceladas, tipo, buscar
   if (buscar) {
     where.OR = [
       { folio:   { contains: buscar, mode: 'insensitive' } },
-      { cliente: { nombre: { contains: buscar, mode: 'insensitive' } } },
+      { Cliente: { nombre: { contains: buscar, mode: 'insensitive' } } },
       { notas:   { contains: buscar, mode: 'insensitive' } }
     ]
   }

@@ -3,8 +3,9 @@ const prisma  = require('../../lib/prisma')
 
 async function registrarAudit(solicitante, accion, referencia, ip) {
   try {
-    const data = { usuario: { connect: { id: solicitante.id } }, accion, modulo: 'usuarios', referencia, ip }
-    if (solicitante.sucursalId) data.sucursal = { connect: { id: solicitante.sucursalId } }
+    const data = { accion, modulo: 'usuarios', referencia, ip }
+    if (solicitante.sucursalId) data.sucursalId = solicitante.sucursalId
+    if (solicitante.id) data.usuarioId = solicitante.id
     await prisma.auditoria.create({ data })
   } catch (e) { console.error('Audit error:', e.message) }
 }
@@ -26,13 +27,13 @@ const listar = async (req, res) => {
       select: {
         id: true, nombre: true, username: true, rol: true, activo: true, creadoEn: true,
         tienePin: true,
-        sucursal: { select: { id: true, nombre: true } },
-        auditorias: { where: { accion: 'LOGIN' }, orderBy: { creadoEn: 'desc' }, take: 1, select: { creadoEn: true } }
+        Sucursal: { select: { id: true, nombre: true } },
+        Auditoria: { where: { accion: 'LOGIN' }, orderBy: { creadoEn: 'desc' }, take: 1, select: { creadoEn: true } }
       },
       orderBy: { creadoEn: 'desc' }
     })
 
-    res.json(usuarios.map(u => ({ ...u, ultimoLogin: u.auditorias[0]?.creadoEn || null, auditorias: undefined })))
+    res.json(usuarios.map(u => ({ ...u, ultimoLogin: u.Auditoria[0]?.creadoEn || null, Auditoria: undefined })))
   } catch (err) { console.error(err); res.status(500).json({ error: 'Error al obtener usuarios' }) }
 }
 
@@ -53,7 +54,7 @@ const crear = async (req, res) => {
     const hash  = await bcrypt.hash(password, 10)
     const usuario = await prisma.usuario.create({
       data: { nombre, username, passwordHash: hash, rol, sucursalId: sucId, activo: true },
-      select: { id: true, nombre: true, username: true, rol: true, activo: true, tienePin: true, sucursal: { select: { id: true, nombre: true } } }
+      select: { id: true, nombre: true, username: true, rol: true, activo: true, tienePin: true, Sucursal: { select: { id: true, nombre: true } } }
     })
     await registrarAudit(solicitante, 'CREAR_USUARIO', `${solicitante.nombre} creo al usuario ${username} con rol ${rol}`, req.ip)
     res.status(201).json(usuario)
@@ -77,7 +78,7 @@ const editar = async (req, res) => {
     if (sucursalId !== undefined) data.sucursalId = sucursalId ? parseInt(sucursalId) : null
     const usuario = await prisma.usuario.update({
       where: { id: parseInt(id) }, data,
-      select: { id: true, nombre: true, username: true, rol: true, activo: true, tienePin: true, sucursal: { select: { id: true, nombre: true } } }
+      select: { id: true, nombre: true, username: true, rol: true, activo: true, tienePin: true, Sucursal: { select: { id: true, nombre: true } } }
     })
     await registrarAudit(solicitante, 'EDITAR_USUARIO', `${solicitante.nombre} edito al usuario ${objetivo.username}`, req.ip)
     res.json(usuario)

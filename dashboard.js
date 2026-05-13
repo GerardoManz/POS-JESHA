@@ -30,7 +30,7 @@ let cacheProductos       = null
 //  Si no: SUMA stock de todas las sucursales para el cálculo.
 // ════════════════════════════════════════════════════════════════════
 function calcularStockProducto(producto, sucursalId) {
-  const invs = producto.inventarios || []
+  const invs = producto.InventarioSucursal || []
   if (invs.length === 0) return { stock: 0, minimo: 0, hasInv: false }
 
   let stock = 0

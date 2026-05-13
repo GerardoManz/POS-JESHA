@@ -51,7 +51,7 @@ async function listar(filtros = {}) {
             descripcion: true,
             precioBase: true,
             costo: true,
-            categoria: { select: { id: true, nombre: true } },
+            Categoria: { select: { id: true, nombre: true } },
             activo: true,
             creadoEn: true,
             actualizadoEn: true
@@ -76,7 +76,7 @@ async function obtenerPorId(id) {
             precioBase: true,
             costo: true,
             imagenUrl: true,
-            categoria: { select: { id: true, nombre: true } },
+            Categoria: { select: { id: true, nombre: true } },
             activo: true,
             creadoEn: true,
             actualizadoEn: true
@@ -125,7 +125,7 @@ async function crear(datos, usuarioId, sucursalId, ip) {
         select: {
             id: true, nombre: true, codigoInterno: true, codigoBarras: true,
             descripcion: true, precioBase: true, costo: true,
-            categoria: { select: { id: true, nombre: true } },
+            Categoria: { select: { id: true, nombre: true } },
             activo: true, creadoEn: true
         }
     })
@@ -168,13 +168,13 @@ async function editar(id, datos, usuarioId, sucursalId, ip) {
             descripcion:   descripcion   !== undefined ? descripcion            : producto.descripcion,
             precioBase:    precioBase    !== undefined ? parseFloat(precioBase) : producto.precioBase,
             costo:         costo         !== undefined ? parseFloat(costo)      : producto.costo,
-            categoriaId:   categoriaId   !== undefined ? parseInt(categoriaId)  : producto.categoria.id,
+            categoriaId:   categoriaId   !== undefined ? parseInt(categoriaId)  : producto.Categoria.id,
             esGranel:      esGranel      !== undefined ? (esGranel === true || esGranel === 'true') : producto.esGranel
         },
         select: {
             id: true, nombre: true, codigoInterno: true, codigoBarras: true,
             descripcion: true, precioBase: true, costo: true,
-            categoria: { select: { id: true, nombre: true } },
+            Categoria: { select: { id: true, nombre: true } },
             activo: true, creadoEn: true, actualizadoEn: true
         }
     })

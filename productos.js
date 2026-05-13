@@ -431,8 +431,8 @@ function renderizarTabla(productos) {
     const stock     = p.inventario?.stockActual ?? '-'
     const minStock  = p.inventario?.stockMinimoAlerta ?? '-'
     const stockBajo = typeof stock === 'number' && typeof minStock === 'number' && stock <= minStock
-    const deptoNombre = p.categoria?.departamento?.nombre || ''
-    const catNombre   = p.categoria?.nombre || '-'
+    const deptoNombre = p.Categoria?.Departamento?.nombre || ''
+    const catNombre   = p.Categoria?.nombre || '-'
     return `<tr>
       <td>${p.codigoInterno || '-'}</td>
       <td><strong>${p.nombre}</strong>${p.esGranel ? `<span style="display:inline-block;margin-left:6px;padding:1px 6px;font-size:0.65rem;font-weight:700;background:rgba(107,157,232,0.15);color:#6b9de8;border-radius:4px;vertical-align:middle;letter-spacing:0.03em;">GRANEL${p.unidadVenta ? ' · ' + p.unidadVenta : ''}</span>` : ''}${p.codigoBarras ? `<br/><small style="color:var(--muted)">${p.codigoBarras}</small>` : ''}</td>
@@ -507,7 +507,7 @@ window.editarProducto = async function(id) {
     actualizarVisualGranel(granelCheck.checked)
   }
   
-  const deptoId = producto.categoria?.departamento?.id || ''
+  const deptoId = producto.Categoria?.Departamento?.id || ''
   llenarModalDepartamentos(deptoId)
   if (deptoId) actualizarModalCategorias(deptoId, producto.categoriaId)
   
@@ -523,8 +523,8 @@ window.editarProducto = async function(id) {
     let proveedorId = ''
     
     // La relación se llama 'proveedores' (plural) no 'proveedorProducto'
-    if (producto.proveedores && Array.isArray(producto.proveedores) && producto.proveedores.length > 0) {
-      proveedorId = producto.proveedores[0].proveedorId || producto.proveedores[0].id || ''
+    if (producto.ProveedorProducto && Array.isArray(producto.ProveedorProducto) && producto.ProveedorProducto.length > 0) {
+      proveedorId = producto.ProveedorProducto[0].Proveedor?.id || producto.ProveedorProducto[0].proveedorId || producto.ProveedorProducto[0].id || ''
     } else if (producto.proveedorId) {
       proveedorId = producto.proveedorId
     }

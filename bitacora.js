@@ -121,7 +121,7 @@ function renderTabla(bitacoras) {
     return
   }
   tbody.innerHTML = bitacoras.map(b => {
-    const cli   = b.cliente?.nombre || '—'
+    const cli   = b.Cliente?.nombre || '—'
     const titCli = b.titulo ? `<strong>${b.titulo}</strong><br><small style="color:var(--muted);">${cli}</small>` : cli
     return `
       <tr data-id="${b.id}">
@@ -183,10 +183,10 @@ function renderDetalle() {
   document.getElementById('det-titulo-header').textContent  = b.titulo || ''
 
   // Info
-  document.getElementById('det-cliente').textContent   = b.cliente?.nombre   || '—'
-  document.getElementById('det-telefono').textContent  = b.cliente?.telefono || '—'
+  document.getElementById('det-cliente').textContent   = b.Cliente?.nombre   || '—'
+  document.getElementById('det-telefono').textContent  = b.Cliente?.telefono || '—'
   document.getElementById('det-fecha').textContent     = formatFecha(b.creadaEn)
-  document.getElementById('det-usuario').textContent   = b.usuario?.nombre   || '—'
+  document.getElementById('det-usuario').textContent   = b.Usuario?.nombre   || '—'
 
   const descP = document.getElementById('det-descripcion')
   if (b.descripcion) { descP.textContent = b.descripcion; descP.style.display = 'block' }
@@ -203,10 +203,10 @@ function renderDetalle() {
 
   // Crédito del cliente
   const cardCredito = document.getElementById('card-credito-cliente')
-  if (b.cliente) {
+  if (b.Cliente) {
     cardCredito.style.display = 'block'
-    const limite      = parseFloat(b.cliente.limiteCredito || 0)
-    const saldoTotal  = parseFloat(b.cliente.saldoPendiente || 0)
+    const limite      = parseFloat(b.Cliente.limiteCredito || 0)
+    const saldoTotal  = parseFloat(b.Cliente.saldoPendiente || 0)
     const disponible  = limite - saldoTotal
     document.getElementById('cred-limite').textContent     = formatMoney(limite)
     document.getElementById('cred-usado').textContent      = formatMoney(saldoTotal)
@@ -216,10 +216,10 @@ function renderDetalle() {
   }
 
   // Productos (tabla materiales)
-  renderDetalleItems(b.detalles || [])
+  renderDetalleItems(b.DetalleBitacora || [])
 
   // Abonos
-  renderAbonos(b.abonos || [])
+  renderAbonos(b.AbonoBitacora || [])
 
   // Botón agregar producto — SOLO si origen MANUAL y estado ABIERTA
   const btnAgregar   = document.getElementById('btn-agregar-prod')
@@ -271,8 +271,8 @@ function renderDetalleItems(detalles) {
   const b = bitacoraActual
   const editable = b.origen === 'MANUAL' && b.estado === 'ABIERTA'
   tbody.innerHTML = detalles.map(d => {
-    const nombre   = d.producto?.nombre || '—'
-    const unidad   = d.producto?.unidadVenta || 'pz'
+    const nombre   = d.Producto?.nombre || '—'
+    const unidad   = d.Producto?.unidadVenta || 'pz'
     const cantidad = parseFloat(d.cantidad)
     const todoDevuelto = cantidad <= 0.001
     const filaStyle = todoDevuelto
@@ -392,7 +392,7 @@ function renderAbonos(abonos) {
     <div class="abono-item">
       <div style="flex:1;">
         <div class="abono-monto">+ ${formatMoney(a.monto)}</div>
-        <div class="abono-meta">${a.metodoPago} • ${formatFecha(a.creadoEn, true)} • ${a.usuario?.nombre || ''}</div>
+        <div class="abono-meta">${a.metodoPago} • ${formatFecha(a.creadoEn, true)} • ${a.Usuario?.nombre || ''}</div>
         ${a.notas ? `<div class="abono-meta" style="margin-top:3px;">${a.notas}</div>` : ''}
       </div>
       <button class="btn-reimprimir" data-abono-id="${a.id}" title="Reimprimir comprobante">🖨️</button>
@@ -641,7 +641,7 @@ async function registrarAbono() {
     cargarBitacoras(paginaActual)
 
     // Preguntar si desea imprimir (modal estilizado del sistema)
-    const ultimoAbono = (res.data.abonos || []).slice(-1)[0]
+    const ultimoAbono = (res.data.AbonoBitacora || []).slice(-1)[0]
     if (ultimoAbono) {
       mostrarModalImprimir(monto, ultimoAbono.id)
     }

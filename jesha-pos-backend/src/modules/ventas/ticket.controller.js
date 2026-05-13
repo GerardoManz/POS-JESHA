@@ -47,11 +47,11 @@ const generarTicket = async (req, res) => {
     const venta = await prisma.venta.findUnique({
       where: { id: parseInt(req.params.id) },
       include: {
-        cliente:  { select: { nombre: true } },
-        usuario:  { select: { nombre: true } },
-        detalles: {
+        Cliente:  { select: { nombre: true } },
+        Usuario:  { select: { nombre: true } },
+        DetalleVenta: {
           include: {
-            producto: { select: { nombre: true, codigoInterno: true } }
+            Producto: { select: { nombre: true, codigoInterno: true } }
           }
         }
       }
@@ -111,9 +111,9 @@ function generarHTMLTicket(venta, qrDataUrl, fechaStr, pagos) {
     return `$${num.toFixed(2)}`
   }
 
-  const filaProductos = (venta.detalles || []).map(d => {
+  const filaProductos = (venta.DetalleVenta || []).map(d => {
     const subtotal = parseFloat(d.subtotal ?? d.importe ?? (parseFloat(d.precioUnitario || 0) * parseFloat(d.cantidad || 1)))
-    const nombre   = d.producto?.nombre || d.descripcion || '—'
+    const nombre   = d.Producto?.nombre || d.descripcion || '—'
     const qty      = parseFloat(d.cantidad || 1)
     const qtyStr   = Number.isInteger(qty) ? qty.toString() : qty.toFixed(3).replace(/\.?0+$/, '')
     const precio   = parseFloat(d.precioUnitario || 0)
@@ -124,7 +124,7 @@ function generarHTMLTicket(venta, qrDataUrl, fechaStr, pagos) {
   }).join('')
 
   const folioCorto = venta.folio?.split('-').pop() || venta.folio
-  const cajero     = venta.usuario?.nombre || '—'
+  const cajero     = venta.Usuario?.nombre || '—'
   const descuento  = parseFloat(venta.descuento || 0)
   const subtotalV  = parseFloat(venta.subtotal || 0)
 
@@ -255,7 +255,7 @@ html, body {
 <table class="info-tbl">
   <tr><td class="lbl">${fechaStr}</td><td class="val">Folio: ${folioCorto}</td></tr>
   <tr><td class="lbl">Cajero: ${cajero}</td><td class="val"></td></tr>
-  ${venta.cliente ? `<tr><td class="lbl">Cliente:</td><td class="val">${venta.cliente.nombre}</td></tr>` : ''}
+  ${venta.Cliente ? `<tr><td class="lbl">Cliente:</td><td class="val">${venta.Cliente.nombre}</td></tr>` : ''}
 </table>
 
 <hr class="sep-bold"/>

@@ -29,16 +29,9 @@ const CLIENTE_SELECT = {
 
 async function registrarAudit(solicitante, accion, referencia, ip) {
   try {
-    const data = {
-      usuario: { connect: { id: solicitante.id } },
-      accion,
-      modulo: 'clientes',
-      referencia,
-      ip
-    }
-    if (solicitante.sucursalId) {
-      data.sucursal = { connect: { id: solicitante.sucursalId } }
-    }
+    const data = { accion, modulo: 'clientes', referencia, ip }
+    if (solicitante?.id) data.usuarioId = solicitante.id
+    if (solicitante?.sucursalId) data.sucursalId = solicitante.sucursalId
     await prisma.auditoria.create({ data })
   } catch (e) {
     console.error('Audit error:', e.message)
@@ -269,15 +262,15 @@ const obtenerAbonos = async (req, res) => {
   try {
     const { id } = req.params
     const abonos = await prisma.abonoBitacora.findMany({
-      where: { bitacora: { clienteId: parseInt(id) } },
+      where: { Bitacora: { clienteId: parseInt(id) } },
       select: {
         id:         true,
         monto:      true,
         metodoPago: true,
         notas:      true,
         creadoEn:   true,
-        bitacora: { select: { folio: true, titulo: true } },
-        usuario:  { select: { nombre: true } }
+        Bitacora: { select: { folio: true, titulo: true } },
+        Usuario:  { select: { nombre: true } }
       },
       orderBy: { creadoEn: 'desc' },
       take: 100
@@ -316,7 +309,7 @@ const abonarCredito = async (req, res) => {
       mensaje: `Abono de $${montoAbono.toFixed(2)} aplicado al crédito`,
       saldoAnterior: saldoActual,
       saldoNuevo:    nuevoSaldo,
-      cliente:       { id: actualizado.id, nombre: actualizado.nombre, saldoPendiente: nuevoSaldo }
+      Cliente:       { id: actualizado.id, nombre: actualizado.nombre, saldoPendiente: nuevoSaldo }
     })
   } catch (err) {
     console.error('❌ Error en abonarCredito:', err)

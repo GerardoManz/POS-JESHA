@@ -431,6 +431,31 @@
 .resultado-ok  { color: #60d080; font-weight: 600; }
 .resultado-mal { color: #ff6b6b; font-weight: 600; }
 
+/* ── NOTAS CIERRE ── */
+.notas-textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 8px;
+  background: rgba(255,255,255,0.04);
+  color: var(--text);
+  font-size: 0.875rem;
+  font-family: 'Barlow Condensed', sans-serif;
+  resize: vertical;
+  min-height: 60px;
+  transition: border-color 0.2s;
+  box-sizing: border-box;
+}
+
+.notas-textarea:focus {
+  outline: none;
+  border-color: rgba(74, 144, 226, 0.5);
+}
+
+.notas-textarea::placeholder {
+  color: var(--muted);
+}
+
 /* ── RESPONSIVE ── */
 @media (max-width: 900px) {
   .corte-grid {
