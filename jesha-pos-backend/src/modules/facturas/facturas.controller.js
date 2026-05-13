@@ -25,7 +25,7 @@ exports.listar = async (req, res) => {
       where.OR = [
         { rfcReceptor:    { contains: q, mode: 'insensitive' } },
         { nombreReceptor: { contains: q, mode: 'insensitive' } },
-        { venta: { folio: { contains: q, mode: 'insensitive' } } }
+        { Venta: { folio: { contains: q, mode: 'insensitive' } } }
       ]
     }
 
@@ -76,7 +76,7 @@ exports.obtener = async (req, res) => {
     const factura = await prisma.facturaCfdi.findUnique({
       where: { id: parseInt(req.params.id) },
       include: {
-        venta: {
+        Venta: {
           select: { folio: true, total: true, metodoPago: true, creadaEn: true },
         }
       }

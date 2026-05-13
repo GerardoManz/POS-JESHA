@@ -642,7 +642,7 @@ const producto = await prisma.producto.findUnique({
         where: { id: parseInt(id) },
         include: {
           Categoria: { include: { Departamento: true } },
-          inventarioSucursal: {
+          InventarioSucursal: {
             where: { sucursalId: usuario.sucursalId || 1 }
           }
         }
@@ -660,11 +660,11 @@ const producto = await prisma.producto.findUnique({
     const sucursalId = usuario.sucursalId || 1
 
     // ── Normalización a Decimal(10,3): parseFloat + toFixed(3) ──
-    const stockAnterior = producto.inventarioSucursal[0]
-      ? parseFloat(parseFloat(producto.inventarioSucursal[0].stockActual).toFixed(3))
+    const stockAnterior = producto.InventarioSucursal[0]
+      ? parseFloat(parseFloat(producto.InventarioSucursal[0].stockActual).toFixed(3))
       : 0
-    const minAnterior = producto.inventarioSucursal[0]
-      ? parseFloat(parseFloat(producto.inventarioSucursal[0].stockMinimoAlerta).toFixed(3))
+    const minAnterior = producto.InventarioSucursal[0]
+      ? parseFloat(parseFloat(producto.InventarioSucursal[0].stockMinimoAlerta).toFixed(3))
       : 5
 
     // ── Upsert inventario ──

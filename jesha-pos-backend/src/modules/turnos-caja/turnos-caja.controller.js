@@ -83,8 +83,8 @@ const obtenerResumen = async (req, res) => {
           id: turno.id,
           montoInicial: parseFloat(turno.montoInicial),
           abiertaEn: turno.abiertaEn,
-          Usuario: turno.usuario,
-          Sucursal: turno.sucursal
+          Usuario: turno.Usuario,
+          Sucursal: turno.Sucursal
         },
         totales: {
           totalEfectivo: parseFloat(row.totalEfectivo) || 0,

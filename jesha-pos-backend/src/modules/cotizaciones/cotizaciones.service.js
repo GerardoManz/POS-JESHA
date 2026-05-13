@@ -124,7 +124,7 @@ async function crear({ sucursalId, usuarioId, clienteId, tipo = 'PRODUCTOS', det
   const cotizacion = await prisma.cotizacion.create({
     data: { folio, sucursalId, usuarioId, clienteId, tipo, total, estado: 'PENDIENTE',
             notas: notas || null, venceEn: venceEn ? new Date(venceEn) : null,
-            detalles: { create: rows } },
+            detalleCotizacion: { create: rows } },
     select: COTIZACION_SELECT
   })
   await audit(usuarioId, sucursalId, 'CREAR_COTIZACION', folio)
@@ -179,7 +179,7 @@ async function editar(id, { clienteId, notas, venceEn, detalles, tipo, usuarioId
     updateData.total = parseFloat(rows.reduce((s, r) => s + r.subtotal, 0).toFixed(2))
     const cot = await prisma.$transaction(async (tx) => {
       await tx.detalleCotizacion.deleteMany({ where: { cotizacionId: parseInt(id) } })
-      return tx.cotizacion.update({ where: { id: parseInt(id) }, data: { ...updateData, detalles: { create: rows } }, select: COTIZACION_SELECT })
+      return tx.cotizacion.update({ where: { id: parseInt(id) }, data: { ...updateData, detalleCotizacion: { create: rows } }, select: COTIZACION_SELECT })
     })
     await audit(usuarioId, sucursalId, 'EDITAR_COTIZACION', existente.folio)
     return cot

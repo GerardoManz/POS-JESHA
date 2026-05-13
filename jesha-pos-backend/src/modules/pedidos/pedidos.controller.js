@@ -271,7 +271,7 @@ const editar = async (req, res) => {
           data: {
             ...updateData,
             sucursalId: sucursalFinalId,
-            detalles: { create: rows }
+            detallePedido: { create: rows }
           },
           select: PEDIDO_SELECT
         })

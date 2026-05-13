@@ -144,7 +144,7 @@ exports.crear = async (req, res) => {
           montoReembolso,
           reintegraInventario: true,
           notas:               notas || null,
-          DetalleVenta: {
+          detalleVenta: {
             create: detallesValidados.map(d => ({
               productoId:     d.productoId,
               cantidad:       d.cantidad,
