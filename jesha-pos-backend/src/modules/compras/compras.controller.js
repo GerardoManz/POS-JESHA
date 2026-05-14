@@ -115,7 +115,7 @@ const crear = async (req, res) => {
 
     const oc = await prisma.ordenCompra.create({
       data: { folio, sucursalId, proveedorId: parseInt(proveedorId), usuarioId, estado: 'ENVIADO',
-              totalEstimado, notas: notas || null, detalleOrdenCompra: { create: rows } },
+              totalEstimado, notas: notas || null, DetalleOrdenCompra: { create: rows } },
       select: OC_SELECT
     })
     await audit(usuarioId, sucursalId, 'CREAR_COMPRA', folio)
@@ -184,7 +184,7 @@ const editar = async (req, res) => {
         await tx.detalleOrdenCompra.deleteMany({ where: { ordenCompraId: parseInt(id) } })
         return tx.ordenCompra.update({
           where: { id: parseInt(id) },
-          data:  { ...updateData, detalleOrdenCompra: { create: rows } },
+          data:  { ...updateData, DetalleOrdenCompra: { create: rows } },
           select: OC_SELECT
         })
       })
