@@ -194,7 +194,8 @@ const crear = async (req, res) => {
         estado: 'BORRADOR',
         totalEstimado,
         notas: notas || null,
-        detallePedido: { create: rows }
+        actualizadoEn: new Date(),
+        DetallePedido: { create: rows }
       },
       select: PEDIDO_SELECT
     })
@@ -271,7 +272,7 @@ const editar = async (req, res) => {
           data: {
             ...updateData,
             sucursalId: sucursalFinalId,
-            detallePedido: { create: rows }
+DetallePedido: { create: rows }
           },
           select: PEDIDO_SELECT
         })
@@ -285,7 +286,7 @@ const editar = async (req, res) => {
 
     const pedido = await prisma.pedido.update({
       where: { id: parseInt(id) },
-      data: { ...updateData, sucursalId: sucursalFinalId },
+      data: { ...updateData, sucursalId: sucursalFinalId, actualizadoEn: new Date() },
       select: PEDIDO_SELECT
     })
 
@@ -333,7 +334,7 @@ const cambiarEstado = async (req, res) => {
       })
     }
 
-    const updateData = { estado }
+    const updateData = { estado, actualizadoEn: new Date() }
     if (motivoBloqueo) updateData.motivoBloqueo = motivoBloqueo
     // Limpiar motivo si se desbloquea
     if (estado === 'ACTIVO' && existente.estado === 'BLOQUEADO') {
