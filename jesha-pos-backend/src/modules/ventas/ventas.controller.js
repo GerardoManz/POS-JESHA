@@ -187,10 +187,10 @@ exports.crearVenta = async (req, res) => {
       const ventaCreada = await tx.venta.create({
         data: {
           folio,
-          sucursal: { connect: { id: sucursalId } },
-          usuario:  { connect: { id: usuarioId } },
-          turnoCaja:    { connect: { id: turnoId } },
-          ...(clienteId ? { cliente: { connect: { id: clienteId } } } : {}),
+          Sucursal: { connect: { id: sucursalId } },
+          Usuario:  { connect: { id: usuarioId } },
+          TurnoCaja:    { connect: { id: turnoId } },
+          ...(clienteId ? { Cliente: { connect: { id: clienteId } } } : {}),
           metodoPago,
           subtotal: totalRecalculado,
           descuento: descuentoAmt,
@@ -203,7 +203,7 @@ exports.crearVenta = async (req, res) => {
           tokenQr: generarUUID(),
           facturaEstado,
           ...(facturaLimite ? { facturaLimite } : {}),
-          detalleVenta: {
+          DetalleVenta: {
             create: detallesValidados.map(d => ({
               productoId:     d.productoId,
               cantidad:       d.cantidad,
