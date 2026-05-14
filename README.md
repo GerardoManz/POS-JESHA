@@ -97,3 +97,54 @@ npm run studio    # Prisma Studio
 - `ADMIN_SUCURSAL` — Administrador de sucursal
 - `EMPLEADO` — Operador de mostrador
 - `PRECIOS` — Solo consulta de precios
+
+## Prisma 7.4 - Convenciones de Nombres
+
+**IMPORTANTE**: Prisma 7.4 requiere PascalCase para TODOS los nombres de relaciones en `data:`, `select:` e `include:`. Usar camelCase causa errores como `Argument 'X' is missing`.
+
+### Backend
+- **`data:` en create/update**: PascalCase (`DetalleVenta: { create: [...] }`, `Sucursal: { connect: { id } }`)
+- **Select/Include en respuestas**: PascalCase (`Cliente:`, `Usuario:`, `Producto:`, etc.)
+- **Acceso al cliente Prisma**: camelCase (`prisma.detalleBitacora`, `prisma.venta`, etc.)
+- **Where con relaciones**: PascalCase (`where: { Bitacora: { ... } }`)
+- **Campos escalares (IDs)**: siempre lowercase (`usuarioId`, `sucursalId`, etc.)
+
+### Errores Típicos
+
+| Error | Causa | Solución |
+|-------|-------|----------|
+| `Argument 'Sucursal' is missing` | `sucursal:` en `data:` | Cambiar a `Sucursal:` |
+| `Argument 'DetalleVenta' is missing` | `detalleVenta:` en `data:` | Cambiar a `DetalleVenta:` |
+
+### Frontend
+El API devuelve PascalCase. El frontend DEBE usar PascalCase al acceder a propiedades:
+- `oc.Proveedor` NO `oc.proveedor`
+- `oc.DetalleOrdenCompra` NO `oc.detalles`
+- `b.Cliente` NO `b.cliente`
+- `d.Producto` NO `d.producto`
+
+## Fixes Conocidos
+
+### devoluciones.controller.js - Relación incorrecta + PascalCase (2026-05-14)
+- **Bug 1**: Usaba `DetalleVenta` en lugar de `DetalleDevolucion` (el modelo Devolucion tiene esa relación inversa)
+- **Bug 2**: Usaba minúsculas en `data:` y `include:` (PascalCase requerido en Prisma 7.4)
+- **Fix**: Cambiar a `DetalleDevolucion` con PascalCase
+
+### bitacora.controller.js - Crear bitácora MANUAL
+- **Bug**: Campo `actualizadoEn` obligatorio no enviado
+- **Fix**: Agregar `actualizadoEn: new Date()` en `tx.bitacora.create`
+
+## Endpoints Testeados (2026-05-13)
+
+| Endpoint | Método | Estado |
+|----------|--------|--------|
+| `/auth/login` | POST | ✅ OK |
+| `/cotizaciones` | GET | ✅ OK |
+| `/compras` | GET | ✅ OK |
+| `/bitacoras` | GET/POST | ✅ OK |
+| `/pedidos` | GET | ✅ OK |
+| `/facturas` | GET | ✅ OK |
+| `/turnos-caja/historial` | GET | ✅ OK |
+| `/turnos-caja/activo` | GET | ✅ OK |
+| `/turnos-caja/resumen` | GET | ✅ OK |
+| `/usuarios/vendedores` | GET | ✅ OK |

@@ -213,21 +213,41 @@ npm run studio      # Prisma Studio
 
 ## Prisma 7.4 Naming Conventions
 
-**CRITICAL**: Prisma 7.4 uses PascalCase for ALL relation names in `select:` / `include:` objects, NOT camelCase.
+**CRITICAL**: Prisma 7.4 uses PascalCase for ALL relation names in `select:`, `include:`, and `data:` objects. Using camelCase will cause runtime errors like `Argument 'X' is missing`.
 
 ### Backend (controllers/services)
-- **Select key in response** (what API returns): PascalCase
-  - `Cliente:`, `Usuario:`, `Producto:`, `Sucursal:`, `Proveedor:`, `Categoria:`, `Departamento:`, `InventarioSucursal:`, `DetalleVenta:`, `DetalleBitacora:`, `DetalleOrdenCompra:`, `DetallePedido:`, `DetalleCotizacion:`, `AbonoBitacora:`, `AbonoCompra:`, `Bitacora:`
-- **Prisma client calls** (model access): camelCase
-  - `prisma.detalleBitacora`, `prisma.abonoBitacora`, `prisma.detalleOrdenCompra`, `prisma.inventarioSucursal`, `prisma.producto`, etc.
-- **Nested write (create/update)**: camelCase
-  - `detalleBitacora: { create: rows }`, `inventarioSucursal: { create: rows }`
-- **Where filter relations**: PascalCase
-  - `where: { Bitacora: { clienteId: ... } }`, `where: { ProveedorProducto: { some: ... } }`
-- **Scalar fields** (IDs): always lowercase
-  - `usuarioId`, `sucursalId`, `clienteId`, `productoId`, `categoriaId`, etc.
-- **Auditoria create**: use scalar IDs, NOT nested connect objects
-  - `prisma.auditoria.create({ data: { accion, modulo, referencia, usuarioId, sucursalId } })`
+
+**1. `data:` objects (create/update)** — PascalCase obligatorio
+```js
+// ✅ CORRECTO
+tx.venta.create({ data: { Sucursal: { connect: { id } }, DetalleVenta: { create: [...] } } })
+
+// ❌ ERROR: Prisma 7 rechaza minúsculas en data:
+tx.venta.create({ data: { sucursal: { connect: { id } }, detalleVenta: { create: [...] } } })
+```
+
+**2. `include:` y `select:` objects** — PascalCase
+- `Cliente:`, `Usuario:`, `Producto:`, `Sucursal:`, `Proveedor:`, `Categoria:`, `Departamento:`, `InventarioSucursal:`, `DetalleVenta:`, `DetalleBitacora:`, `DetalleOrdenCompra:`, `DetallePedido:`, `DetalleCotizacion:`, `AbonoBitacora:`, `AbonoCompra:`, `Bitacora:`, `DetalleDevolucion:`, `TurnoCaja:`, `Venta:`
+
+**3. Prisma client calls (model access)** — camelCase (NUNCA cambiar)
+- `prisma.detalleBitacora.create(...)`, `tx.detalleOrdenCompra.update(...)`, `prisma.inventarioSucursal.upsert(...)`, etc.
+
+**4. Where filter relations** — PascalCase
+- `where: { Bitacora: { clienteId: ... } }`, `where: { ProveedorProducto: { some: ... } }`
+
+**5. Scalar fields (IDs)** — siempre lowercase
+- `usuarioId`, `sucursalId`, `clienteId`, `productoId`, `categoriaId`, `turnoId`, `ordenCompraId`, `pedidoId`, etc.
+
+**6. Auditoria create** — usar scalars, NO nested connect
+- `prisma.auditoria.create({ data: { accion, modulo, referencia, usuarioId, sucursalId } })`
+
+### Typical Errors (Debugging)
+
+| Error Message | Causa | Fix |
+|---------------|-------|-----|
+| `Argument 'Sucursal' is missing` | `sucursal:` en `data:` | Cambiar a `Sucursal:` |
+| `Argument 'DetalleVenta' is missing` | `detalleVenta:` en `data:` | Cambiar a `DetalleVenta:` |
+| `Invalid tx.venta.create()` | relación mal escrita en data | Verificar PascalCase en todo el `data:` |
 
 ### Frontend (JS files reading API responses)
 The API returns PascalCase relation names. Frontend MUST use PascalCase when accessing API response properties:
@@ -252,10 +272,46 @@ The API returns PascalCase relation names. Frontend MUST use PascalCase when acc
 - `t.Sucursal` NOT `t.sucursal`
 
 ### Files Fixed (Prisma 7.4 compatibility)
-**Backend**: `compras.controller.js`, `pedidos.controller.js`, `usuarios.controller.js`, `clientes.controller.js`, `facturacion.controller.js`, `devoluciones.controller.js`, `ventas.controller.js`, `facturas.controller.js`, `bitacora.controller.js`, `ticket.controller.js`, `ticket-corte.controller.js`, `ticketAbono.controller.js`, `productos.controller.js`, `productos.service.js`, `cotizaciones.service.js`, `turnos-caja.controller.js`
+
+**2026-05-14 - PascalCase en data: de controllers**:
+- `ventas.controller.js` — 5 relaciones: Sucursal, Usuario, TurnoCaja, Cliente, DetalleVenta
+- `pedidos.controller.js` — DetallePedido (create)
+- `compras.controller.js` — DetalleOrdenCompra (create)
+- `devoluciones.controller.js` — DetalleDevolucion (era DetalleVenta, nombre incorrecto)
+
+**Backend previo**: `compras.controller.js`, `pedidos.controller.js`, `usuarios.controller.js`, `clientes.controller.js`, `facturacion.controller.js`, `devoluciones.controller.js`, `ventas.controller.js`, `facturas.controller.js`, `bitacora.controller.js`, `ticket.controller.js`, `ticket-corte.controller.js`, `ticketAbono.controller.js`, `productos.controller.js`, `productos.service.js`, `cotizaciones.service.js`, `turnos-caja.controller.js`
 
 **Frontend**: `compras.js`, `productos.js`, `bitacora.js`, `cotizaciones.js`, `historial-cortes.js`, `corte-caja.js`, `dashboard.js`
 
 ### Notes
 - **dashboard.js**: `producto.InventarioSucursal` (PascalCase), NOT `producto.inventarios`
 - **historial-cortes**: Uses `.toolbar` / `.panel` / `.pagination` patterns (same as compras)
+- **data: vs include/select**: En `data:` se usan tanto PascalCase para relaciones anidadas (`DetalleVenta: { create: [...] }`) como `{ connect: { id: X } }` para FK. Ambos estilos funcionan, pero el nombre de la clave debe ser PascalCase.
+
+## Known Fixes Applied
+
+### devoluciones.controller.js - Relación incorrecta + PascalCase
+- **Bug 1**: Usaba `DetalleVenta` en lugar de `DetalleDevolucion` (el modelo Devolucion tiene esa relación inversa)
+- **Bug 2**: Usaba minúsculas en `data:` y `include:` (PascalCase requerido en Prisma 7.4)
+- **Fix**: Cambiar a `DetalleDevolucion` con PascalCase en ambas posiciones (líneas 147 y 156)
+- **Fecha**: 2026-05-14
+
+### bitacora.controller.js - Crear bitácora MANUAL
+- **Bug**: Error al crear bitácora - faltaba campo `actualizadoEn` obligatorio
+- **Fix**: Agregar `actualizadoEn: new Date()` en la creación de `Bitacora`
+- **Línea**: ~137 (en `tx.bitacora.create`)
+
+## API Endpoints Testeados (2026-05-13)
+
+| Endpoint | Método | Estado |
+|----------|--------|--------|
+| `/auth/login` | POST | ✅ OK |
+| `/cotizaciones` | GET | ✅ OK |
+| `/compras` | GET | ✅ OK |
+| `/bitacoras` | GET/POST | ✅ OK |
+| `/pedidos` | GET | ✅ OK |
+| `/facturas` | GET | ✅ OK |
+| `/turnos-caja/historial` | GET | ✅ OK |
+| `/turnos-caja/activo` | GET | ✅ OK |
+| `/turnos-caja/resumen` | GET | ✅ OK |
+| `/usuarios/vendedores` | GET | ✅ OK |
