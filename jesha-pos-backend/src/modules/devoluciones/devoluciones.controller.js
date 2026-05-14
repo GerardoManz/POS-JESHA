@@ -144,7 +144,7 @@ exports.crear = async (req, res) => {
           montoReembolso,
           reintegraInventario: true,
           notas:               notas || null,
-          detalleVenta: {
+          DetalleDevolucion: {
             create: detallesValidados.map(d => ({
               productoId:     d.productoId,
               cantidad:       d.cantidad,
@@ -153,7 +153,7 @@ exports.crear = async (req, res) => {
           }
         },
         include: {
-          DetalleVenta: { include: { Producto: { select: { id: true, nombre: true } } } },
+          DetalleDevolucion: { include: { Producto: { select: { id: true, nombre: true } } } },
           Usuario:  { select: { id: true, nombre: true } },
           Venta:    { select: { folio: true, metodoPago: true } }
         }
