@@ -9,6 +9,18 @@
 const prisma = require('../../lib/prisma')
 const { eliminarImagenProducto } = require('../../lib/cloudinary')
 
+// Valida si claveSat/unidadSat vienen vacíos o como "null"/"undefined"
+function satInvalido(valor) {
+    if (valor === null || valor === undefined) return true
+    if (typeof valor === 'string') {
+        const trimmed = valor.trim()
+        if (trimmed === '') return true
+        if (trimmed.toLowerCase() === 'null') return true
+        if (trimmed.toLowerCase() === 'undefined') return true
+    }
+    return false
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // DEPARTAMENTOS
 // ═══════════════════════════════════════════════════════════════════
@@ -287,6 +299,15 @@ async function crear(req, res) {
             })
         }
 
+        // Validar CLAVE SAT y UNIDAD SAT obligatorios
+        if (satInvalido(claveSat) || satInvalido(unidadSat)) {
+            return res.status(400).json({
+                success: false,
+                error: 'CLAVE SAT y UNIDAD SAT son obligatorios',
+                campo: 'sat'
+            })
+        }
+
         const existente = await prisma.producto.findUnique({ where: { codigoInterno } })
         if (existente) {
             return res.status(400).json({ success: false, error: 'El código interno ya existe' })
@@ -326,7 +347,8 @@ async function crear(req, res) {
                     productoId: producto.id,
                     proveedorId: parseInt(proveedorId),
                     precioCosto: costo ? parseFloat(costo) : 0,
-                    activo: true
+                    activo: true,
+                    actualizadoEn: new Date()
                 }
             })
             console.log(`✅ Proveedor ${proveedorId} vinculado al producto ${producto.id}`)
@@ -366,6 +388,23 @@ async function editar(req, res) {
             return res.status(400).json({
                 success: false,
                 error: 'Faltan campos requeridos'
+            })
+        }
+
+        // Validar CLAVE SAT y UNIDAD SAT solo si vienen en el body
+        if ('claveSat' in req.body && satInvalido(claveSat)) {
+            return res.status(400).json({
+                success: false,
+                error: 'CLAVE SAT no puede estar vacía',
+                campo: 'claveSat'
+            })
+        }
+
+        if ('unidadSat' in req.body && satInvalido(unidadSat)) {
+            return res.status(400).json({
+                success: false,
+                error: 'UNIDAD SAT no puede estar vacía',
+                campo: 'unidadSat'
             })
         }
 
