@@ -70,9 +70,9 @@ async function cargarPedidos() {
       <tr onclick="verPedido(${p.id})">
         <td><strong>${p.folio}</strong></td>
         <td style="color:var(--muted);font-size:0.82rem">${fmtFecha(p.creadoEn)}</td>
-        <td>${p.cliente?.nombre || '<span style="color:var(--muted)">Sin cliente</span>'}</td>
-        <td style="color:var(--muted)">${p.usuario?.nombre || '—'}</td>
-        <td style="text-align:center;color:var(--muted)">${p.detalles?.length || 0}</td>
+        <td>${p.Cliente?.nombre || '<span style="color:var(--muted)">Sin cliente</span>'}</td>
+        <td style="color:var(--muted)">${p.Usuario?.nombre || '—'}</td>
+        <td style="text-align:center;color:var(--muted)">${p.DetallePedido?.length || 0}</td>
         <td><strong>${fmt(p.totalEstimado)}</strong></td>
         <td>${estadoBadge(p.estado)}</td>
         <td><button class="btn-icon" onclick="event.stopPropagation();verPedido(${p.id})">Ver</button></td>
@@ -109,21 +109,21 @@ window.verPedido = async function(id) {
     badge.className   = `ped-estado-badge ${m.cls}`
     badge.textContent = m.label
 
-    document.getElementById('ver-cliente').textContent    = p.cliente?.nombre  || '—'
-    document.getElementById('ver-telefono').textContent   = p.cliente?.telefono || '—'
+    document.getElementById('ver-cliente').textContent    = p.Cliente?.nombre  || '—'
+    document.getElementById('ver-telefono').textContent   = p.Cliente?.telefono || '—'
     document.getElementById('ver-fecha').textContent      = fmtFecha(p.creadoEn)
-    document.getElementById('ver-usuario').textContent    = p.usuario?.nombre   || '—'
-    document.getElementById('ver-sucursal').textContent   = p.sucursal?.nombre  || '—'
+    document.getElementById('ver-usuario').textContent    = p.Usuario?.nombre   || '—'
+    document.getElementById('ver-sucursal').textContent   = p.Sucursal?.nombre  || '—'
     document.getElementById('ver-actualizado').textContent = fmtFecha(p.actualizadoEn)
 
     const notasEl = document.getElementById('ver-notas')
     if (p.notas) { notasEl.textContent = p.notas; notasEl.style.display = 'block' }
     else notasEl.style.display = 'none'
 
-    document.getElementById('ver-items-tbody').innerHTML = (p.detalles || []).map(d => `
+    document.getElementById('ver-items-tbody').innerHTML = (p.DetallePedido || []).map(d => `
       <tr>
-        <td>${d.producto?.nombre || '—'}</td>
-        <td style="color:var(--muted);font-size:0.8rem">${d.producto?.codigoInterno || '—'}</td>
+        <td>${d.Producto?.nombre || '—'}</td>
+        <td style="color:var(--muted);font-size:0.8rem">${d.Producto?.codigoInterno || '—'}</td>
         <td style="text-align:center">${d.cantidad}</td>
         <td>${fmt(d.precioAcordado)}</td>
         <td><strong>${fmt(d.subtotal)}</strong></td>
@@ -183,11 +183,11 @@ window.cargarEnPos = async function(id) {
     let p = pedidoActual?.id === id ? pedidoActual : null
     if (!p) { const d = await apiFetch(`/pedidos/${id}`); p = d.data }
 
-    if (!p.detalles || p.detalles.length === 0) { jeshaToast('Este pedido no tiene productos', 'warning'); return }
+    if (!p.DetallePedido || p.DetallePedido.length === 0) { jeshaToast('Este pedido no tiene productos', 'warning'); return }
 
     // clienteId viene dentro del objeto cliente — PEDIDO_SELECT no expone clienteId directo
-    const clienteId    = p.cliente?.id    || null
-    const clienteNombre = p.cliente?.nombre || ''
+    const clienteId    = p.Cliente?.id    || null
+    const clienteNombre = p.Cliente?.nombre || ''
 
     const payload = {
       fuente:        'pedido',
@@ -195,9 +195,9 @@ window.cargarEnPos = async function(id) {
       pedId:         p.id,
       clienteId,
       clienteNombre,
-      items: p.detalles.map(d => ({
-        id:       d.producto?.id ?? d.productoId,
-        nombre:   d.producto?.nombre || '—',
+      items: p.DetallePedido.map(d => ({
+        id:       d.Producto?.id ?? d.productoId,
+        nombre:   d.Producto?.nombre || '—',
         precio:   parseFloat(d.precioAcordado),
         cantidad: parseInt(d.cantidad) || 1
       }))
@@ -247,17 +247,17 @@ window.abrirEdicion = async function(id) {
 
     // Cliente: bloqueado en edición — ya fue asignado al crear el pedido
     const clienteInput = document.getElementById('ped-cliente-buscar')
-    const clienteId    = p.cliente?.id || p.clienteId || ''
-    clienteInput.value    = p.cliente?.nombre || ''
+    const clienteId    = p.Cliente?.id || p.clienteId || ''
+    clienteInput.value    = p.Cliente?.nombre || ''
     clienteInput.disabled = true
     clienteInput.style.opacity  = '0.6'
     clienteInput.style.cursor   = 'not-allowed'
     document.getElementById('ped-cliente-id').value = clienteId
 
-    itemsEdicion = (p.detalles || []).map(d => ({
-      productoId: d.productoId || d.producto?.id,
-      nombre:     d.producto?.nombre || '—',
-      unidad:     d.producto?.unidadVenta || 'PZA',
+    itemsEdicion = (p.DetallePedido || []).map(d => ({
+      productoId: d.productoId || d.Producto?.id,
+      nombre:     d.Producto?.nombre || '—',
+      unidad:     d.Producto?.unidadVenta || 'PZA',
       cantidad:   d.cantidad,
       precio:     parseFloat(d.precioAcordado)
     }))
