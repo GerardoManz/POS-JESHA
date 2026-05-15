@@ -104,8 +104,8 @@ async function cargarVentas() {
       <tr onclick="verDetalle(${v.id})">
         <td><strong>${v.folio}</strong></td>
         <td style="color:var(--muted);font-size:0.82rem">${fmtFecha(v.fecha)}</td>
-        <td>${v.cliente || '<span style="color:var(--muted)">Público general</span>'}</td>
-        <td style="color:var(--muted)">${v.usuario}</td>
+        <td>${v.Cliente?.nombre || '<span style="color:var(--muted)">Público general</span>'}</td>
+        <td style="color:var(--muted)">${v.Usuario?.nombre}</td>
         <td>${metodoBadge(v.metodoPago)}</td>
         <td style="text-align:center;color:var(--muted)">${v.productosCount}</td>
         <td><strong>${fmt(v.total)}</strong></td>
@@ -195,9 +195,9 @@ window.verDetalle = async function(id) {
 
     document.getElementById('det-folio').textContent    = v.folio
     document.getElementById('det-fecha').textContent    = fmtFecha(v.fecha)
-    document.getElementById('det-cliente').textContent  = (typeof v.cliente === 'object' ? v.cliente?.nombre : v.cliente) || 'Público general'
-    document.getElementById('det-cajero').textContent   = v.usuario || '—'
-    document.getElementById('det-sucursal').textContent = v.sucursal || '—'
+    document.getElementById('det-cliente').textContent  = v.Cliente?.nombre || 'Público general'
+    document.getElementById('det-cajero').textContent   = v.Usuario?.nombre || '—'
+    document.getElementById('det-sucursal').textContent = v.Sucursal?.nombre || '—'
     document.getElementById('det-metodo').textContent = {
       EFECTIVO:'💵 Efectivo', CREDITO:'💳 Tarjeta', DEBITO:'💳 Tarjeta',
       TRANSFERENCIA:'🔄 Transferencia', CREDITO_CLIENTE:'🏦 Crédito cliente'
@@ -212,7 +212,7 @@ window.verDetalle = async function(id) {
     badge.textContent = estadoLabel[v.estado] || v.estado
     badge.className   = `estado-badge ${v.estado.toLowerCase()}`
 
-    document.getElementById('det-items-tbody').innerHTML = (v.detalles || []).map(d => `
+    document.getElementById('det-items-tbody').innerHTML = (v.DetalleVenta || []).map(d => `
       <tr>
         <td>${d.nombre}</td>
         <td style="color:var(--muted);font-size:0.8rem">${d.codigo}</td>
@@ -265,7 +265,7 @@ function renderAccionesModal(v) {
     && v.estado !== 'CANCELADA'
     && !facturasBloqueantes.includes(v.facturaEstado)
 
-  const clienteId = v.cliente?.id || null
+  const clienteId = v.Cliente?.id || null
 
   const btnTicket = `
     <button class="btn-ticket-hist" onclick="imprimirTicket(${v.id})">
@@ -437,9 +437,9 @@ window.abrirModalDevolucion = async function(ventaId) {
 
 function renderTablaDevolucion() {
   const tbody = document.getElementById('dev-items-tbody')
-  if (!tbody || !devVentaData?.detalles) return
+  if (!tbody || !devVentaData?.DetalleVenta) return
 
-  tbody.innerHTML = devVentaData.detalles.map(d => {
+  tbody.innerHTML = devVentaData.DetalleVenta.map(d => {
     const yaDevuelto    = devResumenPrevio[d.productoId] || 0
     const disponible    = d.cantidad - yaDevuelto
     const deshabilitado = disponible <= 0
