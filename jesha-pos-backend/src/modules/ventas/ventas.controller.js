@@ -658,6 +658,14 @@ exports.cancelarVenta = async (req, res) => {
           }
         })
 
+        // Decrementar saldoPendiente del cliente (el que se incrementó al crear venta a crédito)
+        await tx.cliente.update({
+          where: { id: venta.clienteId },
+          data: {
+            saldoPendiente: { decrement: parseFloat(venta.total) }
+          }
+        })
+
         await tx.auditoria.create({
           data: {
             usuarioId:    usuario.id,
@@ -668,7 +676,8 @@ exports.cancelarVenta = async (req, res) => {
             valorDespues: {
               bitacoraId,
               montoRestado: montoARestar,
-              detallesEliminados: detallesParaLimpiar.length
+              detallesEliminados: detallesParaLimpiar.length,
+              montoSaldoDecrementado: parseFloat(venta.total)
             }
           }
         })
