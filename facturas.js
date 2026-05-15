@@ -77,7 +77,7 @@ async function cargarFacturas() {
 
     tbody.innerHTML = lista.map(f => `
       <tr onclick="verDetalle(${f.id})">
-        <td><strong style="font-size:0.82rem">${f.venta?.folio || '—'}</strong></td>
+        <td><strong style="font-size:0.82rem">${f.Venta?.folio || '—'}</strong></td>
         <td style="font-size:0.82rem;color:var(--muted)">${fmtFecha(f.creadaEn)}</td>
         <td>
           <div style="font-weight:600;font-size:0.875rem">${f.nombreReceptor}</div>
@@ -128,7 +128,7 @@ window.verDetalle = async function(id) {
     document.getElementById('det-regimen').textContent  = f.regimenFiscal || '—'
     document.getElementById('det-cp').textContent       = f.cpReceptor || '—'
     document.getElementById('det-uso').textContent      = f.usoCfdi || '—'
-    document.getElementById('det-venta').textContent    = f.venta?.folio || '—'
+    document.getElementById('det-venta').textContent    = f.Venta?.folio || '—'
     document.getElementById('det-fecha').textContent    = fmtFecha(f.creadaEn)
     document.getElementById('det-subtotal').textContent = fmt(f.subtotal)
     document.getElementById('det-iva').textContent      = fmt(f.iva)
@@ -392,7 +392,7 @@ async function buscarVentaParaFactura() {
       <div style="display:flex;justify-content:space-between;align-items:center;">
         <div>
           <strong>${venta.folio}</strong> · ${fmt(venta.total)} · ${venta.metodoPago}
-          <br><span style="font-size:0.78rem;color:var(--muted)">Cliente: ${venta.cliente?.nombre || 'Público general'} · ${venta.estado}</span>
+          <br><span style="font-size:0.78rem;color:var(--muted)">Cliente: ${venta.Cliente?.nombre || 'Público general'} · ${venta.estado}</span>
         </div>
         <span style="color:#60d080;font-size:0.8rem;font-weight:600;">✓ Disponible</span>
       </div>
@@ -412,9 +412,9 @@ async function buscarVentaParaFactura() {
     document.getElementById('manual-error').style.display = 'none'
 
     // Autocompletar si hay datos del cliente
-    if (venta.cliente) {
-      if (venta.cliente.rfc)    document.getElementById('m-rfc').value   = venta.cliente.rfc
-      if (venta.cliente.nombre) document.getElementById('m-razon').value = venta.cliente.nombre
+    if (venta.Cliente) {
+      if (venta.Cliente.rfc)    document.getElementById('m-rfc').value   = venta.Cliente.rfc
+      if (venta.Cliente.nombre) document.getElementById('m-razon').value = venta.Cliente.nombre
     }
 
     // Focus al RFC
