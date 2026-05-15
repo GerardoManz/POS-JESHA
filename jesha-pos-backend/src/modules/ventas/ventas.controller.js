@@ -545,6 +545,29 @@ exports.cancelarVenta = async (req, res) => {
     if (!rolesPermitidos.includes(usuario.rol))
       return res.status(403).json({ error: 'Sin permiso para cancelar ventas' })
 
+    // === Validar bitácora vinculada (si es venta a crédito) ===
+    const detallesBitacora = await prisma.detalleBitacora.findMany({
+      where: { ventaId: venta.id },
+      include: {
+        Bitacora: { select: { id: true, folio: true, totalAbonado: true } }
+      }
+    })
+
+    if (detallesBitacora.length > 0) {
+      const bitacora = detallesBitacora[0].Bitacora
+      if (!bitacora) {
+        return res.status(409).json({
+          error: 'Inconsistencia de datos: DetalleBitacora sin Bitacora padre. Contacta soporte.'
+        })
+      }
+      if (parseFloat(bitacora.totalAbonado) > 0) {
+        return res.status(400).json({
+          error: `No se puede cancelar — la bitácora ${bitacora.folio} ya tiene abonos por $${parseFloat(bitacora.totalAbonado).toFixed(2)}. Usa el módulo de Devoluciones para procesar reembolso al cliente.`,
+          codigo: 'BITACORA_CON_ABONOS'
+        })
+      }
+    }
+
     await prisma.$transaction(async (tx) => {
       await tx.venta.update({
         where: { id },
@@ -608,6 +631,47 @@ exports.cancelarVenta = async (req, res) => {
             })
           }
         }
+      }
+
+      // === Limpiar bitácora si la venta era a crédito ===
+      const detallesParaLimpiar = await tx.detalleBitacora.findMany({
+        where: { ventaId: venta.id },
+        select: { id: true, bitacoraId: true, subtotal: true }
+      })
+
+      if (detallesParaLimpiar.length > 0) {
+        const bitacoraId = detallesParaLimpiar[0].bitacoraId
+        const montoARestar = detallesParaLimpiar.reduce(
+          (sum, d) => sum + parseFloat(d.subtotal),
+          0
+        )
+
+        await tx.detalleBitacora.deleteMany({
+          where: { ventaId: venta.id }
+        })
+
+        await tx.bitacora.update({
+          where: { id: bitacoraId },
+          data: {
+            totalMateriales: { decrement: montoARestar },
+            saldoPendiente:  { decrement: montoARestar }
+          }
+        })
+
+        await tx.auditoria.create({
+          data: {
+            usuarioId:    usuario.id,
+            sucursalId:   venta.sucursalId,
+            accion:       'LIMPIAR_BITACORA_POR_CANCELACION',
+            modulo:       'VENTAS',
+            referencia:   venta.folio,
+            valorDespues: {
+              bitacoraId,
+              montoRestado: montoARestar,
+              detallesEliminados: detallesParaLimpiar.length
+            }
+          }
+        })
       }
 
       await tx.auditoria.create({
