@@ -607,13 +607,13 @@ window.cargarEnPos = async function(id) {
   try {
     let cot = cotizacionActual?.id === id ? cotizacionActual : null
     if (!cot) { const d = await apiFetch(`/cotizaciones/${id}`); cot = d.data }
-    if (!cot.detalles || cot.detalles.length === 0) { jeshaToast('Esta cotización no tiene productos', 'warning'); return }
+    if (!cot.DetalleCotizacion || cot.DetalleCotizacion.length === 0) { jeshaToast('Esta cotización no tiene productos', 'warning'); return }
     const posPayload = {
       fuente: 'cotizacion', cotFolio: cot.folio, cotId: cot.id,
-      clienteId: cot.clienteId || null, clienteNombre: cot.cliente?.nombre || '',
-      items: cot.detalles.map(d => ({
-        id:       d.producto?.id ?? d.productoId,
-        nombre:   d.producto?.nombre || '—',
+      clienteId: cot.clienteId || null, clienteNombre: cot.Cliente?.nombre || '',
+      items: cot.DetalleCotizacion.map(d => ({
+        id:       d.Producto?.id ?? d.productoId,
+        nombre:   d.Producto?.nombre || '—',
         precio:   parseFloat(d.precioUnitario),
         cantidad: parseFloat(d.cantidad) || 1
       }))
@@ -773,7 +773,7 @@ function generarPdf(c) {
     <p><strong>Cliente:</strong> ${c.Cliente?.nombre || 'Público General'}</p>
     <p><strong>RFC:</strong> ${c.Cliente?.rfc || '—'}</p>
     <p><strong>Elaboró:</strong> ${c.Usuario?.nombre || '—'}</p>
-    <p><strong>Sucursal:</strong> ${c.sucursal?.nombre || '—'}</p>
+    <p><strong>Sucursal:</strong> ${c.Sucursal?.nombre || '—'}</p>
   </div>
 
   ${tablaHtml}
