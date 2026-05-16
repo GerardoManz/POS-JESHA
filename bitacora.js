@@ -282,8 +282,8 @@ function renderDetalleItems(detalles) {
       ? ' <small style="color:#ff9999;text-decoration:none;display:inline-block;">(devuelto)</small>'
       : ''
 
-    const origen = d.venta
-      ? `<small style="color:var(--muted);">VTA: ${d.venta.folio}</small>`
+    const origen = d.Venta
+      ? `<small style="color:var(--muted);">VTA: ${d.Venta.folio}</small>`
       : (d.inventarioDescontado
           ? '<small style="color:#60d080;">Descontado</small>'
           : '<small style="color:#ff9999;">⚠️ sin stock</small>')
@@ -654,10 +654,7 @@ async function registrarAbono() {
 
 function abrirTicketAbono(abonoId) {
   const base = (typeof API_URL !== 'undefined' ? API_URL : window.__JESHA_API_URL__ || '').replace(/\/$/, '')
-  const token = localStorage.getItem('jesha_token')
-  // Ventana nueva — pasa el token como query param porque es ventana popup
-  // (fetch no aplica para HTML directo)
-  const url = `${base}/bitacoras/abonos/${abonoId}/ticket?token=${token}`
+  const url = `${base}/abonos/ticket?abonoId=${abonoId}`
   window.open(url, '_blank', 'width=380,height=700')
 }
 
@@ -797,8 +794,8 @@ function abrirModalReabrir() {
   const info = document.getElementById('reabrir-info')
   const saldoAlCerrar = parseFloat(b.saldoAlCerrar || 0)
   let html = `<strong>${b.folio}</strong> — cerrada el ${formatFecha(b.cerradaEn)}<br>`
-  if (b.estado === 'CERRADA_INTERNA' && saldoAlCerrar > 0 && b.cliente) {
-    html += `Al reabrir se restaurarán <strong>${formatMoney(saldoAlCerrar)}</strong> al saldo pendiente de <strong>${b.cliente.nombre}</strong>.`
+  if (b.estado === 'CERRADA_INTERNA' && saldoAlCerrar > 0 && b.Cliente) {
+    html += `Al reabrir se restaurarán <strong>${formatMoney(saldoAlCerrar)}</strong> al saldo pendiente de <strong>${b.Cliente.nombre}</strong>.`
   } else if (b.estado === 'CERRADA_VENTA') {
     html += `Esta bitácora se cerró por pago completo. Al reabrir no se modificará el saldo del cliente.`
   } else {
