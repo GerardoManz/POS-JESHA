@@ -290,7 +290,7 @@ async function cargarAbonos(clienteId) {
         <td>${new Date(abono.creadoEn).toLocaleDateString('es-MX')}</td>
         <td>$${parseFloat(abono.monto || 0).toFixed(2)}</td>
         <td>${{ EFECTIVO:'💵 Efectivo', TRANSFERENCIA:'🔄 Transferencia', CREDITO:'💳 Tarjeta', CREDITO_CLIENTE:'🏦 Crédito' }[abono.metodoPago] || abono.metodoPago || '—'}</td>
-        <td style="font-size:0.82rem;color:var(--muted)">${abono.bitacora?.folio || '—'}${abono.bitacora?.titulo ? ` · ${abono.bitacora.titulo}` : ''}</td>
+        <td style="font-size:0.82rem;color:var(--muted)">${abono.Bitacora?.folio || '—'}${abono.Bitacora?.titulo ? ` · ${abono.Bitacora.titulo}` : ''}</td>
       </tr>
     `).join('')
   } catch (error) {
