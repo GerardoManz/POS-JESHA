@@ -212,7 +212,7 @@ window.verDetalle = async function(id) {
     badge.textContent = estadoLabel[v.estado] || v.estado
     badge.className   = `estado-badge ${v.estado.toLowerCase()}`
 
-    document.getElementById('det-items-tbody').innerHTML = (v.DetalleVenta || []).map(d => `
+    document.getElementById('det-items-tbody').innerHTML = (v.detalles || []).map(d => `
       <tr>
         <td>${d.nombre}</td>
         <td style="color:var(--muted);font-size:0.8rem">${d.codigo}</td>
@@ -437,9 +437,9 @@ window.abrirModalDevolucion = async function(ventaId) {
 
 function renderTablaDevolucion() {
   const tbody = document.getElementById('dev-items-tbody')
-  if (!tbody || !devVentaData?.DetalleVenta) return
+  if (!tbody || !devVentaData?.detalles) return
 
-  tbody.innerHTML = devVentaData.DetalleVenta.map(d => {
+  tbody.innerHTML = devVentaData.detalles.map(d => {
     const yaDevuelto    = devResumenPrevio[d.productoId] || 0
     const disponible    = d.cantidad - yaDevuelto
     const deshabilitado = disponible <= 0
