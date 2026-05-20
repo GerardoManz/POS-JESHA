@@ -178,11 +178,16 @@ const listarVendedores = async (req, res) => {
     const { sucursalId, rol } = req.usuario
     const where = { activo: true }
     // SUPERADMIN ve todos; los demás ven su sucursal + SUPERADMIN
-    if (rol !== 'SUPERADMIN' && sucursalId) {
-      where.OR = [
-        { sucursalId },
-        { rol: 'SUPERADMIN' }
-      ]
+    if (rol !== 'SUPERADMIN') {
+      if (sucursalId) {
+        where.OR = [
+          { sucursalId },
+          { rol: 'SUPERADMIN' }
+        ]
+      } else {
+        // ADMIN_SUCURSAL/EMPLEADO sin sucursal asignada — no debería ocurrir
+        return res.status(400).json({ error: 'Usuario sin sucursal asignada' })
+      }
     }
 
     const vendedores = await prisma.usuario.findMany({

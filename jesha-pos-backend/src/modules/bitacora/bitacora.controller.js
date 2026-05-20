@@ -61,7 +61,7 @@ const listar = async (req, res) => {
     if (rol !== 'SUPERADMIN' && sucursalId) where.sucursalId = sucursalId
     if (estado)    where.estado    = estado
     if (origen)    where.origen    = origen
-    if (clienteId) where.clienteId = parseInt(clienteId)
+    if (clienteId && clienteId !== 'null') where.clienteId = parseInt(clienteId)
     if (buscar) {
       where.OR = [
         { folio:   { contains: buscar, mode: 'insensitive' } },
@@ -581,7 +581,7 @@ const editarDetalle = async (req, res) => {
       })
 
       // 3. Actualizar totales de bitácora
-      const nuevoSaldo = parseFloat(bitacora.saldoPendiente) + diferencia
+      const nuevoSaldo = parseFloat((parseFloat(bitacora.saldoPendiente) + diferencia).toFixed(2))
       await tx.bitacora.update({
         where: { id: parseInt(id) },
         data: {
@@ -664,7 +664,7 @@ const quitarProducto = async (req, res) => {
         if (inv) {
           const stockAntes     = parseFloat(inv.stockActual)
           const cantReintegrar = parseFloat(detalle.cantidad)
-          const stockDespues   = stockAntes + cantReintegrar
+          const stockDespues   = parseFloat((stockAntes + cantReintegrar).toFixed(3))
           await tx.inventarioSucursal.update({
             where: { productoId_sucursalId: { productoId: detalle.productoId, sucursalId } },
             data:  { stockActual: stockDespues }

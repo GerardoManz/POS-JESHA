@@ -116,7 +116,8 @@ exports.cancelar = async (req, res) => {
       if (!fp) {
         return res.status(500).json({ error: 'Facturapi no configurada — cancelación SAT no disponible' })
       }
-      await fp.invoices.cancel(factura.facturapiId)
+      const { motivo: motivoCancelacion = '02' } = req.body || {}
+      await fp.invoices.cancel(factura.facturapiId, { motive: motivoCancelacion })
     }
 
     const actualizada = await prisma.facturaCfdi.update({

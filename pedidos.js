@@ -98,6 +98,8 @@ async function cargarPedidos() {
 // ════════════════════════════════════════════════════════════════════
 
 window.verPedido = async function(id) {
+  document.getElementById('modal-ver').classList.add('active')
+  document.getElementById('ver-folio').textContent = 'Cargando...'
   try {
     const data = await apiFetch(`/pedidos/${id}`)
     pedidoActual = data.data

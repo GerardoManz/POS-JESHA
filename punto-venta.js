@@ -59,6 +59,7 @@ if (fechaActual) {
 // ══════════════════════════════════════════════════════════════════
 
 let carrito                = []
+let _carritoRestaurado     = false // flag para evitar doble carga de cotización
 let vendedorSeleccionado   = null   // { id, nombre } — usuario que hizo la venta
 let descuentoManual        = 0      // porcentaje de descuento aplicado
 let creditoCliente         = null   // { limite, saldo, disponible } si cliente es REGISTRADO
@@ -137,6 +138,7 @@ function restaurarCarritoDeSession() {
     }
 
     actualizarCarrito()
+    _carritoRestaurado = true
     console.log(`✅ Carrito restaurado: ${carrito.length} producto(s)`)
     return true
   } catch (e) {
@@ -842,9 +844,10 @@ async function limpiarCarrito() {
   })
   if (!ok) return
 
-  carrito                = []
-  clienteSeleccionado    = null
-  vendedorSeleccionado   = null
+carrito                = []
+    clienteSeleccionado    = null
+    _carritoRestaurado     = false
+    vendedorSeleccionado   = null
   descuentoManual        = 0
   pinVendedorVerificado  = false
   creditoCliente         = null
@@ -1515,6 +1518,7 @@ async function confirmarVenta() {
     mostrarModalExito(venta.data, totalFinal)
 
     carrito             = []
+    _carritoRestaurado = false
     clienteSeleccionado = null
     montoRecibido.value = ''
     clienteNombre.value = ''

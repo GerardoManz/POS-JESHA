@@ -154,8 +154,8 @@ function renderTabla(turnos) {
       <td>${t.Usuario?.nombre || '—'}</td>
       <td>${t.Sucursal?.nombre || '—'}</td>
       <td>${fmt(ventasEfectivo > 0 ? ventasEfectivo : 0)}</td>
-      <td>—</td>
-      <td>—</td>
+      <td>${fmt(t.totalTarjeta || 0)}</td>
+      <td>${fmt(t.totalTransferencia || 0)}</td>
       <td>${fmt(t.montoFinalDeclarado)}</td>
       <td class="${diffClass}">${diffStr}</td>
       <td>

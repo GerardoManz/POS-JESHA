@@ -17,6 +17,6 @@ router.get('/historial',                 requireAuth, obtenerHistorial)
 router.get('/resumen-contable',          requireAuth, obtenerResumenContable)
 router.post('/abrir',                    requireAuth, abrirTurno)
 router.post('/cerrar',                   requireAuth, cerrarTurno)
-router.get('/:id/ticket',                generarTicketCorte)
+router.get('/:id/ticket',                requireAuth, generarTicketCorte)
 
 module.exports = router

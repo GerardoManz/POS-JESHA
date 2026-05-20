@@ -938,6 +938,7 @@ exports.actualizarMetodoPago = async (req, res) => {
 exports.obtenerReporteVentas = async (req, res) => {
   try {
     const { desde, hasta } = req.query
+    const resolverSucursalId = require('../sucursal/sucursal.helper')
 
     if (!desde || !hasta) {
       return res.status(400).json({ error: 'Se requiere desde y hasta' })
@@ -947,12 +948,17 @@ exports.obtenerReporteVentas = async (req, res) => {
     const hastaDate = new Date(hasta)
     hastaDate.setHours(23, 59, 59, 999)
 
+    const sucursalId = resolverSucursalId(req)
+
     // Query 1: Ventas resumidas (sin detalles)
+    const ventasWhere = {
+      creadaEn: { gte: desdeDate, lte: hastaDate },
+      estado: { not: 'CANCELADA' }
+    }
+    if (sucursalId) ventasWhere.sucursalId = sucursalId
+
     const ventas = await prisma.venta.findMany({
-      where: {
-        creadaEn: { gte: desdeDate, lte: hastaDate },
-        estado: { not: 'CANCELADA' }
-      },
+      where: ventasWhere,
       include: {
         Cliente: { select: { nombre: true } }
       },
@@ -960,14 +966,17 @@ exports.obtenerReporteVentas = async (req, res) => {
     })
 
     // Query 2: Top productos pre-calculado (CORREGIDO: creadaEn no createdEn)
+    const topWhere = {
+      Venta: {
+        creadaEn: { gte: desdeDate, lte: hastaDate },
+        estado: { not: 'CANCELADA' }
+      }
+    }
+    if (sucursalId) topWhere.Venta.sucursalId = sucursalId
+
     const topProductos = await prisma.detalleVenta.groupBy({
       by: ['productoId'],
-      where: {
-        Venta: {
-          creadaEn: { gte: desdeDate, lte: hastaDate },
-          estado: { not: 'CANCELADA' }
-        }
-      },
+      where: topWhere,
       _sum: {
         cantidad: true,
         subtotal: true
@@ -1060,7 +1069,7 @@ exports.obtenerDashboardKpis = async (req, res) => {
     const whereHistorico = { ...whereBase }
 
     // Queries en paralelo
-    const [resHoy, resHistorico, resRecientes] = await Promise.all([
+    const [resHoy, resHistorico, resRecientes, resDevoluciones] = await Promise.all([
       prisma.venta.aggregate({
         where: whereHoy,
         _sum: { total: true },
@@ -1078,13 +1087,25 @@ exports.obtenerDashboardKpis = async (req, res) => {
         },
         orderBy: { creadaEn: 'desc' },
         take: 8
+      }),
+      prisma.devolucion.aggregate({
+        where: {
+          creadaEn: { gte: desdeDate, lte: hastaDate },
+          tipoReembolso: { in: ['REEMBOLSO', 'CAMBIO_PARCIAL'] }
+        },
+        _sum: { montoReembolso: true }
       })
     ])
+
+    const montoDevuelto = parseFloat(resDevoluciones._sum.montoReembolso || 0)
+    const ventasNetasHoy = parseFloat(resHoy._sum.total || 0) - montoDevuelto
 
     res.json({
       success: true,
       ventasHoy: {
-        total: parseFloat(resHoy._sum.total || 0),
+        total: ventasNetasHoy,
+        totalBruto: parseFloat(resHoy._sum.total || 0),
+        devoluciones: montoDevuelto,
         count: resHoy._count.id
       },
       ventasHistorico: {

@@ -10,28 +10,8 @@ const EMPRESA = {
   tel1:     '492 101 6879',
 }
 
-function cargarLogoBase64() {
-  const rutas = [
-    path.join(__dirname, '../../../../Imagenes/logo-jesha.png'),
-    path.join(__dirname, '../../../public/Imagenes/logo-jesha.png'),
-    path.join(__dirname, '../../../../public/Imagenes/logo-jesha.png'),
-    path.join(process.cwd(), 'Imagenes/logo-jesha.png'),
-    path.join(process.cwd(), '../Imagenes/logo-jesha.png'),
-    path.join(process.cwd(), 'public/Imagenes/logo-jesha.png'),
-  ]
-  for (const ruta of rutas) {
-    if (fs.existsSync(ruta)) {
-      const data = fs.readFileSync(ruta)
-      console.log(`✅ Logo encontrado en: ${ruta}`)
-      return `data:image/png;base64,${data.toString('base64')}`
-    }
-  }
-  console.warn('⚠️  Logo no encontrado — se omitirá en el ticket')
-  return null
-}
-
-let LOGO_BASE64 = null
-try { LOGO_BASE64 = cargarLogoBase64() } catch(e) { console.warn('⚠️  Error cargando logo:', e.message) }
+// ── Logo desde Cloudinary ──
+const LOGO_URL = 'https://res.cloudinary.com/dabyfymjd/image/upload/q_auto/f_auto/v1779317658/logo-jesha_hmlble.png'
 
 // ════════════════════════════════════════════════════════════════════
 //  GET /turnos-caja/:id/ticket
@@ -97,9 +77,7 @@ function generarHTMLCorte({ turno, numVentas, totalEfectivo, totalTarjeta, total
   const diffLabel = diff === 0 ? 'Sin diferencia' : diff > 0 ? 'Sobrante' : 'Faltante'
   const diffSigno = diff >= 0 ? '+' : '-'
 
-  const logoHTML  = LOGO_BASE64
-    ? `<img src="${LOGO_BASE64}" alt="JESHA" class="logo" />`
-    : `<div class="logo-text">JESHA</div>`
+  const logoHTML  = `<img src="${LOGO_URL}" alt="JESHA" class="logo" />`
 
   const notasHTML = turno.notasCierre
     ? `<div class="notas">${turno.notasCierre.replace(/\n/g, '<br/>')}</div><hr class="sep"/>`

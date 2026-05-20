@@ -522,11 +522,9 @@ window.editarProducto = async function(id) {
     // 2. Extraer el proveedorId del producto
     let proveedorId = ''
     
-    // La relación se llama 'proveedores' (plural) no 'proveedorProducto'
+    // La relación se llama ProveedorProducto (PascalCase)
     if (producto.ProveedorProducto && Array.isArray(producto.ProveedorProducto) && producto.ProveedorProducto.length > 0) {
-      proveedorId = producto.ProveedorProducto[0].Proveedor?.id || producto.ProveedorProducto[0].proveedorId || producto.ProveedorProducto[0].id || ''
-    } else if (producto.proveedorId) {
-      proveedorId = producto.proveedorId
+      proveedorId = producto.ProveedorProducto[0].Proveedor?.id || producto.ProveedorProducto[0].proveedorId || ''
     }
     
     console.log('🎯 ProveedorId extraído:', proveedorId, typeof proveedorId)

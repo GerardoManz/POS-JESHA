@@ -397,6 +397,7 @@ window.confirmarRecepcion = async function() {
     cargarCompras()
   } catch (err) {
     jeshaToast('Error: ' + err.message, 'error')
+  } finally {
     if (btn) { btn.disabled = false; btn.textContent = '✓ Confirmar recepción' }
   }
 }
@@ -440,7 +441,10 @@ async function registrarAbono() {
     renderDetalle()
     cargarCompras()
     jeshaToast('Pago registrado', 'success')
-  } catch (err) { jeshaToast('Error: ' + err.message, 'error') }
+  } catch (err) {
+    const msg = err.message || 'Error al registrar abono'
+    jeshaToast(msg, msg.includes('excede') ? 'warning' : 'error')
+  }
   finally { btn.disabled = false; btn.textContent = '+ Registrar pago' }
 }
 
@@ -825,6 +829,13 @@ function llenarSelectCats(deptoId) {
 }
 
 function abrirModalProdRapido() {
+  // Validar que haya proveedor seleccionado
+  const provId = document.getElementById('prov-id').value
+  if (!provId) {
+    jeshaToast('Selecciona un proveedor antes de crear un producto rápido', 'warning')
+    return
+  }
+
   // Limpiar campos
   document.getElementById('pr-nombre').value      = ''
   document.getElementById('pr-codigo').value       = ''

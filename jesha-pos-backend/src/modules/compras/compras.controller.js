@@ -113,6 +113,20 @@ const crear = async (req, res) => {
     const totalEstimado = parseFloat(rows.reduce((s, r) => s + r.subtotalPedido, 0).toFixed(2))
     const folio = await generarFolio()
 
+    // Validar que todos los productos estén activos
+    const productoIds = rows.map(r => r.productoId)
+    const productosActivos = await prisma.producto.findMany({
+      where: { id: { in: productoIds }, activo: true },
+      select: { id: true }
+    })
+    const inactivos = productoIds.filter(id => !productosActivos.find(p => p.id === id))
+    if (inactivos.length > 0) {
+      return res.status(400).json({
+        success: false,
+        error: `No se puede crear la orden: los productos ${inactivos.join(', ')} están inactivos.`
+      })
+    }
+
     const oc = await prisma.ordenCompra.create({
       data: { folio, sucursalId, proveedorId: parseInt(proveedorId), usuarioId, estado: 'ENVIADO',
               totalEstimado, notas: notas || null, DetalleOrdenCompra: { create: rows } },

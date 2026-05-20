@@ -42,7 +42,7 @@ exports.crear = async (req, res) => {
 
     const venta = await prisma.venta.findUnique({
       where:   { id: parseInt(ventaId) },
-      include: { DetalleDevolucion: true, Devolucion: { include: { DetalleDevolucion: true } } }
+      include: { DetalleVenta: true, Devolucion: { include: { DetalleDevolucion: true } } }
     })
 
     if (!venta) return res.status(404).json({ error: 'Venta no encontrada' })
@@ -55,31 +55,43 @@ exports.crear = async (req, res) => {
 
     // Calcular ya devuelto por producto
     const yaDevuelto = {}
-    for (const dev of venta.devoluciones) {
+    for (const dev of venta.Devolucion || []) {
       for (const det of dev.DetalleDevolucion) {
-        yaDevuelto[det.productoId] = (yaDevuelto[det.productoId] || 0) + det.cantidad
+        yaDevuelto[det.productoId] = (yaDevuelto[det.productoId] || 0) + parseFloat(det.cantidad)
       }
     }
 
-    let montoReembolso = 0
+let montoReembolso = 0
     const detallesValidados = []
 
+    // Deduplicar productos (mismo producto en 2 líneas = solo 1 entrada)
+    const productosMap = {}
     for (const item of productos) {
-      const { productoId, cantidad } = item
-      if (!productoId || !cantidad || cantidad <= 0) {
+      const pid = parseInt(item.productoId)
+      if (!pid || !item.cantidad || parseFloat(item.cantidad) <= 0) {
         return res.status(400).json({ error: 'Cada producto requiere productoId y cantidad > 0' })
       }
-      const detalleOriginal = venta.DetalleVenta.find(d => d.productoId === parseInt(productoId))
+      if (productosMap[pid]) {
+        productosMap[pid].cantidad += parseFloat(item.cantidad)
+      } else {
+        productosMap[pid] = { ...item, productoId: pid, cantidad: parseFloat(item.cantidad) }
+      }
+    }
+    const productosDeduplicados = Object.values(productosMap)
+
+    for (const item of productosDeduplicados) {
+      const { productoId, cantidad } = item
+      const detalleOriginal = venta.DetalleVenta.find(d => d.productoId === productoId)
       if (!detalleOriginal) {
         return res.status(400).json({ error: `Producto ${productoId} no pertenece a esta venta` })
       }
-      const cantidadYaDevuelta = yaDevuelto[parseInt(productoId)] || 0
-      const cantidadDisponible = detalleOriginal.cantidad - cantidadYaDevuelta
-      if (parseInt(cantidad) > cantidadDisponible) {
-        return res.status(409).json({ error: 'Cantidad excede lo disponible para devolver', productoId, vendidos: detalleOriginal.cantidad, yaDevueltos: cantidadYaDevuelta, disponibles: cantidadDisponible, solicitados: parseInt(cantidad) })
+      const cantidadYaDevuelta = yaDevuelto[productoId] || 0
+      const cantidadDisponible = parseFloat(detalleOriginal.cantidad) - cantidadYaDevuelta
+      if (cantidad > cantidadDisponible) {
+        return res.status(409).json({ error: 'Cantidad excede lo disponible para devolver', productoId, vendidos: detalleOriginal.cantidad, yaDevueltos: cantidadYaDevuelta, disponibles: cantidadDisponible, solicitados: cantidad })
       }
-      montoReembolso += parseFloat(detalleOriginal.precioUnitario) * parseInt(cantidad)
-      detallesValidados.push({ productoId: parseInt(productoId), cantidad: parseInt(cantidad), precioUnitario: parseFloat(detalleOriginal.precioUnitario), sucursalId: venta.sucursalId })
+      montoReembolso += parseFloat(detalleOriginal.precioUnitario) * cantidad
+      detallesValidados.push({ productoId, cantidad, precioUnitario: parseFloat(detalleOriginal.precioUnitario), sucursalId: venta.sucursalId })
     }
 
     montoReembolso = parseFloat(montoReembolso.toFixed(2))
@@ -165,8 +177,8 @@ exports.crear = async (req, res) => {
           where: { productoId_sucursalId: { productoId: det.productoId, sucursalId: det.sucursalId } }
         })
         if (inv) {
-          const stockAntes   = inv.stockActual
-          const stockDespues = stockAntes + det.cantidad
+          const stockAntes   = parseFloat(inv.stockActual)
+          const stockDespues = parseFloat((stockAntes + det.cantidad).toFixed(3))
           await tx.inventarioSucursal.update({
             where: { productoId_sucursalId: { productoId: det.productoId, sucursalId: det.sucursalId } },
             data:  { stockActual: stockDespues }

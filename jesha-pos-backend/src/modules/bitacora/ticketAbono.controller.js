@@ -17,27 +17,8 @@ const EMPRESA = {
   tel1:      '492 101 6879',
 }
 
-// ── Cargar logo una sola vez ──
-function cargarLogoBase64() {
-  const rutas = [
-    path.join(__dirname, '../../../../Imagenes/logo-jesha.png'),
-    path.join(__dirname, '../../../public/Imagenes/logo-jesha.png'),
-    path.join(__dirname, '../../../../public/Imagenes/logo-jesha.png'),
-    path.join(process.cwd(), 'Imagenes/logo-jesha.png'),
-    path.join(process.cwd(), '../Imagenes/logo-jesha.png'),
-    path.join(process.cwd(), 'public/Imagenes/logo-jesha.png'),
-  ]
-  for (const ruta of rutas) {
-    if (fs.existsSync(ruta)) {
-      const data = fs.readFileSync(ruta)
-      return `data:image/png;base64,${data.toString('base64')}`
-    }
-  }
-  return null
-}
-
-let LOGO_BASE64 = null
-try { LOGO_BASE64 = cargarLogoBase64() } catch(e) { console.warn('⚠️  Error logo ticket abono:', e.message) }
+// ── Logo desde Cloudinary ──
+const LOGO_URL = 'https://res.cloudinary.com/dabyfymjd/image/upload/q_auto/f_auto/v1779317658/logo-jesha_hmlble.png'
 
 // ════════════════════════════════════════════════════════════════════
 //  GET /abonos/ticket?abonoId=123
@@ -94,9 +75,7 @@ function generarHTMLTicketAbono(abono, fechaStr, horaStr) {
   const bitacoraLiquidada = bitacora.estado === 'CERRADA_VENTA'
   const saldoCliente      = bitacora.Cliente ? parseFloat(bitacora.Cliente.saldoPendiente || 0) : null
 
-  const logoHTML = LOGO_BASE64
-    ? `<img src="${LOGO_BASE64}" alt="JESHA" class="logo" />`
-    : `<div class="logo-text">JESHA</div>`
+  const logoHTML = `<img src="${LOGO_URL}" alt="JESHA" class="logo" />`
 
   const folioCorto  = bitacora.folio?.split('-').pop() || bitacora.folio
   const abonoCorto  = String(abono.id).padStart(5, '0')

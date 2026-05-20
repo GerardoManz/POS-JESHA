@@ -5,8 +5,11 @@
 //  páginas que NO deben aparecer NI en menú NI ser accesibles
 // ════════════════════════════════════════════════════
 const ROL_BLOQUEADO = {
-  ADMIN_SUCURSAL: ['reportes', 'usuarios'],
+  ADMIN_SUCURSAL: ['usuarios'],
   EMPLEADO:       ['reportes', 'usuarios', 'corte-caja', 'dashboard', 'facturas'],
+  PRECIOS:        ['dashboard', 'punto-venta', 'cotizaciones', 'corte-caja',
+                   'historial-cortes', 'compras', 'historial', 'reportes',
+                   'facturas', 'bitacora', 'pedidos', 'clientes', 'usuarios'],
 }
 
 // Páginas donde el empleado es redirigido al POS en vez del dashboard

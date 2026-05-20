@@ -74,7 +74,7 @@ const obtenerResumen = async (req, res) => {
 
     const row = Array.isArray(totales) ? totales[0] : totales
     const totalEfectivo = parseFloat(row.totalEfectivo) || 0
-    const efectivoEsperado = parseFloat(turno.montoInicial) + totalEfectivo
+    const efectivoEsperado = parseFloat((parseFloat(turno.montoInicial) + totalEfectivo).toFixed(2))
 
     res.json({
       success: true,
@@ -293,6 +293,29 @@ const obtenerHistorial = async (req, res) => {
       prisma.turnoCaja.count({ where })
     ])
 
+    // Query 3: totales por método de pago para cada turno
+    const turnoIds = turnos.map(t => t.id)
+    const ventasPorTurno = await prisma.venta.groupBy({
+      by: ['turnoId', 'metodoPago'],
+      where: {
+        turnoId: { in: turnoIds },
+        estado: 'COMPLETADA'
+      },
+      _sum: { total: true }
+    })
+
+    const totalesPorTurno = {}
+    for (const v of ventasPorTurno) {
+      if (!totalesPorTurno[v.turnoId]) {
+        totalesPorTurno[v.turnoId] = { totalTarjeta: 0, totalTransferencia: 0 }
+      }
+      if (v.metodoPago === 'DEBITO' || v.metodoPago === 'CREDITO') {
+        totalesPorTurno[v.turnoId].totalTarjeta += parseFloat(v._sum.total || 0)
+      } else if (v.metodoPago === 'TRANSFERENCIA') {
+        totalesPorTurno[v.turnoId].totalTransferencia += parseFloat(v._sum.total || 0)
+      }
+    }
+
     res.json({
       success: true,
       data: {
@@ -304,6 +327,8 @@ const obtenerHistorial = async (req, res) => {
           montoFinalDeclarado:    parseFloat(t.montoFinalDeclarado),
           montoCalculado:         parseFloat(t.montoCalculado),
           diferencia:             parseFloat(t.diferencia),
+          totalTarjeta:           totalesPorTurno[t.id]?.totalTarjeta || 0,
+          totalTransferencia:     totalesPorTurno[t.id]?.totalTransferencia || 0,
           notasCierre:            t.notasCierre,
           Usuario:                t.Usuario,
           Sucursal:               t.Sucursal

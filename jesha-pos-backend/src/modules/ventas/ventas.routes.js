@@ -5,6 +5,7 @@
 
 const express = require('express')
 const router  = express.Router()
+const { requireRole } = require('../../middlewares/auth.middleware')
 const { 
   crearVenta, 
   obtenerVentas, 
@@ -39,7 +40,7 @@ router.get('/:id/ticket', ticketController.generarTicket)
 router.get('/:id/ticket/thermal', ticketController.generarTicketThermal)
 
 // GET /ventas/reporte-resumen — Reporte con top productos pre-calculado
-router.get('/reporte-resumen', obtenerReporteVentas)
+router.get('/reporte-resumen', requireRole('SUPERADMIN', 'ADMIN_SUCURSAL'), obtenerReporteVentas)
 
 // GET /ventas/dashboard-kpis — KPIs optimizados para dashboard
 router.get('/dashboard-kpis', obtenerDashboardKpis)
