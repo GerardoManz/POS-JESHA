@@ -1,0 +1,159 @@
+CLAVES INVALIDAS (no existen en catalogo SAT)
+============================================================
+
+Clave: 27110000
+  Unidad: H87
+  Productos afectados: 1382
+----------------------------------------
+Clave: 40142300
+  Unidad: H87
+  Productos afectados: 291
+----------------------------------------
+Clave: 39141500
+  Unidad: H87
+  Productos afectados: 208
+----------------------------------------
+Clave: 39120000
+  Unidad: H87
+  Productos afectados: 189
+----------------------------------------
+Clave: 12352109
+  Unidad: H87
+  Productos afectados: 24
+----------------------------------------
+Clave: 40161901
+  Unidad: H87
+  Productos afectados: 9
+----------------------------------------
+Clave: 40142403
+  Unidad: H87
+  Productos afectados: 9
+----------------------------------------
+Clave: 39181804
+  Unidad: H87
+  Productos afectados: 8
+----------------------------------------
+Clave: 84171500
+  Unidad: H87
+  Productos afectados: 5
+----------------------------------------
+Clave: 27113401
+  Unidad: H87
+  Productos afectados: 4
+----------------------------------------
+Clave: 31163601
+  Unidad: H87
+  Productos afectados: 4
+----------------------------------------
+Clave: 39121417
+  Unidad: MTR
+  Productos afectados: 3
+----------------------------------------
+Clave: 30181702
+  Unidad: H87
+  Productos afectados: 3
+----------------------------------------
+Clave: 22141600
+  Unidad: H87
+  Productos afectados: 2
+----------------------------------------
+Clave: 30111803
+  Unidad: KGM
+  Productos afectados: 2
+----------------------------------------
+Clave: 39121807
+  Unidad: H87
+  Productos afectados: 2
+----------------------------------------
+Clave: 40142703
+  Unidad: H87
+  Productos afectados: 2
+----------------------------------------
+Clave: 39101628
+  Unidad: H87
+  Productos afectados: 2
+----------------------------------------
+Clave: 30111906
+  Unidad: H87
+  Productos afectados: 2
+----------------------------------------
+Clave: 12352403
+  Unidad: H87
+  Productos afectados: 2
+----------------------------------------
+Clave: 39121806
+  Unidad: H87
+  Productos afectados: 2
+----------------------------------------
+Clave: 27141500
+  Unidad: H87
+  Productos afectados: 2
+----------------------------------------
+Clave: 40142603
+  Unidad: H87
+  Productos afectados: 2
+----------------------------------------
+Clave: 39101705
+  Unidad: H87
+  Productos afectados: 1
+----------------------------------------
+Clave: 40161902
+  Unidad: H87
+  Productos afectados: 1
+----------------------------------------
+Clave: 40142307
+  Unidad: H87
+  Productos afectados: 1
+----------------------------------------
+Clave: 12352110
+  Unidad: H87
+  Productos afectados: 1
+----------------------------------------
+Clave: 39121805
+  Unidad: H87
+  Productos afectados: 1
+----------------------------------------
+Clave: 12352110
+  Unidad: LTR
+  Productos afectados: 1
+----------------------------------------
+Clave: 47141800
+  Unidad: H87
+  Productos afectados: 1
+----------------------------------------
+Clave: 10111509
+  Unidad: H87
+  Productos afectados: 1
+----------------------------------------
+Clave: 30111907
+  Unidad: MTR
+  Productos afectados: 1
+----------------------------------------
+Clave: 27111902
+  Unidad: H87
+  Productos afectados: 1
+----------------------------------------
+Clave: 22101601
+  Unidad: H87
+  Productos afectados: 1
+----------------------------------------
+Clave: 31201901
+  Unidad: H87
+  Productos afectados: 1
+----------------------------------------
+Clave: 31202800
+  Unidad: MTR
+  Productos afectados: 1
+----------------------------------------
+Clave: 27131302
+  Unidad: H87
+  Productos afectados: 1
+----------------------------------------
+Clave: 39101702
+  Unidad: H87
+  Productos afectados: 1
+----------------------------------------
+Clave: 40141702
+  Unidad: H87
+  Productos afectados: 1
+----------------------------------------

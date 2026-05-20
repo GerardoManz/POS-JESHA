@@ -1,4 +1,5 @@
-const jwt = require('jsonwebtoken')
+const jwt    = require('jsonwebtoken')
+const prisma = require('../lib/prisma')
 
 // ═══════════════════════════════════════════════════════════════════
 // REQUIREAUTH - Verificar que el usuario tiene token válido
@@ -7,7 +8,7 @@ const jwt = require('jsonwebtoken')
 //   2. Query param ?token=<token>            (window.open — para tickets)
 // ═══════════════════════════════════════════════════════════════════
 
-const requireAuth = (req, res, next) => {
+const requireAuth = async (req, res, next) => {
   let token = null
 
   // 1. Intentar desde header Authorization (prioridad)
@@ -29,9 +30,22 @@ const requireAuth = (req, res, next) => {
     const payload = jwt.verify(token, process.env.JWT_SECRET)
     req.usuario = payload
     req.usuarioId = payload.id
+
+    const usuarioDB = await prisma.usuario.findUnique({
+      where: { id: payload.id },
+      select: { activo: true }
+    })
+    if (!usuarioDB?.activo) {
+      return res.status(403).json({ error: 'Usuario desactivado' })
+    }
+
     next()
   } catch (err) {
-    return res.status(401).json({ error: 'Token inválido o expirado' })
+    if (err.name === 'JsonWebTokenError' || err.name === 'TokenExpiredError') {
+      return res.status(401).json({ error: 'Token inválido o expirado' })
+    }
+    console.error('Error en requireAuth:', err)
+    return res.status(500).json({ error: 'Error interno de autenticación' })
   }
 }
 
@@ -48,6 +62,7 @@ const requireRole = (...roles) => {
     next()
   }
 }
+
 // ═══════════════════════════════════════════════════════════════════
 // REQUIRESUCURSALACCESS - Verificar que el usuario accede solo su sucursal
 // ═══════════════════════════════════════════════════════════════════

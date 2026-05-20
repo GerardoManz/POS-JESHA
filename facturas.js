@@ -623,6 +623,24 @@ document.addEventListener('DOMContentLoaded', () => {
       limpiarPdfPreview()
     }
   })
+
+  // ── Auto-facturar desde historial ──
+  const urlParams = new URLSearchParams(window.location.search)
+  const folioAutoFacturar = urlParams.get('facturar')
+  if (folioAutoFacturar) {
+    // Limpiar URL para que un refresh no re-dispare
+    window.history.replaceState({}, '', 'facturas.html')
+    // Abrir modal manual
+    document.getElementById('m-folio').value = ''
+    document.getElementById('venta-result').className = 'venta-search-result'
+    document.getElementById('venta-result').innerHTML = ''
+    document.getElementById('manual-fiscal-fields').style.display = 'none'
+    ventaParaFacturar = null
+    document.getElementById('modal-manual').classList.add('active')
+    // Llenar folio y disparar búsqueda
+    document.getElementById('m-folio').value = folioAutoFacturar
+    setTimeout(() => buscarVentaParaFactura(), 300)
+  }
 })
 
 console.log('✅ facturas.js cargado')

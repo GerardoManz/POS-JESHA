@@ -40,11 +40,11 @@ let LOGO_BASE64 = null
 try { LOGO_BASE64 = cargarLogoBase64() } catch(e) { console.warn('⚠️  Error logo ticket abono:', e.message) }
 
 // ════════════════════════════════════════════════════════════════════
-//  GET /bitacoras/abonos/:abonoId/ticket
-// ════════════════════════════════════════════════════════════════════
+//  GET /abonos/ticket?abonoId=123
+// ════════════════════════════════════════════════════════════════════════
 const generarTicketAbono = async (req, res) => {
   try {
-    const abonoId = parseInt(req.params.abonoId)
+    const abonoId = parseInt(req.query.abonoId)
     if (!abonoId) return res.status(400).json({ error: 'abonoId inválido' })
 
     const abono = await prisma.abonoBitacora.findUnique({

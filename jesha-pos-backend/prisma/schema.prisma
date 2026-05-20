@@ -92,7 +92,7 @@ model Bitacora {
   saldoPendiente  Decimal           @default(0) @db.Decimal(12, 2)
   notas           String?
   creadaEn        DateTime          @default(now())
-  actualizadoEn   DateTime
+  actualizadoEn   DateTime          @default(now()) @updatedAt
   cerradaEn       DateTime?
   titulo          String?
   descripcion     String?
@@ -313,7 +313,7 @@ model InventarioSucursal {
   stockActual       Decimal  @default(0) @db.Decimal(10, 3)
   stockMinimoAlerta Decimal  @default(5) @db.Decimal(10, 3)
   stockMaximo       Decimal? @db.Decimal(10, 3)
-  actualizadoEn     DateTime
+  actualizadoEn     DateTime @default(now()) @updatedAt
   Producto          Producto @relation(fields: [productoId], references: [id], onDelete: Cascade)
   Sucursal          Sucursal @relation(fields: [sucursalId], references: [id])
 
@@ -399,7 +399,7 @@ model Pedido {
   motivoBloqueo String?
   notas         String?
   creadoEn      DateTime        @default(now())
-  actualizadoEn DateTime
+  actualizadoEn DateTime        @default(now()) @updatedAt
   DetallePedido DetallePedido[]
   Cliente       Cliente?        @relation(fields: [clienteId], references: [id])
   Sucursal      Sucursal        @relation(fields: [sucursalId], references: [id])
@@ -432,7 +432,7 @@ model Producto {
   costoSinIvaProveedor Decimal?               @db.Decimal(10, 2)
   categoriaId          Int
   activo               Boolean                @default(true)
-  actualizadoEn        DateTime
+  actualizadoEn        DateTime               @default(now()) @updatedAt
   facturaLimite        DateTime?              @default(now())
   imagenPublicId       String?
   AlertaStock          AlertaStock[]
@@ -470,7 +470,6 @@ model Promocion {
   Categoria    Categoria?       @relation(fields: [categoriaId], references: [id])
   Sucursal     Sucursal         @relation(fields: [sucursalId], references: [id])
   Producto     Producto[]       @relation("PromocionProducto")
-
   @@index([activa])
   @@index([fechaFin])
   @@index([fechaInicio])
@@ -499,7 +498,7 @@ model ProveedorProducto {
   codigoProveedor String?
   precioCosto     Decimal   @db.Decimal(10, 2)
   activo          Boolean   @default(true)
-  actualizadoEn   DateTime
+  actualizadoEn   DateTime  @default(now()) @updatedAt
   Producto        Producto  @relation(fields: [productoId], references: [id])
   Proveedor       Proveedor @relation(fields: [proveedorId], references: [id])
 
@@ -527,6 +526,7 @@ model Sucursal {
   Usuario              Usuario[]
   Venta                Venta[]
 }
+
 
 model TurnoCaja {
   id                     Int                    @id @default(autoincrement())

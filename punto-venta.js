@@ -1092,10 +1092,19 @@ function mostrarModalConfirmacion() {
   const selEmpReset  = document.getElementById('confirm-empleado-select')
   const badgeEmpReset = document.getElementById('confirm-empleado-badge')
   const puedeVerDescEmpleado = ['SUPERADMIN', 'ADMIN_SUCURSAL'].includes(USUARIO.rol)
+  const hayClienteSeleccionado = !!clienteSeleccionado?.id
 
   if (wrapEmpleado) wrapEmpleado.style.display = puedeVerDescEmpleado ? 'block' : 'none'
-  if (selEmpReset)  { selEmpReset.value = ''; }
+  if (selEmpReset) {
+    selEmpReset.value = ''
+    selEmpReset.disabled = hayClienteSeleccionado
+  }
   if (badgeEmpReset) badgeEmpReset.style.display = 'none'
+  if (hayClienteSeleccionado && badgeEmpReset) {
+    badgeEmpReset.textContent = 'Descuento de empleado deshabilitado (cliente activo)'
+    badgeEmpReset.style.display = 'block'
+    badgeEmpReset.style.color = '#ff6b6b'
+  }
   if (puedeVerDescEmpleado) cargarEmpleadosSelect()
 
   actualizarResumenConDescuento()

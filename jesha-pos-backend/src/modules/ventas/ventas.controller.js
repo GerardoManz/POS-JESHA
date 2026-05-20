@@ -405,7 +405,7 @@ exports.obtenerVentas = async (req, res) => {
         include: {
           Cliente: { select: { id: true, nombre: true } },
           Usuario: { select: { id: true, nombre: true } },
-          DetalleVenta: true
+          DetalleVenta: { include: { Producto: { select: { nombre: true, codigoInterno: true } } } }
         }
       }),
       prisma.venta.count({ where })
@@ -424,7 +424,14 @@ exports.obtenerVentas = async (req, res) => {
         total:          v.total,
         productosCount: v.DetalleVenta.length,
         estado:         v.estado,
-        facturaEstado:  v.facturaEstado
+        facturaEstado:  v.facturaEstado,
+        detalles:       v.DetalleVenta.map(d => ({
+          productoId:   d.productoId,
+          nombre:       d.Producto?.nombre || '—',
+          codigo:       d.Producto?.codigoInterno || '',
+          cantidad:     d.cantidad,
+          subtotal:      d.subtotal
+        }))
       })),
       total, skip: parseInt(skip), take: parseInt(take)
     })
@@ -922,5 +929,181 @@ exports.actualizarMetodoPago = async (req, res) => {
   } catch (err) {
     console.error('❌ Error en actualizarMetodoPago:', err)
     res.status(500).json({ error: err.message || 'Error al actualizar método de pago' })
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════
+//  REPORTE DE VENTAS — Top productos pre-calculado
+// ════════════════════════════════════════════════════════════════════════
+exports.obtenerReporteVentas = async (req, res) => {
+  try {
+    const { desde, hasta } = req.query
+
+    if (!desde || !hasta) {
+      return res.status(400).json({ error: 'Se requiere desde y hasta' })
+    }
+
+    const desdeDate = new Date(desde)
+    const hastaDate = new Date(hasta)
+    hastaDate.setHours(23, 59, 59, 999)
+
+    // Query 1: Ventas resumidas (sin detalles)
+    const ventas = await prisma.venta.findMany({
+      where: {
+        creadaEn: { gte: desdeDate, lte: hastaDate },
+        estado: { not: 'CANCELADA' }
+      },
+      include: {
+        Cliente: { select: { nombre: true } }
+      },
+      orderBy: { creadaEn: 'desc' }
+    })
+
+    // Query 2: Top productos pre-calculado (CORREGIDO: creadaEn no createdEn)
+    const topProductos = await prisma.detalleVenta.groupBy({
+      by: ['productoId'],
+      where: {
+        Venta: {
+          creadaEn: { gte: desdeDate, lte: hastaDate },
+          estado: { not: 'CANCELADA' }
+        }
+      },
+      _sum: {
+        cantidad: true,
+        subtotal: true
+      },
+      orderBy: {
+        _sum: { cantidad: 'desc' }
+      },
+      take: 10
+    })
+
+    // Obtener nombres de productos
+    const productoIds = topProductos.map(t => t.productoId)
+    const productos = await prisma.producto.findMany({
+      where: { id: { in: productoIds } },
+      select: { id: true, nombre: true, codigoInterno: true }
+    })
+    const productoMap = productos.reduce((acc, p) => {
+      acc[p.id] = p
+      return acc
+    }, {})
+
+    // Mapear top productos con nombres
+    const topProductosConNombre = topProductos.map(t => ({
+      productoId: t.productoId,
+      nombre: productoMap[t.productoId]?.nombre || '—',
+      codigo: productoMap[t.productoId]?.codigoInterno || '',
+      cantidad: parseFloat(t._sum.cantidad || 0),
+      importe: parseFloat(t._sum.subtotal || 0)
+    }))
+
+    res.json({
+      success: true,
+      desde,
+      hasta,
+      ventas: ventas.map(v => ({
+        id: v.id,
+        folio: v.folio,
+        fecha: v.creadaEn,
+        metodoPago: v.metodoPago,
+        total: v.total,
+        estado: v.estado,
+        clienteId: v.clienteId,
+        cliente: v.Cliente?.nombre || 'Público general',
+        desglosePagos: v.desglosePagos
+      })),
+      topProductos: topProductosConNombre
+    })
+
+  } catch (error) {
+    console.error('❌ Error en obtenerReporteVentas:', error)
+    res.status(500).json({ error: error.message })
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════
+//  DASHBOARD KPIs — Datos optimizados para el dashboard
+// ════════════════════════════════════════════════════════════════════════
+exports.obtenerDashboardKpis = async (req, res) => {
+  try {
+    const { desde, hasta, sucursalId } = req.query
+    const { sucursalId: sucursalUsuario } = req.usuario
+
+    // Determinar sucursal (del query o del token)
+    const filterSucursalId = sucursalId || sucursalUsuario
+
+    // Construir where base (siempre exclude canceladas)
+    const whereBase = {
+      estado: { not: 'CANCELADA' }
+    }
+    if (filterSucursalId) whereBase.sucursalId = parseInt(filterSucursalId)
+
+    // Query 1: Ventas de hoy
+    let desdeDate, hastaDate
+    if (desde && hasta) {
+      desdeDate = new Date(desde)
+      hastaDate = new Date(hasta)
+      hastaDate.setHours(23, 59, 59, 999)
+    } else {
+      const hoy = new Date()
+      desdeDate = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate())
+      hastaDate = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate(), 23, 59, 59)
+    }
+
+    const whereHoy = {
+      ...whereBase,
+      creadaEn: { gte: desdeDate, lte: hastaDate }
+    }
+
+    // Query 2: Ventas históricas (sin rango de fechas)
+    const whereHistorico = { ...whereBase }
+
+    // Queries en paralelo
+    const [resHoy, resHistorico, resRecientes] = await Promise.all([
+      prisma.venta.aggregate({
+        where: whereHoy,
+        _sum: { total: true },
+        _count: { id: true }
+      }),
+      prisma.venta.aggregate({
+        where: whereHistorico,
+        _sum: { total: true },
+        _count: { id: true }
+      }),
+      prisma.venta.findMany({
+        where: whereBase,
+        include: {
+          Cliente: { select: { nombre: true } }
+        },
+        orderBy: { creadaEn: 'desc' },
+        take: 8
+      })
+    ])
+
+    res.json({
+      success: true,
+      ventasHoy: {
+        total: parseFloat(resHoy._sum.total || 0),
+        count: resHoy._count.id
+      },
+      ventasHistorico: {
+        total: parseFloat(resHistorico._sum.total || 0),
+        count: resHistorico._count.id
+      },
+      ventasRecientes: resRecientes.map(v => ({
+        id: v.id,
+        folio: v.folio,
+        fecha: v.creadaEn,
+        cliente: v.Cliente?.nombre || 'Público general',
+        metodoPago: v.metodoPago,
+        total: v.total,
+        estado: v.estado
+      }))
+    })
+
+  } catch (error) {
+    console.error('❌ Error en obtenerDashboardKpis:', error)
+    res.status(500).json({ error: error.message })
   }
 }

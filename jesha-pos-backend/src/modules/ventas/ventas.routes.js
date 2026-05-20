@@ -11,7 +11,9 @@ const {
   obtenerVenta, 
   obtenerHistorial, 
   cancelarVenta,
-  actualizarMetodoPago  // ← NUEVA IMPORTACIÓN
+  actualizarMetodoPago,
+  obtenerReporteVentas,
+  obtenerDashboardKpis  // ← NUEVA IMPORTACIÓN
 } = require('./ventas.controller')
 const ticketController = require('./ticket.controller')
 
@@ -35,6 +37,12 @@ router.get('/:id/ticket', ticketController.generarTicket)
 
 // GET /ventas/:id/ticket/thermal — Ticket optimizado 80mm
 router.get('/:id/ticket/thermal', ticketController.generarTicketThermal)
+
+// GET /ventas/reporte-resumen — Reporte con top productos pre-calculado
+router.get('/reporte-resumen', obtenerReporteVentas)
+
+// GET /ventas/dashboard-kpis — KPIs optimizados para dashboard
+router.get('/dashboard-kpis', obtenerDashboardKpis)
 
 // GET /ventas/:id — Venta específica con detalles
 router.get('/:id', obtenerVenta)

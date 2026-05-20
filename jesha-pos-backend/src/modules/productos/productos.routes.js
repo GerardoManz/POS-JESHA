@@ -69,8 +69,9 @@ router.post('/importar/datos-fiscales', uploadCSV.single('archivo'), importacion
 // CRUD PRODUCTOS
 // ═══════════════════════════════════════════════════════════════════
 
-router.get('/',                  productosController.listar)
-router.get('/:id',               productosController.obtener)
+router.get('/',                    productosController.listar)
+
+// GET /productos/:id — Venta específica
 router.post('/',                 productosController.crear)
 router.put('/:id',               productosController.editar)
 router.patch('/:id/estado',      productosController.cambiarEstado)

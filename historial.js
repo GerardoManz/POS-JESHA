@@ -288,7 +288,13 @@ function renderAccionesModal(v) {
       ✏️ Editar método de pago
     </button>` : ''
 
-  div.innerHTML = btnTicket + btnDevolver + btnCancelar + btnEditarMetodo
+  const puedeFacturar = v.estado === 'COMPLETADA' && v.facturaEstado === 'DISPONIBLE'
+  const btnFacturar = puedeFacturar ? `
+    <button class="btn-facturar-hist" onclick="event.stopPropagation();window.open('facturas.html?facturar=${encodeURIComponent(v.folio)}','_blank')">
+      🧾 Facturar
+    </button>` : ''
+
+  div.innerHTML = btnTicket + btnDevolver + btnCancelar + btnEditarMetodo + btnFacturar
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -1030,6 +1036,17 @@ console.log('✅ historial.js cargado')
         transition: all 0.15s;
       }
       .btn-editar-metodo:hover { background: rgba(100,160,255,0.2); }
+      .btn-facturar-hist {
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 8px 16px;
+        background: rgba(96,208,128,0.1);
+        border: 1px solid rgba(96,208,128,0.3);
+        border-radius: 8px; color: #60d080;
+        font-family: 'Barlow', sans-serif;
+        font-size: 0.85rem; font-weight: 700; cursor: pointer;
+        transition: all 0.15s;
+      }
+      .btn-facturar-hist:hover { background: rgba(96,208,128,0.2); }
       .em-opcion {
         display: flex; align-items: center; gap: 10px;
         padding: 10px 13px;

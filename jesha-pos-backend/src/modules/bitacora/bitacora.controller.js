@@ -134,7 +134,8 @@ const crear = async (req, res) => {
           totalMateriales: 0,
           totalAbonado:    0,
           saldoPendiente:  0,
-          notas:           notas?.trim() || null
+          notas:           notas?.trim() || null,
+          actualizadoEn:   new Date()
         },
         select: BITACORA_SELECT
       })

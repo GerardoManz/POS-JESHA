@@ -5,6 +5,20 @@
 
 const prisma = require('../../lib/prisma')
 
+// Inicialización de Facturapi (misma lógica que en facturacion.controller.js)
+let facturapi = null
+function getFacturapi() {
+  if (facturapi) return facturapi
+  const key = process.env.FACTURAPI_KEY
+  if (!key) {
+    console.warn('⚠️  FACTURAPI_KEY no configurada — cancelación SAT desactivada')
+    return null
+  }
+  const Facturapi = require('facturapi').default
+  facturapi = new Facturapi(key)
+  return facturapi
+}
+
 // GET /facturas — listar con filtros
 exports.listar = async (req, res) => {
   try {
@@ -96,14 +110,24 @@ exports.cancelar = async (req, res) => {
     if (!factura) return res.status(404).json({ error: 'Factura no encontrada' })
     if (factura.estado === 'CANCELADA') return res.status(400).json({ error: 'Ya está cancelada' })
 
+    // Cancelar en SAT (Facturapi) — si falla, toda la operación falla
+    if (factura.facturapiId) {
+      const fp = getFacturapi()
+      if (!fp) {
+        return res.status(500).json({ error: 'Facturapi no configurada — cancelación SAT no disponible' })
+      }
+      await fp.invoices.cancel(factura.facturapiId)
+    }
+
     const actualizada = await prisma.facturaCfdi.update({
       where: { id },
-      data:  { estado: 'CANCELADA' }
+      data: { estado: 'CANCELADA' }
     })
 
-    console.log(`✅ Factura ${id} cancelada por ${req.usuario?.nombre}`)
+    console.log(`✅ Factura ${id} cancelada (local + SAT) por ${req.usuario?.nombre}`)
     res.json({ success: true, data: actualizada })
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    console.error('❌ Error cancelando factura:', err)
+    res.status(500).json({ error: 'No se pudo cancelar la factura: ' + err.message })
   }
 }

@@ -42,7 +42,7 @@ exports.crear = async (req, res) => {
 
     const venta = await prisma.venta.findUnique({
       where:   { id: parseInt(ventaId) },
-      include: { DetalleVenta: true, Devolucion: { include: { DetalleVenta: true } } }
+      include: { DetalleDevolucion: true, Devolucion: { include: { DetalleDevolucion: true } } }
     })
 
     if (!venta) return res.status(404).json({ error: 'Venta no encontrada' })
@@ -56,7 +56,7 @@ exports.crear = async (req, res) => {
     // Calcular ya devuelto por producto
     const yaDevuelto = {}
     for (const dev of venta.devoluciones) {
-      for (const det of dev.DetalleVenta) {
+      for (const det of dev.DetalleDevolucion) {
         yaDevuelto[det.productoId] = (yaDevuelto[det.productoId] || 0) + det.cantidad
       }
     }
@@ -289,7 +289,7 @@ exports.crear = async (req, res) => {
         tipoReembolso,
         motivo,
         montoReembolso,
-        productos:      devolucion.DetalleVenta.map(d => ({ nombre: d.Producto.nombre, cantidad: d.cantidad, precio: d.precioUnitario })),
+        productos:      devolucion.DetalleDevolucion.map(d => ({ nombre: d.Producto.nombre, cantidad: d.cantidad, precio: d.precioUnitario })),
         cajero:         devolucion.Usuario.nombre,
         creadaEn:       devolucion.creadaEn
       }
@@ -320,7 +320,7 @@ exports.listar = async (req, res) => {
         include: {
           Venta:    { select: { folio: true, metodoPago: true } },
           Usuario:  { select: { id: true, nombre: true } },
-          DetalleVenta: { include: { Producto: { select: { nombre: true } } } }
+          DetalleDevolucion: { include: { Producto: { select: { nombre: true } } } }
         }
       }),
       prisma.devolucion.count({ where })
@@ -330,7 +330,7 @@ exports.listar = async (req, res) => {
       data: devoluciones.map(d => ({
         id: d.id, ventaFolio: d.Venta.folio, metodoPago: d.Venta.metodoPago,
         tipoReembolso: d.tipoReembolso, motivo: d.motivo, montoReembolso: d.montoReembolso,
-        cajero: d.Usuario.nombre, productos: d.DetalleVenta.length, creadaEn: d.creadaEn
+        cajero: d.Usuario.nombre, productos: d.DetalleDevolucion.length, creadaEn: d.creadaEn
       })),
       total, skip: parseInt(skip), take: parseInt(take)
     })
@@ -351,12 +351,12 @@ exports.porVenta = async (req, res) => {
       orderBy: { creadaEn: 'desc' },
       include: {
         Usuario:  { select: { nombre: true } },
-        DetalleVenta: { include: { Producto: { select: { nombre: true, codigoInterno: true } } } }
+        DetalleDevolucion: { include: { Producto: { select: { nombre: true, codigoInterno: true } } } }
       }
     })
     const resumenProductos = {}
     for (const dev of devoluciones) {
-      for (const det of dev.DetalleVenta) {
+      for (const det of dev.DetalleDevolucion) {
         resumenProductos[det.productoId] = (resumenProductos[det.productoId] || 0) + det.cantidad
       }
     }

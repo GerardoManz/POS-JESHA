@@ -1,0 +1,207 @@
+{
+  "fecha": "2026-05-18T19:04:42.452Z",
+  "resumen": {
+    "totalGrupos": 270,
+    "validas": 231,
+    "invalidas": 39,
+    "sinClave": 0
+  },
+  "invalidas": [
+    {
+      "claveSat": "27110000",
+      "unidadSat": "H87",
+      "productos": 1382
+    },
+    {
+      "claveSat": "40142300",
+      "unidadSat": "H87",
+      "productos": 291
+    },
+    {
+      "claveSat": "39141500",
+      "unidadSat": "H87",
+      "productos": 208
+    },
+    {
+      "claveSat": "39120000",
+      "unidadSat": "H87",
+      "productos": 189
+    },
+    {
+      "claveSat": "12352109",
+      "unidadSat": "H87",
+      "productos": 24
+    },
+    {
+      "claveSat": "40161901",
+      "unidadSat": "H87",
+      "productos": 9
+    },
+    {
+      "claveSat": "40142403",
+      "unidadSat": "H87",
+      "productos": 9
+    },
+    {
+      "claveSat": "39181804",
+      "unidadSat": "H87",
+      "productos": 8
+    },
+    {
+      "claveSat": "84171500",
+      "unidadSat": "H87",
+      "productos": 5
+    },
+    {
+      "claveSat": "27113401",
+      "unidadSat": "H87",
+      "productos": 4
+    },
+    {
+      "claveSat": "31163601",
+      "unidadSat": "H87",
+      "productos": 4
+    },
+    {
+      "claveSat": "39121417",
+      "unidadSat": "MTR",
+      "productos": 3
+    },
+    {
+      "claveSat": "30181702",
+      "unidadSat": "H87",
+      "productos": 3
+    },
+    {
+      "claveSat": "22141600",
+      "unidadSat": "H87",
+      "productos": 2
+    },
+    {
+      "claveSat": "30111803",
+      "unidadSat": "KGM",
+      "productos": 2
+    },
+    {
+      "claveSat": "39121807",
+      "unidadSat": "H87",
+      "productos": 2
+    },
+    {
+      "claveSat": "40142703",
+      "unidadSat": "H87",
+      "productos": 2
+    },
+    {
+      "claveSat": "39101628",
+      "unidadSat": "H87",
+      "productos": 2
+    },
+    {
+      "claveSat": "30111906",
+      "unidadSat": "H87",
+      "productos": 2
+    },
+    {
+      "claveSat": "12352403",
+      "unidadSat": "H87",
+      "productos": 2
+    },
+    {
+      "claveSat": "39121806",
+      "unidadSat": "H87",
+      "productos": 2
+    },
+    {
+      "claveSat": "27141500",
+      "unidadSat": "H87",
+      "productos": 2
+    },
+    {
+      "claveSat": "40142603",
+      "unidadSat": "H87",
+      "productos": 2
+    },
+    {
+      "claveSat": "39101705",
+      "unidadSat": "H87",
+      "productos": 1
+    },
+    {
+      "claveSat": "40161902",
+      "unidadSat": "H87",
+      "productos": 1
+    },
+    {
+      "claveSat": "40142307",
+      "unidadSat": "H87",
+      "productos": 1
+    },
+    {
+      "claveSat": "12352110",
+      "unidadSat": "H87",
+      "productos": 1
+    },
+    {
+      "claveSat": "39121805",
+      "unidadSat": "H87",
+      "productos": 1
+    },
+    {
+      "claveSat": "12352110",
+      "unidadSat": "LTR",
+      "productos": 1
+    },
+    {
+      "claveSat": "47141800",
+      "unidadSat": "H87",
+      "productos": 1
+    },
+    {
+      "claveSat": "10111509",
+      "unidadSat": "H87",
+      "productos": 1
+    },
+    {
+      "claveSat": "30111907",
+      "unidadSat": "MTR",
+      "productos": 1
+    },
+    {
+      "claveSat": "27111902",
+      "unidadSat": "H87",
+      "productos": 1
+    },
+    {
+      "claveSat": "22101601",
+      "unidadSat": "H87",
+      "productos": 1
+    },
+    {
+      "claveSat": "31201901",
+      "unidadSat": "H87",
+      "productos": 1
+    },
+    {
+      "claveSat": "31202800",
+      "unidadSat": "MTR",
+      "productos": 1
+    },
+    {
+      "claveSat": "27131302",
+      "unidadSat": "H87",
+      "productos": 1
+    },
+    {
+      "claveSat": "39101702",
+      "unidadSat": "H87",
+      "productos": 1
+    },
+    {
+      "claveSat": "40141702",
+      "unidadSat": "H87",
+      "productos": 1
+    }
+  ],
+  "sinClave": []
+}

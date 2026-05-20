@@ -61,9 +61,9 @@ async function cargarReportes() {
   setLoading()
 
   try {
-    const data   = await apiFetch(`/ventas?desde=${desde}&hasta=${hasta}&take=9999`)
-    const ventas = data.data || []
-    procesarVentas(ventas)
+    const data   = await apiFetch(`/ventas/reporte-resumen?desde=${desde}&hasta=${hasta}`)
+    const { ventas, topProductos } = data
+    procesarVentas(ventas, topProductos)
   } catch (err) {
     console.error('❌ Reportes:', err.message)
     document.querySelectorAll('#rep-metodos,#rep-productos,#rep-por-dia,#rep-clientes')
@@ -79,19 +79,26 @@ function setLoading() {
 // ════════════════════════════════════════════════════════════════════
 //  PROCESAR VENTAS
 // ════════════════════════════════════════════════════════════════════
-function procesarVentas(ventas) {
-  const totalIngresos  = ventas.reduce((s, v) => s + parseFloat(v.total), 0)
-  const ticketPromedio = ventas.length > 0 ? totalIngresos / ventas.length : 0
+function procesarVentas(ventas, topProductos = null) {
+  // Filtrar ventas canceladas
+  const ventasActivas = ventas.filter(v => v.estado !== 'CANCELADA')
+
+  const totalIngresos  = ventasActivas.reduce((s, v) => s + parseFloat(v.total), 0)
+  const ticketPromedio = ventasActivas.length > 0 ? totalIngresos / ventasActivas.length : 0
 
   // KPIs
   document.getElementById('kpi-ingresos').textContent     = fmt(totalIngresos)
-  document.getElementById('kpi-ingresos-sub').textContent = `${ventas.length} venta${ventas.length !== 1 ? 's' : ''}`
+  document.getElementById('kpi-ingresos-sub').textContent = `${ventasActivas.length} venta${ventasActivas.length !== 1 ? 's' : ''}`
   document.getElementById('kpi-ticket').textContent       = fmt(ticketPromedio)
 
-  const efectivo   = ventas.filter(v => v.metodoPago === 'EFECTIVO')
-  const tarjeta    = ventas.filter(v => ['CREDITO','DEBITO','TRANSFERENCIA'].includes(v.metodoPago))
-  const sumEfectivo = efectivo.reduce((s,v) => s + parseFloat(v.total), 0)
-  const sumTarjeta  = tarjeta.reduce((s,v) => s + parseFloat(v.total), 0)
+  const efectivo      = ventasActivas.filter(v => v.metodoPago === 'EFECTIVO')
+  const tarjeta       = ventasActivas.filter(v => ['CREDITO','DEBITO','TRANSFERENCIA'].includes(v.metodoPago))
+  const creditoCli    = ventasActivas.filter(v => v.metodoPago === 'CREDITO_CLIENTE')
+  const mixto         = ventasActivas.filter(v => v.metodoPago === 'MIXTO')
+  const sumEfectivo   = efectivo.reduce((s,v) => s + parseFloat(v.total), 0)
+  const sumTarjeta    = tarjeta.reduce((s,v) => s + parseFloat(v.total), 0)
+  const sumCreditoCli = creditoCli.reduce((s,v) => s + parseFloat(v.total), 0)
+  const sumMixto      = mixto.reduce((s,v) => s + parseFloat(v.total), 0)
 
   document.getElementById('kpi-efectivo').textContent     = fmt(sumEfectivo)
   document.getElementById('kpi-efectivo-sub').textContent = `${efectivo.length} ventas`
@@ -99,10 +106,10 @@ function procesarVentas(ventas) {
   document.getElementById('kpi-tarjeta-sub').textContent  = `${tarjeta.length} ventas`
 
   // Paneles
-  renderMetodos(ventas, totalIngresos)
-  renderProductos(ventas)
-  renderPorDia(ventas)
-  renderClientes(ventas, totalIngresos)
+  renderMetodos(ventasActivas, totalIngresos)
+  renderProductos(ventasActivas, topProductos)
+  renderPorDia(ventasActivas)
+  renderClientes(ventasActivas, totalIngresos)
 }
 
 // ── Ventas por método de pago ──
@@ -142,11 +149,47 @@ function renderMetodos(ventas, totalIngresos) {
 }
 
 // ── Top productos ──
-function renderProductos(ventas) {
+function renderProductos(ventas, topProductos = null) {
   const el = document.getElementById('rep-productos')
   if (ventas.length === 0) { el.className = 'panel-empty'; el.textContent = 'Sin ventas en este período'; return }
 
-  // Agrupar detalles por productoId sumando cantidad e importe
+  // Si viene del backend pre-calculado (nuevo endpoint)
+  if (topProductos && topProductos.length > 0) {
+    const maxCant = topProductos[0].cantidad || 1
+
+    const filas = topProductos.map((p, i) => {
+      const pct = ((p.cantidad / maxCant) * 100).toFixed(0)
+      return `<tr>
+        <td style="color:var(--muted);font-size:0.78rem;text-align:center">${i + 1}</td>
+        <td style="max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${p.nombre}">
+          ${p.nombre}
+          ${p.codigo ? `<div style="font-size:0.72rem;color:var(--muted)">${p.codigo}</div>` : ''}
+        </td>
+        <td style="text-align:center"><strong>${p.cantidad}</strong></td>
+        <td><strong>${fmt(p.importe)}</strong></td>
+        <td style="min-width:100px;">
+          <div class="barra-wrap">
+            <div class="barra"><div class="barra-fill azul" style="width:${pct}%"></div></div>
+          </div>
+        </td>
+      </tr>`
+    }).join('')
+
+    el.className = ''
+    el.innerHTML = `<table class="rep-table">
+      <thead><tr>
+        <th style="width:32px">#</th>
+        <th>Producto</th>
+        <th style="width:70px;text-align:center">Unidades</th>
+        <th style="width:100px">Importe</th>
+        <th>Volumen</th>
+      </tr></thead>
+      <tbody>${filas}</tbody>
+    </table>`
+    return
+  }
+
+  // Fallback: calcular desde ventas.detalles (backwards compatible)
   const prodMap = {}
   ventas.forEach(v => {
     if (!v.detalles || v.detalles.length === 0) return
@@ -155,7 +198,7 @@ function renderProductos(ventas) {
       if (!prodMap[key]) {
         prodMap[key] = { nombre: d.nombre || '—', codigo: d.codigo || '', cantidad: 0, importe: 0 }
       }
-      prodMap[key].cantidad += parseInt(d.cantidad || 0)
+      prodMap[key].cantidad += parseFloat(d.cantidad || 0)
       prodMap[key].importe  += parseFloat(d.subtotal || 0)
     })
   })

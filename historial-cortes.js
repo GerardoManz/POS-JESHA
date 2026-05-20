@@ -85,12 +85,11 @@ function limpiarFiltros() {
 
 async function cargarCajeros() {
   try {
-    const res = await fetch(`${API_URL}/usuarios`, {
+    const res = await fetch(`${API_URL}/usuarios/vendedores`, {
       headers: { 'Authorization': `Bearer ${TOKEN}` }
     })
     if (!res.ok) return
-    const data = await res.json()
-    const users = data.data || []
+    const users = await res.json()
     filtroCajero.innerHTML = '<option value="">Todos</option>'
     users.forEach(u => {
       const opt = document.createElement('option')

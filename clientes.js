@@ -136,7 +136,7 @@ function renderizarTabla() {
   }
 
   clientesTbody.innerHTML = clientesLista.map(cliente => {
-    const creditoDisponible = (cliente.limiteCredito || 0) - (cliente.saldoCredito || 0)
+    const creditoDisponible = (cliente.limiteCredito || 0) - (cliente.saldoPendiente || 0)
     const apodo = cliente.apodo ? ` (${cliente.apodo})` : ''
     const tipoClass = cliente.tipo ? cliente.tipo.toLowerCase() : 'general'
     const estadoClass = cliente.activo ? 'activo' : 'inactivo'

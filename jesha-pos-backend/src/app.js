@@ -45,6 +45,11 @@ app.get('/facturar', (req, res) => {
 app.use('/auth',          require('./modules/auth/auth.routes'))
 app.use('/facturar/api',  require('./modules/facturacion/facturacion.routes'))
 
+const { generarTicketAbono } = require('./modules/bitacora/ticketAbono.controller')
+const abonosRouter = require('express').Router()
+abonosRouter.get('/ticket', generarTicketAbono)
+app.use('/abonos', abonosRouter)
+
 // ── Rutas protegidas ──
 app.use('/facturas',     requireAuth, require('./modules/facturas/facturas.routes'))
 app.use('/usuarios',     requireAuth, require('./modules/usuarios/usuarios.routes'))

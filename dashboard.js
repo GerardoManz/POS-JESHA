@@ -77,9 +77,7 @@ async function inicializarFiltroSucursal() {
 
     sel.addEventListener('change', e => {
       sucursalSeleccionada = e.target.value
-      // Refrescar todo
       cargarKPIs()
-      cargarVentasRecientes()
       cargarStockBajo()
     })
   } catch(e) {
@@ -108,32 +106,29 @@ async function cargarKPIs() {
   }
 
   try {
-    // ── Ventas hoy ──
-    const hoy   = new Date()
-    const desde = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate()).toISOString()
-    const hasta = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate(), 23, 59, 59).toISOString()
-    const queryHoy = sucursalSeleccionada
-      ? `/ventas?desde=${desde}&hasta=${hasta}&take=9999&sucursalId=${sucursalSeleccionada}`
-      : `/ventas?desde=${desde}&hasta=${hasta}&take=9999`
-    const ventasHoy = await apiFetch(queryHoy)
-    const totalHoy  = (ventasHoy.data || []).reduce((s, v) => s + parseFloat(v.total), 0)
-    const countHoy  = ventasHoy.total || 0
+    // ── KPIs de ventas (endpoint optimizado) ──
+    const params = new URLSearchParams()
+    if (sucursalSeleccionada) params.append('sucursalId', sucursalSeleccionada)
+    const hoy = new Date()
+    params.append('desde', new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate()).toISOString())
+    params.append('hasta', new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate(), 23, 59, 59).toISOString())
 
-    const elVentasHoy = document.getElementById('kpi-ventas-hoy')
-    elVentasHoy.querySelector('.kpi-value').textContent = fmt(totalHoy)
-    elVentasHoy.querySelector('.kpi-sub').textContent   = `${countHoy} transaccion${countHoy !== 1 ? 'es' : ''}`
+    const kpis = await apiFetch(`/ventas/dashboard-kpis?${params.toString()}`)
 
-    // ── Total ventas (histórico) ──
-    const queryTotal = sucursalSeleccionada
-      ? `/ventas?take=9999&sucursalId=${sucursalSeleccionada}`
-      : '/ventas?take=9999'
-    const montoTotal = await apiFetch(queryTotal)
-    const sumTotal   = (montoTotal.data || []).reduce((s, v) => s + parseFloat(v.total), 0)
-    const countTotal = montoTotal.total || (montoTotal.data || []).length
+    if (kpis.success) {
+      // Ventas hoy
+      const elVentasHoy = document.getElementById('kpi-ventas-hoy')
+      elVentasHoy.querySelector('.kpi-value').textContent = fmt(kpis.ventasHoy.total)
+      elVentasHoy.querySelector('.kpi-sub').textContent = `${kpis.ventasHoy.count} transaccion${kpis.ventasHoy.count !== 1 ? 'es' : ''}`
 
-    const elTotalVentas = document.getElementById('kpi-total-ventas')
-    elTotalVentas.querySelector('.kpi-value').textContent = fmt(sumTotal)
-    elTotalVentas.querySelector('.kpi-sub').textContent   = `${countTotal} ventas totales`
+      // Total histórico
+      const elTotalVentas = document.getElementById('kpi-total-ventas')
+      elTotalVentas.querySelector('.kpi-value').textContent = fmt(kpis.ventasHistorico.total)
+      elTotalVentas.querySelector('.kpi-sub').textContent = `${kpis.ventasHistorico.count} ventas totales`
+
+      // Ventas recientes - renderizar directamente desde el response
+      renderizarVentasRecientes(kpis.ventasRecientes)
+    }
 
     // ── Productos: clasificar por categoría ──
     const productos = await apiFetch('/productos?take=9999')
@@ -166,7 +161,7 @@ async function cargarKPIs() {
     // KPI Sin stock
     const elSin = document.getElementById('kpi-sin-stock')
     elSin.querySelector('.kpi-value').textContent = sinStock.toLocaleString('es-MX')
-    elSin.querySelector('.kpi-sub').textContent   = sinStock > 0 ? 'Agotados' : 'Sin agotados ✓'
+    elSin.querySelector('.kpi-sub').textContent   = sinStock > 0 ? 'Agotados' : 'Sinagotados ✓'
 
   } catch (err) {
     console.error('❌ KPIs:', err.message)
@@ -176,44 +171,37 @@ async function cargarKPIs() {
 // ════════════════════════════════════════════════════════════════════
 //  VENTAS RECIENTES
 // ════════════════════════════════════════════════════════════════════
-async function cargarVentasRecientes() {
+// Ya no se usa - los datos vienen en el response de /dashboard-kpis
+// renderizarVentasRecientes() se llama directamente desde cargarKPIs()
+
+function renderizarVentasRecientes(ventas) {
   const panel = document.getElementById('panel-ventas')
-  try {
-    const query = sucursalSeleccionada
-      ? `/ventas?take=8&sucursalId=${sucursalSeleccionada}`
-      : '/ventas?take=8'
-    const data  = await apiFetch(query)
-    const ventas = data.data || []
+  panel.querySelector('.panel-empty, .panel-tabla')?.remove()
 
-    panel.querySelector('.panel-empty, .panel-tabla')?.remove()
-
-    if (ventas.length === 0) {
-      panel.insertAdjacentHTML('beforeend', '<div class="panel-empty">No hay ventas registradas</div>')
-      return
-    }
-
-    const tabla = `
-      <div class="panel-tabla">
-        <table class="dash-table">
-          <thead><tr><th>Folio</th><th>Cliente</th><th>Método</th><th>Total</th><th>Hora</th></tr></thead>
-          <tbody>
-            ${ventas.map(v => `
-              <tr>
-                <td><strong>${v.folio}</strong></td>
-                <td style="color:var(--muted)">${v.cliente || 'Público general'}</td>
-                <td>${{ EFECTIVO:'💵', CREDITO:'💳', DEBITO:'💳', TRANSFERENCIA:'🔄', CREDITO_CLIENTE:'🏦' }[v.metodoPago] || ''} ${v.metodoPago}</td>
-                <td><strong>${fmt(v.total)}</strong></td>
-                <td style="color:var(--muted);font-size:0.78rem">${fmtFecha(v.fecha)}</td>
-              </tr>`).join('')}
-          </tbody>
-        </table>
-        <a href="historial.html" class="dash-ver-mas">Ver historial completo →</a>
-      </div>`
-
-    panel.insertAdjacentHTML('beforeend', tabla)
-  } catch (err) {
-    console.error('❌ Ventas recientes:', err.message)
+  if (!ventas || ventas.length === 0) {
+    panel.insertAdjacentHTML('beforeend', '<div class="panel-empty">No hay ventas registradas</div>')
+    return
   }
+
+  const tabla = `
+    <div class="panel-tabla">
+      <table class="dash-table">
+        <thead><tr><th>Folio</th><th>Cliente</th><th>Método</th><th>Total</th><th>Hora</th></tr></thead>
+        <tbody>
+          ${ventas.map(v => `
+            <tr>
+              <td><strong>${v.folio}</strong></td>
+              <td style="color:var(--muted)">${v.cliente || 'Público general'}</td>
+              <td>${{ EFECTIVO:'💵', CREDITO:'💳', DEBITO:'💳', TRANSFERENCIA:'🔄', CREDITO_CLIENTE:'🏦' }[v.metodoPago] || ''} ${v.metodoPago}</td>
+              <td><strong>${fmt(v.total)}</strong></td>
+              <td style="color:var(--muted);font-size:0.78rem">${fmtFecha(v.fecha)}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+      <a href="historial.html" class="dash-ver-mas">Ver historial completo →</a>
+    </div>`
+
+  panel.insertAdjacentHTML('beforeend', tabla)
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -297,6 +285,5 @@ document.addEventListener('DOMContentLoaded', async () => {
     sucursalSeleccionada = String(USUARIO.sucursalId)
   }
   cargarKPIs()
-  cargarVentasRecientes()
   cargarStockBajo()
 })
