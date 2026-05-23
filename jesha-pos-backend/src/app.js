@@ -2,7 +2,7 @@
 // APP.JS
 // ════════════════════════════════════════════════════════════════════
 require('dotenv').config()
-const { requireAuth } = require('./middlewares/auth.middleware')
+const { requireAuth, requireRole } = require('./middlewares/auth.middleware')
 const express = require('express')
 const cors    = require('cors')
 const path    = require('path')
@@ -63,6 +63,7 @@ app.use('/pedidos',      requireAuth, require('./modules/pedidos/pedidos.routes'
 app.use('/bitacoras',    requireAuth, require('./modules/bitacora/bitacora.routes'))
 app.use('/compras',      requireAuth, require('./modules/compras/compras.routes'))
 app.use('/devoluciones', requireAuth, require('./modules/devoluciones/devoluciones.routes'))
+app.use('/precios',     requireAuth, requireRole('PRECIOS', 'ADMIN_SUCURSAL', 'SUPERADMIN', 'PLATFORM_ADMIN'), require('./modules/precios/precios.routes'))
 
 // ── Imágenes de productos ──
 app.use('/imagenes', express.static(path.join(__dirname, 'public/imagenes')))

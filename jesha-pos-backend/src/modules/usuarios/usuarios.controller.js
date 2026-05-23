@@ -1,5 +1,6 @@
 const bcrypt = require('bcryptjs')
 const prisma  = require('../../lib/prisma')
+const { puedeGestionar } = require('../../utils/roles')
 
 async function registrarAudit(solicitante, accion, referencia, ip) {
   try {
@@ -40,20 +41,81 @@ const listar = async (req, res) => {
 // POST /usuarios
 const crear = async (req, res) => {
   try {
-    const { nombre, username, password, confirmarPassword, rol, sucursalId } = req.body
+    // Extraer empresaId del cuerpo de la solicitud
+    const { nombre, username, password, confirmarPassword, rol, sucursalId, empresaId: empresaIdBody } = req.body
     const solicitante = req.usuario
+
+    // Validaciones básicas
     if (!nombre || !username || !password || !rol) return res.status(400).json({ error: 'Faltan campos obligatorios' })
-    if (password !== confirmarPassword) return res.status(400).json({ error: 'Las contrasenas no coinciden' })
-    if (solicitante.rol === 'ADMIN_SUCURSAL') {
-      if (rol === 'SUPERADMIN')    return res.status(403).json({ error: 'No tienes permiso para crear superadmin' })
-      if (rol === 'ADMIN_SUCURSAL') return res.status(403).json({ error: 'No tienes permiso para crear administradores' })
+    if (password !== confirmarPassword) return res.status(400).json({ error: 'Las contraseñas no coinciden' })
+
+    // --- Verificaciones de permisos (jerarquía) ---
+    if (!puedeGestionar(solicitante.rol, rol)) {
+      return res.status(403).json({ error: 'No tienes permisos para crear este tipo de usuario' })
     }
-    const existe = await prisma.usuario.findUnique({ where: { username } })
-    if (existe) return res.status(409).json({ error: 'El nombre de usuario ya existe' })
+
+    // Restricciones adicionales para ADMIN_SUCURSAL
+    if (solicitante.rol === 'ADMIN_SUCURSAL') {
+      if (rol === 'ADMIN_SUCURSAL' && empresaIdBody && parseInt(empresaIdBody) !== solicitante.empresaId) {
+        return res.status(403).json({ error: 'No tienes permiso para crear administradores de otras empresas' })
+      }
+      if (sucursalId && parseInt(sucursalId) !== solicitante.sucursalId) {
+        return res.status(403).json({ error: 'No tienes permiso para asignar sucursal fuera de tu empresa' })
+      }
+    }
+
+    // --- Determinar el empresaId para el nuevo usuario ---
+    let nuevaEmpresaId = null;
+    if (solicitante.rol === 'ADMIN_SUCURSAL') {
+      // ADMIN_SUCURSAL crea usuarios para su propia empresa
+      nuevaEmpresaId = solicitante.empresaId;
+    } else if (solicitante.rol === 'SUPERADMIN' || solicitante.rol === 'PLATFORM_ADMIN') {
+      // SUPERADMIN/PLATFORM_ADMIN puede especificar empresaId o crear usuarios globales
+      if (empresaIdBody) {
+        nuevaEmpresaId = parseInt(empresaIdBody);
+      } else if (rol !== 'SUPERADMIN' && rol !== 'PLATFORM_ADMIN') {
+        // Si el rol a crear no es SUPERADMIN/PLATFORM_ADMIN, empresaId es obligatorio
+        return res.status(400).json({ error: 'Para este rol, empresaId es obligatorio para el nuevo usuario' });
+      }
+      // Si el rol es SUPERADMIN/PLATFORM_ADMIN y no se especifica empresaId, se asume global (null)
+    }
+
+    // --- Verificación de unicidad del nombre de usuario ---
+    let existe;
+    if (nuevaEmpresaId !== null) {
+      // Para usuarios con empresaId, usar el unique compuesto
+      existe = await prisma.usuario.findUnique({
+        where: { empresaId_username: { empresaId: nuevaEmpresaId, username } }
+      });
+    } else {
+      // Para usuarios globales (empresaId: null), usar findFirst para buscar unicidad
+      // Nota: La restricción de unicidad de DB con NULL es permisiva, esto es una mitigación a nivel de aplicación.
+      existe = await prisma.usuario.findFirst({
+        where: { empresaId: null, username }
+      });
+    }
+
+    if (existe) {
+      return res.status(409).json({ error: 'El nombre de usuario ya existe en esta empresa o como usuario global' })
+    }
+
+    // --- Preparar sucursalId para el nuevo usuario ---
+    // Si el solicitante es ADMIN_SUCURSAL, la sucursal del nuevo usuario debe ser la suya.
+    // De lo contrario, se usa la sucursalId proporcionada en el body (si existe) o null.
     const sucId = solicitante.rol === 'ADMIN_SUCURSAL' ? solicitante.sucursalId : (sucursalId ? parseInt(sucursalId) : null)
+    
+    // --- Hashear contraseña y crear usuario ---
     const hash  = await bcrypt.hash(password, 10)
     const usuario = await prisma.usuario.create({
-      data: { nombre, username, passwordHash: hash, rol, sucursalId: sucId, activo: true },
+      data: {
+        nombre,
+        username,
+        passwordHash: hash,
+        rol,
+        sucursalId: sucId,
+        activo: true,
+        empresaId: nuevaEmpresaId // Asignar el empresaId determinado
+      },
       select: { id: true, nombre: true, username: true, rol: true, activo: true, tienePin: true, Sucursal: { select: { id: true, nombre: true } } }
     })
     await registrarAudit(solicitante, 'CREAR_USUARIO', `${solicitante.nombre} creo al usuario ${username} con rol ${rol}`, req.ip)
@@ -69,9 +131,13 @@ const editar = async (req, res) => {
     const solicitante = req.usuario
     const objetivo = await prisma.usuario.findUnique({ where: { id: parseInt(id) } })
     if (!objetivo) return res.status(404).json({ error: 'Usuario no encontrado' })
-    if (solicitante.rol === 'ADMIN_SUCURSAL') {
-      if (parseInt(id) === solicitante.id && rol && rol !== objetivo.rol) return res.status(403).json({ error: 'No puedes cambiar tu propio rol' })
-      if (objetivo.rol === 'SUPERADMIN') return res.status(403).json({ error: 'No puedes editar a un superadmin' })
+    // Verificar jerarquía: no se puede editar a un usuario de igual o mayor nivel
+    if (!puedeGestionar(solicitante.rol, objetivo.rol)) {
+      return res.status(403).json({ error: 'No tienes permisos para editar este usuario' })
+    }
+    // ADMIN_SUCURSAL: no puede cambiarse su propio rol
+    if (solicitante.rol === 'ADMIN_SUCURSAL' && parseInt(id) === solicitante.id && rol && rol !== objetivo.rol) {
+      return res.status(403).json({ error: 'No puedes cambiar tu propio rol' })
     }
     const data = { nombre, username }
     if (rol)                    data.rol        = rol
@@ -93,7 +159,7 @@ const cambiarEstado = async (req, res) => {
     const solicitante = req.usuario
     const objetivo = await prisma.usuario.findUnique({ where: { id: parseInt(id) } })
     if (!objetivo) return res.status(404).json({ error: 'Usuario no encontrado' })
-    if (solicitante.rol === 'ADMIN_SUCURSAL' && objetivo.rol !== 'EMPLEADO') return res.status(403).json({ error: 'Solo puedes desactivar empleados' })
+    if (!puedeGestionar(solicitante.rol, objetivo.rol)) return res.status(403).json({ error: 'No tienes permisos para gestionar este usuario' })
     const usuario = await prisma.usuario.update({ where: { id: parseInt(id) }, data: { activo }, select: { id: true, nombre: true, activo: true } })
     await registrarAudit(solicitante, activo ? 'ACTIVAR_USUARIO' : 'DESACTIVAR_USUARIO', `${solicitante.nombre} ${activo ? 'activo' : 'desactivo'} al usuario ${objetivo.username}`, req.ip)
     res.json(usuario)
@@ -111,7 +177,7 @@ const resetPassword = async (req, res) => {
     if (password.length < 6)            return res.status(400).json({ error: 'Minimo 6 caracteres' })
     const objetivo = await prisma.usuario.findUnique({ where: { id: parseInt(id) } })
     if (!objetivo) return res.status(404).json({ error: 'Usuario no encontrado' })
-    if (solicitante.rol === 'ADMIN_SUCURSAL' && objetivo.rol !== 'EMPLEADO') return res.status(403).json({ error: 'Solo puedes resetear contrasenas de empleados' })
+    if (!puedeGestionar(solicitante.rol, objetivo.rol)) return res.status(403).json({ error: 'No tienes permisos para gestionar este usuario' })
     const hash = await bcrypt.hash(password, 10)
     await prisma.usuario.update({ where: { id: parseInt(id) }, data: { passwordHash: hash } })
     await registrarAudit(solicitante, 'RESET_PASSWORD', `${solicitante.nombre} reseteo la contrasena de ${objetivo.username}`, req.ip)
@@ -134,10 +200,13 @@ const establecerPin = async (req, res) => {
     const objetivo = await prisma.usuario.findUnique({ where: { id: parseInt(id) } })
     if (!objetivo) return res.status(404).json({ error: 'Usuario no encontrado' })
 
-    // Solo SUPERADMIN puede asignar PIN a cualquiera; ADMIN_SUCURSAL solo a EMPLEADO de su sucursal
-    if (solicitante.rol === 'ADMIN_SUCURSAL') {
-      if (objetivo.rol !== 'EMPLEADO') return res.status(403).json({ error: 'Solo puedes asignar PIN a empleados' })
-      if (objetivo.sucursalId !== solicitante.sucursalId) return res.status(403).json({ error: 'El usuario no pertenece a tu sucursal' })
+    // Jerarquía: solo roles superiores pueden asignar PIN
+    if (!puedeGestionar(solicitante.rol, objetivo.rol)) {
+      return res.status(403).json({ error: 'No tienes permisos para gestionar este usuario' })
+    }
+    // ADMIN_SUCURSAL solo puede asignar PIN a usuarios de su sucursal
+    if (solicitante.rol === 'ADMIN_SUCURSAL' && objetivo.sucursalId !== solicitante.sucursalId) {
+      return res.status(403).json({ error: 'El usuario no pertenece a tu sucursal' })
     }
 
     const pinHash = await bcrypt.hash(pin, 10)

@@ -68,6 +68,16 @@ let usuarioActual = null
 let usuariosLista = []
 let usuarioResetId = null
 
+// Mapa centralizado de roles para display en la tabla
+// Agregar nuevos roles aquí — un solo lugar en el frontend
+const ROL_CONFIG = {
+  SUPERADMIN:     { clase: 'badge-superadmin', texto: 'Superadmin' },
+  PLATFORM_ADMIN: { clase: 'badge-platform',   texto: 'Platform Admin' },
+  ADMIN_SUCURSAL: { clase: 'badge-admin',       texto: 'Admin Sucursal' },
+  PRECIOS:        { clase: 'badge-precios',     texto: 'Precios' },
+  EMPLEADO:       { clase: 'badge-vendedor',    texto: 'Empleado' }
+}
+
 // ══════════════════════════════════════════════════════════════════
 //  FUNCIONES PRINCIPALES
 // ══════════════════════════════════════════════════════════════════
@@ -160,10 +170,9 @@ function renderizarTabla() {
   }
 
   tablaBody.innerHTML = usuariosLista.map(usuario => {
-    const rolBadgeClass = usuario.rol === 'SUPERADMIN' ? 'badge-superadmin' : 
-                          usuario.rol === 'ADMIN_SUCURSAL' ? 'badge-admin' : 'badge-vendedor'
-    const rolTexto = usuario.rol === 'SUPERADMIN' ? 'Superadmin' : 
-                     usuario.rol === 'ADMIN_SUCURSAL' ? 'Admin Sucursal' : 'Empleado'
+    const config = ROL_CONFIG[usuario.rol] || { clase: 'badge-vendedor', texto: usuario.rol }
+    const rolBadgeClass = config.clase
+    const rolTexto = config.texto
     const estadoClass = usuario.activo ? 'on' : ''
     const estadoTextoClass = usuario.activo ? 'on' : ''
     const ultimoLogin = usuario.ultimoLogin 

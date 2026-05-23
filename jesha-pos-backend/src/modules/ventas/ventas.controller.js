@@ -552,6 +552,14 @@ exports.cancelarVenta = async (req, res) => {
     if (!rolesPermitidos.includes(usuario.rol))
       return res.status(403).json({ error: 'Sin permiso para cancelar ventas' })
 
+    // ADMIN_SUCURSAL solo puede cancelar ventas de su sucursal
+    if (usuario.rol !== 'SUPERADMIN' && usuario.sucursalId !== venta.sucursalId) {
+      return res.status(403).json({
+        error: 'No puedes cancelar ventas de otra sucursal',
+        codigo: 'SUCURSAL_INCORRECTA'
+      })
+    }
+
     // === Validar bitácora vinculada (si es venta a crédito) ===
     const detallesBitacora = await prisma.detalleBitacora.findMany({
       where: { ventaId: venta.id },
@@ -571,6 +579,20 @@ exports.cancelarVenta = async (req, res) => {
         return res.status(400).json({
           error: `No se puede cancelar — la bitácora ${bitacora.folio} ya tiene abonos por $${parseFloat(bitacora.totalAbonado).toFixed(2)}. Usa el módulo de Devoluciones para procesar reembolso al cliente.`,
           codigo: 'BITACORA_CON_ABONOS'
+        })
+      }
+    }
+
+    // Validar que el turno siga abierto (no cancelar ventas de turnos cerrados)
+    if (venta.turnoId) {
+      const turnoVenta = await prisma.turnoCaja.findUnique({
+        where: { id: venta.turnoId },
+        select: { abierto: true }
+      })
+      if (!turnoVenta || !turnoVenta.abierto) {
+        return res.status(400).json({
+          error: 'No se puede cancelar — el turno de esta venta ya fue cerrado',
+          codigo: 'TURNO_CERRADO'
         })
       }
     }
@@ -597,7 +619,8 @@ exports.cancelarVenta = async (req, res) => {
               productoId:   detalle.productoId,
               sucursalId:   venta.sucursalId,
               usuarioId:    usuario.id,
-              tipo:         'DEVOLUCION_ENTRADA',
+              turnoId:      venta.turnoId,
+              tipo:         'CANCELACION_VENTA',
               cantidad:     parseFloat(detalle.cantidad),
               stockAntes,
               stockDespues,

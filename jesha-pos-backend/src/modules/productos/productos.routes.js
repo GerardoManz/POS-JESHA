@@ -7,6 +7,8 @@ const express = require('express')
 const router  = express.Router()
 const multer  = require('multer')
 
+const { requireRole } = require('../../middlewares/auth.middleware')
+
 const productosController   = require('./productos.controller')
 const importacionController = require('./importacion.controller')
 const { subirImagenProducto } = require('../../lib/cloudinary')
@@ -52,18 +54,18 @@ const uploadCSV = multer({
 // ═══════════════════════════════════════════════════════════════════
 
 router.get('/departamentos',     productosController.listarDepartamentos)
-router.post('/departamentos',    productosController.crearDepartamento)
+router.post('/departamentos',    requireRole('SUPERADMIN', 'ADMIN_SUCURSAL', 'PLATFORM_ADMIN'), productosController.crearDepartamento)
 router.get('/categorias',        productosController.listarCategorias)
 router.get('/departamentos/:departamentoId/categorias', productosController.categoriasPorDepartamento)
-router.post('/categorias',       productosController.crearCategoria)
+router.post('/categorias',       requireRole('SUPERADMIN', 'ADMIN_SUCURSAL', 'PLATFORM_ADMIN'), productosController.crearCategoria)
 
 // ═══════════════════════════════════════════════════════════════════
 // IMPORTACIÓN CSV
 // ═══════════════════════════════════════════════════════════════════
 
-router.post('/importar/csv',            uploadCSV.single('archivo'), importacionController.importarCSV)
-router.post('/importar/solo-nuevos',    uploadCSV.single('archivo'), importacionController.importarSoloNuevos)
-router.post('/importar/datos-fiscales', uploadCSV.single('archivo'), importacionController.actualizarDatosFiscales)
+router.post('/importar/csv',            requireRole('SUPERADMIN', 'ADMIN_SUCURSAL', 'PLATFORM_ADMIN'), uploadCSV.single('archivo'), importacionController.importarCSV)
+router.post('/importar/solo-nuevos',    requireRole('SUPERADMIN', 'ADMIN_SUCURSAL', 'PLATFORM_ADMIN'), uploadCSV.single('archivo'), importacionController.importarSoloNuevos)
+router.post('/importar/datos-fiscales', requireRole('SUPERADMIN', 'ADMIN_SUCURSAL', 'PLATFORM_ADMIN'), uploadCSV.single('archivo'), importacionController.actualizarDatosFiscales)
 
 // ═══════════════════════════════════════════════════════════════════
 // CRUD PRODUCTOS
@@ -72,16 +74,16 @@ router.post('/importar/datos-fiscales', uploadCSV.single('archivo'), importacion
 router.get('/',                    productosController.listar)
 
 // GET /productos/:id — Venta específica
-router.post('/',                 productosController.crear)
-router.put('/:id',               productosController.editar)
-router.patch('/:id/estado',      productosController.cambiarEstado)
-router.patch('/:id/inventario',  productosController.ajustarInventario)
+router.post('/',                 requireRole('SUPERADMIN', 'ADMIN_SUCURSAL', 'PLATFORM_ADMIN'), productosController.crear)
+router.put('/:id',               requireRole('SUPERADMIN', 'ADMIN_SUCURSAL', 'PLATFORM_ADMIN'), productosController.editar)
+router.patch('/:id/estado',      requireRole('SUPERADMIN', 'ADMIN_SUCURSAL', 'PLATFORM_ADMIN'), productosController.cambiarEstado)
+router.patch('/:id/inventario',  requireRole('SUPERADMIN', 'ADMIN_SUCURSAL', 'PLATFORM_ADMIN'), productosController.ajustarInventario)
 
 // ═══════════════════════════════════════════════════════════════════
 // IMAGEN — SUBIR (ahora va a Cloudinary, sin tocar disco)
 // ═══════════════════════════════════════════════════════════════════
 
-router.post('/:id/imagen', uploadImagen.single('imagen'), async (req, res) => {
+router.post('/:id/imagen', requireRole('SUPERADMIN', 'ADMIN_SUCURSAL', 'PLATFORM_ADMIN'), uploadImagen.single('imagen'), async (req, res) => {
     try {
         const { id } = req.params
 
@@ -108,6 +110,6 @@ router.post('/:id/imagen', uploadImagen.single('imagen'), async (req, res) => {
 // IMAGEN — ELIMINAR (opcional, listo para usar cuando lo conectes al frontend)
 // ═══════════════════════════════════════════════════════════════════
 
-router.delete('/:id/imagen', productosController.eliminarImagen)
+router.delete('/:id/imagen', requireRole('SUPERADMIN', 'ADMIN_SUCURSAL', 'PLATFORM_ADMIN'), productosController.eliminarImagen)
 
 module.exports = router

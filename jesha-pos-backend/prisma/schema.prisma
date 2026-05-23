@@ -1,3 +1,14 @@
+// ════════════════════════════════════════════════════════════════════
+//  JESHA POS — Schema Multi-Tenant (Fase 1-SaaS)
+//  Cambios respecto al schema anterior:
+//   - Modelo Empresa (NUEVO)
+//   - Rol: +PLATFORM_ADMIN
+//   - 17 modelos: +empresaId NOT NULL + FK + índice
+//   - 4 modelos: +empresaId NULLABLE + FK + índice
+//   - Categoria/Departamento: +esGlobal
+//   - 11 uniques rotos → @@unique compuestos (tokenQr queda global)
+// ════════════════════════════════════════════════════════════════════
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -6,8 +17,51 @@ datasource db {
   provider = "postgresql"
 }
 
+// ════════════════════════════════════════════════════════════════════
+//  EMPRESA (NUEVO)
+// ════════════════════════════════════════════════════════════════════
+
+model Empresa {
+  id              Int       @id @default(autoincrement())
+  slug            String    @unique
+  nombreComercial String
+  razonSocial     String
+  rfc             String?
+  whatsapp        String
+  notas           String?
+  activa          Boolean   @default(true)
+  creadaEn        DateTime  @default(now())
+
+  AbonoBitacora        AbonoBitacora[]
+  AlertaStock          AlertaStock[]
+  Auditoria            Auditoria[]
+  Bitacora             Bitacora[]
+  Categoria            Categoria[]
+  Cliente              Cliente[]
+  Cotizacion           Cotizacion[]
+  Departamento         Departamento[]
+  Devolucion           Devolucion[]
+  FacturaCfdi          FacturaCfdi[]
+  MovimientoCaja       MovimientoCaja[]
+  MovimientoInventario MovimientoInventario[]
+  OrdenCompra          OrdenCompra[]
+  Pedido               Pedido[]
+  Producto             Producto[]
+  Promocion            Promocion[]
+  Proveedor            Proveedor[]
+  Sucursal             Sucursal[]
+  TurnoCaja            TurnoCaja[]
+  Usuario              Usuario[]
+  Venta                Venta[]
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  MODELOS CON empresaId NOT NULL (17)
+// ════════════════════════════════════════════════════════════════════
+
 model AbonoBitacora {
   id         Int        @id @default(autoincrement())
+  empresaId  Int
   bitacoraId Int
   usuarioId  Int
   monto      Decimal    @db.Decimal(10, 2)
@@ -15,30 +69,19 @@ model AbonoBitacora {
   notas      String?
   creadoEn   DateTime   @default(now())
   turnoId    Int?
+  Empresa    Empresa    @relation(fields: [empresaId], references: [id])
   Bitacora   Bitacora   @relation(fields: [bitacoraId], references: [id], onDelete: Cascade)
   TurnoCaja  TurnoCaja? @relation(fields: [turnoId], references: [id])
   Usuario    Usuario    @relation(fields: [usuarioId], references: [id])
 
   @@index([bitacoraId])
+  @@index([empresaId])
   @@index([turnoId])
-}
-
-model AbonoCompra {
-  id            Int         @id @default(autoincrement())
-  ordenCompraId Int
-  usuarioId     Int
-  monto         Decimal     @db.Decimal(10, 2)
-  metodoPago    MetodoPago  @default(EFECTIVO)
-  notas         String?
-  creadoEn      DateTime    @default(now())
-  OrdenCompra   OrdenCompra @relation(fields: [ordenCompraId], references: [id], onDelete: Cascade)
-  Usuario       Usuario     @relation(fields: [usuarioId], references: [id])
-
-  @@index([ordenCompraId])
 }
 
 model AlertaStock {
   id          Int          @id @default(autoincrement())
+  empresaId   Int
   productoId  Int
   sucursalId  Int
   stockActual Decimal      @db.Decimal(10, 3)
@@ -48,41 +91,23 @@ model AlertaStock {
   vistaEn     DateTime?
   resueltaEn  DateTime?
   turnoId     Int?
+  Empresa     Empresa      @relation(fields: [empresaId], references: [id])
   Producto    Producto     @relation(fields: [productoId], references: [id])
   Sucursal    Sucursal     @relation(fields: [sucursalId], references: [id])
   TurnoCaja   TurnoCaja?   @relation(fields: [turnoId], references: [id])
 
   @@unique([productoId, sucursalId, turnoId])
+  @@index([empresaId])
   @@index([estado])
   @@index([productoId])
   @@index([sucursalId])
   @@index([turnoId])
 }
 
-model Auditoria {
-  id           Int       @id @default(autoincrement())
-  usuarioId    Int?
-  sucursalId   Int?
-  accion       String
-  modulo       String
-  referencia   String?
-  valorAntes   Json?
-  valorDespues Json?
-  ip           String?
-  creadoEn     DateTime  @default(now())
-  Sucursal     Sucursal? @relation(fields: [sucursalId], references: [id])
-  Usuario      Usuario?  @relation(fields: [usuarioId], references: [id])
-
-  @@index([accion])
-  @@index([creadoEn])
-  @@index([modulo])
-  @@index([sucursalId])
-  @@index([usuarioId])
-}
-
 model Bitacora {
   id              Int               @id @default(autoincrement())
-  folio           String            @unique
+  empresaId       Int
+  folio           String
   clienteId       Int?
   sucursalId      Int
   usuarioId       Int
@@ -98,38 +123,29 @@ model Bitacora {
   descripcion     String?
   origen          OrigenBitacora    @default(MANUAL)
   saldoAlCerrar   Decimal?          @db.Decimal(12, 2)
+  Empresa         Empresa           @relation(fields: [empresaId], references: [id])
   AbonoBitacora   AbonoBitacora[]
   Cliente         Cliente?          @relation(fields: [clienteId], references: [id])
   Sucursal        Sucursal          @relation(fields: [sucursalId], references: [id])
   Usuario         Usuario           @relation(fields: [usuarioId], references: [id])
   DetalleBitacora DetalleBitacora[]
 
+  @@unique([empresaId, folio])
   @@index([clienteId])
+  @@index([empresaId])
   @@index([estado])
   @@index([origen])
   @@index([sucursalId])
 }
 
-model Categoria {
-  id             Int          @id @default(autoincrement())
-  departamentoId Int
-  nombre         String
-  descripcion    String?
-  creadoEn       DateTime     @default(now())
-  Departamento   Departamento @relation(fields: [departamentoId], references: [id])
-  Producto       Producto[]
-  Promocion      Promocion[]
-
-  @@unique([departamentoId, nombre])
-}
-
 model Cliente {
   id                 Int           @id @default(autoincrement())
+  empresaId          Int
   nombre             String
   apodo              String?
-  rfc                String?       @unique
+  rfc                String?
   telefono           String?
-  email              String?       @unique
+  email              String?
   codigoPostalFiscal String?
   regimenFiscal      String?
   razonSocial        String?
@@ -141,20 +157,25 @@ model Cliente {
   activo             Boolean       @default(true)
   notas              String?
   creadoEn           DateTime      @default(now())
+  Empresa            Empresa       @relation(fields: [empresaId], references: [id])
   Bitacora           Bitacora[]
   Cotizacion         Cotizacion[]
   FacturaCfdi        FacturaCfdi[]
   Pedido             Pedido[]
   Venta              Venta[]
 
+  @@unique([empresaId, rfc])
+  @@unique([empresaId, email])
   @@index([email])
+  @@index([empresaId])
   @@index([nombre])
   @@index([rfc])
 }
 
 model Cotizacion {
   id                Int                 @id @default(autoincrement())
-  folio             String              @unique
+  empresaId         Int
+  folio             String
   sucursalId        Int
   usuarioId         Int
   clienteId         Int?
@@ -164,23 +185,474 @@ model Cotizacion {
   venceEn           DateTime?
   notas             String?
   creadaEn          DateTime            @default(now())
+  Empresa           Empresa             @relation(fields: [empresaId], references: [id])
   Cliente           Cliente?            @relation(fields: [clienteId], references: [id])
   Sucursal          Sucursal            @relation(fields: [sucursalId], references: [id])
   Usuario           Usuario             @relation(fields: [usuarioId], references: [id])
   DetalleCotizacion DetalleCotizacion[]
 
+  @@unique([empresaId, folio])
   @@index([clienteId])
+  @@index([empresaId])
   @@index([estado])
   @@index([tipo])
 }
 
+model Devolucion {
+  id                  Int                 @id @default(autoincrement())
+  empresaId           Int
+  ventaId             Int
+  sucursalId          Int
+  usuarioId           Int
+  motivo              String
+  reintegraInventario Boolean             @default(true)
+  tipoReembolso       String
+  montoReembolso      Decimal             @db.Decimal(10, 2)
+  notas               String?
+  creadaEn            DateTime            @default(now())
+  Empresa             Empresa             @relation(fields: [empresaId], references: [id])
+  DetalleDevolucion   DetalleDevolucion[]
+  Usuario             Usuario             @relation(fields: [usuarioId], references: [id])
+  Venta               Venta               @relation(fields: [ventaId], references: [id], onDelete: Cascade)
+
+  @@index([empresaId])
+}
+
+model FacturaCfdi {
+  id              Int           @id @default(autoincrement())
+  empresaId       Int
+  ventaId         Int
+  clienteId       Int?
+  rfcReceptor     String
+  nombreReceptor  String
+  cpReceptor      String
+  regimenFiscal   String
+  usoCfdi         String
+  emailReceptor   String?
+  lugarExpedicion String
+  subtotal        Decimal       @db.Decimal(10, 2)
+  iva             Decimal       @db.Decimal(10, 2)
+  total           Decimal       @db.Decimal(10, 2)
+  folioFiscal     String?
+  facturapiId     String?
+  xmlUrl          String?
+  pdfUrl          String?
+  estado          EstadoFactura @default(FACTURADA)
+  timbradaEn      DateTime?
+  creadaEn        DateTime      @default(now())
+  Empresa         Empresa       @relation(fields: [empresaId], references: [id])
+  Cliente         Cliente?      @relation(fields: [clienteId], references: [id])
+  Venta           Venta         @relation(fields: [ventaId], references: [id], onDelete: Cascade)
+
+  @@unique([ventaId])
+  @@index([empresaId])
+}
+
+model MovimientoCaja {
+  id         Int                @id @default(autoincrement())
+  empresaId  Int
+  turnoId    Int
+  tipo       TipoMovimientoCaja
+  monto      Decimal            @db.Decimal(10, 2)
+  metodoPago MetodoPago?
+  referencia String?
+  notas      String?
+  creadoEn   DateTime           @default(now())
+  Empresa    Empresa            @relation(fields: [empresaId], references: [id])
+  TurnoCaja  TurnoCaja          @relation(fields: [turnoId], references: [id], onDelete: Cascade)
+
+  @@index([empresaId])
+  @@index([turnoId])
+}
+
+model MovimientoInventario {
+  id                      Int                      @id @default(autoincrement())
+  empresaId               Int
+  productoId              Int
+  sucursalId              Int
+  usuarioId               Int?
+  tipo                    TipoMovimientoInventario
+  cantidad                Decimal                  @db.Decimal(10, 3)
+  stockAntes              Decimal                  @db.Decimal(10, 3)
+  stockDespues            Decimal                  @db.Decimal(10, 3)
+  referencia              String?
+  notas                   String?
+  creadoEn                DateTime                 @default(now())
+  turnoId                 Int?
+  stockMinimoEnEseMomento Decimal?                 @db.Decimal(10, 3)
+  Empresa                 Empresa                  @relation(fields: [empresaId], references: [id])
+  Producto                Producto                 @relation(fields: [productoId], references: [id], onDelete: Cascade)
+  Sucursal                Sucursal                 @relation(fields: [sucursalId], references: [id])
+  TurnoCaja               TurnoCaja?               @relation(fields: [turnoId], references: [id])
+  Usuario                 Usuario?                 @relation(fields: [usuarioId], references: [id])
+
+  @@index([creadoEn])
+  @@index([empresaId])
+  @@index([productoId])
+  @@index([sucursalId])
+  @@index([tipo])
+  @@index([turnoId])
+  @@index([usuarioId])
+}
+
+model OrdenCompra {
+  id                 Int                  @id @default(autoincrement())
+  empresaId          Int
+  folio              String
+  sucursalId         Int
+  proveedorId        Int
+  usuarioId          Int
+  estado             EstadoOrdenCompra    @default(ENVIADO)
+  totalEstimado      Decimal              @db.Decimal(10, 2)
+  totalRecibido      Decimal              @default(0) @db.Decimal(10, 2)
+  pagada             Boolean              @default(false)
+  totalPagado        Decimal              @default(0) @db.Decimal(12, 2)
+  notas              String?
+  creadaEn           DateTime             @default(now())
+  recibidaEn         DateTime?
+  Empresa            Empresa              @relation(fields: [empresaId], references: [id])
+  AbonoCompra        AbonoCompra[]
+  DetalleOrdenCompra DetalleOrdenCompra[]
+  Proveedor          Proveedor            @relation(fields: [proveedorId], references: [id])
+  Sucursal           Sucursal             @relation(fields: [sucursalId], references: [id])
+  Usuario            Usuario              @relation(fields: [usuarioId], references: [id])
+
+  @@unique([empresaId, folio])
+  @@index([empresaId])
+  @@index([estado])
+  @@index([proveedorId])
+  @@index([sucursalId])
+}
+
+model Pedido {
+  id            Int             @id @default(autoincrement())
+  empresaId     Int
+  folio         String
+  sucursalId    Int
+  usuarioId     Int
+  clienteId     Int?
+  estado        EstadoPedido    @default(BORRADOR)
+  totalEstimado Decimal         @db.Decimal(10, 2)
+  motivoBloqueo String?
+  notas         String?
+  creadoEn      DateTime        @default(now())
+  actualizadoEn DateTime        @default(now()) @updatedAt
+  Empresa       Empresa         @relation(fields: [empresaId], references: [id])
+  DetallePedido DetallePedido[]
+  Cliente       Cliente?        @relation(fields: [clienteId], references: [id])
+  Sucursal      Sucursal        @relation(fields: [sucursalId], references: [id])
+  Usuario       Usuario         @relation(fields: [usuarioId], references: [id])
+
+  @@unique([empresaId, folio])
+  @@index([empresaId])
+}
+
+model Producto {
+  id                   Int                    @id @default(autoincrement())
+  empresaId            Int
+  nombre               String
+  codigoInterno        String
+  codigoBarras         String?
+  descripcion          String?
+  imagenUrl            String?
+  imagenOriginal       String?
+  precioBase           Decimal                @db.Decimal(10, 2)
+  precioVenta          Decimal?               @db.Decimal(10, 2)
+  costo                Decimal?               @db.Decimal(10, 2)
+  costoPromedio        Decimal?               @db.Decimal(10, 2)
+  precioMayoreo        Decimal?               @db.Decimal(10, 2)
+  cantidadMinMayoreo   Int?                   @default(10)
+  aplicaMayoreo        Boolean                @default(false)
+  unidadCompra         String?
+  unidadVenta          String?
+  factorConversion     Decimal?               @db.Decimal(10, 4)
+  claveSat             String?
+  unidadSat            String?
+  esGranel             Boolean                @default(false)
+  margen               Decimal?               @db.Decimal(5, 2)
+  tipoFacturaProv      String?                @default("NETO")
+  costoSinIvaProveedor Decimal?               @db.Decimal(10, 2)
+  categoriaId          Int
+  activo               Boolean                @default(true)
+  actualizadoEn        DateTime               @default(now()) @updatedAt
+  facturaLimite        DateTime?              @default(now())
+  imagenPublicId       String?
+  Empresa              Empresa                @relation(fields: [empresaId], references: [id])
+  AlertaStock          AlertaStock[]
+  DetalleBitacora      DetalleBitacora[]
+  DetalleCotizacion    DetalleCotizacion[]
+  DetalleDevolucion    DetalleDevolucion[]
+  DetalleOrdenCompra   DetalleOrdenCompra[]
+  DetallePedido        DetallePedido[]
+  DetalleVenta         DetalleVenta[]
+  InventarioSucursal   InventarioSucursal[]
+  MovimientoInventario MovimientoInventario[]
+  Categoria            Categoria              @relation(fields: [categoriaId], references: [id])
+  ProveedorProducto    ProveedorProducto[]
+  Promocion            Promocion[]            @relation("PromocionProducto")
+
+  @@unique([empresaId, codigoInterno])
+  @@unique([empresaId, codigoBarras])
+  @@index([codigoBarras])
+  @@index([codigoInterno])
+  @@index([empresaId])
+  @@index([nombre])
+}
+
+model Promocion {
+  id           Int              @id @default(autoincrement())
+  empresaId    Int
+  nombre       String
+  tipo         TipoPromocion
+  alcance      AlcancePromocion
+  descuento    Decimal          @db.Decimal(5, 2)
+  activa       Boolean          @default(true)
+  fechaInicio  DateTime
+  fechaFin     DateTime
+  sucursalId   Int
+  categoriaId  Int?
+  notas        String?
+  creadaEn     DateTime         @default(now())
+  Empresa      Empresa          @relation(fields: [empresaId], references: [id])
+  DetalleVenta DetalleVenta[]
+  Categoria    Categoria?       @relation(fields: [categoriaId], references: [id])
+  Sucursal     Sucursal         @relation(fields: [sucursalId], references: [id])
+  Producto     Producto[]       @relation("PromocionProducto")
+
+  @@index([activa])
+  @@index([empresaId])
+  @@index([fechaFin])
+  @@index([fechaInicio])
+}
+
+model Proveedor {
+  id                Int                 @id @default(autoincrement())
+  empresaId         Int
+  nombreOficial     String
+  alias             String?
+  telefono          String?
+  celular           String?
+  email             String?
+  activo            Boolean             @default(true)
+  creadoEn          DateTime            @default(now())
+  Empresa           Empresa             @relation(fields: [empresaId], references: [id])
+  OrdenCompra       OrdenCompra[]
+  ProveedorProducto ProveedorProducto[]
+
+  @@unique([empresaId, nombreOficial])
+  @@unique([empresaId, alias])
+  @@index([alias])
+  @@index([empresaId])
+  @@index([nombreOficial])
+}
+
+model Sucursal {
+  id                   Int                    @id @default(autoincrement())
+  empresaId            Int
+  nombre               String
+  direccion            String?
+  telefono             String?
+  codigoPostal         String
+  activa               Boolean                @default(true)
+  creadaEn             DateTime               @default(now())
+  Empresa              Empresa                @relation(fields: [empresaId], references: [id])
+  AlertaStock          AlertaStock[]
+  Auditoria            Auditoria[]
+  Bitacora             Bitacora[]
+  Cotizacion           Cotizacion[]
+  InventarioSucursal   InventarioSucursal[]
+  MovimientoInventario MovimientoInventario[]
+  OrdenCompra          OrdenCompra[]
+  Pedido               Pedido[]
+  Promocion            Promocion[]
+  TurnoCaja            TurnoCaja[]
+  Usuario              Usuario[]
+  Venta                Venta[]
+
+  @@index([empresaId])
+}
+
+model TurnoCaja {
+  id                     Int                    @id @default(autoincrement())
+  empresaId              Int
+  sucursalId             Int
+  usuarioId              Int
+  montoInicial           Decimal                @db.Decimal(10, 2)
+  montoFinalDeclarado    Decimal?               @db.Decimal(10, 2)
+  montoCalculado         Decimal?               @db.Decimal(10, 2)
+  diferencia             Decimal?               @db.Decimal(10, 2)
+  abierto                Boolean                @default(true)
+  abiertaEn              DateTime               @default(now())
+  cerradaEn              DateTime?
+  reporteStockUrl        String?
+  reporteStockEstado     EstadoReporteStock?
+  reporteStockGeneradoEn DateTime?
+  notasCierre            String?
+  Empresa                Empresa                @relation(fields: [empresaId], references: [id])
+  AbonoBitacora          AbonoBitacora[]
+  AlertaStock            AlertaStock[]
+  MovimientoCaja         MovimientoCaja[]
+  MovimientoInventario   MovimientoInventario[]
+  Sucursal               Sucursal               @relation(fields: [sucursalId], references: [id])
+  Usuario                Usuario                @relation(fields: [usuarioId], references: [id])
+  Venta                  Venta[]
+
+  @@index([cerradaEn])
+  @@index([empresaId])
+  @@index([sucursalId, abierto])
+}
+
+model Venta {
+  id                 Int               @id @default(autoincrement())
+  empresaId          Int
+  folio              String
+  sucursalId         Int
+  usuarioId          Int
+  clienteId          Int?
+  turnoId            Int
+  metodoPago         MetodoPago
+  subtotal           Decimal           @db.Decimal(10, 2)
+  descuento          Decimal           @default(0) @db.Decimal(10, 2)
+  total              Decimal           @db.Decimal(10, 2)
+  estadoPago         EstadoPago        @default(PAGADA)
+  montoAbonado       Decimal           @default(0) @db.Decimal(10, 2)
+  saldoPendiente     Decimal           @default(0) @db.Decimal(10, 2)
+  montoPagado        Decimal           @default(0) @db.Decimal(10, 2)
+  cambio             Decimal           @default(0) @db.Decimal(10, 2)
+  estado             EstadoVenta       @default(COMPLETADA)
+  tokenQr            String            @unique
+  facturaEstado      EstadoFactura     @default(DISPONIBLE)
+  facturaLimite      DateTime          @default(now())
+  clienteRazonSocial String?
+  clienteRFC         String?
+  notas              String?
+  creadaEn           DateTime          @default(now())
+  desglosePagos      Json?
+  Empresa            Empresa           @relation(fields: [empresaId], references: [id])
+  DetalleBitacora    DetalleBitacora[]
+  DetalleVenta       DetalleVenta[]
+  Devolucion         Devolucion[]
+  FacturaCfdi        FacturaCfdi?
+  Cliente            Cliente?          @relation(fields: [clienteId], references: [id])
+  Sucursal           Sucursal          @relation(fields: [sucursalId], references: [id])
+  TurnoCaja          TurnoCaja         @relation(fields: [turnoId], references: [id])
+  Usuario            Usuario           @relation(fields: [usuarioId], references: [id])
+
+  @@unique([empresaId, folio])
+  @@index([clienteId])
+  @@index([creadaEn])
+  @@index([empresaId])
+  @@index([sucursalId])
+  @@index([turnoId])
+  @@index([usuarioId])
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  MODELOS CON empresaId NULLABLE (4)
+// ════════════════════════════════════════════════════════════════════
+
+model Auditoria {
+  id           Int       @id @default(autoincrement())
+  empresaId    Int?
+  usuarioId    Int?
+  sucursalId   Int?
+  accion       String
+  modulo       String
+  referencia   String?
+  valorAntes   Json?
+  valorDespues Json?
+  ip           String?
+  creadoEn     DateTime  @default(now())
+  Empresa      Empresa?  @relation(fields: [empresaId], references: [id])
+  Sucursal     Sucursal? @relation(fields: [sucursalId], references: [id])
+  Usuario      Usuario?  @relation(fields: [usuarioId], references: [id])
+
+  @@index([accion])
+  @@index([creadoEn])
+  @@index([empresaId])
+  @@index([modulo])
+  @@index([sucursalId])
+  @@index([usuarioId])
+}
+
+model Categoria {
+  id             Int          @id @default(autoincrement())
+  esGlobal       Boolean      @default(false)
+  empresaId      Int?
+  departamentoId Int
+  nombre         String
+  descripcion    String?
+  creadoEn       DateTime     @default(now())
+  Empresa        Empresa?     @relation(fields: [empresaId], references: [id])
+  Departamento   Departamento @relation(fields: [departamentoId], references: [id])
+  Producto       Producto[]
+  Promocion      Promocion[]
+
+  @@unique([empresaId, departamentoId, nombre])
+  @@index([empresaId])
+}
+
 model Departamento {
   id        Int         @id @default(autoincrement())
-  nombre    String      @unique
+  esGlobal  Boolean     @default(false)
+  empresaId Int?
+  nombre    String
   icono     String?
   activo    Boolean     @default(true)
   creadoEn  DateTime    @default(now())
+  Empresa   Empresa?    @relation(fields: [empresaId], references: [id])
   Categoria Categoria[]
+
+  @@unique([empresaId, nombre])
+  @@index([empresaId])
+}
+
+model Usuario {
+  id                   Int                    @id @default(autoincrement())
+  empresaId            Int?
+  nombre               String
+  username             String
+  passwordHash         String
+  rol                  Rol
+  activo               Boolean                @default(true)
+  creadoEn             DateTime               @default(now())
+  sucursalId           Int?
+  pin                  String?
+  tienePin             Boolean                @default(false)
+  Empresa              Empresa?               @relation(fields: [empresaId], references: [id])
+  AbonoBitacora        AbonoBitacora[]
+  AbonoCompra          AbonoCompra[]
+  Auditoria            Auditoria[]
+  Bitacora             Bitacora[]
+  Cotizacion           Cotizacion[]
+  Devolucion           Devolucion[]
+  MovimientoInventario MovimientoInventario[]
+  OrdenCompra          OrdenCompra[]
+  Pedido               Pedido[]
+  TurnoCaja            TurnoCaja[]
+  Sucursal             Sucursal?              @relation(fields: [sucursalId], references: [id])
+  Venta                Venta[]
+
+  @@unique([empresaId, username])
+  @@index([empresaId])
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  MODELOS SIN empresaId (heredan del padre)
+// ════════════════════════════════════════════════════════════════════
+
+model AbonoCompra {
+  id            Int         @id @default(autoincrement())
+  ordenCompraId Int
+  usuarioId     Int
+  monto         Decimal     @db.Decimal(10, 2)
+  metodoPago    MetodoPago  @default(EFECTIVO)
+  notas         String?
+  creadoEn      DateTime    @default(now())
+  OrdenCompra   OrdenCompra @relation(fields: [ordenCompraId], references: [id], onDelete: Cascade)
+  Usuario       Usuario     @relation(fields: [usuarioId], references: [id])
+
+  @@index([ordenCompraId])
 }
 
 model DetalleBitacora {
@@ -265,47 +737,6 @@ model DetalleVenta {
   Venta          Venta      @relation(fields: [ventaId], references: [id], onDelete: Cascade)
 }
 
-model Devolucion {
-  id                  Int                 @id @default(autoincrement())
-  ventaId             Int
-  sucursalId          Int
-  usuarioId           Int
-  motivo              String
-  reintegraInventario Boolean             @default(true)
-  tipoReembolso       String
-  montoReembolso      Decimal             @db.Decimal(10, 2)
-  notas               String?
-  creadaEn            DateTime            @default(now())
-  DetalleDevolucion   DetalleDevolucion[]
-  Usuario             Usuario             @relation(fields: [usuarioId], references: [id])
-  Venta               Venta               @relation(fields: [ventaId], references: [id], onDelete: Cascade)
-}
-
-model FacturaCfdi {
-  id              Int           @id @default(autoincrement())
-  ventaId         Int           @unique
-  clienteId       Int?
-  rfcReceptor     String
-  nombreReceptor  String
-  cpReceptor      String
-  regimenFiscal   String
-  usoCfdi         String
-  emailReceptor   String?
-  lugarExpedicion String
-  subtotal        Decimal       @db.Decimal(10, 2)
-  iva             Decimal       @db.Decimal(10, 2)
-  total           Decimal       @db.Decimal(10, 2)
-  folioFiscal     String?
-  facturapiId     String?
-  xmlUrl          String?
-  pdfUrl          String?
-  estado          EstadoFactura @default(FACTURADA)
-  timbradaEn      DateTime?
-  creadaEn        DateTime      @default(now())
-  Cliente         Cliente?      @relation(fields: [clienteId], references: [id])
-  Venta           Venta         @relation(fields: [ventaId], references: [id], onDelete: Cascade)
-}
-
 model InventarioSucursal {
   id                Int      @id @default(autoincrement())
   productoId        Int
@@ -322,175 +753,6 @@ model InventarioSucursal {
   @@index([sucursalId])
 }
 
-model MovimientoCaja {
-  id         Int                @id @default(autoincrement())
-  turnoId    Int
-  tipo       TipoMovimientoCaja
-  monto      Decimal            @db.Decimal(10, 2)
-  metodoPago MetodoPago?
-  referencia String?
-  notas      String?
-  creadoEn   DateTime           @default(now())
-  TurnoCaja  TurnoCaja          @relation(fields: [turnoId], references: [id], onDelete: Cascade)
-
-  @@index([turnoId])
-}
-
-model MovimientoInventario {
-  id                      Int                      @id @default(autoincrement())
-  productoId              Int
-  sucursalId              Int
-  usuarioId               Int?
-  tipo                    TipoMovimientoInventario
-  cantidad                Decimal                  @db.Decimal(10, 3)
-  stockAntes              Decimal                  @db.Decimal(10, 3)
-  stockDespues            Decimal                  @db.Decimal(10, 3)
-  referencia              String?
-  notas                   String?
-  creadoEn                DateTime                 @default(now())
-  turnoId                 Int?
-  stockMinimoEnEseMomento Decimal?                 @db.Decimal(10, 3)
-  Producto                Producto                 @relation(fields: [productoId], references: [id], onDelete: Cascade)
-  Sucursal                Sucursal                 @relation(fields: [sucursalId], references: [id])
-  TurnoCaja               TurnoCaja?               @relation(fields: [turnoId], references: [id])
-  Usuario                 Usuario?                 @relation(fields: [usuarioId], references: [id])
-
-  @@index([creadoEn])
-  @@index([productoId])
-  @@index([sucursalId])
-  @@index([tipo])
-  @@index([turnoId])
-  @@index([usuarioId])
-}
-
-model OrdenCompra {
-  id                 Int                  @id @default(autoincrement())
-  folio              String               @unique
-  sucursalId         Int
-  proveedorId        Int
-  usuarioId          Int
-  estado             EstadoOrdenCompra    @default(ENVIADO)
-  totalEstimado      Decimal              @db.Decimal(10, 2)
-  totalRecibido      Decimal              @default(0) @db.Decimal(10, 2)
-  pagada             Boolean              @default(false)
-  totalPagado        Decimal              @default(0) @db.Decimal(12, 2)
-  notas              String?
-  creadaEn           DateTime             @default(now())
-  recibidaEn         DateTime?
-  AbonoCompra        AbonoCompra[]
-  DetalleOrdenCompra DetalleOrdenCompra[]
-  Proveedor          Proveedor            @relation(fields: [proveedorId], references: [id])
-  Sucursal           Sucursal             @relation(fields: [sucursalId], references: [id])
-  Usuario            Usuario              @relation(fields: [usuarioId], references: [id])
-
-  @@index([estado])
-  @@index([proveedorId])
-  @@index([sucursalId])
-}
-
-model Pedido {
-  id            Int             @id @default(autoincrement())
-  folio         String          @unique
-  sucursalId    Int
-  usuarioId     Int
-  clienteId     Int?
-  estado        EstadoPedido    @default(BORRADOR)
-  totalEstimado Decimal         @db.Decimal(10, 2)
-  motivoBloqueo String?
-  notas         String?
-  creadoEn      DateTime        @default(now())
-  actualizadoEn DateTime        @default(now()) @updatedAt
-  DetallePedido DetallePedido[]
-  Cliente       Cliente?        @relation(fields: [clienteId], references: [id])
-  Sucursal      Sucursal        @relation(fields: [sucursalId], references: [id])
-  Usuario       Usuario         @relation(fields: [usuarioId], references: [id])
-}
-
-model Producto {
-  id                   Int                    @id @default(autoincrement())
-  nombre               String
-  codigoInterno        String                 @unique
-  codigoBarras         String?                @unique
-  descripcion          String?
-  imagenUrl            String?
-  imagenOriginal       String?
-  precioBase           Decimal                @db.Decimal(10, 2)
-  precioVenta          Decimal?               @db.Decimal(10, 2)
-  costo                Decimal?               @db.Decimal(10, 2)
-  costoPromedio        Decimal?               @db.Decimal(10, 2)
-  precioMayoreo        Decimal?               @db.Decimal(10, 2)
-  cantidadMinMayoreo   Int?                   @default(10)
-  aplicaMayoreo        Boolean                @default(false)
-  unidadCompra         String?
-  unidadVenta          String?
-  factorConversion     Decimal?               @db.Decimal(10, 4)
-  claveSat             String?
-  unidadSat            String?
-  esGranel             Boolean                @default(false)
-  margen               Decimal?               @db.Decimal(5, 2)
-  tipoFacturaProv      String?                @default("NETO")
-  costoSinIvaProveedor Decimal?               @db.Decimal(10, 2)
-  categoriaId          Int
-  activo               Boolean                @default(true)
-  actualizadoEn        DateTime               @default(now()) @updatedAt
-  facturaLimite        DateTime?              @default(now())
-  imagenPublicId       String?
-  AlertaStock          AlertaStock[]
-  DetalleBitacora      DetalleBitacora[]
-  DetalleCotizacion    DetalleCotizacion[]
-  DetalleDevolucion    DetalleDevolucion[]
-  DetalleOrdenCompra   DetalleOrdenCompra[]
-  DetallePedido        DetallePedido[]
-  DetalleVenta         DetalleVenta[]
-  InventarioSucursal   InventarioSucursal[]
-  MovimientoInventario MovimientoInventario[]
-  Categoria            Categoria              @relation(fields: [categoriaId], references: [id])
-  ProveedorProducto    ProveedorProducto[]
-  Promocion            Promocion[]            @relation("PromocionProducto")
-
-  @@index([codigoBarras])
-  @@index([codigoInterno])
-  @@index([nombre])
-}
-
-model Promocion {
-  id           Int              @id @default(autoincrement())
-  nombre       String
-  tipo         TipoPromocion
-  alcance      AlcancePromocion
-  descuento    Decimal          @db.Decimal(5, 2)
-  activa       Boolean          @default(true)
-  fechaInicio  DateTime
-  fechaFin     DateTime
-  sucursalId   Int
-  categoriaId  Int?
-  notas        String?
-  creadaEn     DateTime         @default(now())
-  DetalleVenta DetalleVenta[]
-  Categoria    Categoria?       @relation(fields: [categoriaId], references: [id])
-  Sucursal     Sucursal         @relation(fields: [sucursalId], references: [id])
-  Producto     Producto[]       @relation("PromocionProducto")
-  @@index([activa])
-  @@index([fechaFin])
-  @@index([fechaInicio])
-}
-
-model Proveedor {
-  id                Int                 @id @default(autoincrement())
-  nombreOficial     String              @unique
-  alias             String?             @unique
-  telefono          String?
-  celular           String?
-  email             String?
-  activo            Boolean             @default(true)
-  creadoEn          DateTime            @default(now())
-  OrdenCompra       OrdenCompra[]
-  ProveedorProducto ProveedorProducto[]
-
-  @@index([alias])
-  @@index([nombreOficial])
-}
-
 model ProveedorProducto {
   id              Int       @id @default(autoincrement())
   proveedorId     Int
@@ -505,121 +767,9 @@ model ProveedorProducto {
   @@unique([proveedorId, productoId])
 }
 
-model Sucursal {
-  id                   Int                    @id @default(autoincrement())
-  nombre               String
-  direccion            String?
-  telefono             String?
-  codigoPostal         String
-  activa               Boolean                @default(true)
-  creadaEn             DateTime               @default(now())
-  AlertaStock          AlertaStock[]
-  Auditoria            Auditoria[]
-  Bitacora             Bitacora[]
-  Cotizacion           Cotizacion[]
-  InventarioSucursal   InventarioSucursal[]
-  MovimientoInventario MovimientoInventario[]
-  OrdenCompra          OrdenCompra[]
-  Pedido               Pedido[]
-  Promocion            Promocion[]
-  TurnoCaja            TurnoCaja[]
-  Usuario              Usuario[]
-  Venta                Venta[]
-}
-
-
-model TurnoCaja {
-  id                     Int                    @id @default(autoincrement())
-  sucursalId             Int
-  usuarioId              Int
-  montoInicial           Decimal                @db.Decimal(10, 2)
-  montoFinalDeclarado    Decimal?               @db.Decimal(10, 2)
-  montoCalculado         Decimal?               @db.Decimal(10, 2)
-  diferencia             Decimal?               @db.Decimal(10, 2)
-  abierto                Boolean                @default(true)
-  abiertaEn              DateTime               @default(now())
-  cerradaEn              DateTime?
-  reporteStockUrl        String?
-  reporteStockEstado     EstadoReporteStock?
-  reporteStockGeneradoEn DateTime?
-  notasCierre            String?
-  AbonoBitacora          AbonoBitacora[]
-  AlertaStock            AlertaStock[]
-  MovimientoCaja         MovimientoCaja[]
-  MovimientoInventario   MovimientoInventario[]
-  Sucursal               Sucursal               @relation(fields: [sucursalId], references: [id])
-  Usuario                Usuario                @relation(fields: [usuarioId], references: [id])
-  Venta                  Venta[]
-
-  @@index([cerradaEn])
-  @@index([sucursalId, abierto])
-}
-
-model Usuario {
-  id                   Int                    @id @default(autoincrement())
-  nombre               String
-  username             String                 @unique
-  passwordHash         String
-  rol                  Rol
-  activo               Boolean                @default(true)
-  creadoEn             DateTime               @default(now())
-  sucursalId           Int?
-  pin                  String?
-  tienePin             Boolean                @default(false)
-  AbonoBitacora        AbonoBitacora[]
-  AbonoCompra          AbonoCompra[]
-  Auditoria            Auditoria[]
-  Bitacora             Bitacora[]
-  Cotizacion           Cotizacion[]
-  Devolucion           Devolucion[]
-  MovimientoInventario MovimientoInventario[]
-  OrdenCompra          OrdenCompra[]
-  Pedido               Pedido[]
-  TurnoCaja            TurnoCaja[]
-  Sucursal             Sucursal?              @relation(fields: [sucursalId], references: [id])
-  Venta                Venta[]
-}
-
-model Venta {
-  id                 Int               @id @default(autoincrement())
-  folio              String            @unique
-  sucursalId         Int
-  usuarioId          Int
-  clienteId          Int?
-  turnoId            Int
-  metodoPago         MetodoPago
-  subtotal           Decimal           @db.Decimal(10, 2)
-  descuento          Decimal           @default(0) @db.Decimal(10, 2)
-  total              Decimal           @db.Decimal(10, 2)
-  estadoPago         EstadoPago        @default(PAGADA)
-  montoAbonado       Decimal           @default(0) @db.Decimal(10, 2)
-  saldoPendiente     Decimal           @default(0) @db.Decimal(10, 2)
-  montoPagado        Decimal           @default(0) @db.Decimal(10, 2)
-  cambio             Decimal           @default(0) @db.Decimal(10, 2)
-  estado             EstadoVenta       @default(COMPLETADA)
-  tokenQr            String            @unique
-  facturaEstado      EstadoFactura     @default(DISPONIBLE)
-  facturaLimite      DateTime          @default(now())
-  clienteRazonSocial String?
-  clienteRFC         String?
-  notas              String?
-  creadaEn           DateTime          @default(now())
-  desglosePagos      Json?
-  DetalleBitacora    DetalleBitacora[]
-  DetalleVenta       DetalleVenta[]
-  Devolucion         Devolucion[]
-  FacturaCfdi        FacturaCfdi?
-  Cliente            Cliente?          @relation(fields: [clienteId], references: [id])
-  Sucursal           Sucursal          @relation(fields: [sucursalId], references: [id])
-  TurnoCaja          TurnoCaja         @relation(fields: [turnoId], references: [id])
-  Usuario            Usuario           @relation(fields: [usuarioId], references: [id])
-
-  @@index([clienteId])
-  @@index([creadaEn])
-  @@index([sucursalId])
-  @@index([turnoId])
-  @@index([usuarioId])
-}
+// ════════════════════════════════════════════════════════════════════
+//  ENUMS
+// ════════════════════════════════════════════════════════════════════
 
 enum AlcancePromocion {
   PRODUCTO
@@ -713,6 +863,7 @@ enum Rol {
   ADMIN_SUCURSAL
   EMPLEADO
   PRECIOS
+  PLATFORM_ADMIN
 }
 
 enum TipoMovimientoCaja {

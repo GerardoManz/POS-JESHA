@@ -6,7 +6,7 @@ const { requireAuth } = require('../../middlewares/auth.middleware')
 
 const loginLimiter = rateLimit({
   windowMs: 3 * 60 * 1000,  // 3 minutos
-  max: 7,                    // 5 intentos por IP
+  max: 7,                    // 7 intentos por IP
   message: { error: 'Demasiados intentos. Intenta de nuevo en 3 minutos.' }
 })
 

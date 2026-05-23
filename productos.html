@@ -543,6 +543,82 @@
   </div>
 </div>
 
+<!-- ══ MODAL PRECIOS (rol PRECIOS) ══ -->
+<div id="modal-precios" class="modal" style="display:none;">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3>Editar Precio</h3>
+      <button class="modal-close" id="precios-close-btn">&times;</button>
+    </div>
+    <form id="precios-form">
+      <div class="form-group full-width">
+        <label>Producto</label>
+        <input type="text" id="precios-producto-nombre" readonly
+          style="background:rgba(255,255,255,0.03);color:var(--muted);" />
+      </div>
+
+      <div class="form-group full-width">
+        <label>Costo (precio proveedor)</label>
+        <input type="text" id="precios-costo" readonly
+          style="background:rgba(255,255,255,0.03);color:var(--muted);" />
+        <small style="color:var(--muted);font-size:0.72rem;display:block;margin-top:3px;">Actualizado desde el módulo de compras</small>
+      </div>
+
+      <div class="divider" style="border:none;border-top:1px solid var(--panel-border);margin:18px 0;"></div>
+
+      <!-- Radio: modo de actualización -->
+      <div class="form-group full-width">
+        <div style="display:flex;gap:12px;">
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:0.82rem;color:var(--text);padding:6px 10px;border:1px solid var(--panel-border);border-radius:8px;">
+            <input type="radio" name="precio-modo" value="precioVenta" checked />
+            Por precio venta
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:0.82rem;color:var(--text);padding:6px 10px;border:1px solid var(--panel-border);border-radius:8px;">
+            <input type="radio" name="precio-modo" value="margen" />
+            Por margen
+          </label>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="precios-venta">Precio venta al público</label>
+          <input type="number" id="precios-venta" step="0.01" min="0" placeholder="0.00" />
+          <small style="color:var(--muted);font-size:0.72rem;">Con IVA incluido — se muestra en POS</small>
+        </div>
+        <div class="form-group">
+          <label for="precios-margen">Margen (%)</label>
+          <input type="number" id="precios-margen" step="0.1" min="0" placeholder="0.0" disabled />
+          <small style="color:var(--muted);font-size:0.72rem;">% de utilidad sobre costo</small>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Precio base (sin IVA)</label>
+          <input type="text" id="precios-base-preview" readonly
+            style="background:rgba(255,255,255,0.03);color:var(--muted);" />
+          <small style="color:var(--muted);font-size:0.72rem;display:block;margin-top:3px;">
+            Precio sin IVA calculado automáticamente a partir del precio venta.
+          </small>
+        </div>
+        <div class="form-group">
+          <label for="precios-mayoreo">Precio mayoreo</label>
+          <input type="number" id="precios-mayoreo" step="0.01" min="0" placeholder="0.00" />
+          <small style="color:var(--muted);font-size:0.72rem;">Opcional</small>
+        </div>
+      </div>
+
+      <div id="precios-error" class="error-message"></div>
+
+      <div class="form-actions">
+        <button type="button" class="btn-secondary" id="precios-cancel-btn">Cancelar</button>
+        <button type="submit" class="btn-primary">Guardar Precio</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <!-- ===== SCRIPTS ===== -->
 <script src="config.js"></script>
   <script src="sidebar.js"></script>
@@ -590,4 +666,3 @@
 
 </body>
 </html>
-

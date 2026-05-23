@@ -28,7 +28,7 @@ const login = async (req, res) => {
       : null
 
     const token = jwt.sign(
-      { id: usuario.id, username: usuario.username, nombre: usuario.nombre, rol: usuario.rol, sucursalId: usuario.sucursalId },
+      { id: usuario.id, username: usuario.username, nombre: usuario.nombre, rol: usuario.rol, sucursalId: usuario.sucursalId, empresaId: usuario.empresaId }, // Incluir empresaId en el payload del token JWT
       process.env.JWT_SECRET,
       { expiresIn: '8h' }
     )
@@ -52,12 +52,13 @@ const me = async (req, res) => {
   try {
     const usuario = await prisma.usuario.findUnique({
       where: { id: req.usuario.id },
-      select: { id: true, nombre: true, username: true, rol: true, sucursalId: true }
+      select: { id: true, nombre: true, username: true, rol: true, sucursalId: true, empresaId: true } // Seleccionar empresaId
     })
     const Sucursal = usuario.sucursalId
       ? await prisma.sucursal.findUnique({ where: { id: usuario.sucursalId }, select: { id: true, nombre: true } })
       : null
-    res.json({ usuario: { ...usuario, Sucursal } })
+    // Asegurarse de que empresaId se devuelve explícitamente en la respuesta del endpoint 'me'
+    res.json({ usuario: { ...usuario, Sucursal, empresaId: usuario.empresaId } })
   } catch (err) {
     res.status(500).json({ error: 'Error interno del servidor' })
   }

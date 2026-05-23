@@ -25,6 +25,12 @@ function fmtStock(val) {
 }
 const API_URL = window.__JESHA_API_URL__ || 'http://localhost:3000'
 let TOKEN = localStorage.getItem('jesha_token')
+
+const IVA_FACTOR = window.__JESHA_IVA_FACTOR__ || 1.16
+const ROL_ACTUAL = JSON.parse(localStorage.getItem('jesha_usuario') || '{}').rol
+const ES_ADMIN = ['SUPERADMIN', 'ADMIN_SUCURSAL', 'PLATFORM_ADMIN'].includes(ROL_ACTUAL)
+const ES_PRECIOS = ROL_ACTUAL === 'PRECIOS'
+
 let productosLista     = []
 let departamentosLista = []
 let categoriasLista    = []
@@ -93,8 +99,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   console.log('✅ Token encontrado')
   await cargarDepartamentos()
   await cargarCategorias()
-  await cargarProveedores()
+  if (ES_ADMIN) await cargarProveedores()  // FIX: PRECIOS no usa el modal de producto, no necesita proveedores
   await cargarProductos()
+  aplicarPermisosProductos()
   configurarEventos()
   actualizarFecha()
   setInterval(actualizarFecha, 60000)
@@ -107,7 +114,25 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Inicializar actualización de datos fiscales
   initActualizarFiscales()
+
+  // Inicializar modal de precios (rol PRECIOS)
+  initModalPrecios()
 })
+
+// ═══════════════════════════════════════════════════════════════════
+// PERMISOS POR ROL — ocultar controles administrativos si no es admin
+// ═══════════════════════════════════════════════════════════════════
+
+function aplicarPermisosProductos() {
+  if (ES_ADMIN) return
+
+  // Ocultar botones de administración
+  const idsAdmin = ['btn-nuevo-producto', 'btn-subir-inventario', 'btn-subir-solo-nuevos', 'btn-actualizar-fiscales']
+  idsAdmin.forEach(id => {
+    const el = document.getElementById(id)
+    if (el) el.style.display = 'none'
+  })
+}
 
 // ═══════════════════════════════════════════════════════════════════
 // CARGA DE DATOS
@@ -115,11 +140,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 async function cargarDepartamentos() {
   try {
-    const response = await fetch(`${API_URL}/productos/departamentos`, {
-      headers: { 'Authorization': `Bearer ${TOKEN}` }
-    })
-    if (!response.ok) throw new Error(`Error ${response.status}`)
-    const resultado = await response.json()
+    const resultado = await apiFetch('/productos/departamentos')
     departamentosLista = resultado.data || resultado
     console.log('✅ Departamentos:', departamentosLista.length)
     llenarSelectDepartamentos()
@@ -128,11 +149,7 @@ async function cargarDepartamentos() {
 
 async function cargarCategorias() {
   try {
-    const response = await fetch(`${API_URL}/productos/categorias`, {
-      headers: { 'Authorization': `Bearer ${TOKEN}` }
-    })
-    if (!response.ok) throw new Error(`Error ${response.status}`)
-    const resultado = await response.json()
+    const resultado = await apiFetch('/productos/categorias')
     categoriasLista = resultado.data || resultado
     console.log('✅ Categorías:', categoriasLista.length)
   } catch (error) { console.error('❌ Error cargando categorías:', error) }
@@ -140,11 +157,7 @@ async function cargarCategorias() {
 
 async function cargarProveedores() {
   try {
-    const response = await fetch(`${API_URL}/compras/proveedores`, {
-      headers: { 'Authorization': `Bearer ${TOKEN}` }
-    })
-    if (!response.ok) throw new Error(`Error ${response.status}`)
-    const resultado = await response.json()
+    const resultado = await apiFetch('/compras/proveedores')
     proveedoresLista = resultado.data || resultado
     console.log('✅ Proveedores:', proveedoresLista.length)
     llenarSelectProveedores()
@@ -173,11 +186,7 @@ async function cargarProductos() {
     const stockVal = filtroStock?.value
     if (stockVal) params.set('stock', stockVal)
 
-    const response = await fetch(`${API_URL}/productos?${params}`, {
-      headers: { 'Authorization': `Bearer ${TOKEN}` }
-    })
-    if (!response.ok) throw new Error(`Error ${response.status}`)
-    const resultado = await response.json()
+    const resultado = await apiFetch(`/productos?${params}`)
     productosLista = resultado.data || resultado
 
     if (resultado.paginacion) {
@@ -338,12 +347,10 @@ async function crearNuevoDepartamento() {
   })
   if (!nombre || !nombre.trim()) { modalDeptoSelect.value = ''; return }
   try {
-    const response = await fetch(`${API_URL}/productos/departamentos`, {
+    const json = await apiFetch('/productos/departamentos', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
       body: JSON.stringify({ nombre: nombre.trim() })
     })
-    const json = await response.json()
     if (json.success) {
       const nuevoDepto = json.data
       if (!departamentosLista.find(d => d.id === nuevoDepto.id)) {
@@ -355,7 +362,7 @@ async function crearNuevoDepartamento() {
       actualizarModalCategorias(nuevoDepto.id)
       console.log(`✅ Departamento creado: ${nuevoDepto.nombre}`)
     } else { jeshaToast('Error: ' + json.error, 'error'); modalDeptoSelect.value = '' }
-  } catch (err) { console.error('❌ Error creando departamento:', err); jeshaToast('Error de conexión', 'error'); modalDeptoSelect.value = '' }
+  } catch (err) { console.error('❌ Error creando departamento:', err); modalDeptoSelect.value = '' }
 }
 
 async function crearNuevaCategoria() {
@@ -369,19 +376,17 @@ async function crearNuevaCategoria() {
   })
   if (!nombre || !nombre.trim()) { modalCatSelect.value = ''; return }
   try {
-    const response = await fetch(`${API_URL}/productos/categorias`, {
+    const json = await apiFetch('/productos/categorias', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
       body: JSON.stringify({ nombre: nombre.trim(), departamentoId: parseInt(departamentoId) })
     })
-    const json = await response.json()
     if (json.success) {
       const nuevaCat = json.data
       if (!categoriasLista.find(c => c.id === nuevaCat.id)) categoriasLista.push(nuevaCat)
       actualizarModalCategorias(departamentoId, nuevaCat.id)
       console.log(`✅ Categoría creada: ${nuevaCat.nombre}`)
     } else { jeshaToast('Error: ' + json.error, 'error'); modalCatSelect.value = '' }
-  } catch (err) { console.error('❌ Error creando categoría:', err); jeshaToast('Error de conexión', 'error'); modalCatSelect.value = '' }
+  } catch (err) { console.error('❌ Error creando categoría:', err); modalCatSelect.value = '' }
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -408,6 +413,27 @@ function limpiarFiltros() {
 // ═══════════════════════════════════════════════════════════════════
 // TABLA
 // ═══════════════════════════════════════════════════════════════════
+
+// Acciones por fila según rol
+function accionesFila(p) {
+  if (ES_ADMIN) {
+    return `
+      <button class="btn-icon btn-editar-producto" data-id="${p.id}" title="Editar">✏️</button>
+      <button class="btn-ajuste-inv" data-id="${p.id}" title="Ajustar stock">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        Stock
+      </button>
+      <button class="btn-icon btn-toggle-estado ${p.activo ? 'btn-desactivar' : 'btn-activar'}"
+        data-id="${p.id}" data-activo="${p.activo}" data-nombre="${p.nombre}"
+        title="${p.activo ? 'Desactivar producto — dejará de aparecer en el POS' : 'Activar producto — volverá a aparecer en el POS'}">
+        ${p.activo ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>' : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>'}
+      </button>`
+  }
+  if (ES_PRECIOS) {
+    return `<button class="btn-icon btn-editar-precio" data-id="${p.id}" title="Editar precio">💲</button>`
+  }
+  return ''
+}
 
 function mostrarLoadingTabla() {
   if (!productosTbody) return
@@ -446,16 +472,7 @@ function renderizarTabla(productos) {
       <td>${fmtStock(minStock)}</td>
       <td><span class="estado-badge ${p.activo ? 'activo' : 'inactivo'}">${p.activo ? 'Activo' : 'Inactivo'}</span></td>
       <td><div class="actions-cell">
-        <button class="btn-icon btn-editar-producto" data-id="${p.id}" title="Editar">✏️</button>
-        <button class="btn-ajuste-inv" data-id="${p.id}" title="Ajustar stock">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-          Stock
-        </button>
-        <button class="btn-icon btn-toggle-estado ${p.activo ? 'btn-desactivar' : 'btn-activar'}"
-          data-id="${p.id}" data-activo="${p.activo}" data-nombre="${p.nombre}"
-          title="${p.activo ? 'Desactivar producto — dejará de aparecer en el POS' : 'Activar producto — volverá a aparecer en el POS'}">
-          ${p.activo ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>' : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>'}
-        </button>
+        ${accionesFila(p)}
       </div></td>
     </tr>`
   }).join('')
@@ -656,14 +673,11 @@ async function guardarProducto(e) {
   
   try {
     const metodo = productoActual ? 'PUT' : 'POST'
-    const url    = productoActual ? `${API_URL}/productos/${productoActual.id}` : `${API_URL}/productos`
-    const response = await fetch(url, {
+    const url    = productoActual ? `/productos/${productoActual.id}` : `/productos`
+    const resultado = await apiFetch(url, {
       method: metodo,
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
       body: JSON.stringify(datos)
     })
-    if (!response.ok) { const err = await response.json(); throw new Error(err.error || `Error ${response.status}`) }
-    const resultado = await response.json()
     const productoGuardado = resultado.data || resultado
     
     // Subir imagen si existe
@@ -682,17 +696,12 @@ async function guardarProducto(e) {
 
 async function guardarProveedorProducto(productoId, proveedorId) {
   try {
-    // POST a /compras/proveedores/:proveedorId/productos/:productoId
-    const response = await fetch(`${API_URL}/compras/proveedores/${proveedorId}/productos/${productoId}`, {
+    await apiFetch(`/compras/proveedores/${proveedorId}/productos/${productoId}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
       body: JSON.stringify({ precioCosto: 0 })
     })
-    if (!response.ok && response.status !== 409) {
-      console.warn('⚠️ Error vinculando proveedor, pero continuamos')
-    }
   } catch (error) {
-    console.warn('⚠️ Error en relación proveedor:', error.message)
+    console.warn('⚠️ Error vinculando proveedor, pero continuamos')
   }
 }
 
@@ -729,9 +738,8 @@ async function guardarNuevoProveedor(e) {
   btn.textContent = 'Creando...'
 
   try {
-    const response = await fetch(`${API_URL}/compras/proveedores`, {
+    const resultado = await apiFetch('/compras/proveedores', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
       body: JSON.stringify({ 
         nombreOficial: nombre, 
         alias: apodo || nombre,
@@ -739,11 +747,6 @@ async function guardarNuevoProveedor(e) {
         email
       })
     })
-    if (!response.ok) {
-      const err = await response.json()
-      throw new Error(err.error || `Error ${response.status}`)
-    }
-    const resultado = await response.json()
     const proveedorNuevo = resultado.data || resultado
     
     // Agregar a lista local
@@ -789,16 +792,13 @@ window.toggleEstadoProducto = function(id, nuevoEstado, nombreProducto) {
 
 async function ejecutarToggleEstado(id, nuevoEstado) {
   try {
-    const response = await fetch(`${API_URL}/productos/${id}/estado`, {
+    await apiFetch(`/productos/${id}/estado`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
       body: JSON.stringify({ activo: nuevoEstado })
     })
-    if (!response.ok) throw new Error(`Error ${response.status}`)
     await cargarProductos()
   } catch (error) {
     console.error('❌ Error cambiando estado:', error)
-    jeshaToast('Error al cambiar estado del producto', 'error')
   }
 }
 
@@ -927,10 +927,9 @@ function mostrarConfirmEstado(id, nuevoEstado, nombreProducto) {
 async function subirImagen(productoId, archivo) {
   try {
     const formData = new FormData(); formData.append('imagen', archivo)
-    const response = await fetch(`${API_URL}/productos/${productoId}/imagen`, {
-      method: 'POST', headers: { 'Authorization': `Bearer ${TOKEN}` }, body: formData
+    await apiFetch(`/productos/${productoId}/imagen`, {
+      method: 'POST', body: formData
     })
-    if (!response.ok) throw new Error(`Error ${response.status}`)
     console.log('✅ Imagen subida')
   } catch (error) { console.error('❌ Error subiendo imagen:', error) }
 }
@@ -1026,8 +1025,165 @@ function calcularPrecioBase() {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// UTILIDADES
+//  MODAL PRECIOS — Editar solo campos de precio (rol PRECIOS)
 // ═══════════════════════════════════════════════════════════════════
+
+let productoPrecio = null
+
+function modoPrecioActual() {
+  return document.querySelector('input[name="precio-modo"]:checked')?.value || 'precioVenta'
+}
+
+function actualizarModoPrecio() {
+  const modo = modoPrecioActual()
+  const inputVenta = document.getElementById('precios-venta')
+  const inputMargen = document.getElementById('precios-margen')
+
+  if (modo === 'margen') {
+    inputMargen.disabled = false
+    inputVenta.readOnly = true
+    inputVenta.style.background = 'rgba(255,255,255,0.03)'
+    inputVenta.style.color = 'var(--muted)'
+  } else {
+    inputMargen.disabled = true
+    inputVenta.readOnly = false
+    inputVenta.style.background = ''
+    inputVenta.style.color = ''
+  }
+
+  actualizarPreviewPrecioBase()
+}
+
+function actualizarPreviewPrecioBase() {
+  const modo = modoPrecioActual()
+  const costo = parseFloat(document.getElementById('precios-costo').dataset.valor || 0)
+  const inputVenta = document.getElementById('precios-venta')
+  const inputMargen = document.getElementById('precios-margen')
+  const previewBase = document.getElementById('precios-base-preview')
+
+  let precioVenta = parseFloat(inputVenta.value)
+
+  if (modo === 'margen') {
+    const margen = parseFloat(inputMargen.value)
+    if (!isNaN(costo) && costo > 0 && !isNaN(margen)) {
+      precioVenta = parseFloat((costo * (1 + margen / 100)).toFixed(2))
+      inputVenta.value = precioVenta.toFixed(2)
+    }
+  }
+
+  if (!isNaN(precioVenta) && precioVenta >= 0) {
+    previewBase.value = (precioVenta / IVA_FACTOR).toFixed(2)
+  } else {
+    previewBase.value = '0.00'
+  }
+}
+
+window.abrirModalPrecios = function(id) {
+  const producto = productosLista.find(p => p.id === id)
+  if (!producto) return
+
+  productoPrecio = producto
+
+  document.getElementById('precios-producto-nombre').value = producto.nombre
+  const costoInput = document.getElementById('precios-costo')
+  const costo = producto.costo ? parseFloat(producto.costo).toFixed(2) : '0.00'
+  costoInput.value = `$${costo}`
+  costoInput.dataset.valor = producto.costo || 0
+
+  document.getElementById('precios-venta').value = producto.precioVenta || producto.precioBase || ''
+  document.getElementById('precios-margen').value = producto.margen || ''
+  document.getElementById('precios-mayoreo').value = producto.precioMayoreo || ''
+  document.getElementById('precios-error').style.display = 'none'
+
+  // Resetear a modo precioVenta por defecto
+  document.querySelector('input[name="precio-modo"][value="precioVenta"]').checked = true
+  actualizarModoPrecio()
+
+  document.getElementById('modal-precios').style.display = 'flex'
+}
+
+function cerrarModalPrecios() {
+  document.getElementById('modal-precios').style.display = 'none'
+  productoPrecio = null
+}
+
+async function guardarPrecios(e) {
+  e.preventDefault()
+  const errorDiv = document.getElementById('precios-error')
+  errorDiv.style.display = 'none'
+
+  if (!productoPrecio) return
+
+  const modo = modoPrecioActual()
+  const body = {}
+
+  if (modo === 'precioVenta') {
+    const pv = document.getElementById('precios-venta').value.trim()
+    if (pv === '') {
+      errorDiv.textContent = 'Ingresa un precio de venta'
+      errorDiv.style.display = 'block'
+      return
+    }
+    body.precioVenta = parseFloat(pv)
+  }
+
+  if (modo === 'margen') {
+    const mg = document.getElementById('precios-margen').value.trim()
+    if (mg === '') {
+      errorDiv.textContent = 'Ingresa un margen'
+      errorDiv.style.display = 'block'
+      return
+    }
+    body.margen = parseFloat(mg)
+  }
+
+  const mayoreo = document.getElementById('precios-mayoreo').value.trim()
+  if (mayoreo !== '') body.precioMayoreo = parseFloat(mayoreo)
+
+  const btn = e.target.querySelector('button[type="submit"]')
+  btn.disabled = true
+  const txt = btn.textContent
+  btn.textContent = 'Guardando...'
+
+  try {
+    await apiFetch(`/precios/${productoPrecio.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body)
+    })
+    cerrarModalPrecios()
+    await cargarProductos()
+  } catch (err) {
+    errorDiv.textContent = err.message
+    errorDiv.style.display = 'block'
+  } finally {
+    btn.disabled = false
+    btn.textContent = txt
+  }
+}
+
+// Inicializar eventos del modal de precios
+function initModalPrecios() {
+  document.getElementById('precios-close-btn')?.addEventListener('click', cerrarModalPrecios)
+  document.getElementById('precios-cancel-btn')?.addEventListener('click', cerrarModalPrecios)
+  document.getElementById('precios-form')?.addEventListener('submit', guardarPrecios)
+
+  // FIX: radios de modo (precioVenta / margen) — reemplaza onchange inline del HTML
+  document.querySelectorAll('input[name="precio-modo"]').forEach(radio => {
+    radio.addEventListener('change', actualizarModoPrecio)
+  })
+
+  document.getElementById('precios-venta')?.addEventListener('input', () => {
+    if (modoPrecioActual() === 'precioVenta') actualizarPreviewPrecioBase()
+  })
+  document.getElementById('precios-margen')?.addEventListener('input', () => {
+    if (modoPrecioActual() === 'margen') actualizarPreviewPrecioBase()
+  })
+
+  // Cerrar haciendo click fuera
+  document.getElementById('modal-precios')?.addEventListener('click', e => {
+    if (e.target === e.currentTarget) cerrarModalPrecios()
+  })
+}
 
 function mostrarError(msg) {
   const el = document.getElementById('producto-error')
@@ -1220,6 +1376,13 @@ function configurarEventos() {
         const activoActual = btnEstado.dataset.activo === 'true'
         const nombre = btnEstado.dataset.nombre || ''
         if (id) toggleEstadoProducto(id, !activoActual, nombre)
+        return
+      }
+
+      const btnPrecio = e.target.closest('.btn-editar-precio')
+      if (btnPrecio) {
+        const id = parseInt(btnPrecio.dataset.id)
+        if (id) abrirModalPrecios(id)
         return
       }
     })
@@ -1519,20 +1682,13 @@ async function ejecutarImportacion() {
 
     // FIX: usar API_URL en lugar de API_URL_IMPORT
     const endpoint = modoImportacion === 'solo_nuevos'
-      ? `${API_URL}/productos/importar/solo-nuevos`
-      : `${API_URL}/productos/importar/csv`
+      ? '/productos/importar/solo-nuevos'
+      : '/productos/importar/csv'
 
-    const token = localStorage.getItem('jesha_token')
-    const response = await fetch(endpoint, {
+    const resultado = await apiFetch(endpoint, {
       method: 'POST',
-      headers: { 'Authorization': `Bearer ${token}` },
       body: formData
     })
-
-    progresoFill.style.width = '90%'
-    const resultado = await response.json()
-
-    if (!response.ok) throw new Error(resultado.error || 'Error en importación')
 
     progresoFill.style.width = '100%'
     progresoFill.style.background = '#60d080'
@@ -1705,15 +1861,10 @@ async function guardarAjuste() {
     if (minNuevo   !== '') body.stockMinimoAlerta = parseFloat(minNuevo)
     if (motivo)            body.motivo            = motivo
 
-    const token    = localStorage.getItem('jesha_token')
-    const response = await fetch(`${API_URL}/productos/${productoAjuste.id}/inventario`, {
+    await apiFetch(`/productos/${productoAjuste.id}/inventario`, {
       method:  'PATCH',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
       body:    JSON.stringify(body)
     })
-
-    const data = await response.json()
-    if (!response.ok) throw new Error(data.error || 'Error al ajustar inventario')
 
     // Cerrar y recargar tabla
     document.getElementById('modal-ajuste-inv').style.display = 'none'
@@ -1786,16 +1937,10 @@ function initActualizarFiscales() {
       const formData = new FormData()
       formData.append('archivo', archivo)
 
-      const token = localStorage.getItem('jesha_token')
-      const response = await fetch(`${API_URL}/productos/importar/datos-fiscales`, {
+      const resultado = await apiFetch('/productos/importar/datos-fiscales', {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` },
         body: formData
       })
-
-      const resultado = await response.json()
-
-      if (!response.ok) throw new Error(resultado.error || 'Error en actualización')
 
       // Log de omitidos en consola para diagnóstico
       if (resultado.detalleOmitidos && resultado.detalleOmitidos.length > 0) {

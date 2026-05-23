@@ -202,9 +202,9 @@ function mapearProducto(fila) {
     }
 
     // Stock inicial y mínimo desde el CSV
-    const stockInicial = parseInt(fila['EXIST.']) || 0
-    const stockMinimo  = parseInt(fila['INV_MIN']) || 5
-    const stockMaximo  = parseInt(fila['INV_MAX']) || null
+    const stockInicial = parseFloat(fila['EXIST.']) || 0
+    const stockMinimo  = parseFloat(fila['INV_MIN']) || 5
+    const stockMaximo  = parseFloat(fila['INV_MAX']) || null
     const esGranel     = (fila['GRANEL (S/N)'] || '').toUpperCase().trim() === 'S'
 
     // TIPO DE GRANEL tiene prioridad sobre inferirUnidadVenta si viene con valor

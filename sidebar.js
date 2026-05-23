@@ -12,9 +12,10 @@ const ROL_BLOQUEADO = {
                    'facturas', 'bitacora', 'pedidos', 'clientes', 'usuarios'],
 }
 
-// Páginas donde el empleado es redirigido al POS en vez del dashboard
+// Páginas donde el rol es redirigido a su página principal en vez del dashboard
 const REDIRECCION_ROL = {
   EMPLEADO: 'punto-venta.html',
+  PRECIOS:  'productos.html',  // FIX: evita loop infinito (dashboard bloqueado → index → dashboard...)
 }
 
 function getRol() {
@@ -126,6 +127,28 @@ function aplicarPermisosMenu() {
       item.style.display = 'none'
     }
   })
+
+  // FIX: ocultar etiquetas de sección que se quedaron sin items visibles
+  // (evita ver títulos "Ventas"/"Administración" sin nada debajo para roles restringidos)
+  ocultarSeccionesVacias()
+}
+
+// Recorre cada .menu-section-label y revisa sus hermanos hasta el siguiente label.
+// Si ningún .menu-item del bloque está visible, oculta el label.
+function ocultarSeccionesVacias() {
+  const labels = document.querySelectorAll('.menu-section-label')
+  labels.forEach(label => {
+    let hayVisible = false
+    let nodo = label.nextElementSibling
+    while (nodo && !nodo.classList.contains('menu-section-label')) {
+      if (nodo.classList.contains('menu-item') && nodo.style.display !== 'none') {
+        hayVisible = true
+        break
+      }
+      nodo = nodo.nextElementSibling
+    }
+    if (!hayVisible) label.style.display = 'none'
+  })
 }
 
 function marcarPaginaActiva(paginaActual) {
@@ -165,10 +188,13 @@ window.apiFetch = async function(path, opts = {}) {
   const token  = localStorage.getItem('jesha_token')
   const apiUrl = window.__JESHA_API_URL__ || 'http://localhost:3000'
 
+  // Soporte FormData: no forzar Content-Type, dejar que el navegador lo ponga con boundary
+  const esFormData = opts.body instanceof FormData
+
   const res = await fetch(`${apiUrl}${path}`, {
     ...opts,
     headers: {
-      'Content-Type': 'application/json',
+      ...(esFormData ? {} : { 'Content-Type': 'application/json' }),
       'Authorization': `Bearer ${token}`,
       ...(opts.headers || {})
     }
@@ -180,6 +206,14 @@ window.apiFetch = async function(path, opts = {}) {
     localStorage.removeItem('jesha_usuario')
     window.location.href = 'login.html'
     throw new Error('Sesión expirada')
+  }
+
+  // Permisos insuficientes — toast y lanzar error
+  if (res.status === 403) {
+    const data = await res.json().catch(() => ({}))
+    const msg = data.error || 'No tienes permisos para realizar esta acción'
+    if (window.jeshaToast) jeshaToast(msg, 'error')
+    throw new Error(msg)
   }
 
   const data = await res.json()
