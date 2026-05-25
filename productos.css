@@ -1211,3 +1211,13 @@
   background: rgba(96,208,128,0.12);
   border-color: rgba(96,208,128,0.5);
 }
+
+/* ── RESPONSIVE PRECIOS MÓVIL ── */
+@media (max-width: 768px) {
+  /* Ocultar columnas no esenciales para rol PRECIOS en móvil */
+  body.rol-precios .productos-table .col-categoria,
+  body.rol-precios .productos-table .col-min-stock,
+  body.rol-precios .productos-table .col-estado {
+    display: none;
+  }
+}

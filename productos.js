@@ -135,6 +135,7 @@ function aplicarPermisosProductos() {
 
   // Ocultar header de columna ACCIONES para PRECIOS
   if (ES_PRECIOS) {
+    document.body.classList.add('rol-precios')
     const th = document.getElementById('th-acciones')
     if (th) th.style.display = 'none'
   }
@@ -468,15 +469,15 @@ function renderizarTabla(productos) {
     return `<tr>
       <td>${p.codigoInterno || '-'}</td>
       <td><strong>${p.nombre}</strong>${p.esGranel ? `<span style="display:inline-block;margin-left:6px;padding:1px 6px;font-size:0.65rem;font-weight:700;background:rgba(107,157,232,0.15);color:#6b9de8;border-radius:4px;vertical-align:middle;letter-spacing:0.03em;">GRANEL${p.unidadVenta ? ' · ' + p.unidadVenta : ''}</span>` : ''}${p.codigoBarras ? `<br/><small style="color:var(--muted)">${p.codigoBarras}</small>` : ''}</td>
-      <td>${deptoNombre ? `<small style="color:var(--muted);display:block;font-size:0.7rem;">${deptoNombre}</small>` : ''}
+      <td class="col-categoria">${deptoNombre ? `<small style="color:var(--muted);display:block;font-size:0.7rem;">${deptoNombre}</small>` : ''}
           <span class="categoria-badge">${catNombre}</span></td>
       <td>
         <div style="font-weight:600">$${parseFloat(p.precioVenta || p.precioBase || 0).toFixed(2)}</div>
         <div style="font-size:0.72rem;color:var(--muted)">Base: $${parseFloat(p.precioBase || 0).toFixed(2)}</div>
       </td>
       <td style="color:${stockBajo ? '#ff9999' : 'inherit'}">${fmtStock(stock)}</td>
-      <td>${fmtStock(minStock)}</td>
-      <td><span class="estado-badge ${p.activo ? 'activo' : 'inactivo'}">${p.activo ? 'Activo' : 'Inactivo'}</span></td>
+      <td class="col-min-stock">${fmtStock(minStock)}</td>
+      <td class="col-estado"><span class="estado-badge ${p.activo ? 'activo' : 'inactivo'}">${p.activo ? 'Activo' : 'Inactivo'}</span></td>
       ${ES_PRECIOS ? '' : `<td><div class="actions-cell">${accionesFila(p)}</div></td>`}
     </tr>`
   }).join('')
