@@ -21,7 +21,8 @@ body {
 /* ── CARD ── */
 .card {
   display: flex;
-  width: 860px;
+  width: 100%;
+  max-width: 860px;
   min-height: 520px;
   border-radius: 18px;
   overflow: hidden;
@@ -109,6 +110,23 @@ h1 {
   color: rgba(255, 255, 255, 0.45);
 }
 
+/* ── BOTÓN OJO ── */
+.btn-eye {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.35);
+  display: flex;
+  align-items: center;
+  padding: 4px;
+  flex-shrink: 0;
+  transition: color 0.2s;
+}
+
+.btn-eye:hover {
+  color: rgba(255, 255, 255, 0.7);
+}
+
 .btn-login {
   width: 100%;
   padding: 15px;
@@ -143,4 +161,69 @@ h1 {
   object-fit: cover;
   object-position: 40.1% center; /* pega el lado izquierdo del PNG al borde */
   display: block;
+}
+
+/* ── RESPONSIVE ── */
+
+/* TABLET — hasta 860px */
+@media (max-width: 860px) {
+  body {
+    padding: 16px;
+  }
+
+  .right {
+    width: 220px;
+  }
+
+  .left {
+    padding: 40px 36px;
+  }
+}
+
+/* MÓVIL — hasta 560px */
+@media (max-width: 560px) {
+  body {
+    padding: 12px;
+  }
+
+  .card {
+    flex-direction: column;
+    min-height: auto;
+    border-radius: 14px;
+  }
+
+  .right {
+    display: none;
+  }
+
+  .left {
+    padding: 36px 28px 40px;
+  }
+
+  .form-block {
+    margin-top: 0;
+  }
+
+  .logo-wrap {
+    margin-bottom: 24px;
+  }
+
+  .logo-wrap img {
+    max-width: 180px;
+  }
+
+  h1 {
+    font-size: 1.35rem;
+    margin-bottom: 22px;
+  }
+
+  .field input {
+    font-size: 0.9rem;
+    padding: 12px 0;
+  }
+
+  .btn-login {
+    padding: 13px;
+    font-size: 1rem;
+  }
 }
