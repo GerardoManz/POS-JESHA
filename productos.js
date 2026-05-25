@@ -132,6 +132,12 @@ function aplicarPermisosProductos() {
     const el = document.getElementById(id)
     if (el) el.style.display = 'none'
   })
+
+  // Ocultar header de columna ACCIONES para PRECIOS
+  if (ES_PRECIOS) {
+    const th = document.getElementById('th-acciones')
+    if (th) th.style.display = 'none'
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -471,9 +477,7 @@ function renderizarTabla(productos) {
       <td style="color:${stockBajo ? '#ff9999' : 'inherit'}">${fmtStock(stock)}</td>
       <td>${fmtStock(minStock)}</td>
       <td><span class="estado-badge ${p.activo ? 'activo' : 'inactivo'}">${p.activo ? 'Activo' : 'Inactivo'}</span></td>
-      <td><div class="actions-cell">
-        ${accionesFila(p)}
-      </div></td>
+      ${ES_PRECIOS ? '' : `<td><div class="actions-cell">${accionesFila(p)}</div></td>`}
     </tr>`
   }).join('')
 }
