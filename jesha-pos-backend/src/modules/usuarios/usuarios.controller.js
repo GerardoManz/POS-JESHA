@@ -28,6 +28,7 @@ const listar = async (req, res) => {
       select: {
         id: true, nombre: true, username: true, rol: true, activo: true, creadoEn: true,
         tienePin: true,
+        sucursalId: true,
         Sucursal: { select: { id: true, nombre: true } },
         Auditoria: { where: { accion: 'LOGIN' }, orderBy: { creadoEn: 'desc' }, take: 1, select: { creadoEn: true } }
       },
@@ -127,7 +128,7 @@ const crear = async (req, res) => {
 const editar = async (req, res) => {
   try {
     const { id } = req.params
-    const { nombre, username, rol, sucursalId } = req.body
+    const { nombre, username, rol, sucursalId, password, confirmarPassword } = req.body
     const solicitante = req.usuario
     const objetivo = await prisma.usuario.findUnique({ where: { id: parseInt(id) } })
     if (!objetivo) return res.status(404).json({ error: 'Usuario no encontrado' })
@@ -142,6 +143,13 @@ const editar = async (req, res) => {
     const data = { nombre, username }
     if (rol)                    data.rol        = rol
     if (sucursalId !== undefined) data.sucursalId = sucursalId ? parseInt(sucursalId) : null
+    // ── Contraseña opcional ──
+    if (password) {
+      if (!confirmarPassword)            return res.status(400).json({ error: 'Debes confirmar la nueva contraseña' })
+      if (password !== confirmarPassword) return res.status(400).json({ error: 'Las contraseñas no coinciden' })
+      if (password.length < 6)           return res.status(400).json({ error: 'Mínimo 6 caracteres' })
+      data.passwordHash = await bcrypt.hash(password, 10)
+    }
     const usuario = await prisma.usuario.update({
       where: { id: parseInt(id) }, data,
       select: { id: true, nombre: true, username: true, rol: true, activo: true, tienePin: true, Sucursal: { select: { id: true, nombre: true } } }
