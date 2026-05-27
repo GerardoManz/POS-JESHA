@@ -520,7 +520,7 @@ function renderListaProductos(productos) {
   const cont = document.getElementById('lista-prod-det')
   if (!productos.length) { cont.innerHTML = '<p class="muted-hint">Sin resultados</p>'; return }
   cont.innerHTML = productos.map(p => {
-    const stock = p.inventarios?.[0]?.stockActual || 0
+    const stock = p.stock ?? p.inventario?.stockActual ?? 0
     const stockClass = stock > 0 ? 'pi-stock-ok' : 'pi-stock-no'
     const stockText  = stock > 0 ? `${stock} disp.` : 'sin stock'
     return `
@@ -541,7 +541,7 @@ function seleccionarProducto(productoId) {
   const p = productosCache.find(x => x.id === productoId)
   if (!p) return
   productoSeleccionado = p
-  const stock = p.inventarios?.[0]?.stockActual || 0
+  const stock = p.stock ?? p.inventario?.stockActual ?? 0
   document.getElementById('prod-seleccionado-nombre').textContent = p.nombre
   document.getElementById('prod-stock-info').innerHTML =
     stock > 0

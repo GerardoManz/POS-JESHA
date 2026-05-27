@@ -1,6 +1,6 @@
 ﻿# JESHA POS
 
-Sistema de punto de venta (POS) integral para Ferreteria JESHA. Gestiona ventas, inventario, compras, facturacion, cuentas de clientes y operaciones multi-sucursal.
+Sistema de punto de venta (POS) integral multi-empresa para ferreterias. Gestiona ventas, inventario, compras, facturacion, cuentas de clientes y operaciones multi-sucursal, con aislamiento de datos por empresa (tenant).
 
 ## Tecnologias
 
@@ -25,10 +25,14 @@ Ferreteria JESHA/
     |-- src/
     |   |-- app.js                # Rutas Express
     |   |-- server.js             # Entry point
-    |   |-- middlewares/          # Auth JWT (async + verifica activo en BD)
+    |   |-- helpers/
+    |   |   |-- getEmpresaId.js   # Extraccion de tenant del JWT
+    |   |-- middlewares/          # Auth JWT + guards de rol + acceso sucursal
     |   |-- lib/                  # Prisma + Cloudinary
+    |   |-- utils/
+    |   |   |-- roles.js          # Jerarquia de roles (JERARQUIA_ROLES)
     |   |-- modules/
-    |       |-- auth/             # Login
+    |       |-- auth/             # Login (incluye empresaId en JWT)
     |       |-- ventas/           # Ventas + tickets + dashboard KPIs
     |       |-- productos/        # Productos + importacion CSV
     |       |-- inventario/       # Stock por sucursal
@@ -43,8 +47,22 @@ Ferreteria JESHA/
     |       |-- facturas/         # Registros CFDI
     |       |-- sucursal/         # Helper de sucursal (CRUD pendiente)
     |-- prisma/
-        |-- schema.prisma         # Esquema completo
+        |-- schema.prisma         # Esquema completo multi-tenant
 ```
+
+## Arquitectura Multi-Tenant (Fase 1-SaaS)
+
+Cada empresa es un tenant independiente. El modelo `Empresa` agrupa todos los datos: sucursales, usuarios, productos, ventas, clientes, etc.
+
+**Flujo del tenant**:
+1. Login incluye `empresaId` en el payload del JWT
+2. Middleware `requireAuth` valida el JWT y adjunta `req.usuario.empresaId`
+3. Helper `getEmpresaId(req)` extrae el tenant — lanza 401 si no existe
+4. Todos los `.create()` y queries de busqueda scoped por `empresaId`
+
+**Aislamiento**: 17 modelos tienen `empresaId NOT NULL`. Las claves unicas son compuestas (`@@unique([empresaId, folio])`) — mismo folio puede existir en diferentes empresas sin conflicto.
+
+**Catálogos globales**: `Categoria` y `Departamento` con `esGlobal = true` tienen `empresaId = null` y son visibles para todas las empresas.
 
 ## Modulos Principales
 
@@ -59,6 +77,7 @@ Ferreteria JESHA/
 - **Pedidos** -- Ordenes de cliente
 - **Compras** -- Ordenes de compra a proveedores
 - **Devoluciones** -- Reembolso de productos
+- **Sucursal** -- Multi-sucursal por empresa (CRUD pendiente)
 
 ## Variables de Entorno (Backend)
 
@@ -92,13 +111,19 @@ npm run studio    # Prisma Studio
 - Middleware `requireAuth` protege todas las rutas `/api/*`
 - Sidebar redirige a `login.html` si no hay token valido
 - **Nuevo (2026-05-20):** `requireAuth` es `async` -- verifica que el usuario siga activo en BD en cada request
+- **Nuevo (2026-05-27):** Login incluye `empresaId` en el payload JWT. Helper `getEmpresaId(req)` centraliza la extraccion del tenant en todos los controllers.
 
 ## Roles de Usuario
 
-- `SUPERADMIN` -- Acceso total, todas las sucursales
-- `ADMIN_SUCURSAL` -- Administrador de sucursal
-- `EMPLEADO` -- Operador de mostrador
-- `PRECIOS` -- Solo consulta de precios
+```text
+PLATFORM_ADMIN          → Todas las empresas, todas las sucursales
+  ├── SUPERADMIN        → Una empresa, todas las sucursales
+  │   └── ADMIN_SUCURSAL → Una sucursal, gestion completa
+  │       └── EMPLEADO   → Una sucursal, operacion de mostrador
+  └── PRECIOS           → Solo consulta de precios
+```
+
+`PLATFORM_ADMIN` es el nuevo rol tope de jerarquia (2026-05-27) — acceso cross-empresa sin restricciones.
 
 ## Dashboard KPIs
 
@@ -132,10 +157,32 @@ Para granel (Decimal 10,3): siempre `toFixed(3)`. Para dinero (Decimal 10,2): si
 
 ### Backend
 - **`data:` en create/update**: PascalCase (`DetalleVenta: { create: [...] }`, `Sucursal: { connect: { id } }`)
-- **Select/Include en respuestas**: PascalCase (`Cliente:`, `Usuario:`, `Producto:`, `DetalleDevolucion:`, etc.)
+- **Select/Include en respuestas**: PascalCase (`Empresa:`, `Cliente:`, `Usuario:`, `Producto:`, `DetalleDevolucion:`, etc.)
 - **Property access**: PascalCase tambien (`venta.Devolucion` NO `venta.devoluciones`, `venta.DetalleVenta` NO `venta.detalleVenta`)
 - **Acceso al cliente Prisma**: camelCase (`prisma.detalleBitacora`, `prisma.venta`, etc.)
-- **Campos escalares (IDs)**: siempre lowercase (`usuarioId`, `sucursalId`, etc.)
+- **Campos escalares (IDs)**: siempre lowercase (`empresaId`, `usuarioId`, `sucursalId`, etc.)
+- **Compound unique keys**: formato `campo1_campo2` (`empresaId_codigoInterno`, `empresaId_rfc`, etc.)
+
+### Claves Compuestas con `empresaId`
+
+11 constraints usan `@@unique([empresaId, ...])`:
+`Bitacora`, `Cliente` (x2), `Cotizacion`, `OrdenCompra`, `Pedido`, `Producto` (x2), `Proveedor` (x2), `Venta`
+
+```js
+// findUnique con compound key
+await prisma.producto.findUnique({
+  where: { empresaId_codigoInterno: { empresaId, codigoInterno } }
+})
+
+// Manejo de P2002 (unique constraint violation)
+try {
+  await prisma.cliente.create({ data: { empresaId, rfc, /* ... */ } })
+} catch (err) {
+  if (err.code === 'P2002') {
+    return res.status(409).json({ error: 'El RFC ya existe en esta empresa' })
+  }
+}
+```
 
 ### Errores Tipicos
 
@@ -144,8 +191,9 @@ Para granel (Decimal 10,3): siempre `toFixed(3)`. Para dinero (Decimal 10,2): si
 | `Argument 'Sucursal' is missing` | `sucursal:` en `data:` | Cambiar a `Sucursal:` |
 | `Argument 'DetalleVenta' is missing` | `detalleVenta:` en `data:` | Cambiar a `DetalleVenta:` |
 | `Unknown field 'DetalleDevolucion' for include on model Venta` | `DetalleDevolucion` en include de una `Venta` | `DetalleVenta` (Venta), `DetalleDevolucion` (solo Devolucion) |
-| `venta.devoluciones is not iterable` | `venta.devoluciones` minúsculas | `venta.Devolucion` PascalCase |
+| `venta.devoluciones is not iterable` | `venta.devoluciones` minusculas | `venta.Devolucion` PascalCase |
 | `210001` en lugar de `21001` en stock | Suma Decimal sin `parseFloat` | `parseFloat(inv.stockActual)` |
+| P2002 unique constraint | `empresaId` faltante en create | Agregar `empresaId` o usar compound key |
 
 ### Frontend
 El API devuelve PascalCase. El frontend DEBE usar PascalCase al acceder a propiedades:
@@ -153,32 +201,32 @@ El API devuelve PascalCase. El frontend DEBE usar PascalCase al acceder a propie
 - `b.Cliente` NO `b.cliente`
 - `d.Producto` NO `d.producto`
 - `v.Devolucion` NO `v.devoluciones`
+- `p.Empresa` NO `p.empresa`
 
-## Fixes Recientes (Semana 1 -- 2026-05-20)
+### Helper `getEmpresaId(req)`
+```js
+const getEmpresaId = require('../helpers/getEmpresaId')
+const empresaId = getEmpresaId(req)  // lanza 401 si no hay empresaId en el JWT
+```
+Usado en 14 controllers para todo `.create()` y queries con scope de tenant.
 
-### devoluciones.controller.js -- Relaciones, deduplicacion y parseFloat
-- 7 lineas corregidas: `DetalleVenta` a `DetalleDevolucion` en relaciones de Devolucion
-- `venta.devoluciones` a `venta.Devolucion` (PascalCase property access)
-- Deduplicacion de productos (mismo producto en 2 lineas de venta = 1 entrada)
-- `parseFloat` en todas las cantidades (previene concatenacion de strings)
-- `parseFloat(inv.stockActual)` + `toFixed(3)` para reingreso de inventario
+## Fixes Recientes
 
-### clientes.js -- Campo de credito
-- `cliente.saldoCredito` a `cliente.saldoPendiente`
+### Semana 1 — 2026-05-20
+- **devoluciones.controller.js** — Relaciones `DetalleVenta`→`DetalleDevolucion`, PascalCase property access, deduplicacion de productos, `parseFloat` en cantidades
+- **clientes.js** — `cliente.saldoCredito` → `cliente.saldoPendiente`
+- **auth.middleware.js** — `requireAuth` async + verificacion `usuario.activo`
+- **facturas.controller.js** — Cancel SAT con `motive: '02'`
+- **sucursal.helper.js** — Nuevo modulo `resolverSucursalId(req)`
 
-### auth.middleware.js -- Usuario desactivado
-- `requireAuth` ahora es `async`
-- Verifica `usuario.activo` en BD en cada request
-- Errores JWT 401, otros errores (BD) 500
-
-### facturas.controller.js -- Cancelacion SAT
-- `fp.invoices.cancel(facturapiId, { motive: '02' })` en cancelar
-- Si Facturapi no configurada + factura tiene facturapiId error 500
-
-### sucursal.helper.js -- Nuevo modulo
-- `resolverSucursalId(req)` centralizado
-- SUPERADMIN puede consultar cualquier sucursal o todas (null)
-- ADMIN_SUCURSAL/EMPLEADO solo la suya
+### Semana 2 — 2026-05-27 (Multi-Tenant Fase 0-6)
+- **Fase 0** — Schema: modelo `Empresa` + `empresaId` en 21 modelos + `@@unique` compuestos + rol `PLATFORM_ADMIN`
+- **Fase 1** — Propagacion `empresaId` a todos los `.create()` del backend (14 archivos)
+- **Fase 2** — Reversion `Empresa: { connect }` → escalar `empresaId` en 5 archivos
+- **Fase 3** — Fix 17 queries rotos por `@@unique` compuestos en productos, importacion, clientes
+- **Fase 4** — Manejo P2002 (unique constraint) en clientes con mensajes 409
+- **Fase 5** — Fix stock en bitacora.js, PascalCase en ticketAbono.controller.js, default turno
+- **Fase 6** — 1,833 caracteres de encoding UTF-8 corregidos en cotizaciones.js + typo en dashboard.js
 
 ## Endpoints Testeados (2026-05-13)
 
@@ -194,3 +242,9 @@ El API devuelve PascalCase. El frontend DEBE usar PascalCase al acceder a propie
 | `/turnos-caja/activo` | GET | OK |
 | `/turnos-caja/resumen` | GET | OK |
 | `/usuarios/vendedores` | GET | OK |
+
+## Deuda Tecnica (proxima sesion)
+
+- **Login sin empresa**: `findFirst({ username })` puede colisionar entre empresas con el mismo username
+- **Login response**: no incluye `empresaId` en el objeto usuario (solo en JWT)
+- **`requireSucursalAccess`** y **`sucursal.helper.js`**: no reconocen `PLATFORM_ADMIN` ni validan cross-empresa

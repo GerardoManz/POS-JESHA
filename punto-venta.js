@@ -68,6 +68,7 @@ let metodoPagoSeleccionado = null   // null = sin selección, cajero debe elegir
 let clienteSeleccionado    = null
 let ventaEnProceso         = false
 let clientesLista          = []
+let cotIdActual            = null
 const productoCache        = new Map()
 
 // ══════════════════════════════════════════════════════════════════
@@ -254,7 +255,7 @@ async function abrirTurno() {
     }
     turnoActivo = data.data
     modalAbrirTurno.style.display  = 'none'
-    montoInicialTurno.value        = '0'
+      montoInicialTurno.value = '2000'
     turnoStatus.innerHTML          = '✓ Turno abierto'
     turnoStatus.className          = 'turno-badge turno-ok'
     turnoStatus.style.cursor       = 'default'
@@ -844,10 +845,11 @@ async function limpiarCarrito() {
   })
   if (!ok) return
 
-carrito                = []
-    clienteSeleccionado    = null
-    _carritoRestaurado     = false
-    vendedorSeleccionado   = null
+  carrito                = []
+  cotIdActual            = null
+  clienteSeleccionado    = null
+  _carritoRestaurado     = false
+  vendedorSeleccionado   = null
   descuentoManual        = 0
   pinVendedorVerificado  = false
   creditoCliente         = null
@@ -1490,6 +1492,7 @@ async function confirmarVenta() {
       montoPagado: montoPagadoPayload,
       esCredito,
       desglosePagos: desglosePagosPayload,
+      cotizacionId: cotIdActual || null,
       notas: esTarjetaPago ? `Ref. Ingenico: ${refTarjeta}` : null,
       detalles
     }
@@ -1518,6 +1521,7 @@ async function confirmarVenta() {
     mostrarModalExito(venta.data, totalFinal)
 
     carrito             = []
+    cotIdActual         = null
     _carritoRestaurado = false
     clienteSeleccionado = null
     montoRecibido.value = ''
@@ -1656,6 +1660,10 @@ function cargarCotizacionDesdeStorage() {
 
     if (!['cotizacion','pedido'].includes(payload.fuente) ||
         !Array.isArray(payload.items) || payload.items.length === 0) return
+
+    if (payload.fuente === 'cotizacion' && payload.cotId) {
+      cotIdActual = payload.cotId
+    }
 
     payload.items.forEach(item => {
       carrito.push({ id: item.id, nombre: item.nombre, precio: parseFloat(item.precio), cantidad: parseFloat(item.cantidad) || 1, esGranel: item.esGranel || false, unidadVenta: item.unidadVenta || '', unidadCompra: item.unidadCompra || '', factorConversion: item.factorConversion || 1, unidadElegida: 'base', cantidadVisible: parseFloat(item.cantidad) || 1 })

@@ -5,6 +5,7 @@
 // ═══════════════════════════════════════════════════════════════════
 
 const prisma = require('../../lib/prisma')
+const getEmpresaId = require('../../helpers/getEmpresaId')
 
 // Campos que existen en BD — usado en todos los select
 const CLIENTE_SELECT = {
@@ -27,11 +28,12 @@ const CLIENTE_SELECT = {
   creadoEn: true
 }
 
-async function registrarAudit(solicitante, accion, referencia, ip) {
+async function registrarAudit(solicitante, accion, referencia, ip, empresaId) {
   try {
     const data = { accion, modulo: 'clientes', referencia, ip }
     if (solicitante?.id) data.usuarioId = solicitante.id
     if (solicitante?.sucursalId) data.sucursalId = solicitante.sucursalId
+    if (empresaId) data.empresaId = empresaId
     await prisma.auditoria.create({ data })
   } catch (e) {
     console.error('Audit error:', e.message)
@@ -107,6 +109,7 @@ const crear = async (req, res) => {
       limiteCredito, notas
     } = req.body
     const solicitante = req.usuario
+    const empresaId = getEmpresaId(req)
 
     if (!nombre || !tipo) {
       return res.status(400).json({ error: 'Nombre y tipo son requeridos' })
@@ -117,12 +120,13 @@ const crear = async (req, res) => {
     }
 
     if (rfc) {
-      const existe = await prisma.cliente.findUnique({ where: { rfc } })
+      const existe = await prisma.cliente.findUnique({ where: { empresaId_rfc: { empresaId, rfc } } })
       if (existe) return res.status(409).json({ error: 'El RFC ya está registrado' })
     }
 
     const cliente = await prisma.cliente.create({
       data: {
+        empresaId,
         nombre,
         apodo:             apodo             || null,
         tipo,
@@ -140,10 +144,20 @@ const crear = async (req, res) => {
       select: CLIENTE_SELECT
     })
 
-    await registrarAudit(solicitante, 'CREAR_CLIENTE', `Creó cliente ${cliente.nombre} (${tipo})`, req.ip)
+    await registrarAudit(solicitante, 'CREAR_CLIENTE', `Creó cliente ${cliente.nombre} (${tipo})`, req.ip, empresaId)
 
     res.status(201).json(cliente)
   } catch (err) {
+    if (err.code === 'P2002') {
+      const campo = err.meta?.target?.[0] || 'campo'
+      const mensajes = {
+        rfc: 'Ya existe un cliente con ese RFC',
+        email: 'Ya existe un cliente con ese correo electrónico',
+        empresaId_rfc: 'Ya existe un cliente con ese RFC',
+        empresaId_email: 'Ya existe un cliente con ese correo electrónico'
+      }
+      return res.status(409).json({ success: false, error: mensajes[campo] || `El campo ${campo} ya está registrado` })
+    }
     console.error(err)
     res.status(500).json({ error: 'Error al crear cliente' })
   }
@@ -162,13 +176,14 @@ const editar = async (req, res) => {
       limiteCredito, notas
     } = req.body
     const solicitante = req.usuario
+    const empresaId = getEmpresaId(req)
 
     const cliente = await prisma.cliente.findUnique({ where: { id: parseInt(id) } })
     if (!cliente) return res.status(404).json({ error: 'Cliente no encontrado' })
 
     // RFC único solo si cambió
     if (rfc && rfc !== cliente.rfc) {
-      const existe = await prisma.cliente.findUnique({ where: { rfc } })
+      const existe = await prisma.cliente.findUnique({ where: { empresaId_rfc: { empresaId, rfc } } })
       if (existe) return res.status(409).json({ error: 'El RFC ya está registrado' })
     }
 
@@ -191,10 +206,20 @@ const editar = async (req, res) => {
       select: CLIENTE_SELECT
     })
 
-    await registrarAudit(solicitante, 'EDITAR_CLIENTE', `Editó cliente ${cliente.nombre}`, req.ip)
+    await registrarAudit(solicitante, 'EDITAR_CLIENTE', `Editó cliente ${cliente.nombre}`, req.ip, empresaId)
 
     res.json(clienteActualizado)
   } catch (err) {
+    if (err.code === 'P2002') {
+      const campo = err.meta?.target?.[0] || 'campo'
+      const mensajes = {
+        rfc: 'Ya existe un cliente con ese RFC',
+        email: 'Ya existe un cliente con ese correo electrónico',
+        empresaId_rfc: 'Ya existe un cliente con ese RFC',
+        empresaId_email: 'Ya existe un cliente con ese correo electrónico'
+      }
+      return res.status(409).json({ success: false, error: mensajes[campo] || `El campo ${campo} ya está registrado` })
+    }
     console.error(err)
     res.status(500).json({ error: 'Error al editar cliente' })
   }
@@ -209,6 +234,7 @@ const cambiarEstado = async (req, res) => {
     const { id } = req.params
     const { activo } = req.body
     const solicitante = req.usuario
+    const empresaId = getEmpresaId(req)
 
     if (typeof activo !== 'boolean') {
       return res.status(400).json({ error: 'El campo activo debe ser booleano' })
@@ -224,7 +250,7 @@ const cambiarEstado = async (req, res) => {
     })
 
     const accion = activo ? 'ACTIVAR_CLIENTE' : 'DESACTIVAR_CLIENTE'
-    await registrarAudit(solicitante, accion, `${activo ? 'Activó' : 'Desactivó'} cliente ${cliente.nombre}`, req.ip)
+    await registrarAudit(solicitante, accion, `${activo ? 'Activó' : 'Desactivó'} cliente ${cliente.nombre}`, req.ip, empresaId)
 
     res.json(clienteActualizado)
   } catch (err) {

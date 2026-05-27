@@ -11,6 +11,7 @@
 // ════════════════════════════════════════════════════════════════════
 
 const service = require('./cotizaciones.service')
+const getEmpresaId = require('../../helpers/getEmpresaId')
 
 // ════════════════════════════════════════════════════════════════════
 //  GET /cotizaciones
@@ -69,6 +70,7 @@ const crear = async (req, res) => {
     const { clienteId, tipo = 'PRODUCTOS', detalles, notas, venceEn } = req.body
     const { id: usuarioId, sucursalId: sucursalIdToken } = req.usuario
     const sucursalId = sucursalIdToken || parseInt(req.body.sucursalId) || 1
+    const empresaId = getEmpresaId(req)
 
     // Validaciones básicas
     if (!detalles || !Array.isArray(detalles) || detalles.length === 0) {
@@ -106,6 +108,7 @@ const crear = async (req, res) => {
       sucursalId,
       usuarioId,
       clienteId,
+      empresaId,
       tipo,
       detalles,
       notas,
@@ -131,6 +134,7 @@ const editar = async (req, res) => {
     const { clienteId, notas, venceEn, detalles } = req.body
     const { id: usuarioId, sucursalId: sucursalIdToken } = req.usuario
     const sucursalId = sucursalIdToken || parseInt(req.body.sucursalId) || 1
+    const empresaId = getEmpresaId(req)
 
     const cotizacion = await service.editar(id, {
       clienteId,
@@ -138,7 +142,8 @@ const editar = async (req, res) => {
       venceEn,
       detalles,
       usuarioId,
-      sucursalId
+      sucursalId,
+      empresaId
     })
 
     res.json({ success: true, data: cotizacion })
@@ -160,20 +165,21 @@ const cambiarEstado = async (req, res) => {
   try {
     const { id } = req.params
     const { estado } = req.body
-    const { id: usuarioId, sucursalId: sucursalIdToken } = req.usuario
+    const { id: usuarioId, sucursalId: sucursalIdToken, rol } = req.usuario
     const sucursalId = sucursalIdToken || parseInt(req.body.sucursalId) || 1
+    const empresaId = getEmpresaId(req)
 
     if (!estado) {
       return res.status(400).json({ success: false, error: 'Campo "estado" requerido' })
     }
 
-    const cotizacion = await service.cambiarEstado(id, estado, { usuarioId, sucursalId })
+    const cotizacion = await service.cambiarEstado(id, estado, { usuarioId, sucursalId, empresaId, rol })
 
     res.json({ success: true, data: cotizacion })
   } catch (err) {
     console.error('❌ Error cambiando estado:', err.message)
     const status = err.message.includes('no encontrada') ? 404
-      : err.message.includes('inválido') ? 400
+      : err.message.includes('inválido') || err.message.includes('Transición') || err.message.includes('acceso') ? 400
       : 500
     res.status(status).json({ success: false, error: err.message })
   }

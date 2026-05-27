@@ -4,6 +4,7 @@
 // ════════════════════════════════════════════════════════════════════
 
 const prisma = require('../../lib/prisma')
+const getEmpresaId = require('../../helpers/getEmpresaId')
 
 async function generarFolio() {
   const d   = new Date()
@@ -127,8 +128,10 @@ const crear = async (req, res) => {
       })
     }
 
+    const empresaId = getEmpresaId(req)
+
     const oc = await prisma.ordenCompra.create({
-      data: { folio, sucursalId, proveedorId: parseInt(proveedorId), usuarioId, estado: 'ENVIADO',
+      data: { empresaId, folio, sucursalId, proveedorId: parseInt(proveedorId), usuarioId, estado: 'ENVIADO',
               totalEstimado, notas: notas || null, DetalleOrdenCompra: { create: rows } },
       select: OC_SELECT
     })
@@ -195,6 +198,7 @@ const editar = async (req, res) => {
       updateData.totalEstimado = parseFloat(rows.reduce((s, r) => s + r.subtotalPedido, 0).toFixed(2))
 
       const oc = await prisma.$transaction(async tx => {
+        // TODO: migrar a upsert por detalle cuando se agregue trazabilidad por detalleId — actualmente deleteMany+create cambia los IDs de DetalleOrdenCompra
         await tx.detalleOrdenCompra.deleteMany({ where: { ordenCompraId: parseInt(id) } })
         return tx.ordenCompra.update({
           where: { id: parseInt(id) },
@@ -222,6 +226,7 @@ const recibir = async (req, res) => {
     const { detalles } = req.body
     const { id: usuarioId, sucursalId: sucursalIdToken } = req.usuario
     const sucursalId = sucursalIdToken || 1
+    const empresaId = getEmpresaId(req)
 
     if (!detalles || detalles.length === 0)
       return res.status(400).json({ success: false, error: 'Detalles de recepción requeridos' })
@@ -268,56 +273,57 @@ const recibir = async (req, res) => {
           }
         })
 
-        // Actualizar stock
-        const inv = await tx.inventarioSucursal.findUnique({
-          where: { productoId_sucursalId: { productoId: detalle.productoId, sucursalId: oc.sucursalId } }
+        // Upsert inventario — crea registro si no existe (InventarioSucursal NO tiene empresaId)
+        const inv = await tx.inventarioSucursal.upsert({
+          where: { productoId_sucursalId: { productoId: detalle.productoId, sucursalId: oc.sucursalId } },
+          update: {},
+          create: { productoId: detalle.productoId, sucursalId: oc.sucursalId, stockActual: 0 }
         })
 
-        if (inv) {
-          const stockAntes   = parseFloat(inv.stockActual)
-          const stockDespues = parseFloat((stockAntes + cantNueva).toFixed(3))
+        const stockAntes   = parseFloat(inv.stockActual)
+        const stockDespues = parseFloat((stockAntes + cantNueva).toFixed(3))
 
-          // Calcular costo promedio ponderado
-          const costoActual        = parseFloat((await tx.producto.findUnique({ where: { id: detalle.productoId }, select: { costoPromedio: true } }))?.costoPromedio || costoUnit)
-          const nuevoCostoPromedio = stockAntes + cantNueva > 0
-            ? parseFloat(((stockAntes * costoActual + cantNueva * costoUnit) / (stockAntes + cantNueva)).toFixed(4))
-            : costoUnit
+        // Calcular costo promedio ponderado
+        const costoActual        = parseFloat((await tx.producto.findUnique({ where: { id: detalle.productoId }, select: { costoPromedio: true } }))?.costoPromedio || costoUnit)
+        const nuevoCostoPromedio = stockAntes + cantNueva > 0
+          ? parseFloat(((stockAntes * costoActual + cantNueva * costoUnit) / (stockAntes + cantNueva)).toFixed(4))
+          : costoUnit
 
-          await tx.inventarioSucursal.update({
-            where: { productoId_sucursalId: { productoId: detalle.productoId, sucursalId: oc.sucursalId } },
-            data:  { stockActual: stockDespues }
-          })
+        await tx.inventarioSucursal.update({
+          where: { productoId_sucursalId: { productoId: detalle.productoId, sucursalId: oc.sucursalId } },
+          data:  { stockActual: stockDespues }
+        })
 
-          const nuevoPrecioVenta = item.precioVenta ? parseFloat(item.precioVenta) : undefined
-          await tx.producto.update({
-            where: { id: detalle.productoId },
-            data:  {
-              costo:         costoUnit,
-              costoPromedio: nuevoCostoPromedio,
-              ...(nuevoPrecioVenta && nuevoPrecioVenta > 0 ? { precioVenta: nuevoPrecioVenta } : {})
-            }
-          })
+        const nuevoPrecioVenta = item.precioVenta ? parseFloat(item.precioVenta) : undefined
+        await tx.producto.update({
+          where: { id: detalle.productoId },
+          data:  {
+            costo:         costoUnit,
+            costoPromedio: nuevoCostoPromedio,
+            ...(nuevoPrecioVenta && nuevoPrecioVenta > 0 ? { precioVenta: nuevoPrecioVenta } : {})
+          }
+        })
 
-          // FIX: upsert en ProveedorProducto para soportar productos nuevos del proveedor
-          await tx.proveedorProducto.upsert({
-            where: { proveedorId_productoId: { proveedorId: oc.proveedorId, productoId: detalle.productoId } },
-            update: { precioCosto: costoUnit, activo: true },
-            create: { proveedorId: oc.proveedorId, productoId: detalle.productoId, precioCosto: costoUnit, activo: true }
-          })
+        // ProveedorProducto NO tiene empresaId
+        await tx.proveedorProducto.upsert({
+          where: { proveedorId_productoId: { proveedorId: oc.proveedorId, productoId: detalle.productoId } },
+          update: { precioCosto: costoUnit, activo: true },
+          create: { proveedorId: oc.proveedorId, productoId: detalle.productoId, precioCosto: costoUnit, activo: true }
+        })
 
-          await tx.movimientoInventario.create({
-            data: {
-              productoId:   detalle.productoId,
-              sucursalId:   oc.sucursalId,
-              usuarioId,
-              tipo:         'ENTRADA_COMPRA',
-              cantidad:     cantNueva,
-              stockAntes,
-              stockDespues,
-              referencia:   oc.folio
-            }
-          })
-        }
+        await tx.movimientoInventario.create({
+          data: {
+            empresaId,
+            productoId:   detalle.productoId,
+            sucursalId:   oc.sucursalId,
+            usuarioId,
+            tipo:         'ENTRADA_COMPRA',
+            cantidad:     cantNueva,
+            stockAntes,
+            stockDespues,
+            referencia:   oc.folio
+          }
+        })
       }
 
       // Determinar nuevo estado
@@ -439,8 +445,9 @@ const crearProveedor = async (req, res) => {
     const { nombreOficial, alias, telefono, celular, email } = req.body
     if (!nombreOficial?.trim()) return res.status(400).json({ success: false, error: 'Nombre oficial requerido' })
 
+    const empresaId = getEmpresaId(req)
     const proveedor = await prisma.proveedor.create({
-      data: { nombreOficial: nombreOficial.trim(), alias: alias?.trim() || null, telefono: telefono || null, celular: celular || null, email: email || null }
+      data: { empresaId, nombreOficial: nombreOficial.trim(), alias: alias?.trim() || null, telefono: telefono || null, celular: celular || null, email: email || null }
     })
     res.status(201).json({ success: true, data: proveedor })
   } catch (err) {

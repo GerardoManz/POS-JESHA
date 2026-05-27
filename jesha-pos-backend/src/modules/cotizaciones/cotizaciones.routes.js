@@ -9,6 +9,7 @@
 
 const router  = require('express').Router()
 const ctrl    = require('./cotizaciones.controller')
+const { requireRole } = require('../../middlewares/auth.middleware')
 
 // GET  /cotizaciones          — lista con filtros y paginación
 router.get('/',                ctrl.listar)
@@ -17,7 +18,7 @@ router.get('/',                ctrl.listar)
 router.post('/',               ctrl.crear)
 
 // PATCH /cotizaciones/:id/estado  — cambiar estado (ruta fija antes de /:id)
-router.patch('/:id/estado',    ctrl.cambiarEstado)
+router.patch('/:id/estado',    requireRole('ADMIN_SUCURSAL', 'SUPERADMIN', 'PLATFORM_ADMIN'), ctrl.cambiarEstado)
 
 // GET  /cotizaciones/:id      — detalle completo con detalles
 router.get('/:id',             ctrl.obtener)

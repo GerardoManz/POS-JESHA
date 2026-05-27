@@ -910,7 +910,8 @@ function mostrarConfirmEstado(id, nuevoEstado, nombreProducto) {
   const cerrar = () => confirmModal.remove()
 
   document.getElementById('cfe-cancel').addEventListener('click', cerrar)
-  confirmModal.addEventListener('click', e => { if (e.target === confirmModal) cerrar() })
+  confirmModal.addEventListener('mousedown', e => { confirmModal._clkOv = (e.target === confirmModal) })
+  confirmModal.addEventListener('click', e => { if (e.target === confirmModal && confirmModal._clkOv) cerrar() })
   document.addEventListener('keydown', function escHandler(e) {
     if (e.key === 'Escape') { cerrar(); document.removeEventListener('keydown', escHandler) }
   })
@@ -1185,9 +1186,9 @@ function initModalPrecios() {
   })
 
   // Cerrar haciendo click fuera
-  document.getElementById('modal-precios')?.addEventListener('click', e => {
-    if (e.target === e.currentTarget) cerrarModalPrecios()
-  })
+  const mp = document.getElementById('modal-precios')
+  mp?.addEventListener('mousedown', e => { mp._clkOv = (e.target === mp) })
+  mp?.addEventListener('click', e => { if (e.target === mp && mp._clkOv) cerrarModalPrecios() })
 }
 
 function mostrarError(msg) {
@@ -1275,7 +1276,10 @@ function configurarEventos() {
   }
 
   // Modal background
-  if (modal) modal.addEventListener('click', e => { if (e.target === modal) cerrarModal() })
+  if (modal) {
+    modal.addEventListener('mousedown', e => { modal._clkOv = (e.target === modal) })
+    modal.addEventListener('click', e => { if (e.target === modal && modal._clkOv) cerrarModal() })
+  }
 
   // Imagen preview
   if (inputImagen) {
@@ -1343,9 +1347,8 @@ function configurarEventos() {
   // Cerrar modal al hacer click fuera
   const modalProveedor = document.getElementById('modal-nuevo-proveedor')
   if (modalProveedor) {
-    modalProveedor.addEventListener('click', e => {
-      if (e.target === modalProveedor) cerrarModalNuevoProveedor()
-    })
+    modalProveedor.addEventListener('mousedown', e => { modalProveedor._clkOv = (e.target === modalProveedor) })
+    modalProveedor.addEventListener('click', e => { if (e.target === modalProveedor && modalProveedor._clkOv) cerrarModalNuevoProveedor() })
   }
 
   // Toggle de granel
@@ -1503,8 +1506,9 @@ function initImportacion() {
   }
   btnClose?.addEventListener('click', cerrarImport)
   btnCancel?.addEventListener('click', cerrarImport)
-  modalImport?.addEventListener('click', e => { if (e.target === modalImport) cerrarImport() })
-  document.addEventListener('keydown', e => { if (e.key === 'Escape') cerrarImport() })
+  modalImport?.addEventListener('mousedown', e => { modalImport._clkOv = (e.target === modalImport) })
+  modalImport?.addEventListener('click', e => { if (e.target === modalImport && modalImport._clkOv) cerrarImport() })
+  document.addEventListener('keydown', function escImport(e) { if (e.key === 'Escape') { cerrarImport(); document.removeEventListener('keydown', escImport) } })
 
   // Seleccionar archivo via input
   fileInput?.addEventListener('change', e => {
@@ -1795,8 +1799,9 @@ function initAjusteInventario() {
 
   btnClose?.addEventListener('click', cerrar)
   btnCancel?.addEventListener('click', cerrar)
-  modalAjuste?.addEventListener('click', e => { if (e.target === modalAjuste) cerrar() })
-  document.addEventListener('keydown', e => { if (e.key === 'Escape') cerrar() })
+  modalAjuste?.addEventListener('mousedown', e => { modalAjuste._clkOv = (e.target === modalAjuste) })
+  modalAjuste?.addEventListener('click', e => { if (e.target === modalAjuste && modalAjuste._clkOv) cerrar() })
+  document.addEventListener('keydown', function escAjuste(e) { if (e.key === 'Escape') { cerrar(); document.removeEventListener('keydown', escAjuste) } })
   btnConfirm?.addEventListener('click', guardarAjuste)
 }
 

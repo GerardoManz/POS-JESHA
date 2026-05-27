@@ -1,7 +1,7 @@
-﻿// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-//  COTIZACIONES.JS â€” v2
-//  Soporta PRODUCTOS (descuento por lÃ­nea + IVA desglosado) y SERVICIOS
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+﻿// ════════════════════════════════════════════════════════════════════
+//  COTIZACIONES.JS — v2
+//  Soporta PRODUCTOS (descuento por línea + IVA desglosado) y SERVICIOS
+// ════════════════════════════════════════════════════════════════════
 
 const TOKEN   = localStorage.getItem('jesha_token')
 const USUARIO = JSON.parse(localStorage.getItem('jesha_usuario') || '{}')
@@ -10,12 +10,12 @@ const API_URL = window.__JESHA_API_URL__ || 'http://localhost:3000'
 if (!TOKEN) {
   localStorage.setItem('redirect_after_login', 'cotizaciones.html')
   window.location.href = 'login.html'
-  throw new Error('Sin autenticaciÃ³n')
+  throw new Error('Sin autenticación')
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ════════════════════════════════════════════════════════════════════
 //  ESTADO GLOBAL
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ════════════════════════════════════════════════════════════════════
 
 let cotizacionActual = null
 let itemsEdicion     = []   // { productoId?, concepto?, unidad, cantidad, precio, descuento, nombre? }
@@ -26,15 +26,15 @@ const LIMIT          = 20
 const IVA        = window.__JESHA_IVA__        || 0.16
 const IVA_FACTOR = window.__JESHA_IVA_FACTOR__ || 1.16
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ════════════════════════════════════════════════════════════════════
 //  HELPERS
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ════════════════════════════════════════════════════════════════════
 
 const fmt = n => `$${parseFloat(n || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
 const fmtFecha = iso => iso
   ? new Date(iso).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' })
-  : 'â€”'
+  : '—'
 
 function estadoBadge(estado) {
   const m = { PENDIENTE:['pendiente','Pendiente'], CONVERTIDA:['convertida','Convertida'], VENCIDA:['vencida','Vencida'], CANCELADA:['cancelada','Cancelada'] }
@@ -58,15 +58,15 @@ function ocultarError(elId) {
   document.getElementById(elId)?.classList.remove('show')
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ════════════════════════════════════════════════════════════════════
 //  API
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ════════════════════════════════════════════════════════════════════
 
 // apiFetch global disponible desde sidebar.js
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ════════════════════════════════════════════════════════════════════
 //  LISTAR
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ════════════════════════════════════════════════════════════════════
 
 async function cargarCotizaciones() {
   const tbody  = document.getElementById('cot-tbody')
@@ -96,14 +96,14 @@ async function cargarCotizaciones() {
         <td>${c.Cliente?.nombre || '<span style="color:var(--muted)">Sin cliente</span>'}</td>
         <td style="color:var(--muted)">${c.DetalleCotizacion?.length || 0}</td>
         <td><strong>${fmt(c.total)}</strong></td>
-        <td>${c.venceEn ? fmtFecha(c.venceEn) : '<span style="color:var(--muted)">â€”</span>'}</td>
+        <td>${c.venceEn ? fmtFecha(c.venceEn) : '<span style="color:var(--muted)">—</span>'}</td>
         <td>${estadoBadge(c.estado)}</td>
         <td>
           <div class="actions-cell" onclick="event.stopPropagation()">
-            <button class="btn-icon" onclick="verCotizacion(${c.id})" title="Ver">ðŸ‘</button>
-            ${c.estado === 'PENDIENTE' ? `<button class="btn-icon" onclick="abrirEdicion(${c.id})" title="Editar">âœï¸</button>` : ''}
-            ${c.tipo === 'PRODUCTOS' ? `<button class="btn-icon" onclick="cargarEnPos(${c.id})" title="Cargar en POS">ðŸ›’</button>` : ''}
-            <button class="btn-icon" onclick="descargarPdf(${c.id})" title="PDF">ðŸ“„</button>
+            <button class="btn-icon" onclick="verCotizacion(${c.id})" title="Ver">👁</button>
+            ${c.estado === 'PENDIENTE' ? `<button class="btn-icon" onclick="abrirEdicion(${c.id})" title="Editar">✏️</button>` : ''}
+            ${c.tipo === 'PRODUCTOS' ? `<button class="btn-icon" onclick="cargarEnPos(${c.id})" title="Cargar en POS">🛒</button>` : ''}
+            <button class="btn-icon" onclick="descargarPdf(${c.id})" title="PDF">📄</button>
           </div>
         </td>
       </tr>
@@ -112,7 +112,7 @@ async function cargarCotizaciones() {
     const totalPags = Math.ceil(total / LIMIT)
     if (totalPags > 1) {
       pagDiv.style.display = 'flex'
-      document.getElementById('pag-info').textContent = `PÃ¡gina ${paginaActual} de ${totalPags} (${total} total)`
+      document.getElementById('pag-info').textContent = `Página ${paginaActual} de ${totalPags} (${total} total)`
       document.getElementById('btn-prev').disabled = paginaActual <= 1
       document.getElementById('btn-next').disabled = paginaActual >= totalPags
     } else {
@@ -123,9 +123,9 @@ async function cargarCotizaciones() {
   }
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ════════════════════════════════════════════════════════════════════
 //  VER DETALLE
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ════════════════════════════════════════════════════════════════════
 
 window.verCotizacion = async function(id) {
   try {
@@ -146,10 +146,10 @@ window.verCotizacion = async function(id) {
     tipoBadgeEl.style.background = c.tipo === 'SERVICIOS' ? 'rgba(232,113,10,0.15)' : 'rgba(31,58,102,0.25)'
     tipoBadgeEl.style.color      = c.tipo === 'SERVICIOS' ? 'var(--orange)' : '#7aa4e8'
 
-    document.getElementById('ver-cliente').textContent  = c.Cliente?.nombre || 'â€”'
+    document.getElementById('ver-cliente').textContent  = c.Cliente?.nombre || '—'
     document.getElementById('ver-fecha').textContent    = fmtFecha(c.creadaEn)
-    document.getElementById('ver-vigencia').textContent = c.venceEn ? fmtFecha(c.venceEn) : 'â€”'
-    document.getElementById('ver-usuario').textContent  = c.Usuario?.nombre || 'â€”'
+    document.getElementById('ver-vigencia').textContent = c.venceEn ? fmtFecha(c.venceEn) : '—'
+    document.getElementById('ver-usuario').textContent  = c.Usuario?.nombre || '—'
 
     const notasEl = document.getElementById('ver-notas')
     if (c.notas) { notasEl.textContent = c.notas; notasEl.style.display = 'block' }
@@ -163,8 +163,8 @@ window.verCotizacion = async function(id) {
 
       document.getElementById('ver-servicios-tbody').innerHTML = (c.DetalleCotizacion || []).map(d => `
         <tr>
-          <td>${d.concepto || 'â€”'}</td>
-          <td style="text-align:center">${d.unidad || 'â€”'}</td>
+          <td>${d.concepto || '—'}</td>
+          <td style="text-align:center">${d.unidad || '—'}</td>
           <td style="text-align:center">${d.cantidad}</td>
           <td>${fmt(d.precioUnitario)}</td>
           <td><strong>${fmt(d.subtotal)}</strong></td>
@@ -181,14 +181,14 @@ window.verCotizacion = async function(id) {
       document.getElementById('ver-items-tbody').innerHTML = (c.DetalleCotizacion || []).map(d => {
         const imgHtml = d.Producto?.imagenUrl
           ? `<img src="${d.Producto.imagenUrl}" class="img-producto-ver" alt="${d.Producto.nombre}" />`
-          : `<div class="img-placeholder">ðŸ“¦</div>`
-        const clave = d.Producto?.codigoInterno || 'â€”'
+          : `<div class="img-placeholder">📦</div>`
+        const clave = d.Producto?.codigoInterno || '—'
         const importe = parseFloat(d.precioUnitario) * parseFloat(d.cantidad)
         return `
           <tr>
             <td style="text-align:center">${imgHtml}<div style="font-size:0.7rem;color:var(--muted);margin-top:2px">${clave}</div></td>
-            <td>${d.Producto?.nombre || d.concepto || d.nombre || 'â€”'}</td>
-            <td style="text-align:center">${d.unidad || 'â€”'}</td>
+            <td>${d.Producto?.nombre || d.concepto || d.nombre || '—'}</td>
+            <td style="text-align:center">${d.unidad || '—'}</td>
             <td style="text-align:center">${d.cantidad}</td>
             <td>${fmt(d.precioUnitario)}</td>
             <td>${fmt(d.descuento || 0)}</td>
@@ -197,7 +197,7 @@ window.verCotizacion = async function(id) {
         `
       }).join('')
 
-      // Calcular desglose IVA (precios con IVA â†’ desglose hacia atrÃ¡s)
+      // Calcular desglose IVA (precios con IVA → desglose hacia atrás)
       const totalConIva   = parseFloat(c.total)
       const baseGravable  = parseFloat((totalConIva / IVA_FACTOR).toFixed(2))
       const ivaAmount     = parseFloat((totalConIva - baseGravable).toFixed(2))
@@ -222,22 +222,22 @@ window.verCotizacion = async function(id) {
   }
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ════════════════════════════════════════════════════════════════════
 //  MODAL CREAR / EDITAR
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ════════════════════════════════════════════════════════════════════
 
 function abrirModalNuevo() {
   cotizacionActual = null
   itemsEdicion     = []
   tipoActual       = 'PRODUCTOS'
-  document.getElementById('modal-titulo').textContent = 'Nueva CotizaciÃ³n'
+  document.getElementById('modal-titulo').textContent = 'Nueva Cotización'
   document.getElementById('cot-vence').value          = ''
   document.getElementById('cot-notas').value          = ''
   document.getElementById('search-producto-modal').value = ''
   document.getElementById('lista-productos-modal').innerHTML = '<p class="muted-hint">Escribe para buscar productos...</p>'
   ocultarError('modal-error')
 
-  // â”€â”€ Cliente: habilitado para nueva cotizaciÃ³n â”€â”€
+  // ── Cliente: habilitado para nueva cotización ──
   const clienteInput = document.getElementById('cot-cliente-buscar')
   clienteInput.value          = ''
   clienteInput.disabled       = false
@@ -247,7 +247,7 @@ function abrirModalNuevo() {
   const chevron = document.getElementById('btn-chevron-cliente')
   if (chevron) chevron.style.display = ''
 
-  // â”€â”€ Tabs: mostrar ambos â”€â”€
+  // ── Tabs: mostrar ambos ──
   document.querySelectorAll('.tipo-tab').forEach(tab => { tab.style.display = '' })
 
   setTipoModal('PRODUCTOS')
@@ -270,7 +270,7 @@ window.abrirEdicion = async function(id) {
     document.getElementById('lista-productos-modal').innerHTML = '<p class="muted-hint">Escribe para buscar...</p>'
     ocultarError('modal-error')
 
-    // â”€â”€ Cliente: bloqueado en ediciÃ³n â”€â”€
+    // ── Cliente: bloqueado en edición ──
     const clienteInput = document.getElementById('cot-cliente-buscar')
     const clienteId    = c.Cliente?.id || c.clienteId || ''
     clienteInput.value          = c.Cliente?.nombre || ''
@@ -280,14 +280,14 @@ window.abrirEdicion = async function(id) {
     document.getElementById('cot-cliente-id').value    = clienteId
     document.getElementById('btn-chevron-cliente').style.display = 'none'
 
-    // â”€â”€ Tabs de tipo: ocultar el que no corresponde â”€â”€
+    // ── Tabs de tipo: ocultar el que no corresponde ──
     document.querySelectorAll('.tipo-tab').forEach(tab => {
       tab.style.display = tab.dataset.tipo === tipoActual ? '' : 'none'
     })
 
     itemsEdicion = (c.DetalleCotizacion || []).map(d => ({
       productoId: d.productoId || d.Producto?.id,
-      nombre:     d.Producto?.nombre || d.concepto || 'â€”',
+      nombre:     d.Producto?.nombre || d.concepto || '—',
       concepto:   d.concepto || '',
       unidad:     d.unidad || '',
       cantidad:   d.cantidad,
@@ -306,7 +306,7 @@ function setTipoModal(tipo) {
   document.querySelectorAll('.tipo-tab').forEach(t => t.classList.toggle('active', t.dataset.tipo === tipo))
   const esProductos = tipo === 'PRODUCTOS'
 
-  // Colapsar/expandir grid segÃºn tipo
+  // Colapsar/expandir grid según tipo
   const split = document.querySelector('.modal-body-split')
   if (split) split.classList.toggle('servicios-mode', !esProductos)
 
@@ -315,7 +315,7 @@ function setTipoModal(tipo) {
   document.getElementById('tabla-servicios-container').style.display  = esProductos ? 'none' : 'block'
 }
 
-// â”€â”€ Render Ã­tems segÃºn tipo â”€â”€
+// ── Render ítems según tipo ──
 function renderItems() {
   if (tipoActual === 'PRODUCTOS') renderItemsProductos()
   else renderItemsServicios()
@@ -345,13 +345,13 @@ function renderItemsProductos() {
 function renderItemsServicios() {
   const tbody = document.getElementById('servicios-tbody')
   if (itemsEdicion.length === 0) {
-    tbody.innerHTML = `<tr id="servicios-empty"><td colspan="6" class="empty-items">Agrega lÃ­neas con el botÃ³n +</td></tr>`
+    tbody.innerHTML = `<tr id="servicios-empty"><td colspan="6" class="empty-items">Agrega líneas con el botón +</td></tr>`
     actualizarTotal()
     return
   }
   tbody.innerHTML = itemsEdicion.map((item, i) => `
     <tr>
-      <td><input type="text" value="${item.concepto || ''}" placeholder="DescripciÃ³n del servicio" style="width:100%;min-width:180px" oninput="itemsEdicion[${i}].concepto=this.value" /></td>
+      <td><input type="text" value="${item.concepto || ''}" placeholder="Descripción del servicio" style="width:100%;min-width:180px" oninput="itemsEdicion[${i}].concepto=this.value" /></td>
       <td><input type="text" value="${item.unidad || ''}" placeholder="m2" style="width:60px" oninput="itemsEdicion[${i}].unidad=this.value" /></td>
       <td><input type="number" min="1" value="${item.cantidad}" style="width:52px" oninput="actualizarCantidadItem(${i},this.value)" min="${item.esGranel ? 0.001 : 1}" step="${item.esGranel ? 0.001 : 1}" /></td>
       <td><input type="number" min="0" step="0.01" value="${item.precio.toFixed(2)}" style="width:82px" oninput="actualizarPrecioItem(${i},this.value)" /></td>
@@ -412,10 +412,10 @@ function agregarLineaServicio() {
   renderItems()
 }
 
-// â”€â”€ Guardar â”€â”€
+// ── Guardar ──
 async function guardarCotizacion() {
   ocultarError('modal-error')
-  if (itemsEdicion.length === 0) { mostrarError('modal-error', 'Agrega al menos una lÃ­nea.'); return }
+  if (itemsEdicion.length === 0) { mostrarError('modal-error', 'Agrega al menos una línea.'); return }
 
   const clienteId = document.getElementById('cot-cliente-id').value || null
   const venceEn   = document.getElementById('cot-vence').value || null
@@ -457,13 +457,13 @@ async function guardarCotizacion() {
     mostrarError('modal-error', err.message)
   } finally {
     btn.disabled = false
-    btn.textContent = 'Guardar CotizaciÃ³n'
+    btn.textContent = 'Guardar Cotización'
   }
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ════════════════════════════════════════════════════════════════════
 //  BÃšSQUEDA PRODUCTOS EN MODAL
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ════════════════════════════════════════════════════════════════════
 
 let debounceProducto
 async function buscarProductosModal(q) {
@@ -486,9 +486,9 @@ async function buscarProductosModal(q) {
 }
 window._addProd = function(id) { const p = window._productosModalCache?.[id]; if (p) agregarProductoAItems(p) }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ════════════════════════════════════════════════════════════════════
 //  AUTOCOMPLETE CLIENTES
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ════════════════════════════════════════════════════════════════════
 
 async function cargarClientes() {
   try {
@@ -497,7 +497,7 @@ async function cargarClientes() {
   } catch (e) { console.warn('No se pudieron cargar clientes:', e.message) }
 }
 
-// Filtra en memoria â€” sin mÃ­nimo de caracteres para poder mostrar toda la lista
+// Filtra en memoria — sin mínimo de caracteres para poder mostrar toda la lista
 function filtrarClientes(q) {
   const l = (q || '').toLowerCase().trim()
   if (!l) return clientesLista.slice(0, 50)
@@ -509,7 +509,7 @@ function filtrarClientes(q) {
   ).slice(0, 50)
 }
 
-// Renderiza items del dropdown â€” incluye opciÃ³n de pÃºblico general
+// Renderiza items del dropdown — incluye opción de público general
 function renderDropdownClientes(lista) {
   const dd = document.getElementById('dropdown-clientes')
   if (!dd) return
@@ -534,7 +534,7 @@ function renderDropdownClientes(lista) {
     listEl.innerHTML =
       `<div class="dropdown-item" style="color:var(--muted);font-style:italic;"
             onclick="seleccionarCliente(null, '')">
-         ðŸ‘¤ PÃºblico general
+         👤 Público general
        </div>` +
       (items.length === 0
         ? `<div style="padding:10px 12px;color:var(--muted);font-size:0.85rem;">Sin resultados</div>`
@@ -580,16 +580,16 @@ window.seleccionarCliente = function(id, nombre) {
   cerrarDropdownClientesCot()
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ════════════════════════════════════════════════════════════════════
 //  CAMBIAR ESTADO
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ════════════════════════════════════════════════════════════════════
 
 async function cancelarCotizacion(id) {
   if (!cotizacionActual || cotizacionActual.id !== id) return
   const ok = await jeshaConfirm({
-    title: 'Cancelar cotizaciÃ³n',
-    message: `Â¿Cancelar la cotizaciÃ³n <strong>${cotizacionActual.folio}</strong>?`,
-    confirmText: 'SÃ­, cancelar', type: 'danger'
+    title: 'Cancelar cotización',
+    message: `¿Cancelar la cotización <strong>${cotizacionActual.folio}</strong>?`,
+    confirmText: 'Sí, cancelar', type: 'danger'
   })
   if (!ok) return
   try {
@@ -599,21 +599,21 @@ async function cancelarCotizacion(id) {
   } catch (err) { jeshaToast('Error: ' + err.message, 'error') }
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ════════════════════════════════════════════════════════════════════
 //  CARGAR EN POS
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ════════════════════════════════════════════════════════════════════
 
 window.cargarEnPos = async function(id) {
   try {
     let cot = cotizacionActual?.id === id ? cotizacionActual : null
     if (!cot) { const d = await apiFetch(`/cotizaciones/${id}`); cot = d.data }
-    if (!cot.DetalleCotizacion || cot.DetalleCotizacion.length === 0) { jeshaToast('Esta cotizaciÃ³n no tiene productos', 'warning'); return }
+    if (!cot.DetalleCotizacion || cot.DetalleCotizacion.length === 0) { jeshaToast('Esta cotización no tiene productos', 'warning'); return }
     const posPayload = {
       fuente: 'cotizacion', cotFolio: cot.folio, cotId: cot.id,
       clienteId: cot.clienteId || null, clienteNombre: cot.Cliente?.nombre || '',
       items: cot.DetalleCotizacion.map(d => ({
         id:       d.Producto?.id ?? d.productoId,
-        nombre:   d.Producto?.nombre || 'â€”',
+        nombre:   d.Producto?.nombre || '—',
         precio:   parseFloat(d.precioUnitario),
         cantidad: parseFloat(d.cantidad) || 1
       }))
@@ -623,9 +623,9 @@ window.cargarEnPos = async function(id) {
   } catch (err) { jeshaToast('Error: ' + err.message, 'error') }
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ════════════════════════════════════════════════════════════════════
 //  PDF
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ════════════════════════════════════════════════════════════════════
 
 window.descargarPdf = async function(id) {
   try {
@@ -653,15 +653,15 @@ function generarPdf(c) {
       const neto     = importe - descuento
       const imgHtml  = d.Producto?.imagenUrl
         ? `<img src="${d.Producto.imagenUrl}" style="width:48px;height:48px;object-fit:contain;display:block;margin:0 auto" />`
-        : `<div style="width:48px;height:48px;background:#f5f5f5;border:1px solid #ddd;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:18px;margin:0 auto">ðŸ“¦</div>`
-      const clave    = d.Producto?.codigoInterno || 'â€”'
+        : `<div style="width:48px;height:48px;background:#f5f5f5;border:1px solid #ddd;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:18px;margin:0 auto">📦</div>`
+      const clave    = d.Producto?.codigoInterno || '—'
       const unidad   = d.unidad || d.Producto?.unidadVenta || 'PZA'
       return `
         <tr>
           <td style="text-align:center;padding:8px">${imgHtml}<div style="font-size:10px;color:#888;margin-top:2px">${clave}</div></td>
           <td style="text-align:center">${parseFloat(d.cantidad)}</td>
           <td style="text-align:center">${unidad}</td>
-          <td>${d.Producto?.nombre || d.concepto || 'â€”'}</td>
+          <td>${d.Producto?.nombre || d.concepto || '—'}</td>
           <td style="text-align:right">$${parseFloat(d.precioUnitario).toFixed(2)}</td>
           <td style="text-align:right">$${descuento.toFixed(2)}</td>
           <td style="text-align:right"><strong>$${neto.toFixed(2)}</strong></td>
@@ -677,11 +677,11 @@ function generarPdf(c) {
       <table>
         <thead>
           <tr>
-            <th style="width:80px;text-align:center">IMG/CLAVE</th>
+            <th style="width:80px;text-align:center">IMAGEN/CLAVE</th>
             <th style="width:50px;text-align:center">CANT</th>
             <th style="width:60px;text-align:center">UNIDAD</th>
-            <th>DESCRIPCIÃ“N</th>
-            <th style="width:90px;text-align:right">P. UNIT.</th>
+            <th>DESCRIPCIÓN</th>
+            <th style="width:90px;text-align:right">P.U.</th>
             <th style="width:80px;text-align:right">DESCUENTO</th>
             <th style="width:90px;text-align:right">IMPORTE</th>
           </tr>
@@ -697,11 +697,11 @@ function generarPdf(c) {
         <div class="resumen-row total"><span>Total:</span><span>$${totalConIva.toFixed(2)}</span></div>
       </div>`
   } else {
-    // SERVICIOS â€” tabla simple
+    // SERVICIOS — tabla simple
     const lineas = (c.DetalleCotizacion || []).map(d => `
       <tr>
-        <td>${d.concepto || 'â€”'}</td>
-        <td style="text-align:center">${d.unidad || 'â€”'}</td>
+        <td>${d.concepto || '—'}</td>
+        <td style="text-align:center">${d.unidad || '—'}</td>
         <td style="text-align:center">${d.cantidad}</td>
         <td style="text-align:right">$${parseFloat(d.precioUnitario).toFixed(2)}</td>
         <td style="text-align:right"><strong>$${parseFloat(d.subtotal).toFixed(2)}</strong></td>
@@ -732,7 +732,7 @@ function generarPdf(c) {
 <html lang="es">
 <head>
 <meta charset="UTF-8"/>
-<title>CotizaciÃ³n ${c.folio}</title>
+<title>Cotización ${c.folio}</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
   body { font-family:Arial,sans-serif; font-size:12px; color:#222; padding:28px; }
@@ -758,22 +758,22 @@ function generarPdf(c) {
   <div class="header">
     <div class="empresa">
       <img src="${LOGO_URL}" alt="JESHA" style="height:60px;width:auto;display:block;margin-bottom:4px;" />
-      <p>Av. Vialidad San SimÃ³n 3, La Toma de Zacatecas, C.P. 98660</p>
-      <p>Guadalupe, Zacatecas Â· Tel: 492 101 6879 Â· jeshadelgado544@gmail.com</p>
+      <p>Av. Vialidad San Simón 3, La Toma de Zacatecas, C.P. 98660</p>
+      <p>Guadalupe, Zacatecas · Tel: 492 101 6879 · jeshadelgado544@gmail.com</p>
     </div>
     <div class="folio-box">
       <div class="folio">${c.folio}</div>
       <p>Fecha: ${fmtFecha(c.creadaEn)}</p>
       ${vigencia}
-      <p style="margin-top:4px;font-size:11px;color:#888">${esProductos ? 'CotizaciÃ³n de Productos' : 'CotizaciÃ³n de Servicios'}</p>
+      <p style="margin-top:4px;font-size:11px;color:#888">${esProductos ? 'Cotización de Productos' : 'Cotización de Servicios'}</p>
     </div>
   </div>
 
   <div class="meta">
-    <p><strong>Cliente:</strong> ${c.Cliente?.nombre || 'PÃºblico General'}</p>
-    <p><strong>RFC:</strong> ${c.Cliente?.rfc || 'â€”'}</p>
-    <p><strong>ElaborÃ³:</strong> ${c.Usuario?.nombre || 'â€”'}</p>
-    <p><strong>Sucursal:</strong> ${c.Sucursal?.nombre || 'â€”'}</p>
+    <p><strong>Cliente:</strong> ${c.Cliente?.nombre || 'Público General'}</p>
+    <p><strong>RFC:</strong> ${c.Cliente?.rfc || '—'}</p>
+    <p><strong>Elaboró:</strong> ${c.Usuario?.nombre || '—'}</p>
+    <p><strong>Sucursal:</strong> ${c.Sucursal?.nombre || '—'}</p>
   </div>
 
   ${tablaHtml}
@@ -781,7 +781,7 @@ function generarPdf(c) {
   ${notas}
 
   <div class="footer">
-    <p>${esProductos ? 'Los precios incluyen IVA Â· ' : ''}CotizaciÃ³n vÃ¡lida por los dÃ­as indicados Â· FerreterÃ­a e IluminaciÃ³n JESHA</p>
+    <p>${esProductos ? 'Los precios incluyen IVA · ' : ''}Cotización válida por los días indicados · Ferretería e Iluminación JESHA</p>
   </div>
 </body>
 </html>`
@@ -792,9 +792,9 @@ function generarPdf(c) {
   ventana.onload = () => ventana.print()
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-//  INICIALIZACIÃ“N
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ════════════════════════════════════════════════════════════════════
+//  INICIALIZACIÓN
+// ════════════════════════════════════════════════════════════════════
 
 document.addEventListener('DOMContentLoaded', async () => {
   const fechaEl = document.getElementById('fecha-actual')
@@ -823,18 +823,18 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('btn-guardar-cotizacion')?.addEventListener('click', guardarCotizacion)
   document.getElementById('btn-add-servicio')?.addEventListener('click', agregarLineaServicio)
 
-  // BÃºsqueda productos
+  // Búsqueda productos
   document.getElementById('search-producto-modal')?.addEventListener('input', e => {
     clearTimeout(debounceProducto)
     debounceProducto = setTimeout(() => buscarProductosModal(e.target.value.trim()), 350)
   })
 
-  // Autocomplete clientes â€” bÃºsqueda al escribir + chevron para ver lista completa
+  // Autocomplete clientes — búsqueda al escribir + chevron para ver lista completa
   document.getElementById('cot-cliente-buscar')?.addEventListener('input', e => {
     const q = e.target.value
     if (q.length === 0) {
       cerrarDropdownClientesCot()
-      // Limpiar selecciÃ³n si se borra todo el texto
+      // Limpiar selección si se borra todo el texto
       document.getElementById('cot-cliente-id').value = ''
     } else {
       renderDropdownClientes(filtrarClientes(q))

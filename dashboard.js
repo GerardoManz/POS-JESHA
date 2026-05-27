@@ -161,7 +161,7 @@ async function cargarKPIs() {
     // KPI Sin stock
     const elSin = document.getElementById('kpi-sin-stock')
     elSin.querySelector('.kpi-value').textContent = sinStock.toLocaleString('es-MX')
-    elSin.querySelector('.kpi-sub').textContent   = sinStock > 0 ? 'Agotados' : 'Sinagotados ✓'
+    elSin.querySelector('.kpi-sub').textContent   = sinStock > 0 ? 'Agotados' : 'Sin agotados ✓'
 
   } catch (err) {
     console.error('❌ KPIs:', err.message)

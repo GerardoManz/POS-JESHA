@@ -63,7 +63,7 @@ const generarTicketAbono = async (req, res) => {
 // ════════════════════════════════════════════════════════════════════
 function generarHTMLTicketAbono(abono, fechaStr, horaStr) {
   const fmt = v => `$${parseFloat(v || 0).toFixed(2)}`
-  const { bitacora } = abono
+  const bitacora = abono.Bitacora
 
   const metodoLabel = {
     EFECTIVO:      'Efectivo',

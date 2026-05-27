@@ -6,10 +6,15 @@
 // ════════════════════════════════════════════════════════════════════
 
 const prisma = require('../../lib/prisma')
+const getEmpresaId = require('../../helpers/getEmpresaId')
 
 // ── Auditoría ──
-async function audit(usuarioId, sucursalId, accion, ref) {
-  try { await prisma.auditoria.create({ data: { accion, modulo: 'bitacora', referencia: ref, usuarioId, sucursalId } }) }
+async function audit(usuarioId, sucursalId, accion, ref, empresaId) {
+  try {
+    const data = { accion, modulo: 'bitacora', referencia: ref, usuarioId, sucursalId }
+    if (empresaId) data.empresaId = empresaId
+    await prisma.auditoria.create({ data })
+  }
   catch(e) { console.error('Audit:', e.message) }
 }
 
@@ -108,6 +113,7 @@ const crear = async (req, res) => {
     const { titulo, descripcion, clienteId, notas } = req.body
     const { id: usuarioId, sucursalId: sucursalIdToken } = req.usuario
     const sucursalId = sucursalIdToken || parseInt(req.body.sucursalId) || 1
+    const empresaId = getEmpresaId(req)
 
     if (!titulo?.trim()) {
       return res.status(400).json({ success: false, error: 'El título del proyecto es obligatorio', codigo: 'TITULO_REQUERIDO' })
@@ -123,6 +129,7 @@ const crear = async (req, res) => {
       const folio = await generarFolioBitacora(tx)
       return await tx.bitacora.create({
         data: {
+          empresaId,
           folio,
           titulo:         titulo.trim(),
           descripcion:    descripcion?.trim() || null,
@@ -141,7 +148,7 @@ const crear = async (req, res) => {
       })
     })
 
-    await audit(usuarioId, sucursalId, 'CREAR_BITACORA_MANUAL', bitacora.folio)
+    await audit(usuarioId, sucursalId, 'CREAR_BITACORA_MANUAL', bitacora.folio, empresaId)
     res.status(201).json({ success: true, data: bitacora })
   } catch (err) {
     console.error('❌ crear bitacora:', err)
@@ -157,6 +164,7 @@ const editar = async (req, res) => {
     const { id } = req.params
     const { titulo, descripcion, notas } = req.body
     const { id: usuarioId, sucursalId } = req.usuario
+    const empresaId = getEmpresaId(req)
 
     const existente = await prisma.bitacora.findUnique({
       where: { id: parseInt(id) },
@@ -182,7 +190,7 @@ const editar = async (req, res) => {
       data,
       select: BITACORA_SELECT
     })
-    await audit(usuarioId, sucursalId, 'EDITAR_BITACORA', existente.folio)
+    await audit(usuarioId, sucursalId, 'EDITAR_BITACORA', existente.folio, empresaId)
     res.json({ success: true, data: b })
   } catch (err) {
     console.error('❌ editar bitacora:', err)
@@ -201,6 +209,7 @@ const cambiarEstado = async (req, res) => {
     const { id } = req.params
     const { estado, motivo } = req.body
     const { id: usuarioId, sucursalId, rol } = req.usuario
+    const empresaId = getEmpresaId(req)
 
     const validos = ['ABIERTA', 'CERRADA_INTERNA']
     if (!validos.includes(estado)) {
@@ -249,7 +258,7 @@ const cambiarEstado = async (req, res) => {
         await tx.bitacora.update({ where: { id: parseInt(id) }, data: updateData })
       })
 
-      await audit(usuarioId, sucursalId, 'CERRAR_BITACORA_INTERNA', `${existente.folio} - saldo:$${parseFloat(existente.saldoPendiente).toFixed(2)} - ${motivo}`)
+      await audit(usuarioId, sucursalId, 'CERRAR_BITACORA_INTERNA', `${existente.folio} - saldo:$${parseFloat(existente.saldoPendiente).toFixed(2)} - ${motivo}`, empresaId)
       const b = await prisma.bitacora.findUnique({ where: { id: parseInt(id) }, select: BITACORA_SELECT })
       return res.json({ success: true, data: b, mensaje: 'Bitácora cerrada manualmente' })
     }
@@ -320,7 +329,7 @@ const cambiarEstado = async (req, res) => {
       })
 
       await audit(usuarioId, sucursalId, 'REABRIR_BITACORA',
-        `${existente.folio} - estado previo:${existente.estado} - ${motivo}`)
+        `${existente.folio} - estado previo:${existente.estado} - ${motivo}`, empresaId)
       const b = await prisma.bitacora.findUnique({ where: { id: parseInt(id) }, select: BITACORA_SELECT })
       return res.json({ success: true, data: b, mensaje: 'Bitácora reabierta. El saldo del cliente fue restaurado.' })
     }
@@ -341,6 +350,7 @@ const agregarProducto = async (req, res) => {
     const { productoId, cantidad, precioUnitario, notas } = req.body
     const { id: usuarioId, sucursalId: sucursalIdToken } = req.usuario
     const sucursalId = sucursalIdToken || parseInt(req.body.sucursalId) || 1
+    const empresaId = getEmpresaId(req)
 
     // ── Validaciones ──
     if (!productoId)                        return res.status(400).json({ success: false, error: 'productoId requerido' })
@@ -407,6 +417,7 @@ const agregarProducto = async (req, res) => {
           const cantDescontada = Math.min(cant, stockActual)
           await tx.movimientoInventario.create({
             data: {
+              empresaId,
               productoId:   producto.id,
               sucursalId,
               usuarioId,
@@ -443,7 +454,7 @@ const agregarProducto = async (req, res) => {
       return detalle
     })
 
-    await audit(usuarioId, sucursalId, 'AGREGAR_PRODUCTO_BITACORA', `${bitacora.folio} — ${producto.nombre} x${cant}`)
+    await audit(usuarioId, sucursalId, 'AGREGAR_PRODUCTO_BITACORA', `${bitacora.folio} — ${producto.nombre} x${cant}`, empresaId)
 
     const bitacoraActualizada = await prisma.bitacora.findUnique({ where: { id: parseInt(id) }, select: BITACORA_SELECT })
     res.json({
@@ -473,6 +484,7 @@ const editarDetalle = async (req, res) => {
     const { cantidad, precioUnitario } = req.body
     const { id: usuarioId, sucursalId: sucursalIdToken } = req.usuario
     const sucursalId = sucursalIdToken || 1
+    const empresaId = getEmpresaId(req)
 
     if (cantidad === undefined && precioUnitario === undefined) {
       return res.status(400).json({ success: false, error: 'Debes enviar cantidad o precioUnitario' })
@@ -554,6 +566,7 @@ const editarDetalle = async (req, res) => {
             })
             await tx.movimientoInventario.create({
               data: {
+                empresaId,
                 productoId:   detalle.productoId,
                 sucursalId,
                 usuarioId,
@@ -599,7 +612,7 @@ const editarDetalle = async (req, res) => {
       }
     })
 
-    await audit(usuarioId, sucursalId, 'EDITAR_DETALLE_BITACORA', `${bitacora.folio} — ${detalle.producto?.nombre || 'Sin nombre'} (Δ$${diferencia.toFixed(2)})`)
+    await audit(usuarioId, sucursalId, 'EDITAR_DETALLE_BITACORA', `${bitacora.folio} — ${detalle.producto?.nombre || 'Sin nombre'} (Δ$${diferencia.toFixed(2)})`, empresaId)
 
     const bitacoraActualizada = await prisma.bitacora.findUnique({ where: { id: parseInt(id) }, select: BITACORA_SELECT })
     res.json({
@@ -626,6 +639,7 @@ const quitarProducto = async (req, res) => {
     const { id, detalleId } = req.params
     const { id: usuarioId, sucursalId: sucursalIdToken } = req.usuario
     const sucursalId = sucursalIdToken || 1
+    const empresaId = getEmpresaId(req)
 
     const bitacora = await prisma.bitacora.findUnique({
       where: { id: parseInt(id) },
@@ -671,6 +685,7 @@ const quitarProducto = async (req, res) => {
           })
           await tx.movimientoInventario.create({
             data: {
+              empresaId,
               productoId:   detalle.productoId,
               sucursalId,
               usuarioId,
@@ -707,7 +722,7 @@ const quitarProducto = async (req, res) => {
       }
     })
 
-    await audit(usuarioId, sucursalId, 'QUITAR_PRODUCTO_BITACORA', `${bitacora.folio} — ${detalle.producto?.nombre || 'Sin nombre'}`)
+    await audit(usuarioId, sucursalId, 'QUITAR_PRODUCTO_BITACORA', `${bitacora.folio} — ${detalle.producto?.nombre || 'Sin nombre'}`, empresaId)
 
     const bitacoraActualizada = await prisma.bitacora.findUnique({ where: { id: parseInt(id) }, select: BITACORA_SELECT })
     res.json({ success: true, data: bitacoraActualizada, mensaje: 'Producto eliminado y stock reintegrado' })
@@ -728,6 +743,7 @@ const registrarAbono = async (req, res) => {
     const { id } = req.params
     const { monto, metodoPago, notas, turnoId } = req.body
     const { id: usuarioId, sucursalId } = req.usuario
+    const empresaId = getEmpresaId(req)
 
     const montoAbono = parseFloat(parseFloat(monto || 0).toFixed(2))
     if (!monto || montoAbono <= 0) {
@@ -781,6 +797,7 @@ const registrarAbono = async (req, res) => {
     await prisma.$transaction(async tx => {
       await tx.abonoBitacora.create({
         data: {
+          empresaId,
           bitacoraId: parseInt(id),
           usuarioId,
           turnoId:    turnoIdFinal,
@@ -812,6 +829,7 @@ const registrarAbono = async (req, res) => {
       if (esVenta && turnoIdFinal) {
         await tx.movimientoCaja.create({
           data: {
+            empresaId,
             turnoId:    turnoIdFinal,
             tipo:       'ABONO_BITACORA',
             monto:      montoAbono,
@@ -825,7 +843,7 @@ const registrarAbono = async (req, res) => {
 
     const accion = cerrar ? 'ABONO_BITACORA_CIERRE' : 'ABONO_BITACORA'
     const sufijo = esVenta ? '' : ' [MANUAL-sin caja]'
-    await audit(usuarioId, sucursalId, accion, `${bitacora.folio} +$${montoAbono.toFixed(2)}${sufijo}`)
+    await audit(usuarioId, sucursalId, accion, `${bitacora.folio} +$${montoAbono.toFixed(2)}${sufijo}`, empresaId)
 
     const bitacoraActualizada = await prisma.bitacora.findUnique({ where: { id: parseInt(id) }, select: BITACORA_SELECT })
     res.json({

@@ -6,6 +6,7 @@
 // ════════════════════════════════════════════════════════════════════
 
 const prisma = require('../../lib/prisma')
+const getEmpresaId = require('../../helpers/getEmpresaId')
 
 const TASA_IVA   = parseFloat(process.env.TASA_IVA || '0.16')
 const IVA_FACTOR = 1 + TASA_IVA
@@ -240,6 +241,8 @@ exports.solicitarFactura = async (req, res) => {
 
     if (!venta)        return res.status(404).json({ error: 'Venta no encontrada' })
     if (venta.FacturaCfdi) return res.status(409).json({ error: 'Esta venta ya fue facturada.' })
+
+    const empresaId = venta.empresaId
     if (venta.estado === 'CANCELADA') return res.status(400).json({ error: 'Venta cancelada.' })
     if (venta.facturaEstado === 'BLOQUEADA') return res.status(400).json({ error: 'Venta no facturable en línea.' })
     if (new Date() > new Date(venta.facturaLimite)) return res.status(400).json({ error: 'Plazo de facturación vencido.' })
@@ -270,6 +273,7 @@ exports.solicitarFactura = async (req, res) => {
 
         const factura = await prisma.facturaCfdi.create({
           data: {
+            empresaId,
             ventaId: venta.id, clienteId: venta.clienteId || null,
             rfcReceptor: rfcUpper, nombreReceptor: razonSocial.trim(),
             cpReceptor: codigoPostal.trim(), regimenFiscal, usoCfdi,
@@ -299,6 +303,7 @@ exports.solicitarFactura = async (req, res) => {
         console.error('❌ Error Facturapi:', fpErr.message)
         await prisma.facturaCfdi.create({
           data: {
+            empresaId,
             ventaId: venta.id, clienteId: venta.clienteId || null,
             rfcReceptor: rfcUpper, nombreReceptor: razonSocial.trim(),
             cpReceptor: codigoPostal.trim(), regimenFiscal, usoCfdi,
@@ -318,6 +323,7 @@ exports.solicitarFactura = async (req, res) => {
     // Sin Facturapi configurada
     const factura = await prisma.facturaCfdi.create({
       data: {
+        empresaId,
         ventaId: venta.id, clienteId: venta.clienteId || null,
         rfcReceptor: rfcUpper, nombreReceptor: razonSocial.trim(),
         cpReceptor: codigoPostal.trim(), regimenFiscal, usoCfdi,

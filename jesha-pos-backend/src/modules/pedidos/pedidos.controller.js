@@ -7,6 +7,7 @@
 // ════════════════════════════════════════════════════════════════════
 
 const prisma = require('../../lib/prisma')
+const getEmpresaId = require('../../helpers/getEmpresaId')
 
 // ── Folio ──
 async function generarFolio() {
@@ -38,11 +39,11 @@ async function resolverSucursal(sucursalIdToken, sucursalIdBody) {
 }
 
 // ── Auditoría ──
-async function audit(usuarioId, sucursalId, accion, ref) {
+async function audit(usuarioId, sucursalId, accion, ref, empresaId) {
   try {
-    await prisma.auditoria.create({
-      data: { accion, modulo: 'pedidos', referencia: ref, usuarioId, sucursalId }
-    })
+    const data = { accion, modulo: 'pedidos', referencia: ref, usuarioId, sucursalId }
+    if (empresaId) data.empresaId = empresaId
+    await prisma.auditoria.create({ data })
   } catch(e) { console.error('Audit error:', e.message) }
 }
 
@@ -164,6 +165,7 @@ const crear = async (req, res) => {
   try {
     const { clienteId, detalles, notas, sucursalId: bodySucursalId } = req.body
     const { id: usuarioId, sucursalId }  = req.usuario
+    const empresaId = getEmpresaId(req)
 
     // FIX: resolver sucursal inteligentemente
     const sucursalFinalId = await resolverSucursal(sucursalId, bodySucursalId)
@@ -187,6 +189,7 @@ const crear = async (req, res) => {
 
     const pedido = await prisma.pedido.create({
       data: {
+        empresaId,
         folio,
         sucursalId: sucursalFinalId,
         usuarioId,
@@ -201,7 +204,7 @@ const crear = async (req, res) => {
     })
 
     // FIX: usar sucursalFinalId para auditoría, no el null del JWT
-    await audit(usuarioId, sucursalFinalId, 'CREAR_PEDIDO', folio)
+    await audit(usuarioId, sucursalFinalId, 'CREAR_PEDIDO', folio, empresaId)
 
     res.status(201).json({ success: true, data: pedido })
 
@@ -218,6 +221,7 @@ const editar = async (req, res) => {
     const { id } = req.params
     const { clienteId, detalles, notas, sucursalId: bodySucursalId } = req.body
     const { id: usuarioId, sucursalId }  = req.usuario
+    const empresaId = getEmpresaId(req)
 
     const sucursalFinalId = await resolverSucursal(sucursalId, bodySucursalId)
     if (!sucursalFinalId) {
@@ -279,7 +283,7 @@ DetallePedido: { create: rows }
       })
 
       // FIX: usar sucursalFinalId
-      await audit(usuarioId, sucursalFinalId, 'EDITAR_PEDIDO', existente.folio)
+      await audit(usuarioId, sucursalFinalId, 'EDITAR_PEDIDO', existente.folio, empresaId)
 
       return res.json({ success: true, data: pedido })
     }
@@ -290,7 +294,7 @@ DetallePedido: { create: rows }
       select: PEDIDO_SELECT
     })
 
-    await audit(usuarioId, sucursalFinalId, 'EDITAR_PEDIDO', existente.folio)
+    await audit(usuarioId, sucursalFinalId, 'EDITAR_PEDIDO', existente.folio, empresaId)
 
     res.json({ success: true, data: pedido })
 
@@ -307,6 +311,7 @@ const cambiarEstado = async (req, res) => {
     const { id } = req.params
     const { estado, motivoBloqueo } = req.body
     const { id: usuarioId, sucursalId } = req.usuario
+    const empresaId = getEmpresaId(req)
 
     const existente = await prisma.pedido.findUnique({
       where: { id: parseInt(id) },
@@ -348,7 +353,7 @@ const cambiarEstado = async (req, res) => {
     })
     // FIX: usar sucursalId del pedido existente, no del JWT
     const sucAudit = sucursalId || existente.sucursalId
-    await audit(usuarioId, sucAudit, `ESTADO_PEDIDO_${estado}`, existente.folio)
+    await audit(usuarioId, sucAudit, `ESTADO_PEDIDO_${estado}`, existente.folio, empresaId)
 
     res.json({ success: true, data: pedido })
 

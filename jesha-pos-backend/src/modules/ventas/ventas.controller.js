@@ -4,6 +4,7 @@
 // ════════════════════════════════════════════════════════════════════
 
 const prisma = require('../../lib/prisma')
+const getEmpresaId = require('../../helpers/getEmpresaId')
 
 /**
  * POST /ventas
@@ -13,8 +14,9 @@ exports.crearVenta = async (req, res) => {
     const sucursalId = parseInt(req.body.sucursalId)
     const usuarioId  = parseInt(req.body.usuarioId)
     const turnoId    = parseInt(req.body.turnoId)
-    const { metodoPago, subtotal, iva, descuento, total, detalles, notas, montoPagado: montoPagadoRaw } = req.body
+    const { metodoPago, subtotal, iva, descuento, total, detalles, notas, montoPagado: montoPagadoRaw, cotizacionId } = req.body
     const clienteId  = req.body.clienteId ? parseInt(req.body.clienteId) : null
+    const empresaId = getEmpresaId(req)
 
     if (!sucursalId || isNaN(sucursalId) || !usuarioId || isNaN(usuarioId) || !turnoId || isNaN(turnoId) || !metodoPago) {
       return res.status(400).json({ error: 'Faltan campos requeridos', campos: ['sucursalId', 'usuarioId', 'turnoId', 'metodoPago'] })
@@ -186,11 +188,12 @@ exports.crearVenta = async (req, res) => {
 
       const ventaCreada = await tx.venta.create({
         data: {
+          empresaId,
           folio,
-          Sucursal: { connect: { id: sucursalId } },
-          Usuario:  { connect: { id: usuarioId } },
-          TurnoCaja:    { connect: { id: turnoId } },
-          ...(clienteId ? { Cliente: { connect: { id: clienteId } } } : {}),
+          sucursalId,
+          usuarioId,
+          turnoId,
+          ...(clienteId ? { clienteId } : {}),
           metodoPago,
           subtotal: totalRecalculado,
           descuento: descuentoAmt,
@@ -234,6 +237,7 @@ exports.crearVenta = async (req, res) => {
         })
         await tx.movimientoInventario.create({
           data: {
+            empresaId,
             productoId:   detalle.productoId,
             sucursalId,
             usuarioId,
@@ -251,12 +255,12 @@ exports.crearVenta = async (req, res) => {
         if (metodoPago === 'MIXTO' && desglosePagos) {
           for (const pago of desglosePagos) {
             await tx.movimientoCaja.create({
-              data: { turnoId, tipo: 'VENTA', monto: parseFloat(pago.monto), metodoPago: pago.metodo, referencia: folio, notas: `Pago mixto: ${pago.metodo}` }
+              data: { empresaId, turnoId, tipo: 'VENTA', monto: parseFloat(pago.monto), metodoPago: pago.metodo, referencia: folio, notas: `Pago mixto: ${pago.metodo}` }
             })
           }
         } else {
           await tx.movimientoCaja.create({
-            data: { turnoId, tipo: 'VENTA', monto: totalEsperado, metodoPago, referencia: folio }
+            data: { empresaId, turnoId, tipo: 'VENTA', monto: totalEsperado, metodoPago, referencia: folio }
           })
         }
       }
@@ -304,6 +308,7 @@ exports.crearVenta = async (req, res) => {
           const folioBit  = `BIT-${fechaBit.getFullYear()}${String(fechaBit.getMonth()+1).padStart(2,'0')}${String(fechaBit.getDate()).padStart(2,'0')}-${String(Number(seqBitRes[0].seq)).padStart(5,'0')}`
           bitacora = await tx.bitacora.create({
             data: {
+              empresaId,
               folio:           folioBit,
               titulo:          `Crédito — ${clienteInfo?.nombre || 'Cliente'}`,
               origen:          'VENTA',
@@ -338,6 +343,7 @@ exports.crearVenta = async (req, res) => {
 
       await tx.auditoria.create({
         data: {
+          empresaId,
           usuarioId,
           sucursalId,
           accion:      'CREAR_VENTA',
@@ -346,6 +352,24 @@ exports.crearVenta = async (req, res) => {
           valorDespues: { ventaId: ventaCreada.id, total: totalEsperado, items: detallesValidados.length, esCredito }
         }
       })
+
+      // Convertir cotización origen a CONVERTIDA (best-effort)
+      if (cotizacionId) {
+        try {
+          const cot = await tx.cotizacion.findUnique({
+            where: { id: parseInt(cotizacionId) },
+            select: { id: true, estado: true }
+          })
+          if (cot && cot.estado === 'PENDIENTE') {
+            await tx.cotizacion.update({
+              where: { id: cot.id },
+              data: { estado: 'CONVERTIDA' }
+            })
+          }
+        } catch (e) {
+          console.warn('⚠️ No se pudo convertir cotización:', e.message)
+        }
+      }
 
       return ventaCreada
     })
@@ -533,6 +557,7 @@ exports.cancelarVenta = async (req, res) => {
     const id      = parseInt(req.params.id)
     const usuario = req.usuario   // ← usa req.usuario (middleware JWT de JESHA)
     const { motivo } = req.body
+    const empresaId = getEmpresaId(req)
 
     const venta = await prisma.venta.findUnique({
       where:   { id },
@@ -616,6 +641,7 @@ exports.cancelarVenta = async (req, res) => {
           })
           await tx.movimientoInventario.create({
             data: {
+              empresaId,
               productoId:   detalle.productoId,
               sucursalId:   venta.sucursalId,
               usuarioId:    usuario.id,
@@ -639,6 +665,7 @@ exports.cancelarVenta = async (req, res) => {
             for (const pago of venta.desglosePagos) {
               await tx.movimientoCaja.create({
                 data: {
+                  empresaId,
                   turnoId:    turno.id,
                   tipo:       'DEVOLUCION',
                   monto:      -parseFloat(pago.monto),
@@ -651,6 +678,7 @@ exports.cancelarVenta = async (req, res) => {
           } else {
             await tx.movimientoCaja.create({
               data: {
+                empresaId,
                 turnoId:    turno.id,
                 tipo:       'DEVOLUCION',
                 monto:      -parseFloat(venta.total),
@@ -698,6 +726,7 @@ exports.cancelarVenta = async (req, res) => {
 
         await tx.auditoria.create({
           data: {
+            empresaId,
             usuarioId:    usuario.id,
             sucursalId:   venta.sucursalId,
             accion:       'LIMPIAR_BITACORA_POR_CANCELACION',
@@ -715,6 +744,7 @@ exports.cancelarVenta = async (req, res) => {
 
       await tx.auditoria.create({
         data: {
+          empresaId,
           usuarioId:    usuario.id,
           sucursalId:   venta.sucursalId,
           accion:       'CANCELAR_VENTA',
@@ -750,6 +780,7 @@ exports.actualizarMetodoPago = async (req, res) => {
     const ventaId  = parseInt(req.params.id)
     const usuario  = req.usuario   // ← consistente con cancelarVenta
     const { nuevoMetodo } = req.body
+    const empresaId = getEmpresaId(req)
 
     if (!usuario) {
       return res.status(401).json({ error: 'Usuario no autenticado' })
@@ -856,6 +887,7 @@ exports.actualizarMetodoPago = async (req, res) => {
 
         await tx.movimientoCaja.create({
           data: {
+            empresaId,
             turnoId:    turno.id,
             tipo:       'VENTA',
             monto:      total,
@@ -934,6 +966,7 @@ exports.actualizarMetodoPago = async (req, res) => {
       // ── PASO 5: Auditoria ────────────────────────────────────────
       await tx.auditoria.create({
         data: {
+          empresaId,
           usuarioId:    usuario.id,
           sucursalId:   venta.sucursalId,
           accion:       'EDITAR_METODO_PAGO',

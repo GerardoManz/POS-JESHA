@@ -4,6 +4,7 @@
 // ════════════════════════════════════════════════════════════════════
 
 const prisma = require('../../lib/prisma')
+const getEmpresaId = require('../../helpers/getEmpresaId')
 
 /**
  * POST /inventario/ajuste-rapido
@@ -23,6 +24,7 @@ exports.ajusteRapido = async (req, res) => {
     const sucursalIdToken = req.usuario?.sucursalId
     const sucursalId      = sucursalIdToken || parseInt(req.body.sucursalId) || 1
     const usuarioId       = req.usuario?.id ? parseInt(req.usuario.id) : null
+    const empresaId       = getEmpresaId(req)
 
     // ── Validaciones de entrada ────────────────────────────────────
     if (!productoId || isNaN(productoId)) {
@@ -86,6 +88,7 @@ exports.ajusteRapido = async (req, res) => {
 
       await tx.movimientoInventario.create({
         data: {
+          empresaId,
           productoId,
           sucursalId,
           usuarioId,

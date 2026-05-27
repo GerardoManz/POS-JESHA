@@ -4,6 +4,7 @@
 // ════════════════════════════════════════════════════════════════════
 
 const prisma = require('../../lib/prisma')
+const getEmpresaId = require('../../helpers/getEmpresaId')
 
 async function generarFolio() {
   const fecha = new Date()
@@ -15,11 +16,12 @@ async function generarFolio() {
   return `COT-${año}${mes}${dia}-${sec}`
 }
 
-async function audit(usuarioId, sucursalId, accion, referencia) {
+async function audit(usuarioId, sucursalId, accion, referencia, empresaId) {
   try {
     const data = { accion, modulo: 'cotizaciones', referencia }
     if (usuarioId)  data.usuarioId  = usuarioId
     if (sucursalId) data.sucursalId = sucursalId
+    if (empresaId)  data.empresaId  = empresaId
     await prisma.auditoria.create({ data })
   } catch (e) { console.error('Audit error:', e.message) }
 }
@@ -52,6 +54,14 @@ function calcularDetalle(precioUnitario, cantidad, descuento) {
 }
 
 async function listar({ sucursalId, rol, estado, excluirCanceladas, tipo, buscar, page = 1, limit = 30 }) {
+  // Auto-vencer cotizaciones expiradas antes de listar
+  await prisma.$executeRaw`
+    UPDATE "Cotizacion" SET estado = 'VENCIDA'
+    WHERE estado = 'PENDIENTE'
+      AND "venceEn" IS NOT NULL
+      AND "venceEn" < NOW()
+  `
+
   const where = {}
   if (rol !== 'SUPERADMIN' && sucursalId) where.sucursalId = sucursalId
 
@@ -79,10 +89,19 @@ async function listar({ sucursalId, rol, estado, excluirCanceladas, tipo, buscar
 }
 
 async function obtenerPorId(id) {
+  // Auto-vencer cotización expirada antes de obtener
+  await prisma.$executeRaw`
+    UPDATE "Cotizacion" SET estado = 'VENCIDA'
+    WHERE id = ${parseInt(id)}
+      AND estado = 'PENDIENTE'
+      AND "venceEn" IS NOT NULL
+      AND "venceEn" < NOW()
+  `
+
   return prisma.cotizacion.findUnique({ where: { id: parseInt(id) }, select: COTIZACION_SELECT })
 }
 
-async function crear({ sucursalId, usuarioId, clienteId, tipo = 'PRODUCTOS', detalles, notas, venceEn }) {
+async function crear({ sucursalId, usuarioId, clienteId, empresaId, tipo = 'PRODUCTOS', detalles, notas, venceEn }) {
   clienteId = clienteId ? parseInt(clienteId) : null
   if (isNaN(clienteId)) clienteId = null
 
@@ -122,16 +141,16 @@ async function crear({ sucursalId, usuarioId, clienteId, tipo = 'PRODUCTOS', det
   const folio = await generarFolio()
 
   const cotizacion = await prisma.cotizacion.create({
-    data: { folio, sucursalId, usuarioId, clienteId, tipo, total, estado: 'PENDIENTE',
+    data: { empresaId, folio, sucursalId, usuarioId, clienteId, tipo, total, estado: 'PENDIENTE',
             notas: notas || null, venceEn: venceEn ? new Date(venceEn) : null,
             DetalleCotizacion: { create: rows } },
     select: COTIZACION_SELECT
   })
-  await audit(usuarioId, sucursalId, 'CREAR_COTIZACION', folio)
+  await audit(usuarioId, sucursalId, 'CREAR_COTIZACION', folio, empresaId)
   return cotizacion
 }
 
-async function editar(id, { clienteId, notas, venceEn, detalles, tipo, usuarioId, sucursalId }) {
+async function editar(id, { clienteId, notas, venceEn, detalles, tipo, usuarioId, sucursalId, empresaId }) {
   clienteId = clienteId ? parseInt(clienteId) : null
   if (isNaN(clienteId)) clienteId = null
 
@@ -181,22 +200,45 @@ async function editar(id, { clienteId, notas, venceEn, detalles, tipo, usuarioId
       await tx.detalleCotizacion.deleteMany({ where: { cotizacionId: parseInt(id) } })
       return tx.cotizacion.update({ where: { id: parseInt(id) }, data: { ...updateData, DetalleCotizacion: { create: rows } }, select: COTIZACION_SELECT })
     })
-    await audit(usuarioId, sucursalId, 'EDITAR_COTIZACION', existente.folio)
+    await audit(usuarioId, sucursalId, 'EDITAR_COTIZACION', existente.folio, empresaId)
     return cot
   }
 
   const cot = await prisma.cotizacion.update({ where: { id: parseInt(id) }, data: updateData, select: COTIZACION_SELECT })
-  await audit(usuarioId, sucursalId, 'EDITAR_COTIZACION', existente.folio)
+  await audit(usuarioId, sucursalId, 'EDITAR_COTIZACION', existente.folio, empresaId)
   return cot
 }
 
-async function cambiarEstado(id, estado, { usuarioId, sucursalId }) {
+async function cambiarEstado(id, estado, { usuarioId, sucursalId, empresaId, rol }) {
   const validos = ['PENDIENTE', 'CONVERTIDA', 'VENCIDA', 'CANCELADA']
   if (!validos.includes(estado)) throw new Error(`Estado inválido: ${estado}`)
-  const existente = await prisma.cotizacion.findUnique({ where: { id: parseInt(id) }, select: { id: true, folio: true } })
+
+  const TRANSICIONES = {
+    PENDIENTE:  ['CONVERTIDA', 'VENCIDA', 'CANCELADA'],
+    VENCIDA:    ['CANCELADA'],
+    CONVERTIDA: [],
+    CANCELADA:  []
+  }
+
+  const existente = await prisma.cotizacion.findUnique({
+    where: { id: parseInt(id), empresaId },
+    select: { id: true, folio: true, estado: true, sucursalId: true }
+  })
   if (!existente) throw new Error('Cotización no encontrada')
+
+  // Validar acceso a sucursal (SUPERADMIN y PLATFORM_ADMIN hacen bypass)
+  if (rol !== 'SUPERADMIN' && rol !== 'PLATFORM_ADMIN' && existente.sucursalId !== sucursalId) {
+    throw new Error('No tienes acceso a esta cotización')
+  }
+
+  // Validar transición permitida
+  const transicionesPermitidas = TRANSICIONES[existente.estado]
+  if (!transicionesPermitidas.includes(estado)) {
+    throw new Error(`Transición no permitida: ${existente.estado} → ${estado}`)
+  }
+
   const cot = await prisma.cotizacion.update({ where: { id: parseInt(id) }, data: { estado }, select: COTIZACION_SELECT })
-  await audit(usuarioId, sucursalId, `ESTADO_COTIZACION_${estado}`, existente.folio)
+  await audit(usuarioId, sucursalId, `ESTADO_COTIZACION_${estado}`, existente.folio, empresaId)
   return cot
 }
 

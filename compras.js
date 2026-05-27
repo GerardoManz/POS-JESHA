@@ -242,12 +242,14 @@ function renderDetalle() {
     </tr>`
   }).join('')
 
+  const alertDiv = document.getElementById('recepcion-parcial-alert')
   if (recibiendo && oc.estado === 'RECIBIDO_PARCIAL') {
-    const pendientesCount = (oc.DetalleOrdenCompra || []).filter(d => d.cantidadRecibida < d.cantidadPedida).length
-    tbody.insertAdjacentHTML('beforebegin',
-      `<div style="margin-bottom:10px;padding:9px 14px;background:rgba(255,193,7,0.07);border:1px solid rgba(255,193,7,0.2);border-radius:8px;font-size:0.82rem;color:#ffc107;">
+    const pendientesCount = (oc.DetalleOrdenCompra || []).filter(d => parseFloat(d.cantidadRecibida) < parseFloat(d.cantidadPedida)).length
+    alertDiv.innerHTML = `<div style="padding:9px 14px;background:rgba(255,193,7,0.07);border:1px solid rgba(255,193,7,0.2);border-radius:8px;font-size:0.82rem;color:#ffc107;">
         ⚠️ Recepción parcial — ${pendientesCount} producto${pendientesCount !== 1 ? 's' : ''} pendiente${pendientesCount !== 1 ? 's' : ''} de recibir.
-       </div>`)
+       </div>`
+  } else {
+    alertDiv.innerHTML = ''
   }
 
   const btns = document.getElementById('det-botones-superiores')
@@ -403,9 +405,13 @@ window.confirmarRecepcion = async function() {
 }
 
 window.cancelarCompra = async function(id) {
+  const esRecibidoParcial = ocActual?.estado === 'RECIBIDO_PARCIAL'
+  const mensaje = esRecibidoParcial
+    ? `¿Cancelar la recepción del resto de <strong>${ocActual?.folio}</strong>? Los productos ya recibidos conservarán su stock. Esta acción no se puede deshacer.`
+    : `¿Cancelar la orden <strong>${ocActual?.folio}</strong>? Esta acción no se puede deshacer.`
   const ok = await jeshaConfirm({
     title: 'Cancelar compra',
-    message: `¿Cancelar la orden <strong>${ocActual?.folio}</strong>? Esta acción no se puede deshacer.`,
+    message: mensaje,
     confirmText: 'Sí, cancelar', type: 'danger'
   })
   if (!ok) return
@@ -697,18 +703,30 @@ function renderDDProv(lista) {
   `
   dd.style.display = 'block'
 
+  const engancharListeners = () => {
+    const listEl = document.getElementById('dd-prov-list')
+    if (!listEl) return
+    listEl.querySelectorAll('.dropdown-item').forEach(el => {
+      el.addEventListener('click', () => {
+        const id = parseInt(el.dataset.id)
+        const prov = proveedores.find(p => p.id === id)
+        if (prov) aplicarProveedorSeleccionado(id, prov.alias || prov.nombreOficial)
+      })
+    })
+  }
+
   const renderItems = (items) => {
     const listEl = document.getElementById('dd-prov-list')
     if (!listEl) return
     listEl.innerHTML = items.length === 0
       ? `<div style="padding:10px 12px;color:var(--muted);font-size:0.85rem;">Sin resultados</div>`
       : items.map(p => `
-          <div class="dropdown-item"
-               onclick="selProv(${p.id},'${(p.alias || p.nombreOficial).replace(/'/g,"\\'")}','${p.nombreOficial.replace(/'/g,"\\'")}')">
+          <div class="dropdown-item" data-id="${p.id}">
             <strong>${p.alias || p.nombreOficial}</strong>
             ${p.alias ? `<span style="color:var(--muted);font-size:0.78rem"> — ${p.nombreOficial}</span>` : ''}
           </div>`
         ).join('')
+    engancharListeners()
   }
   renderItems(lista)
 
@@ -733,11 +751,10 @@ function cerrarDDProv() {
   if (dd) dd.style.display = 'none'
 }
 
-window.selProv = (id, alias, nombre) => {
+function aplicarProveedorSeleccionado(id, alias) {
   document.getElementById('prov-id').value     = id
   document.getElementById('prov-buscar').value = alias
   cerrarDDProv()
-  // FIX: Habilitar búsqueda GLOBAL (no filtrada por proveedor)
   const searchProd = document.getElementById('search-prod-modal')
   if (searchProd) {
     searchProd.disabled    = false
@@ -745,6 +762,10 @@ window.selProv = (id, alias, nombre) => {
     searchProd.focus()
   }
   document.getElementById('lista-prod-modal').innerHTML = '<p class="muted-hint">Escribe para buscar productos...</p>'
+}
+
+window.selProv = (id, alias, nombre) => {
+  aplicarProveedorSeleccionado(id, alias)
 }
 
 async function guardarProveedor() {
@@ -760,8 +781,14 @@ async function guardarProveedor() {
     const data = await apiFetch('/compras/proveedores', { method:'POST', body: JSON.stringify({ nombreOficial: nombre, alias, telefono: tel, celular: cel }) })
     const prov = data.data
     proveedores.push(prov)
-    document.getElementById('prov-id').value     = prov.id
-    document.getElementById('prov-buscar').value = prov.alias || prov.nombreOficial
+    aplicarProveedorSeleccionado(prov.id, prov.alias || prov.nombreOficial)
+    const sel = document.getElementById('filtro-proveedor')
+    if (sel) {
+      const opt = document.createElement('option')
+      opt.value = prov.id
+      opt.textContent = prov.alias || prov.nombreOficial
+      sel.appendChild(opt)
+    }
     document.getElementById('modal-prov').classList.remove('active')
   } catch (err) { mostrarError('prov-error', err.message) }
   finally { btn.disabled = false; btn.textContent = 'Crear Proveedor' }
@@ -863,7 +890,6 @@ function abrirModalProdRapido() {
   prActualizarGranel()
 
   // Proveedor automático desde la compra
-  const provId    = document.getElementById('prov-id').value
   const provNombre = document.getElementById('prov-buscar').value
   document.getElementById('pr-prov-id').value      = provId
   document.getElementById('pr-prov-nombre').textContent = provNombre || '—'

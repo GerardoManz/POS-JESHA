@@ -1,4 +1,5 @@
 const prisma = require('../../lib/prisma')
+const getEmpresaId = require('../../helpers/getEmpresaId')
 
 const EMPRESA = {
   nombre:   'Ferretería e Iluminación JESHA',
@@ -111,6 +112,7 @@ const abrirTurno = async (req, res) => {
     const { montoInicial, sucursalId: sucursalIdBody } = req.body
     const { id: usuarioId, sucursalId: sucursalIdToken } = req.usuario
     const sucursalId = sucursalIdToken || parseInt(sucursalIdBody) || 1
+    const empresaId = getEmpresaId(req)
 
     if (montoInicial === undefined || montoInicial < 0) {
       return res.status(400).json({ error: 'Monto inicial requerido y debe ser >= 0' })
@@ -125,7 +127,7 @@ const abrirTurno = async (req, res) => {
       }
 
       const turno = await tx.turnoCaja.create({
-        data: { sucursalId, usuarioId, montoInicial: parseFloat(montoInicial), abierto: true },
+        data: { empresaId, sucursalId, usuarioId, montoInicial: parseFloat(montoInicial), abierto: true },
         include: {
           Usuario: { select: { id: true, nombre: true } },
           Sucursal: { select: { id: true, nombre: true } }
@@ -133,11 +135,12 @@ const abrirTurno = async (req, res) => {
       })
 
       await tx.movimientoCaja.create({
-        data: { turnoId: turno.id, tipo: 'APERTURA', monto: parseFloat(montoInicial) }
+        data: { empresaId, turnoId: turno.id, tipo: 'APERTURA', monto: parseFloat(montoInicial) }
       })
 
       await tx.auditoria.create({
         data: {
+          empresaId,
           usuarioId, sucursalId, accion: 'ABRIR_TURNO', modulo: 'turnos-caja',
           referencia: `Turno ${turno.id} abierto con $${montoInicial}`
         }
@@ -166,6 +169,7 @@ const cerrarTurno = async (req, res) => {
     const { montoFinalDeclarado, notasCierre } = req.body
     const { id: usuarioId, sucursalId: sucursalIdToken } = req.usuario
     const sucursalId = sucursalIdToken || parseInt(req.body.sucursalId) || 1
+    const empresaId = getEmpresaId(req)
 
     if (montoFinalDeclarado === undefined || montoFinalDeclarado < 0) {
       return res.status(400).json({ error: 'Monto final declarado requerido' })
@@ -219,11 +223,12 @@ const cerrarTurno = async (req, res) => {
       })
 
       await tx.movimientoCaja.create({
-        data: { turnoId: turno.id, tipo: 'CIERRE', monto: parseFloat(montoFinalDeclarado) }
+        data: { empresaId, turnoId: turno.id, tipo: 'CIERRE', monto: parseFloat(montoFinalDeclarado) }
       })
 
       await tx.auditoria.create({
         data: {
+          empresaId,
           usuarioId, sucursalId, accion: 'CERRAR_TURNO', modulo: 'turnos-caja',
           referencia: `Turno ${turno.id} cerrado. Calc: $${montoCalculado} Decl: $${montoFinalDeclarado} Dif: $${diferencia}`
         }

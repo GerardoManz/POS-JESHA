@@ -6,16 +6,18 @@
 // ═══════════════════════════════════════════════════════════════════
 
 const prisma = require('../../lib/prisma')
+const getEmpresaId = require('../../helpers/getEmpresaId')
 
 // ── Campos válidos actuales en modelo Cliente ──
 // id, nombre, rfc, telefono, email,
 // codigoPostalFiscal, regimenFiscal, tipo, notas, creadoEn
 
-async function registrarAudit(usuarioId, sucursalId, accion, modulo, referencia, ip) {
+async function registrarAudit(usuarioId, sucursalId, accion, modulo, referencia, ip, empresaId) {
   try {
     const data = { accion, modulo, referencia, ip }
     if (usuarioId)  data.usuarioId  = usuarioId
     if (sucursalId) data.sucursalId = sucursalId
+    if (empresaId)  data.empresaId  = empresaId
     await prisma.auditoria.create({ data })
   } catch (e) {
     console.error('❌ Error en auditoría:', e.message)
@@ -84,7 +86,7 @@ async function obtenerClientePorId(id) {
 // CREAR
 // ═══════════════════════════════════════════════════════════════════
 
-async function crearCliente(datos, usuarioId, sucursalId, ip) {
+async function crearCliente(datos, usuarioId, sucursalId, ip, empresaId) {
   const {
     nombre, tipo, telefono, email, rfc,
     codigoPostalFiscal, regimenFiscal, notas
@@ -93,12 +95,13 @@ async function crearCliente(datos, usuarioId, sucursalId, ip) {
   if (!nombre || !tipo) throw new Error('Nombre y tipo son requeridos')
 
   if (rfc) {
-    const existe = await prisma.cliente.findUnique({ where: { rfc } })
+    const existe = await prisma.cliente.findUnique({ where: { empresaId_rfc: { empresaId, rfc } } })
     if (existe) throw new Error('El RFC ya está registrado')
   }
 
   const cliente = await prisma.cliente.create({
     data: {
+      empresaId,
       nombre,
       tipo,
       telefono:           telefono           || null,
@@ -110,7 +113,7 @@ async function crearCliente(datos, usuarioId, sucursalId, ip) {
     }
   })
 
-  await registrarAudit(usuarioId, sucursalId, 'CREAR_CLIENTE', 'clientes', `Cliente ${nombre}`, ip)
+  await registrarAudit(usuarioId, sucursalId, 'CREAR_CLIENTE', 'clientes', `Cliente ${nombre}`, ip, empresaId)
   return cliente
 }
 
@@ -128,7 +131,7 @@ async function editarCliente(id, datos, usuarioId, sucursalId, ip) {
   if (!cliente) throw new Error('Cliente no encontrado')
 
   if (rfc && rfc !== cliente.rfc) {
-    const existe = await prisma.cliente.findUnique({ where: { rfc } })
+    const existe = await prisma.cliente.findUnique({ where: { empresaId_rfc: { empresaId: cliente.empresaId, rfc } } })
     if (existe) throw new Error('El RFC ya está registrado')
   }
 
@@ -146,7 +149,7 @@ async function editarCliente(id, datos, usuarioId, sucursalId, ip) {
     }
   })
 
-  await registrarAudit(usuarioId, sucursalId, 'EDITAR_CLIENTE', 'clientes', `Cliente ${nombre || cliente.nombre}`, ip)
+  await registrarAudit(usuarioId, sucursalId, 'EDITAR_CLIENTE', 'clientes', `Cliente ${nombre || cliente.nombre}`, ip, empresaId)
   return clienteActualizado
 }
 

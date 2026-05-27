@@ -7,6 +7,7 @@
 // ═══════════════════════════════════════════════════════════════════
 
 const prisma = require('../../lib/prisma')
+const getEmpresaId = require('../../helpers/getEmpresaId')
 const { eliminarImagenProducto } = require('../../lib/cloudinary')
 
 // Valida si claveSat/unidadSat vienen vacíos o como "null"/"undefined"
@@ -291,6 +292,7 @@ async function crear(req, res) {
             tipoFacturaProv, costoSinIvaProveedor,
             esGranel
         } = req.body
+        const empresaId = getEmpresaId(req)
 
         if (!nombre || !codigoInterno || !categoriaId || !precioBase) {
             return res.status(400).json({
@@ -308,13 +310,14 @@ async function crear(req, res) {
             })
         }
 
-        const existente = await prisma.producto.findUnique({ where: { codigoInterno } })
+        const existente = await prisma.producto.findUnique({ where: { empresaId_codigoInterno: { empresaId, codigoInterno } } })
         if (existente) {
             return res.status(400).json({ success: false, error: 'El código interno ya existe' })
         }
 
         const producto = await prisma.producto.create({
             data: {
+                empresaId,
                 nombre,
                 codigoInterno,
                 codigoBarras:        codigoBarras     || null,
@@ -598,20 +601,21 @@ async function categoriasPorDepartamento(req, res) {
 
 async function crearDepartamento(req, res) {
     try {
+        const empresaId = getEmpresaId(req)
         const { nombre } = req.body
         if (!nombre || !nombre.trim()) {
             return res.status(400).json({ success: false, error: 'Nombre requerido' })
         }
 
         const existente = await prisma.departamento.findFirst({
-            where: { nombre: { equals: nombre.trim().toUpperCase(), mode: 'insensitive' } }
+            where: { empresaId, nombre: { equals: nombre.trim().toUpperCase(), mode: 'insensitive' } }
         })
         if (existente) {
             return res.json({ success: true, data: existente, mensaje: 'Ya existía' })
         }
 
         const depto = await prisma.departamento.create({
-            data: { nombre: nombre.trim().toUpperCase(), activo: true }
+            data: { empresaId, nombre: nombre.trim().toUpperCase(), activo: true }
         })
         console.log(`✅ Departamento creado: ${depto.nombre}`)
         res.status(201).json({ success: true, data: depto })
@@ -627,6 +631,7 @@ async function crearDepartamento(req, res) {
 
 async function crearCategoria(req, res) {
     try {
+        const empresaId = getEmpresaId(req)
         const { nombre, departamentoId } = req.body
         if (!nombre || !departamentoId) {
             return res.status(400).json({ success: false, error: 'Nombre y departamentoId requeridos' })
@@ -634,6 +639,7 @@ async function crearCategoria(req, res) {
 
         const existente = await prisma.categoria.findFirst({
             where: {
+                empresaId,
                 departamentoId: parseInt(departamentoId),
                 nombre: { equals: nombre.trim(), mode: 'insensitive' }
             }
@@ -644,6 +650,7 @@ async function crearCategoria(req, res) {
 
         const cat = await prisma.categoria.create({
             data: {
+                empresaId,
                 nombre: nombre.trim(),
                 departamentoId: parseInt(departamentoId)
             }
@@ -667,6 +674,7 @@ async function ajustarInventario(req, res) {
     const { id } = req.params
     const { stockActual, stockMinimoAlerta, motivo } = req.body
     const usuario = req.usuario  // viene del middleware requireAuth
+    const empresaId = getEmpresaId(req)
 
     // ── Validar rol ──
     const rolesPermitidos = ['SUPERADMIN', 'ADMIN_SUCURSAL']
@@ -734,6 +742,7 @@ const producto = await prisma.producto.findUnique({
       if (diferencia !== 0) {
         await prisma.movimientoInventario.create({
           data: {
+            empresaId,
             productoId:   parseInt(id),
             sucursalId,
             usuarioId:    usuario.id,

@@ -4,12 +4,13 @@
 // ════════════════════════════════════════════════════════════════════
 
 const prisma = require('../../lib/prisma')
+const getEmpresaId = require('../../helpers/getEmpresaId')
 
-async function registrarAudit(usuarioId, sucursalId, referencia, detalleExtra) {
+async function registrarAudit(usuarioId, sucursalId, referencia, detalleExtra, empresaId) {
   try {
-    await prisma.auditoria.create({
-      data: { usuarioId, sucursalId, accion: 'CREAR_DEVOLUCION', modulo: 'devoluciones', referencia, valorDespues: detalleExtra }
-    })
+    const data = { usuarioId, sucursalId, accion: 'CREAR_DEVOLUCION', modulo: 'devoluciones', referencia, valorDespues: detalleExtra }
+    if (empresaId) data.empresaId = empresaId
+    await prisma.auditoria.create({ data })
   } catch (e) { console.error('Audit error Devolucion:', e.message) }
 }
 
@@ -30,6 +31,7 @@ exports.crear = async (req, res) => {
   try {
     const { ventaId, motivo, tipoReembolso, productos, notas } = req.body
     const solicitante = req.usuario
+    const empresaId = getEmpresaId(req)
 
     if (!ventaId || !motivo || !tipoReembolso || !productos?.length) {
       return res.status(400).json({ error: 'Faltan campos requeridos', requeridos: ['ventaId', 'motivo', 'tipoReembolso', 'productos'] })
@@ -148,6 +150,7 @@ let montoReembolso = 0
 
       const devCreada = await tx.devolucion.create({
         data: {
+          empresaId,
           ventaId:             parseInt(ventaId),
           sucursalId:          venta.sucursalId,
           usuarioId:           solicitante.id,
@@ -184,7 +187,7 @@ let montoReembolso = 0
             data:  { stockActual: stockDespues }
           })
           await tx.movimientoInventario.create({
-            data: { productoId: det.productoId, sucursalId: det.sucursalId, usuarioId: solicitante.id, tipo: 'DEVOLUCION_ENTRADA', cantidad: det.cantidad, stockAntes, stockDespues, referencia: folio, notas: `Devolución de ${venta.folio}` }
+            data: { empresaId, productoId: det.productoId, sucursalId: det.sucursalId, usuarioId: solicitante.id, tipo: 'DEVOLUCION_ENTRADA', cantidad: det.cantidad, stockAntes, stockDespues, referencia: folio, notas: `Devolución de ${venta.folio}` }
           })
         }
       }
@@ -192,7 +195,7 @@ let montoReembolso = 0
       // Movimiento de caja
       if (!sinTurno && (tipoReembolso === 'REEMBOLSO' || tipoReembolso === 'CAMBIO_PARCIAL')) {
         await tx.movimientoCaja.create({
-          data: { turnoId: turnoActivo.id, tipo: 'DEVOLUCION', monto: -montoReembolso, metodoPago: venta.metodoPago, referencia: folio, notas: `Devolución de ${venta.folio} — ${motivo}` }
+          data: { empresaId, turnoId: turnoActivo.id, tipo: 'DEVOLUCION', monto: -montoReembolso, metodoPago: venta.metodoPago, referencia: folio, notas: `Devolución de ${venta.folio} — ${motivo}` }
         })
       }
 
@@ -282,7 +285,7 @@ let montoReembolso = 0
       sinTurnoAlDevolver: sinTurno,
       estadoVentaResultante: nuevoEstadoVenta,
       bitacoraAfectada:   bitacoraVenta?.folio || null
-    })
+    }, empresaId)
 
     console.log(`✅ Devolución ${folio} — Venta: ${venta.folio} — $${montoReembolso} — Estado venta: ${nuevoEstadoVenta}${sinTurno ? ' — ⚠️ sin turno' : ''}${bitacoraVenta ? ` — 📒 Bitácora ${bitacoraVenta.folio} actualizada` : ''}`)
 

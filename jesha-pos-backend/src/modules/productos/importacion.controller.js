@@ -4,6 +4,7 @@
 // ═══════════════════════════════════════════════════════════════════
 
 const prisma = require('../../lib/prisma')
+const getEmpresaId = require('../../helpers/getEmpresaId')
 
 // ═══════════════════════════════════════════════════════════════════
 // UTILIDADES DE PARSEO CSV
@@ -251,7 +252,7 @@ function mapearProducto(fila) {
 // Se ejecuta UNA VEZ antes de insertar productos
 // ═══════════════════════════════════════════════════════════════════
 
-async function preSeedDepartamentosYCategorias(filas) {
+async function preSeedDepartamentosYCategorias(filas, empresaId) {
     // 1. Extraer combinaciones únicas depto|cat del CSV
     const combos = new Set()
     for (const fila of filas) {
@@ -275,11 +276,11 @@ async function preSeedDepartamentosYCategorias(filas) {
         let deptoId = cacheDeptos.get(nombreDepto)
         if (!deptoId) {
             let depto = await prisma.departamento.findFirst({
-                where: { nombre: { equals: nombreDepto, mode: 'insensitive' } }
+                where: { empresaId, nombre: { equals: nombreDepto, mode: 'insensitive' } }
             })
             if (!depto) {
                 depto = await prisma.departamento.create({
-                    data: { nombre: nombreDepto, activo: true }
+                    data: { empresaId, nombre: nombreDepto, activo: true }
                 })
                 console.log(`   + Departamento creado: ${nombreDepto}`)
             }
@@ -292,13 +293,14 @@ async function preSeedDepartamentosYCategorias(filas) {
         if (!cacheCats.has(keyCat)) {
             let cat = await prisma.categoria.findFirst({
                 where: {
+                    empresaId,
                     departamentoId: deptoId,
                     nombre: { equals: nombreCat, mode: 'insensitive' }
                 }
             })
             if (!cat) {
                 cat = await prisma.categoria.create({
-                    data: { nombre: nombreCat, departamentoId: deptoId }
+                    data: { empresaId, nombre: nombreCat, departamentoId: deptoId }
                 })
                 console.log(`   + Categoría creada: ${nombreDepto} → ${nombreCat}`)
             }
@@ -314,7 +316,7 @@ async function preSeedDepartamentosYCategorias(filas) {
 // PRE-CREAR PROVEEDORES (Opción A: auto-crear si no existe)
 // ═══════════════════════════════════════════════════════════════════
 
-async function preSeedProveedores(filas) {
+async function preSeedProveedores(filas, empresaId) {
     // 1. Extraer nombres y apodos únicos normalizados del CSV
     const proveedoresMap = new Map() // nombre → apodo
     for (const fila of filas) {
@@ -353,6 +355,7 @@ async function preSeedProveedores(filas) {
         try {
             const prov = await prisma.proveedor.create({
                 data: { 
+                    empresaId,
                     nombreOficial: nombre, 
                     alias: apodo || nombre,  // ← Usa apodo del CSV si existe, sino usa nombreOficial
                     activo: true 
@@ -365,6 +368,7 @@ async function preSeedProveedores(filas) {
                 // Ya existe con ese nombre — recargar y mapear
                 const existente = await prisma.proveedor.findFirst({
                     where: {
+                        empresaId,
                         OR: [
                             { nombreOficial: { equals: nombre, mode: 'insensitive' } },
                             { alias:         { equals: nombre, mode: 'insensitive' } }
@@ -403,6 +407,8 @@ function obtenerCategoriaIdDelCache(cacheCats, nombreDepto, nombreCat, fallbackI
 
 exports.importarCSV = async (req, res) => {
     try {
+        const empresaId = getEmpresaId(req)
+
         // ── Validar que llegó un archivo ──
         if (!req.file) {
             return res.status(400).json({
@@ -443,10 +449,10 @@ exports.importarCSV = async (req, res) => {
         console.log(`⚠️  Filas con error: ${erroresValidacion.length}`)
 
         // ── Pre-crear departamentos y categorías (secuencial, sin race condition) ──
-        const cacheCats = await preSeedDepartamentosYCategorias(filasValidas)
+        const cacheCats = await preSeedDepartamentosYCategorias(filasValidas, empresaId)
 
         // ── Pre-crear proveedores (auto-crear si no existe) ──
-        const cacheProveedores = await preSeedProveedores(filasValidas)
+        const cacheProveedores = await preSeedProveedores(filasValidas, empresaId)
 
         // ── Obtener categoría fallback (primera existente en BD) ──
         const categoriaFallbackId = await obtenerCategoriaFallback()
@@ -483,7 +489,7 @@ exports.importarCSV = async (req, res) => {
 
                     // Upsert: crear si no existe, actualizar si existe
                     const existente = await prisma.producto.findUnique({
-                        where: { codigoInterno: data.codigoInterno }
+                        where: { empresaId_codigoInterno: { empresaId, codigoInterno: data.codigoInterno } }
                     })
 
                     if (existente) {
@@ -554,13 +560,13 @@ exports.importarCSV = async (req, res) => {
                         let productoCreado
                         try {
                             productoCreado = await prisma.producto.create({
-                                data: { ...dataSinAux, categoriaId }
+                                data: { empresaId, ...dataSinAux, categoriaId }
                             })
                         } catch (createErr) {
                             // Segundo intento sin codigoBarras (por si es duplicado)
                             try {
                                 productoCreado = await prisma.producto.create({
-                                    data: { ...dataSinAux, codigoBarras: null, categoriaId }
+                                    data: { empresaId, ...dataSinAux, codigoBarras: null, categoriaId }
                                 })
                             } catch (createErr2) {
                                 throw new Error(`No se pudo crear: ${createErr2.message.substring(0, 200)}`)
@@ -651,6 +657,8 @@ exports.importarCSV = async (req, res) => {
 
 exports.actualizarDatosFiscales = async (req, res) => {
     try {
+        const empresaId = getEmpresaId(req)
+
         // ── Validar archivo ──
         if (!req.file) {
             return res.status(400).json({
@@ -696,7 +704,7 @@ exports.actualizarDatosFiscales = async (req, res) => {
         // ── Pre-crear proveedores si vienen en el CSV ──
         let cacheProveedores = new Map()
         if (tieneProveedor) {
-            cacheProveedores = await preSeedProveedores(filas)
+            cacheProveedores = await preSeedProveedores(filas, empresaId)
         }
 
         // ── Procesar en lotes ──
@@ -743,6 +751,7 @@ exports.actualizarDatosFiscales = async (req, res) => {
                     // Intento 1: match exacto
                     let producto = await prisma.producto.findFirst({
                         where: {
+                            empresaId,
                             OR: [
                                 { codigoInterno: claveCSV },
                                 { codigoBarras:  claveCSV }
@@ -757,6 +766,7 @@ exports.actualizarDatosFiscales = async (req, res) => {
                         if (sinCeros.length > 0) {
                             producto = await prisma.producto.findFirst({
                                 where: {
+                                    empresaId,
                                     OR: [
                                         { codigoInterno: sinCeros },
                                         { codigoBarras:  sinCeros },
@@ -775,6 +785,7 @@ exports.actualizarDatosFiscales = async (req, res) => {
                     if (!producto && claveCSV.length >= 3) {
                         producto = await prisma.producto.findFirst({
                             where: {
+                                empresaId,
                                 OR: [
                                     { codigoInterno: { startsWith: claveCSV, mode: 'insensitive' } },
                                     { codigoBarras:  { startsWith: claveCSV, mode: 'insensitive' } }
@@ -794,6 +805,7 @@ exports.actualizarDatosFiscales = async (req, res) => {
                         if (variantes.length > 0) {
                             producto = await prisma.producto.findFirst({
                                 where: {
+                                    empresaId,
                                     OR: variantes.flatMap(v => [
                                         { codigoInterno: v },
                                         { codigoBarras: v }
@@ -892,6 +904,8 @@ exports.actualizarDatosFiscales = async (req, res) => {
 
 exports.importarSoloNuevos = async (req, res) => {
     try {
+        const empresaId = getEmpresaId(req)
+
         // ── Validar que llegó un archivo ──
         if (!req.file) {
             return res.status(400).json({
@@ -932,10 +946,10 @@ exports.importarSoloNuevos = async (req, res) => {
         console.log(`⚠️  Filas con error de validación: ${erroresValidacion.length}`)
 
         // ── Pre-crear departamentos y categorías ──
-        const cacheCats = await preSeedDepartamentosYCategorias(filasValidas)
+        const cacheCats = await preSeedDepartamentosYCategorias(filasValidas, empresaId)
 
         // ── Pre-crear proveedores ──
-        const cacheProveedores = await preSeedProveedores(filasValidas)
+        const cacheProveedores = await preSeedProveedores(filasValidas, empresaId)
 
         // ── Obtener categoría fallback ──
         const categoriaFallbackId = await obtenerCategoriaFallback()
@@ -970,7 +984,7 @@ exports.importarSoloNuevos = async (req, res) => {
 
                     // Check 1: por codigoInterno
                     const existePorCodigo = await prisma.producto.findUnique({
-                        where: { codigoInterno: data.codigoInterno },
+                        where: { empresaId_codigoInterno: { empresaId, codigoInterno: data.codigoInterno } },
                         select: { id: true }
                     })
 
@@ -988,7 +1002,7 @@ exports.importarSoloNuevos = async (req, res) => {
                     // Check 2: por codigoBarras (si tiene uno válido)
                     if (data.codigoBarras) {
                         const existePorBarras = await prisma.producto.findFirst({
-                            where: { codigoBarras: data.codigoBarras },
+                            where: { empresaId, codigoBarras: data.codigoBarras },
                             select: { id: true }
                         })
                         if (existePorBarras) {
@@ -1024,13 +1038,13 @@ exports.importarSoloNuevos = async (req, res) => {
                     let productoCreado
                     try {
                         productoCreado = await prisma.producto.create({
-                            data: { ...dataSinAux, categoriaId }
+                            data: { empresaId, ...dataSinAux, categoriaId }
                         })
                     } catch (createErr) {
                         // Segundo intento sin codigoBarras (por si es duplicado)
                         try {
                             productoCreado = await prisma.producto.create({
-                                data: { ...dataSinAux, codigoBarras: null, categoriaId }
+                                data: { empresaId, ...dataSinAux, codigoBarras: null, categoriaId }
                             })
                         } catch (createErr2) {
                             throw new Error(`No se pudo crear: ${createErr2.message.substring(0, 200)}`)
