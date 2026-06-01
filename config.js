@@ -15,11 +15,14 @@ const CONFIG = (() => {
     /^10\./.test(hostname) ||
     /^172\.(1[6-9]|2\d|3[01])\./.test(hostname)
 
-  // SINGLE-ORIGIN: el API vive en el mismo origen que la página.
-  // Excepción: Live Server (:5500) sirve el frontend pero el API está en :3000.
-  const API_URL = (port === '5500')
-    ? `${protocol}//${hostname}:3000`
-    : origin
+  // Resolución del API:
+  //  - Live Server (:5500): el front se sirve ahí pero el API está en :3000
+  //  - Producción (Cloudflare .workers.dev): el API vive en Render, NO en el mismo origin
+  //  - Local mismo-origen / cualquier otro: el propio origin
+  const API_URL =
+    (port === '5500')                    ? `${protocol}//${hostname}:3000` :
+    (hostname.endsWith('.workers.dev'))  ? 'https://jesha-pos-api.onrender.com' :
+    origin
 
   // Tasa IVA — cambiar aquí afecta cotizaciones y cálculos frontend
   const IVA        = 0.16    // 16% tasa estándar
