@@ -200,6 +200,9 @@ window.apiFetch = async function(path, opts = {}) {
     }
   })
 
+  // Intentar parsear JSON de forma segura (fallback: null si es HTML/texto)
+  const data = await res.json().catch(() => null)
+
   // Token expirado o inválido — redirigir a login
   if (res.status === 401) {
     localStorage.removeItem('jesha_token')
@@ -210,14 +213,16 @@ window.apiFetch = async function(path, opts = {}) {
 
   // Permisos insuficientes — toast y lanzar error
   if (res.status === 403) {
-    const data = await res.json().catch(() => ({}))
-    const msg = data.error || 'No tienes permisos para realizar esta acción'
+    const msg = (data && data.error) || 'No tienes permisos para realizar esta acción'
     if (window.jeshaToast) jeshaToast(msg, 'error')
     throw new Error(msg)
   }
 
-  const data = await res.json()
-  if (!res.ok) throw new Error(data.error || `Error ${res.status}`)
+  if (!res.ok) {
+    const msg = (data && data.error) || `Error ${res.status}: ${res.statusText}`
+    throw new Error(msg)
+  }
+
   return data
 }
 
