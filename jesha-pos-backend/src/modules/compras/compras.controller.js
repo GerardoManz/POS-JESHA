@@ -30,7 +30,7 @@ const OC_SELECT = {
     select: {
       id: true, cantidadPedida: true, cantidadRecibida: true,
       precioCosto: true, subtotalPedido: true, subtotalRecibido: true,
-       Producto: { select: { id: true, nombre: true, codigoInterno: true, unidadCompra: true, costo: true, costoPromedio: true, precioVenta: true, precioBase: true } }
+        Producto: { select: { id: true, nombre: true, codigoInterno: true, unidadCompra: true, costo: true, costoPromedio: true, precioVenta: true, precioBase: true, esGranel: true } }
     }
   },
   AbonoCompra: {
@@ -259,16 +259,20 @@ const recibir = async (req, res) => {
 
         const cantYaRecibida    = parseFloat(detalle.cantidadRecibida)
         const cantTotalRecibida = parseFloat((cantYaRecibida + cantNueva).toFixed(3))
-        const costoUnit         = parseFloat(detalle.precioCosto)
+        const costoUnit = (item.precioCosto != null && parseFloat(item.precioCosto) > 0)
+          ? parseFloat(item.precioCosto)
+          : parseFloat(detalle.precioCosto)
 
         const subtotalNuevo = parseFloat((costoUnit * cantNueva).toFixed(2))
         totalRecibidoNuevo += subtotalNuevo
 
-        // Actualizar detalle — acumular cantidades
+        // Actualizar detalle — acumular cantidades y costo corregido
         await tx.detalleOrdenCompra.update({
           where: { id: detalle.id },
           data:  {
+            precioCosto:      costoUnit,
             cantidadRecibida: cantTotalRecibida,
+            subtotalPedido:   parseFloat((costoUnit * parseFloat(detalle.cantidadPedida)).toFixed(2)),
             subtotalRecibido: parseFloat((costoUnit * cantTotalRecibida).toFixed(2))
           }
         })
@@ -295,12 +299,21 @@ const recibir = async (req, res) => {
         })
 
         const nuevoPrecioVenta = item.precioVenta ? parseFloat(item.precioVenta) : undefined
+        const tipoMapeado = item.tipoFacturaProv === 'DESGLOSE' ? 'DESGLOSE' : 'NETO'
+        const costoSinIva = item.costoSinIvaProveedor != null ? parseFloat(item.costoSinIvaProveedor) : null
         await tx.producto.update({
           where: { id: detalle.productoId },
           data:  {
-            costo:         costoUnit,
-            costoPromedio: nuevoCostoPromedio,
-            ...(nuevoPrecioVenta && nuevoPrecioVenta > 0 ? { precioVenta: nuevoPrecioVenta } : {})
+            costo:           costoUnit,
+            costoPromedio:   nuevoCostoPromedio,
+            tipoFacturaProv: tipoMapeado,
+            ...(tipoMapeado === 'DESGLOSE' && costoSinIva && costoSinIva > 0 ? { costoSinIvaProveedor: costoSinIva } : {}),
+            ...(tipoMapeado === 'NETO' ? { costoSinIvaProveedor: null } : {}),
+            ...(nuevoPrecioVenta && nuevoPrecioVenta > 0 ? {
+              precioVenta: nuevoPrecioVenta,
+              precioBase:  parseFloat((nuevoPrecioVenta / 1.16).toFixed(2)),
+              margen:      costoUnit > 0 ? parseFloat(Math.min(((nuevoPrecioVenta / costoUnit - 1) * 100), 999.99).toFixed(2)) : null
+            } : {})
           }
         })
 
@@ -340,9 +353,22 @@ const recibir = async (req, res) => {
       const ocConTotal = await tx.ordenCompra.findUnique({ where: { id: parseInt(id) }, select: { totalRecibido: true } })
       const totalRecibidoAcumulado = parseFloat((parseFloat(ocConTotal.totalRecibido || 0) + totalRecibidoNuevo).toFixed(2))
 
+      const detallesActuales = await tx.detalleOrdenCompra.findMany({
+        where: { ordenCompraId: parseInt(id) },
+        select: { subtotalPedido: true }
+      })
+      const totalEstimadoNuevo = parseFloat(
+        detallesActuales.reduce((s, d) => s + parseFloat(d.subtotalPedido), 0).toFixed(2)
+      )
+
       await tx.ordenCompra.update({
         where: { id: parseInt(id) },
-        data:  { estado: nuevoEstado, totalRecibido: totalRecibidoAcumulado, recibidaEn: new Date() }
+        data:  {
+          estado:        nuevoEstado,
+          totalRecibido: totalRecibidoAcumulado,
+          totalEstimado: totalEstimadoNuevo,
+          recibidaEn:    new Date()
+        }
       })
     })
 

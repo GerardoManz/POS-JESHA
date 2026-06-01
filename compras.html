@@ -142,24 +142,18 @@
           </div>
         </div>
 
-        <!-- Tabla de captura bidireccional estilo SICAR -->
         <div class="items-wrapper" style="margin-top:4px;">
           <table class="items-table" style="width:100%;table-layout:auto;">
             <thead>
               <tr>
                 <th style="min-width:140px;">Producto</th>
-                <th style="width:60px;">Cant.</th>
-                <th style="width:90px;">C. Base</th>
-                <th style="width:90px;">C. Neto</th>
-                <th style="width:70px;">Margen%</th>
-                <th style="width:90px;">P. Venta</th>
-                <th style="width:90px;">Subtotal</th>
+                <th style="width:80px;">Cantidad</th>
+                <th style="width:110px;">Costo est.</th>
+                <th style="width:110px;">Subtotal est.</th>
                 <th style="width:28px;"></th>
               </tr>
             </thead>
-            <tbody id="comp-items-tbody">
-              <tr id="comp-empty"><td colspan="8" class="empty-items">Agrega productos desde el panel izquierdo</td></tr>
-            </tbody>
+            <tbody id="comp-items-tbody"></tbody>
           </table>
         </div>
 
@@ -391,6 +385,17 @@
             <span>📦 Productos de la compra</span>
             <div style="display:flex;gap:8px;" id="det-botones-superiores"></div>
           </div>
+          <div id="rec-tipo-factura-panel" style="display:none;margin-bottom:12px;padding:10px;border:1px solid var(--panel-border);border-radius:8px;">
+            <div style="font-size:12px;color:var(--muted);margin-bottom:6px;">TIPO DE FACTURA DEL PROVEEDOR</div>
+            <label id="rec-radio-label-a" style="margin-right:16px;cursor:pointer;">
+              <input type="radio" name="rec-tipo-factura" id="rec-radio-a" value="A" checked onchange="recAplicarTipoFactura('A')" />
+              Precio neto final (Truper, Abramex…)
+            </label>
+            <label id="rec-radio-label-b" style="cursor:pointer;">
+              <input type="radio" name="rec-tipo-factura" id="rec-radio-b" value="B" onchange="recAplicarTipoFactura('B')" />
+              Precio con desglose de IVA
+            </label>
+          </div>
           <div id="recepcion-parcial-alert"></div>
           <div class="table-wrapper">
             <table class="comp-table">
@@ -410,6 +415,62 @@
           </div>
         </div>
       </div>
+    </div>
+  </div>
+</div>
+
+<div id="modal-precio" class="modal" style="z-index:1200;">
+  <div class="modal-content" style="max-width:460px;">
+    <div class="modal-header">
+      <h3 id="sp-titulo">Editar precios</h3>
+      <button class="modal-close" type="button" onclick="recCerrarPanel()">&times;</button>
+    </div>
+    <div style="padding:18px 22px;">
+      <!-- Escenario A -->
+      <div class="form-row" id="sp-campos-a">
+        <div class="form-group">
+          <label for="sp-costo">Precio Proveedor</label>
+          <input type="number" id="sp-costo" step="0.01" min="0" placeholder="0.00" oninput="recCalcSingleton()" />
+          <small style="color:var(--muted);font-size:0.72rem;margin-top:3px;display:block">Total en factura del proveedor</small>
+        </div>
+      </div>
+      <!-- Escenario B -->
+      <div class="form-row" id="sp-campos-b" style="display:none;">
+        <div class="form-group">
+          <label for="sp-costoSinIva">Precio sin IVA de proveedor</label>
+          <input type="number" id="sp-costoSinIva" step="0.01" min="0" placeholder="0.00" oninput="recCalcCostoSingletonB()" />
+          <small style="color:var(--muted);font-size:0.72rem;margin-top:3px;display:block">Del desglose (antes de IVA)</small>
+        </div>
+        <div class="form-group">
+          <label for="sp-costo-b-display">Precio Proveedor</label>
+          <input type="number" id="sp-costo-b-display" readonly placeholder="0.00" style="background:rgba(255,255,255,0.03);color:var(--muted);" />
+          <small style="color:var(--muted);font-size:0.72rem;margin-top:3px;display:block">sin IVA × 1.16</small>
+        </div>
+      </div>
+      <!-- Base + Venta -->
+      <div class="form-row" style="margin-top:12px;">
+        <div class="form-group">
+          <label for="sp-precioBase">Precio base (sin IVA)</label>
+          <input type="number" id="sp-precioBase" readonly placeholder="0.00" />
+          <small style="color:var(--muted);font-size:0.72rem;margin-top:3px;display:block">PV ÷ 1.16</small>
+        </div>
+        <div class="form-group">
+          <label for="sp-precioVenta">Precio venta al público</label>
+          <input type="number" id="sp-precioVenta" step="0.01" min="0" placeholder="0.00" oninput="recCalcSingleton()" />
+          <small style="color:var(--muted);font-size:0.72rem;margin-top:3px;display:block">Con IVA — se muestra en POS</small>
+        </div>
+      </div>
+      <!-- Margen -->
+      <div class="form-group full-width" id="sp-info-margen-wrap" style="display:none;margin-top:14px;">
+        <div style="display:flex;gap:20px;padding:8px 12px;background:rgba(255,255,255,0.03);border:1px solid var(--panel-border);border-radius:8px;font-size:0.82rem;color:var(--muted);">
+          <span>Margen sobre costo: <strong id="sp-margen-valor" style="color:var(--text)">0%</strong></span>
+          <span>Utilidad unitaria: <strong id="sp-utilidad-valor" style="color:#60d080">$0.00</strong></span>
+        </div>
+      </div>
+    </div>
+    <div class="form-actions" style="padding:0 22px 18px;">
+      <button class="btn-secondary" type="button" onclick="recCerrarPanel()">Cancelar</button>
+      <button class="btn-success" type="button" onclick="recGuardarPanel()">Aplicar precios</button>
     </div>
   </div>
 </div>

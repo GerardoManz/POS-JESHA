@@ -47,7 +47,7 @@ Ferreteria JESHA/
 │   │       ├── devoluciones/                            # Returns
 │   │       ├── facturacion/                             # Facturapi (public)
 │   │       ├── facturas/                                # Invoice records
-│   │       └── sucursal/                                # Branch helper (CRUD pending)
+│   │       └── sucursal/                                # Branch helper + GET endpoint (CRUD parcial)
 │   └── prisma/
 │       └── schema.prisma                                # Full database schema
 ```
@@ -168,8 +168,8 @@ const empresaId = getEmpresaId(req)
 // Lanza 401 si req.usuario.empresaId no existe
 ```
 
-**Usado en 14 controllers con 31+ call sites**:
-`ventas`, `productos` (+ importación), `clientes`, `bitacora`, `cotizaciones`, `pedidos`, `compras`, `devoluciones`, `inventario`, `turnos-caja`, `facturacion`
+**Usado en 15 controllers con 32+ call sites**:
+`ventas`, `productos` (+ importación), `clientes`, `bitacora`, `cotizaciones`, `pedidos`, `compras`, `devoluciones`, `inventario`, `turnos-caja`, `facturacion`, `sucursal`
 
 ### Roles y Jerarquía
 
@@ -322,8 +322,9 @@ Each page includes `config.js` + `sidebar.js` + page-specific JS:
 - Supports partial returns, bitsácora updates for credit sales
 
 ### Sucursal (Branches)
+- **GET /sucursales**: Implementado — devuelve sucursales activas de la empresa del usuario (scoped por `empresaId`). Protegido con `requireAuth`.
 - **Helper**: `sucursal.helper.js` → `resolverSucursalId(req)` — centralized branch resolution
-- **CRUD**: Pending (backend controller + frontend page to be built in future sprint)
+- **CRUD completo**: Pendiente (POST/PUT/DELETE + frontend page)
 - Model exists in schema, belongs to an `Empresa`
 
 ## Environment Variables (Backend)
@@ -351,8 +352,10 @@ FRONTEND_URL=...
 | `jesha-pos-backend/src/modules/bitacora/bitacora.controller.js` | Customer ledger logic |
 | `jesha-pos-backend/src/modules/devoluciones/devoluciones.controller.js` | Returns with deduplicated products + parseFloat |
 | `jesha-pos-backend/src/modules/sucursal/sucursal.helper.js` | Centralized `resolverSucursalId(req)` helper |
+| `jesha-pos-backend/src/modules/sucursal/sucursal.controller.js` | GET /sucursales — lista sucursales activas por empresa |
+| `jesha-pos-backend/src/modules/sucursal/sucursal.routes.js` | Router de sucursales (GET /) |
 | `config.js` | Frontend API URL + IVA config |
-| `sidebar.js` | Global nav + auth guard |
+| `sidebar.js` | Global nav + auth guard + apiFetch con parseo JSON seguro |
 | `punto-venta.js` | POS cart logic |
 
 ## Development Commands
@@ -598,6 +601,12 @@ const resolverSucursalId = require('../sucursal/sucursal.helper')
 
 **Frontend**: `compras.js`, `productos.js`, `bitacora.js`, `cotizaciones.js`, `historial-cortes.js`, `corte-caja.js`, `dashboard.js`
 
+**2026-06-01 - Sucursal GET endpoint + apiFetch fix**:
+- `sucursal/sucursal.controller.js` — nuevo: `GET /sucursales` scoped por `empresaId`, solo activas, protegido con `requireAuth`
+- `sucursal/sucursal.routes.js` — nuevo: router con `GET /` → `listar`
+- `app.js` — montada ruta `/sucursales` entre devoluciones y precios
+- `sidebar.js` — `apiFetch`: `res.json().catch(() => null)` antes de validar `res.ok` (evita `Unexpected token '<'` con respuestas HTML)
+
 ### Notes
 - **dashboard.js**: `producto.InventarioSucursal` (PascalCase), NOT `producto.inventarios`
 - **historial-cortes**: Uses `.toolbar` / `.panel` / `.pagination` patterns (same as compras)
@@ -662,6 +671,7 @@ const resolverSucursalId = require('../sucursal/sucursal.helper')
 | `/turnos-caja/activo` | GET | ✅ OK |
 | `/turnos-caja/resumen` | GET | ✅ OK |
 | `/usuarios/vendedores` | GET | ✅ OK |
+| `/sucursales` | GET | ✅ OK |
 
 ---
 

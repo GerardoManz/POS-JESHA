@@ -45,7 +45,7 @@ Ferreteria JESHA/
     |       |-- devoluciones/     # Devoluciones
     |       |-- facturacion/      # Facturapi
     |       |-- facturas/         # Registros CFDI
-    |       |-- sucursal/         # Helper de sucursal (CRUD pendiente)
+    |       |-- sucursal/         # Helper + GET endpoint (CRUD parcial)
     |-- prisma/
         |-- schema.prisma         # Esquema completo multi-tenant
 ```
@@ -77,7 +77,7 @@ Cada empresa es un tenant independiente. El modelo `Empresa` agrupa todos los da
 - **Pedidos** -- Ordenes de cliente
 - **Compras** -- Ordenes de compra a proveedores
 - **Devoluciones** -- Reembolso de productos
-- **Sucursal** -- Multi-sucursal por empresa (CRUD pendiente)
+- **Sucursal** -- Multi-sucursal por empresa (GET disponible, CRUD completo pendiente)
 
 ## Variables de Entorno (Backend)
 
@@ -227,6 +227,12 @@ Usado en 14 controllers para todo `.create()` y queries con scope de tenant.
 - **Fase 4** — Manejo P2002 (unique constraint) en clientes con mensajes 409
 - **Fase 5** — Fix stock en bitacora.js, PascalCase en ticketAbono.controller.js, default turno
 - **Fase 6** — 1,833 caracteres de encoding UTF-8 corregidos en cotizaciones.js + typo en dashboard.js
+
+### 2026-06-01 — Sucursal GET endpoint + apiFetch fix
+- **sucursal.controller.js** — Nuevo endpoint `GET /sucursales`: devuelve sucursales activas de la empresa del usuario, scoped por `empresaId`, protegido con `requireAuth`
+- **sucursal.routes.js** — Router nuevo (`GET /` → `listar`)
+- **app.js** — Ruta `/sucursales` montada entre devoluciones y precios
+- **sidebar.js** — `apiFetch` corregido: `res.json().catch(() => null)` antes de validar `res.ok` para evitar `Unexpected token '<'` con respuestas HTML del servidor
 
 ## Endpoints Testeados (2026-05-13)
 

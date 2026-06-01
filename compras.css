@@ -129,3 +129,22 @@
 #card-abono input[type="number"] {
   min-width: 0;
 }
+
+/* ── Panel edición precios recepción (singleton) ── */
+.full-width { grid-column: 1 / -1; }
+.form-group input[type="number"] {
+  padding: 12px 14px;
+  background: var(--panel,#1a1a2e);
+  border: 1px solid var(--panel-border,#333);
+  border-radius: 8px;
+  color: var(--text,#eee);
+  font-family: 'Barlow', sans-serif;
+  font-size: 0.95rem;
+  outline: none; transition: border-color 0.15s;
+  -moz-appearance: textfield;
+}
+.form-group input[type="number"]:focus { border-color: var(--accent,#5b8eff); }
+.form-group input[type="number"]::-webkit-outer-spin-button,
+.form-group input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; }
+#panel-precio-singleton { margin-top:12px; padding:16px; border:1px solid var(--panel-border); border-radius:8px; background:rgba(255,255,255,0.02); }
+.comp-table tr.rec-fila-activa { background:rgba(91,142,255,0.12); }

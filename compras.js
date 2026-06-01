@@ -18,6 +18,8 @@ let itemsEdicion = []
 let proveedores  = []
 let _deptosCache = []
 let _catsCache   = []
+let _preciosCache = {}
+let _spDetalleActivo = null
 let debounce, debounceSearch, debounceProd, debounceProv
 
 const fmt = v => `$${parseFloat(v||0).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})}`
@@ -95,6 +97,8 @@ window.abrirDetalle = async function(id) {
   try {
     const data = await apiFetch(`/compras/${id}`)
     ocActual = data.data
+    _preciosCache = {}
+    _spDetalleActivo = null
     renderDetalle()
     document.getElementById('modal-detalle').classList.add('active')
   } catch (err) { jeshaToast('Error: ' + err.message, 'error') }
@@ -153,6 +157,17 @@ function renderDetalle() {
   if (colPV) colPV.style.display = recibiendo ? '' : 'none'
 
   const tbody = document.getElementById('det-items-tbody')
+  if (recibiendo) {
+    (oc.DetalleOrdenCompra || []).forEach(d => {
+      if (!_preciosCache[d.id]) {
+        _preciosCache[d.id] = {
+          precioCosto: parseFloat(d.precioCosto),
+          precioVenta: parseFloat(d.Producto?.precioVenta || 0),
+          costoSinIva: null
+        }
+      }
+    })
+  }
   tbody.innerHTML = (oc.DetalleOrdenCompra || []).map(d => {
     const cantPedida   = parseFloat(d.cantidadPedida)
     const cantRecibida = parseFloat(d.cantidadRecibida)
@@ -160,6 +175,10 @@ function renderDetalle() {
     const yaCompleto   = cantRecibida >= cantPedida
     const rowStyle     = yaCompleto && recibiendo ? 'opacity:0.45;' : ''
     const unidad       = d.Producto?.unidadCompra || 'pza'
+    const granel       = d.Producto?.esGranel === true
+    const stepAttr     = granel ? '0.001' : '1'
+    const minAttr      = granel ? '0' : '1'
+    const imAttr       = granel ? 'decimal' : 'numeric'
 
     const costoOrden    = parseFloat(d.precioCosto)
     const costoAnterior = parseFloat(d.Producto?.costo || costoOrden)
@@ -184,7 +203,7 @@ function renderDetalle() {
           ? `<span style="color:#60d080;font-size:0.8rem;">✓ ya recibido</span>`
           : `<div style="display:flex;flex-direction:column;align-items:center;gap:2px;">
                <input type="number" class="input-recibir" id="rec-${d.id}"
-                 min="0" max="${pendiente}" step="0.001" value="${pendiente}"
+                 min="${minAttr}" max="${pendiente}" step="${stepAttr}" inputmode="${imAttr}" value="${pendiente}"
                  style="width:64px;text-align:center;" />
                <span style="font-size:0.68rem;color:var(--muted);">máx ${pendiente} ${unidad}</span>
              </div>`
@@ -201,28 +220,23 @@ function renderDetalle() {
       }
     </td>` : ''
 
-    const precioVentaActual = parseFloat(d.Producto?.precioVenta || d.Producto?.precioBase || 0)
+    const precioVentaActual = parseFloat(d.Producto?.precioVenta || 0)
+    const c = _preciosCache[d.id] || { precioCosto: parseFloat(d.precioCosto), precioVenta: precioVentaActual }
     const celdaMargen = recibiendo ? `<td>
       ${yaCompleto
         ? `<span style="color:var(--muted);font-size:0.8rem;">—</span>`
         : `<div style="display:flex;flex-direction:column;gap:4px;">
-             <div style="display:flex;align-items:center;gap:4px;">
-               <input type="number" id="mg-${d.id}" min="0" max="999" step="0.1" placeholder="%" value=""
-                 style="width:52px;padding:3px 5px;background:rgba(255,255,255,0.05);border:1px solid var(--panel-border);border-radius:5px;color:var(--text);font-size:0.8rem;text-align:center;"
-                 oninput="calcPrecioVenta(${d.id}, ${costoOrden})" />
-               <span style="font-size:0.75rem;color:var(--muted);">%</span>
+             <div style="font-size:11px;color:var(--muted);">
+               Costo: <strong id="sumcosto-${d.id}">${fmt(c.precioCosto)}</strong>
+               · PV: <strong id="sumpv-${d.id}">${c.precioVenta > 0 ? fmt(c.precioVenta) : '—'}</strong>
              </div>
-             <div style="font-size:0.75rem;display:flex;gap:4px;align-items:center;">
-               <span style="color:var(--muted);">actual:</span>
-               <span style="color:var(--text);font-weight:500;">${precioVentaActual > 0 ? fmt(precioVentaActual) : '<span style="color:#f87171">sin precio</span>'}</span>
-             </div>
-             <div id="pv-calc-${d.id}" style="font-size:0.82rem;color:#60d080;font-weight:500;min-height:16px;"></div>
+             <button type="button" onclick="event.stopPropagation();recSeleccionarFila(${d.id})" class="btn-secondary btn-sm" style="cursor:pointer;font-size:11px;">✏️ Editar precios</button>
            </div>`
       }
     </td>` : ''
 
     return `
-    <tr style="${rowStyle}">
+    <tr id="rec-tr-${d.id}" style="${rowStyle}">
       <td>
         ${d.Producto?.nombre || '—'}
         ${estadoFila}
@@ -274,88 +288,16 @@ function renderDetalle() {
       <div style="font-size:0.8rem;color:var(--muted);padding:6px 10px;background:rgba(255,193,7,0.06);border:1px solid rgba(255,193,7,0.15);border-radius:8px;line-height:1.5;">
         ⚠️ Recepción incompleta — cuando llegue el resto da clic en <strong style="color:#ffc107">Recibir mercancía</strong>
       </div>`
-}
 
-window.calcPrecioVenta = function(detalleId, costoOrden) {
-  const mgInput = document.getElementById(`mg-${detalleId}`)
-  const pvCalc  = document.getElementById(`pv-calc-${detalleId}`)
-  if (!mgInput || !pvCalc) return
-  const mg = parseFloat(mgInput.value) || 0
-  if (mg <= 0) {
-    pvCalc.textContent = ''
-    const resumenPv = document.getElementById(`resumen-pvnuevo-${detalleId}`)
-    if (resumenPv) { resumenPv.textContent = 'sin cambio'; resumenPv.style.color = 'var(--muted)'; resumenPv.style.fontStyle = 'italic'; resumenPv.style.fontWeight = 'normal' }
-    return
+  const tfPanel = document.getElementById('rec-tipo-factura-panel')
+  if (tfPanel) tfPanel.style.display = recibiendo ? '' : 'none'
+  if (recibiendo) {
+    const ra = document.getElementById('rec-radio-a')
+    if (ra) ra.checked = true
+    recAplicarTipoFactura('A')
   }
-  const pv = costoOrden * (1 + mg / 100)
-  pvCalc.textContent = `→ ${fmt(pv)}`
-  const resumenPv = document.getElementById(`resumen-pvnuevo-${detalleId}`)
-  if (resumenPv) {
-    resumenPv.textContent = fmt(pv)
-    resumenPv.style.color = '#60d080'
-    resumenPv.style.fontStyle = 'normal'
-    resumenPv.style.fontWeight = '500'
-  }
-}
-
-function renderPanelResumen() {
-  const existing = document.getElementById('panel-resumen-precios')
-  if (existing) existing.remove()
-
-  const oc = ocActual
-  const pendientes = (oc.DetalleOrdenCompra || []).filter(d =>
-    parseFloat(d.cantidadPedida) > parseFloat(d.cantidadRecibida)
-  )
-  if (pendientes.length === 0) return
-
-  const panel = document.createElement('div')
-  panel.id    = 'panel-resumen-precios'
-  panel.className = 'det-card'
-  panel.style.marginTop = '12px'
-
-  panel.innerHTML = `
-    <div class="det-card-header" style="display:flex;justify-content:space-between;align-items:center;">
-      <span>Comparación de precios</span>
-      <span style="font-size:0.7rem;color:var(--muted);font-weight:400">Se actualiza al ingresar el margen</span>
-    </div>
-    <div style="overflow-x:auto;">
-      <table style="width:100%;font-size:0.76rem;border-collapse:collapse;min-width:420px;">
-        <thead>
-          <tr style="color:var(--muted);border-bottom:1px solid rgba(255,255,255,0.07);">
-            <th style="text-align:left;padding:5px 8px;font-weight:500;">Producto</th>
-            <th style="text-align:right;padding:5px 8px;font-weight:500;">Costo ant.</th>
-            <th style="text-align:right;padding:5px 8px;font-weight:500;">Costo nuevo</th>
-            <th style="text-align:right;padding:5px 8px;font-weight:500;">P. venta ant.</th>
-            <th style="text-align:right;padding:5px 8px;font-weight:500;">P. venta nuevo</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${pendientes.map(d => {
-            const costoAnt  = parseFloat(d.Producto?.costo || d.precioCosto)
-            const costoNuevo = parseFloat(d.precioCosto)
-            const pvAnt     = parseFloat(d.Producto?.precioVenta || d.Producto?.precioBase || 0)
-            const subio     = costoNuevo > costoAnt + 0.001
-            const bajo      = costoNuevo < costoAnt - 0.001
-            const costoColor = subio ? '#f87171' : bajo ? '#60d080' : 'var(--text)'
-            const costoSufijo = subio ? ' ▲' : bajo ? ' ▼' : ''
-            const costoTachado = subio || bajo
-            return `
-              <tr style="border-top:0.5px solid rgba(255,255,255,0.05);">
-                <td style="padding:6px 8px;color:var(--text);max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${d.Producto?.nombre || ''}">
-                  ${d.Producto?.nombre || '—'}
-                </td>
-                <td style="text-align:right;padding:6px 8px;color:var(--muted);${costoTachado ? 'text-decoration:line-through;' : ''}">${fmt(costoAnt)}</td>
-                <td style="text-align:right;padding:6px 8px;color:${costoColor};font-weight:500;">${fmt(costoNuevo)}${costoSufijo}</td>
-                <td style="text-align:right;padding:6px 8px;color:var(--muted);text-decoration:line-through;" id="resumen-pvant-${d.id}">${fmt(pvAnt)}</td>
-                <td style="text-align:right;padding:6px 8px;color:var(--muted);font-style:italic;" id="resumen-pvnuevo-${d.id}">sin cambio</td>
-              </tr>`
-          }).join('')}
-        </tbody>
-      </table>
-    </div>`
-
-  const panelDer = document.querySelector('.det-panel-der')
-  if (panelDer) panelDer.appendChild(panel)
+  const spPanel = document.getElementById('modal-precio')
+  if (spPanel && !recibiendo) spPanel.classList.remove('active')
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -364,25 +306,34 @@ function renderPanelResumen() {
 window.iniciarRecepcion = function() {
   ocActual._recibiendo = true
   renderDetalle()
-  renderPanelResumen()
 }
 window.cancelarRecepcion = function() {
   ocActual._recibiendo = false
-  const panel = document.getElementById('panel-resumen-precios')
-  if (panel) panel.remove()
+  _preciosCache = {}
+  _spDetalleActivo = null
   renderDetalle()
 }
 window.confirmarRecepcion = async function() {
+  const tipoFactura = document.getElementById('rec-radio-b')?.checked ? 'DESGLOSE' : 'NETO'
   const detalles = (ocActual.DetalleOrdenCompra || [])
     .filter(d => parseFloat(d.cantidadPedida) > parseFloat(d.cantidadRecibida))
     .map(d => {
       const cantNueva = parseFloat(document.getElementById(`rec-${d.id}`)?.value) || 0
       if (cantNueva <= 0) return null
-      const costoUnit = parseFloat(d.precioCosto)
-      const mg        = parseFloat(document.getElementById(`mg-${d.id}`)?.value) || 0
-      const precioVenta = mg > 0 ? parseFloat((costoUnit * (1 + mg / 100)).toFixed(2)) : null
-      return { detalleId: d.id, cantidadRecibida: cantNueva, precioVenta }
-    }).filter(Boolean).filter(d => d.cantidadRecibida > 0)
+      const c = _preciosCache[d.id] || {}
+      const precioCosto = (c.precioCosto && c.precioCosto > 0) ? c.precioCosto : parseFloat(d.precioCosto)
+      const pvVal = (c.precioVenta && c.precioVenta > 0) ? c.precioVenta : 0
+      const costoSinIva = tipoFactura === 'DESGLOSE' ? (c.costoSinIva || null) : null
+      return {
+        detalleId: d.id,
+        cantidadRecibida: cantNueva,
+        precioCosto: +precioCosto.toFixed(2),
+        precioVenta: pvVal > 0 ? +pvVal.toFixed(2) : null,
+        tipoFacturaProv: tipoFactura,
+        costoSinIvaProveedor: costoSinIva
+      }
+    })
+    .filter(Boolean)
 
   if (detalles.length === 0) { jeshaToast('Ingresa al menos una cantidad recibida', 'warning'); return }
 
@@ -393,8 +344,6 @@ window.confirmarRecepcion = async function() {
     const data = await apiFetch(`/compras/${ocActual.id}/recibir`, { method:'POST', body: JSON.stringify({ detalles }) })
     ocActual = data.data
     ocActual._recibiendo = false
-    const panel = document.getElementById('panel-resumen-precios')
-    if (panel) panel.remove()
     renderDetalle()
     cargarCompras()
   } catch (err) {
@@ -486,22 +435,14 @@ window.abrirEdicion = async function(id) {
     document.getElementById('lista-prod-modal').innerHTML = '<p class="muted-hint">Escribe para buscar...</p>'
     document.getElementById('crear-error').classList.remove('show')
 
-    itemsEdicion = (ocActual.DetalleOrdenCompra || []).map(d => {
-      const costoNeto = parseFloat(d.precioCosto)
-      const pv = parseFloat(d.Producto?.precioVenta || d.Producto?.precioBase || 0)
-      const margen = costoNeto > 0 && pv > 0 ? +((pv / costoNeto - 1) * 100).toFixed(2) : 0
-      return {
-        productoId:       d.Producto?.id,
-        nombre:           d.Producto?.nombre || '—',
-        unidad:           d.Producto?.unidadCompra || 'pza',
-        cantidad:         d.cantidadPedida,
-        costoBase:        +(costoNeto / 1.16).toFixed(4),
-        costoNeto:        costoNeto,
-        margen:           margen,
-        precioVenta:      pv,
-        cantidadRecibida: d.cantidadRecibida || 0
-      }
-    })
+    itemsEdicion = (ocActual.DetalleOrdenCompra || []).map(d => ({
+      productoId:       d.Producto?.id,
+      nombre:           d.Producto?.nombre || '—',
+      unidad:           d.Producto?.unidadCompra || 'pza',
+      cantidad:         d.cantidadPedida,
+      costoNeto:        parseFloat(d.precioCosto),
+      cantidadRecibida: d.cantidadRecibida || 0
+    }))
     renderItemsEdicion()
     document.getElementById('modal-crear').classList.add('active')
   } catch (err) { jeshaToast('Error: ' + err.message, 'error') }
@@ -510,7 +451,7 @@ window.abrirEdicion = async function(id) {
 function renderItemsEdicion() {
   const tbody = document.getElementById('comp-items-tbody')
   if (itemsEdicion.length === 0) {
-    tbody.innerHTML = `<tr id="comp-empty"><td colspan="8" class="empty-items">Agrega productos desde el panel izquierdo</td></tr>`
+    tbody.innerHTML = `<tr id="comp-empty"><td colspan="5" class="empty-items">Agrega productos desde el panel izquierdo</td></tr>`
     actualizarTotalEdicion(); return
   }
   tbody.innerHTML = itemsEdicion.map((item, i) => {
@@ -524,28 +465,13 @@ function renderItemsEdicion() {
       </td>
       <td>${bloqueado
         ? `<span style="color:var(--muted);font-size:0.82rem;">${item.cantidad}</span>`
-        : `<input type="number" min="0.001" step="0.01" value="${item.cantidad}" oninput="editItem(${i},'cantidad',this.value)" />`
+        : `<input type="number" min="0.001" step="0.001" value="${item.cantidad}" oninput="editItem(${i},'cantidad',this.value)" />`
       }</td>
+      <td><span style="color:var(--muted);">${fmt(item.costoNeto)}</span></td>
+      <td><span id="item-sub-${i}">${fmt(subtotal)}</span></td>
       <td>${bloqueado
-        ? `<span style="color:var(--muted);font-size:0.82rem;">${fmt(item.costoBase)}</span>`
-        : `<input type="number" min="0" step="0.01" value="${item.costoBase.toFixed(2)}" oninput="editItem(${i},'costoBase',this.value)" />`
-      }</td>
-      <td>${bloqueado
-        ? `<span class="readonly-cell readonly-neto">${fmt(item.costoNeto)}</span>`
-        : `<input type="number" min="0" step="0.01" value="${item.costoNeto.toFixed(2)}" oninput="editItem(${i},'costoNeto',this.value)" style="color:#60d080;" />`
-      }</td>
-      <td>${bloqueado
-        ? `<span style="color:var(--muted);font-size:0.82rem;">${item.margen.toFixed(1)}%</span>`
-        : `<input type="number" min="0" max="999" step="0.1" value="${item.margen.toFixed(1)}" oninput="editItem(${i},'margen',this.value)" />`
-      }</td>
-      <td>${bloqueado
-        ? `<span class="readonly-cell readonly-pv">${fmt(item.precioVenta)}</span>`
-        : `<input type="number" min="0" step="0.01" value="${item.precioVenta.toFixed(2)}" oninput="editItem(${i},'precioVenta',this.value)" style="color:#7db8f0;" />`
-      }</td>
-      <td><span class="readonly-cell readonly-sub" id="item-sub-${i}">${fmt(subtotal)}</span></td>
-      <td>${bloqueado
-        ? `<span title="Mercancía ya recibida" style="color:var(--muted);font-size:0.72rem;cursor:not-allowed;">🔒</span>`
-        : `<button class="btn-eliminar" onclick="quitarItemEdicion(${i})">✕</button>`
+        ? `<span title="Mercancía ya recibida" style="color:var(--muted);font-size:0.72rem;cursor:not-allowed;">&#128274;</span>`
+        : `<button class="btn-eliminar" onclick="quitarItemEdicion(${i})">\u2715</button>`
       }</td>
     </tr>`
   }).join('')
@@ -553,54 +479,14 @@ function renderItemsEdicion() {
 }
 
 window.editItem = function(i, campo, v) {
+  if (campo !== 'cantidad') return
   const n = parseFloat(v)
   if (isNaN(n) || n < 0) return
   const item = itemsEdicion[i]
-
-  switch (campo) {
-    case 'cantidad':
-      item.cantidad = n || 0.001
-      break
-    case 'costoBase':
-      item.costoBase = n
-      item.costoNeto = +(n * 1.16).toFixed(4)
-      if (item.margen > 0) {
-        item.precioVenta = +(item.costoNeto * (1 + item.margen / 100)).toFixed(2)
-      }
-      break
-    case 'costoNeto':
-      item.costoNeto = n
-      item.costoBase = +(n / 1.16).toFixed(4)
-      if (item.margen > 0) {
-        item.precioVenta = +(n * (1 + item.margen / 100)).toFixed(2)
-      }
-      break
-    case 'margen':
-      item.margen = n
-      item.precioVenta = +(item.costoNeto * (1 + n / 100)).toFixed(2)
-      break
-    case 'precioVenta':
-      item.precioVenta = n
-      item.margen = item.costoNeto > 0 ? +((n / item.costoNeto - 1) * 100).toFixed(2) : 0
-      break
-  }
-
-  if (campo !== 'cantidad') {
-    renderItemsEdicion()
-    const row = document.querySelector(`#comp-items-tbody tr:nth-child(${i + 1})`)
-    if (row) {
-      const colMap = { costoBase: 2, costoNeto: 3, margen: 4, precioVenta: 5 }
-      const colIdx = colMap[campo]
-      if (colIdx !== undefined) {
-        const inp = row.querySelectorAll('td')[colIdx]?.querySelector('input')
-        if (inp) { inp.focus(); inp.select() }
-      }
-    }
-  } else {
-    const cel = document.getElementById(`item-sub-${i}`)
-    if (cel) cel.textContent = fmt(item.costoNeto * item.cantidad)
-    actualizarTotalEdicion()
-  }
+  item.cantidad = n || 0.001
+  const cel = document.getElementById(`item-sub-${i}`)
+  if (cel) cel.textContent = fmt(item.costoNeto * item.cantidad)
+  actualizarTotalEdicion()
 }
 
 window.quitarItemEdicion = function(i) {
@@ -617,14 +503,13 @@ function actualizarTotalEdicion() {
 function agregarProductoEdicion(prod) {
   const existe = itemsEdicion.find(i => i.productoId === prod.id)
   if (existe) { existe.cantidad += 1; renderItemsEdicion(); return }
-  const costoNeto = parseFloat(prod.costo || prod.precioBase || 0)
-  const costoBase = +(costoNeto / 1.16).toFixed(4)
-  const pv = parseFloat(prod.precioVenta || prod.precioBase || 0)
-  const margen = costoNeto > 0 && pv > 0 ? +((pv / costoNeto - 1) * 100).toFixed(2) : 0
+  const costoNeto = parseFloat(prod.costoPromedio || prod.costo || 0)
   itemsEdicion.push({
-    productoId: prod.id, nombre: prod.nombre,
-    unidad: prod.unidadCompra || 'pza', cantidad: 1,
-    costoBase, costoNeto, margen, precioVenta: pv,
+    productoId: prod.id,
+    nombre: prod.nombre,
+    unidad: prod.unidadCompra || 'pza',
+    cantidad: 1,
+    costoNeto,
     cantidadRecibida: 0
   })
   renderItemsEdicion()
@@ -639,8 +524,7 @@ async function guardarCompra() {
   const detalles = itemsEdicion.map(i => ({
     productoId: i.productoId,
     cantidadPedida: i.cantidad,
-    precioCosto: +i.costoNeto.toFixed(2),
-    precioVenta: i.precioVenta > 0 ? +i.precioVenta.toFixed(2) : undefined
+    precioCosto: +(i.costoNeto || 0).toFixed(2)
   }))
   const btn = document.getElementById('crear-guardar')
   btn.disabled = true; btn.textContent = 'Guardando...'
@@ -812,7 +696,7 @@ async function buscarProductosModal(q) {
     lista.innerHTML = prods.map(p => `
       <div class="prod-item-modal" onclick="window._addProdComp(${p.id})">
         <span class="prod-nombre">${p.nombre}</span>
-        <span class="prod-precio">${fmt(p.costo || p.precioBase)}</span>
+        <span class="prod-precio">${fmt(p.costo || p.costoPromedio || 0)}</span>
       </div>`).join('')
   } catch (err) { lista.innerHTML = `<p class="muted-hint" style="color:#f44336">Error</p>` }
 }
@@ -961,6 +845,84 @@ function prCalcularMargen() {
     wrap.style.display = 'block'
   } else {
     wrap.style.display = 'none'
+  }
+}
+
+// ── Panel singleton recepción (abre/cierra por fila) ──
+window.recSeleccionarFila = function(id) {
+  _spDetalleActivo = id
+  const c = _preciosCache[id] || { precioCosto:0, precioVenta:0, costoSinIva:null }
+  const esB = document.getElementById('rec-radio-b')?.checked
+  const det = (ocActual.DetalleOrdenCompra || []).find(d => d.id === id)
+  const tit = document.getElementById('sp-titulo')
+  if (tit) tit.textContent = 'Precios: ' + (det?.Producto?.nombre || '')
+
+  document.getElementById('sp-costo').value = c.precioCosto > 0 ? c.precioCosto.toFixed(2) : ''
+  document.getElementById('sp-precioVenta').value = c.precioVenta > 0 ? c.precioVenta.toFixed(2) : ''
+  document.getElementById('sp-costoSinIva').value = (c.costoSinIva && c.costoSinIva > 0) ? c.costoSinIva.toFixed(2) : ''
+
+  document.getElementById('sp-campos-a').style.display = esB ? 'none' : ''
+  document.getElementById('sp-campos-b').style.display = esB ? '' : 'none'
+
+  document.getElementById('modal-precio').classList.add('active')
+
+  esB ? recCalcCostoSingletonB() : recCalcSingleton()
+}
+
+window.recCalcSingleton = function() {
+  const costo = parseFloat(document.getElementById('sp-costo').value) || 0
+  const pv    = parseFloat(document.getElementById('sp-precioVenta').value) || 0
+  const pb    = document.getElementById('sp-precioBase')
+  const wrap  = document.getElementById('sp-info-margen-wrap')
+  if (pb) pb.value = pv > 0 ? (pv / 1.16).toFixed(2) : ''
+  if (costo > 0 && pv > 0) {
+    const utilidad = pv - costo
+    const margen = Math.min((utilidad / costo) * 100, 999.99)
+    document.getElementById('sp-margen-valor').textContent = margen.toFixed(2) + '%'
+    document.getElementById('sp-utilidad-valor').textContent = '$' + utilidad.toFixed(2)
+    if (wrap) wrap.style.display = 'block'
+  } else if (wrap) { wrap.style.display = 'none' }
+}
+
+window.recCalcCostoSingletonB = function() {
+  const sinIva = parseFloat(document.getElementById('sp-costoSinIva').value) || 0
+  const conIva = sinIva > 0 ? +(sinIva * 1.16).toFixed(2) : 0
+  const costoInput = document.getElementById('sp-costo')
+  const display = document.getElementById('sp-costo-b-display')
+  if (costoInput) costoInput.value = conIva > 0 ? conIva.toFixed(2) : ''
+  if (display) display.value = conIva > 0 ? conIva.toFixed(2) : ''
+  recCalcSingleton()
+}
+
+window.recGuardarPanel = function() {
+  if (_spDetalleActivo == null) return
+  const id = _spDetalleActivo
+  const esB = document.getElementById('rec-radio-b')?.checked
+  const costo = parseFloat(document.getElementById('sp-costo').value) || 0
+  const pv = parseFloat(document.getElementById('sp-precioVenta').value) || 0
+  const sinIva = esB ? (parseFloat(document.getElementById('sp-costoSinIva').value) || null) : null
+  _preciosCache[id] = { precioCosto: costo, precioVenta: pv, costoSinIva: sinIva }
+  const sc = document.getElementById('sumcosto-' + id)
+  const sp = document.getElementById('sumpv-' + id)
+  if (sc) sc.textContent = fmt(costo)
+  if (sp) sp.textContent = pv > 0 ? fmt(pv) : '—'
+  recCerrarPanel()
+}
+
+window.recCerrarPanel = function() {
+  _spDetalleActivo = null
+  const p = document.getElementById('modal-precio')
+  if (p) p.classList.remove('active')
+}
+
+window.recAplicarTipoFactura = function(tipo) {
+  const esB = tipo === 'B'
+  const a = document.getElementById('sp-campos-a')
+  const b = document.getElementById('sp-campos-b')
+  if (a) a.style.display = esB ? 'none' : ''
+  if (b) b.style.display = esB ? '' : 'none'
+  if (_spDetalleActivo != null) {
+    esB ? recCalcCostoSingletonB() : recCalcSingleton()
   }
 }
 
