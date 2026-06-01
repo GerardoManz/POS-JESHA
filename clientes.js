@@ -47,6 +47,15 @@ const camposFiscales = document.getElementById('campos-fiscales')
 const campoCredito = document.getElementById('campo-credito')
 const clienteError = document.getElementById('cliente-error')
 
+// ── Poblar selects SAT ──
+poblarSelectSAT(document.getElementById('cliente-regimenFiscal'), CATALOGO_REGIMENES)
+poblarSelectSAT(document.getElementById('cliente-usoCfdi'), CATALOGO_USOS)
+
+// ── Filtrar usos CFDI al cambiar régimen ──
+document.getElementById('cliente-regimenFiscal').addEventListener('change', function() {
+  filtrarUsosPorRegimen(this, document.getElementById('cliente-usoCfdi'))
+})
+
 const modalCloseBtn = document.getElementById('modal-close-btn')
 const historialCloseBtn = document.getElementById('historial-close-btn')
 const btnCancel = document.getElementById('btn-cancel')
@@ -189,6 +198,10 @@ window.editarCliente = function(clienteId) {
   document.getElementById('cliente-razonSocial').value = clienteActual.razonSocial || ''
   document.getElementById('cliente-codigoPostalFiscal').value = clienteActual.codigoPostalFiscal || ''
   document.getElementById('cliente-regimenFiscal').value = clienteActual.regimenFiscal || ''
+  filtrarUsosPorRegimen(
+    document.getElementById('cliente-regimenFiscal'),
+    document.getElementById('cliente-usoCfdi')
+  )
   document.getElementById('cliente-usoCfdi').value = clienteActual.usoCfdi || ''
   document.getElementById('cliente-limiteCredito').value = clienteActual.limiteCredito || 0
   document.getElementById('cliente-notas').value = clienteActual.notas || ''

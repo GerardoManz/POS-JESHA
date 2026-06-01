@@ -120,8 +120,7 @@ async function cargarResumen() {
     montoTransferencia.textContent= fmt(totales.totalTransferencia)
     montoTotalVentas.textContent  = fmt(totales.totalGeneral)
 
-    const inicial = totales.efectivoEsperado - totales.totalEfectivo
-    efInicial.textContent = fmt(inicial)
+    efInicial.textContent = fmt(turnoActivo.montoInicial)
     efVentas.textContent  = fmt(totales.totalEfectivo)
     efTotal.textContent   = fmt(efectivoEsperado)
   } catch (err) {

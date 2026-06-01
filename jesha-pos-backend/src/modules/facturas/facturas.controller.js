@@ -110,7 +110,19 @@ exports.cancelar = async (req, res) => {
     if (!factura) return res.status(404).json({ error: 'Factura no encontrada' })
     if (factura.estado === 'CANCELADA') return res.status(400).json({ error: 'Ya está cancelada' })
 
-    // Cancelar en SAT (Facturapi) — si falla, toda la operación falla
+    if (factura.estado === 'PENDIENTE_TIMBRADO') {
+      await prisma.$transaction([
+        prisma.venta.update({
+          where: { id: factura.ventaId },
+          data: { facturaEstado: 'DISPONIBLE' }
+        }),
+        prisma.facturaCfdi.delete({ where: { id } })
+      ])
+      console.log(`🗑️ Factura PENDIENTE_TIMBRADO ${id} eliminada — venta ${factura.ventaId} liberada por ${req.usuario?.nombre}`)
+      return res.json({ success: true, mensaje: 'Factura eliminada. La venta está disponible para re-facturar.' })
+    }
+
+    // TIMBRADA / FACTURADA — cancelar en SAT + BD
     if (factura.facturapiId) {
       const fp = getFacturapi()
       if (!fp) {
@@ -120,10 +132,16 @@ exports.cancelar = async (req, res) => {
       await fp.invoices.cancel(factura.facturapiId, { motive: motivoCancelacion })
     }
 
-    const actualizada = await prisma.facturaCfdi.update({
-      where: { id },
-      data: { estado: 'CANCELADA' }
-    })
+    const [actualizada] = await prisma.$transaction([
+      prisma.facturaCfdi.update({
+        where: { id },
+        data: { estado: 'CANCELADA' }
+      }),
+      prisma.venta.update({
+        where: { id: factura.ventaId },
+        data: { facturaEstado: 'DISPONIBLE' }
+      })
+    ])
 
     console.log(`✅ Factura ${id} cancelada (local + SAT) por ${req.usuario?.nombre}`)
     res.json({ success: true, data: actualizada })

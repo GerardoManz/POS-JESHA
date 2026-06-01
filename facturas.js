@@ -19,6 +19,11 @@ let paginaActual = 1
 const LIMIT      = 20
 let debounce
 
+function llenarCatalogosDetalle() {
+  poblarSelectSAT(document.getElementById('det-regimen'), CATALOGO_REGIMENES)
+  poblarSelectSAT(document.getElementById('det-uso'), CATALOGO_USOS)
+}
+
 // ════════════════════════════════════════════════════════════════════
 //  ESTADO BADGES
 // ════════════════════════════════════════════════════════════════════
@@ -123,11 +128,29 @@ window.verDetalle = async function(id) {
     if (!res.ok) throw new Error(data.error)
     const f = data.data
 
-    document.getElementById('det-rfc').textContent      = f.rfcReceptor
-    document.getElementById('det-nombre').textContent   = f.nombreReceptor
-    document.getElementById('det-regimen').textContent  = f.regimenFiscal || '—'
-    document.getElementById('det-cp').textContent       = f.cpReceptor || '—'
-    document.getElementById('det-uso').textContent      = f.usoCfdi || '—'
+    // Poblar campos fiscales (ahora inputs/selects)
+    llenarCatalogosDetalle()
+
+    const esPendiente = f.estado === 'PENDIENTE_TIMBRADO'
+    ;['det-rfc','det-nombre','det-regimen','det-cp','det-uso','det-email'].forEach(id => {
+      const el = document.getElementById(id)
+      if (!el) return
+      if (esPendiente) {
+        el.disabled = false
+        el.classList.add('editable')
+      } else {
+        el.disabled = true
+        el.classList.remove('editable')
+      }
+    })
+
+    document.getElementById('det-rfc').value     = f.rfcReceptor || ''
+    document.getElementById('det-nombre').value  = f.nombreReceptor || ''
+    document.getElementById('det-regimen').value = f.regimenFiscal || ''
+    filtrarUsosPorRegimen(document.getElementById('det-regimen'), document.getElementById('det-uso'))
+    document.getElementById('det-uso').value     = f.usoCfdi || ''
+    document.getElementById('det-cp').value      = f.cpReceptor || ''
+    document.getElementById('det-email').value   = f.emailReceptor || ''
     document.getElementById('det-venta').textContent    = f.Venta?.folio || '—'
     document.getElementById('det-fecha').textContent    = fmtFecha(f.creadaEn)
     document.getElementById('det-subtotal').textContent = fmt(f.subtotal)
@@ -144,7 +167,7 @@ window.verDetalle = async function(id) {
     const btnPdf      = document.getElementById('det-btn-pdf')
 
     btnTimbrar.style.display  = f.estado === 'PENDIENTE_TIMBRADO' ? 'flex' : 'none'
-    btnCancelar.style.display = ['TIMBRADA','FACTURADA'].includes(f.estado) ? 'flex' : 'none'
+    btnCancelar.style.display = ['TIMBRADA','FACTURADA','PENDIENTE_TIMBRADO'].includes(f.estado) ? 'flex' : 'none'
     btnXml.style.display      = f.facturapiId ? 'flex' : 'none'
     btnPdf.style.display      = f.facturapiId ? 'flex' : 'none'
 
@@ -225,9 +248,19 @@ window.timbrarManual = async function(id) {
   if (btn) { btn.disabled = true; btn.textContent = '⟳ Timbrando...' }
 
   try {
+    const body = {
+      rfc:           document.getElementById('det-rfc').value.trim(),
+      razonSocial:   document.getElementById('det-nombre').value.trim(),
+      regimenFiscal: document.getElementById('det-regimen').value,
+      codigoPostal:  document.getElementById('det-cp').value.trim(),
+      usoCfdi:       document.getElementById('det-uso').value,
+      email:         document.getElementById('det-email').value.trim()
+    }
+
     const res  = await fetch(`${API_URL}/facturas/${id}/timbrar`, {
       method:  'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` }
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
+      body:    JSON.stringify(body)
     })
     const data = await res.json()
     if (!res.ok) throw new Error(data.error)
@@ -392,7 +425,7 @@ async function buscarVentaParaFactura() {
       <div style="display:flex;justify-content:space-between;align-items:center;">
         <div>
           <strong>${venta.folio}</strong> · ${fmt(venta.total)} · ${venta.metodoPago}
-          <br><span style="font-size:0.78rem;color:var(--muted)">Cliente: ${venta.Cliente?.nombre || 'Público general'} · ${venta.estado}</span>
+          <br><span style="font-size:0.78rem;color:var(--muted)">Cliente: ${venta.cliente?.nombre || 'Público general'} · ${venta.estado}</span>
         </div>
         <span style="color:#60d080;font-size:0.8rem;font-weight:600;">✓ Disponible</span>
       </div>
@@ -411,10 +444,40 @@ async function buscarVentaParaFactura() {
     document.getElementById('m-email').value = ''
     document.getElementById('manual-error').style.display = 'none'
 
-    // Autocompletar si hay datos del cliente
-    if (venta.Cliente) {
-      if (venta.Cliente.rfc)    document.getElementById('m-rfc').value   = venta.Cliente.rfc
-      if (venta.Cliente.nombre) document.getElementById('m-razon').value = venta.Cliente.nombre
+    // Autocompletar solo si el cliente tiene RFC registrado.
+    // RFC es el indicador mínimo de "este cliente tiene datos fiscales".
+    // Sin RFC, el usuario ingresa todo manualmente para evitar datos no fiscales
+    // (nombre regular) en campos fiscales (razón social).
+    if (venta.cliente && venta.cliente.rfc) {
+      document.getElementById('m-rfc').value   = venta.cliente.rfc || ''
+      document.getElementById('m-razon').value = venta.cliente.razonSocial || venta.cliente.nombre || ''
+      document.getElementById('m-cp').value    = venta.cliente.codigoPostalFiscal || ''
+      document.getElementById('m-email').value = venta.cliente.email || ''
+
+      const selRegimen = document.getElementById('m-regimen')
+      const selUso     = document.getElementById('m-uso')
+
+      if (venta.cliente.regimenFiscal) {
+        selRegimen.value = venta.cliente.regimenFiscal
+        if (selRegimen.value !== venta.cliente.regimenFiscal) {
+          console.warn('Régimen no encontrado en catálogo:', venta.cliente.regimenFiscal)
+          selRegimen.value = ''
+        }
+      }
+
+      if (venta.cliente.usoCfdi) {
+        selUso.value = venta.cliente.usoCfdi
+        if (selUso.value !== venta.cliente.usoCfdi) {
+          console.warn('Uso CFDI no encontrado en catálogo:', venta.cliente.usoCfdi)
+          selUso.value = ''
+        }
+      }
+
+      // Filtrar usos CFDI según régimen autocompletado. El listener 'change'
+      // del régimen no se dispara con asignación programática (.value =),
+      // por lo que el filtro debe llamarse explícitamente.
+      // Mismo patrón usado en verDetalle líneas 149-151.
+      filtrarUsosPorRegimen(selRegimen, selUso)
     }
 
     // Focus al RFC
@@ -427,36 +490,8 @@ async function buscarVentaParaFactura() {
 }
 
 function llenarCatalogosManual() {
-  const regimenes = [
-    { c: '601', d: 'General de Ley Personas Morales' },
-    { c: '603', d: 'Personas Morales con Fines no Lucrativos' },
-    { c: '605', d: 'Sueldos y Salarios' },
-    { c: '606', d: 'Arrendamiento' },
-    { c: '608', d: 'Demás Ingresos' },
-    { c: '612', d: 'Actividades Empresariales y Profesionales' },
-    { c: '616', d: 'Sin obligaciones fiscales' },
-    { c: '621', d: 'Incorporación Fiscal' },
-    { c: '625', d: 'Plataformas Tecnológicas' },
-    { c: '626', d: 'Régimen Simplificado de Confianza' },
-  ]
-  const usos = [
-    { c: 'G01', d: 'Adquisición de mercancías' },
-    { c: 'G02', d: 'Devoluciones, descuentos o bonificaciones' },
-    { c: 'G03', d: 'Gastos en general' },
-    { c: 'I01', d: 'Construcciones' },
-    { c: 'I04', d: 'Equipo de cómputo y accesorios' },
-    { c: 'I08', d: 'Otra maquinaria y equipo' },
-    { c: 'S01', d: 'Sin efectos fiscales' },
-  ]
-  const selR = document.getElementById('m-regimen')
-  const selU = document.getElementById('m-uso')
-  // Solo llenar si están vacíos
-  if (selR.options.length <= 1) {
-    regimenes.forEach(r => { selR.add(new Option(`${r.c} — ${r.d}`, r.c)) })
-  }
-  if (selU.options.length <= 1) {
-    usos.forEach(u => { selU.add(new Option(`${u.c} — ${u.d}`, u.c)) })
-  }
+  poblarSelectSAT(document.getElementById('m-regimen'), CATALOGO_REGIMENES)
+  poblarSelectSAT(document.getElementById('m-uso'), CATALOGO_USOS)
 }
 
 async function facturarManualDesdeModal() {
@@ -583,12 +618,28 @@ document.addEventListener('DOMContentLoaded', () => {
     limpiarPdfPreview()
   })
 
+  // ── Filtrar usos CFDI al cambiar régimen ──
+  document.getElementById('det-regimen').addEventListener('change', function() {
+    filtrarUsosPorRegimen(this, document.getElementById('det-uso'))
+  })
+  document.getElementById('m-regimen').addEventListener('change', function() {
+    filtrarUsosPorRegimen(this, document.getElementById('m-uso'))
+  })
+
   // Modal manual — abrir
   document.getElementById('btn-nueva-factura')?.addEventListener('click', () => {
     document.getElementById('m-folio').value = ''
     document.getElementById('venta-result').className = 'venta-search-result'
     document.getElementById('venta-result').innerHTML = ''
     document.getElementById('manual-fiscal-fields').style.display = 'none'
+    // Limpiar campos fiscales para evitar fuga de datos de sesión anterior
+    document.getElementById('m-rfc').value     = ''
+    document.getElementById('m-razon').value   = ''
+    document.getElementById('m-regimen').value = ''
+    document.getElementById('m-cp').value      = ''
+    document.getElementById('m-uso').value     = ''
+    document.getElementById('m-email').value   = ''
+    document.getElementById('manual-error').style.display = 'none'
     ventaParaFacturar = null
     document.getElementById('modal-manual').classList.add('active')
     setTimeout(() => document.getElementById('m-folio')?.focus(), 200)

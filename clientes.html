@@ -146,10 +146,6 @@
             <label for="cliente-regimenFiscal">Régimen Fiscal</label>
             <select id="cliente-regimenFiscal">
               <option value="">Seleccionar...</option>
-              <option value="601">General de Ley (601)</option>
-              <option value="605">Personas Morales (605)</option>
-              <option value="606">Residentes en Extranjero (606)</option>
-              <option value="607">Transparencia Fiscal (607)</option>
             </select>
           </div>
         </div>
@@ -158,10 +154,6 @@
           <label for="cliente-usoCfdi">Uso CFDI</label>
           <select id="cliente-usoCfdi">
             <option value="">Seleccionar...</option>
-            <option value="G01">Adquisición de mercancías (G01)</option>
-            <option value="G02">Devoluciones descuentos (G02)</option>
-            <option value="G03">Gastos en general (G03)</option>
-            <option value="P01">Por cuenta propia (P01)</option>
           </select>
         </div>
       </div>
@@ -245,6 +237,7 @@
 <!-- ORDEN CORRECTO: sidebar.js PRIMERO (maneja autenticación + sidebar) -->
 <script src="config.js"></script>
   <script src="sidebar.js"></script>
+  <script src="catalogos-sat.js"></script>
 
 <!-- Luego: clientes.js (lógica de la página) -->
 <script src="clientes.js"></script>

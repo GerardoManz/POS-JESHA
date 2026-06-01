@@ -12,7 +12,7 @@ const getEmpresaId = require('../../helpers/getEmpresaId')
 exports.crearVenta = async (req, res) => {
   try {
     const sucursalId = parseInt(req.body.sucursalId)
-    const usuarioId  = parseInt(req.body.usuarioId)
+    const usuarioId  = req.usuario.id   // A4: autoridad de venta = usuario autenticado (JWT), no el body
     const turnoId    = parseInt(req.body.turnoId)
     const { metodoPago, subtotal, iva, descuento, total, detalles, notas, montoPagado: montoPagadoRaw, cotizacionId } = req.body
     const clienteId  = req.body.clienteId ? parseInt(req.body.clienteId) : null
@@ -220,21 +220,49 @@ exports.crearVenta = async (req, res) => {
       })
 
       for (const detalle of detallesValidados) {
-        const inventarioAnterior = await tx.inventarioSucursal.findUnique({
-          where: { productoId_sucursalId: { productoId: detalle.productoId, sucursalId } }
+        // A2: decremento ATÓMICO. Solo descuenta si HAY stock suficiente en este instante.
+        // Cierra la carrera entre dos cajas que venden el mismo producto a la vez.
+        const upd = await tx.inventarioSucursal.updateMany({
+          where: {
+            productoId:  detalle.productoId,
+            sucursalId,
+            stockActual: { gte: detalle.cantidad }
+          },
+          data: { stockActual: { decrement: detalle.cantidad } }
         })
-        if (!inventarioAnterior) {
+
+        if (upd.count === 0) {
+          // No se descontó: o no existe el registro, o se quedó sin stock por una venta simultánea.
+          const existe = await tx.inventarioSucursal.findUnique({
+            where: { productoId_sucursalId: { productoId: detalle.productoId, sucursalId } },
+            select: { stockActual: true }
+          })
+          if (!existe) {
+            throw Object.assign(
+              new Error(`Registro de inventario no encontrado para producto ${detalle.productoId}`),
+              { status: 400, codigo: 'INV_NOT_FOUND' }
+            )
+          }
           throw Object.assign(
-            new Error(`Registro de inventario no encontrado para producto ${detalle.productoId}`),
-            { status: 400, codigo: 'INV_NOT_FOUND' }
+            new Error('Stock insuficiente'),
+            { status: 400, codigo: 'STOCK_INSUFICIENTE',
+              sinStock: [{
+                productoId:  detalle.productoId,
+                nombre:      nombreProd[detalle.productoId] || `Producto ${detalle.productoId}`,
+                disponibles: parseFloat(existe.stockActual),
+                solicitados: detalle.cantidad
+              }] }
           )
         }
-        const stockAntes   = parseFloat(inventarioAnterior.stockActual)
-        const stockDespues = parseFloat((stockAntes - detalle.cantidad).toFixed(3))
-        await tx.inventarioSucursal.update({
+
+        // Leer el valor ya descontado para registrar el MovimientoInventario.
+        const invDespues   = await tx.inventarioSucursal.findUnique({
           where: { productoId_sucursalId: { productoId: detalle.productoId, sucursalId } },
-          data:  { stockActual: stockDespues }
+          select: { stockActual: true }
         })
+        const stockDespues = parseFloat(invDespues.stockActual)
+        const stockAntes   = parseFloat((stockDespues + detalle.cantidad).toFixed(3))
+
         await tx.movimientoInventario.create({
           data: {
             empresaId,
@@ -279,13 +307,20 @@ exports.crearVenta = async (req, res) => {
         })
 
         // Actualizar saldo del cliente (cuenta corriente)
-        await tx.cliente.update({
-          where: { id: clienteId },
-          data: {
-            saldoPendiente:    { increment: totalEsperado },
-            totalCreditoUsado: { increment: totalEsperado }
-          }
-        })
+        // A3: actualización ATÓMICA del saldo. Solo aplica si NO rebasa el límite de crédito.
+        // Prisma no permite comparar dos columnas en el where, por eso va en SQL crudo parametrizado.
+        const filasCredito = await tx.$executeRaw`
+          UPDATE "Cliente"
+          SET "saldoPendiente"    = "saldoPendiente"    + ${totalEsperado}::numeric,
+              "totalCreditoUsado" = "totalCreditoUsado" + ${totalEsperado}::numeric
+          WHERE id = ${clienteId}
+            AND "saldoPendiente" + ${totalEsperado}::numeric <= "limiteCredito"`
+        if (filasCredito === 0) {
+          throw Object.assign(
+            new Error('Crédito insuficiente'),
+            { status: 400, codigo: 'CREDITO_INSUFICIENTE' }
+          )
+        }
 
         // Buscar bitácora origen VENTA ABIERTA del cliente
         let bitacora = await tx.bitacora.findFirst({
@@ -489,7 +524,16 @@ exports.obtenerVenta = async (req, res) => {
         folio:         venta.folio,
         fecha:         venta.creadaEn,
         usuario:       venta.Usuario.nombre,
-        cliente:       venta.Cliente ? { id: venta.Cliente.id, nombre: venta.Cliente.nombre, rfc: venta.Cliente.rfc } : null,
+        cliente:       venta.Cliente ? {
+          id:                 venta.Cliente.id,
+          nombre:             venta.Cliente.nombre,
+          rfc:                venta.Cliente.rfc,
+          razonSocial:        venta.Cliente.razonSocial,
+          regimenFiscal:      venta.Cliente.regimenFiscal,
+          codigoPostalFiscal: venta.Cliente.codigoPostalFiscal,
+          usoCfdi:            venta.Cliente.usoCfdi,
+          email:              venta.Cliente.email
+        } : null,
         sucursal:      venta.Sucursal.nombre,
         metodoPago:    venta.metodoPago,
         subtotal:      venta.subtotal,

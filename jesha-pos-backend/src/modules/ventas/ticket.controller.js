@@ -12,8 +12,6 @@ const EMPRESA = {
   tel1:     '492 101 6879',
 }
 
-const FACTURACION_URL = process.env.FRONTEND_URL || process.env.BASE_URL || 'http://192.168.0.190:3000'
-
 // ── Logo desde Cloudinary ──
 const LOGO_URL = 'https://res.cloudinary.com/dabyfymjd/image/upload/q_auto/f_auto/v1779317658/logo-jesha_hmlble.png'
 
@@ -38,9 +36,12 @@ const generarTicket = async (req, res) => {
 
     if (!venta) return res.status(404).json({ error: 'Venta no encontrada' })
 
-    const isProduction = process.env.NODE_ENV === 'production'
-    const facturarPath = isProduction ? '/facturar.html' : '/facturar'
-    const urlFacturacion = `${FACTURACION_URL}${facturarPath}?token=${venta.tokenQr}`
+    const isProduction    = process.env.NODE_ENV === 'production'
+    const FACTURACION_URL = isProduction
+      ? `https://${req.get('host')}`
+      : `${req.protocol}://${req.get('host')}`
+    const facturarPath    = isProduction ? '/facturar.html' : '/facturar'
+    const urlFacturacion  = `${FACTURACION_URL}${facturarPath}?token=${venta.tokenQr}`
 
     const qrDataUrl = await QRCode.toDataURL(urlFacturacion, {
       width: 200, margin: 1,

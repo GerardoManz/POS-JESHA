@@ -195,7 +195,7 @@ let montoReembolso = 0
       // Movimiento de caja
       if (!sinTurno && (tipoReembolso === 'REEMBOLSO' || tipoReembolso === 'CAMBIO_PARCIAL')) {
         await tx.movimientoCaja.create({
-          data: { empresaId, turnoId: turnoActivo.id, tipo: 'DEVOLUCION', monto: -montoReembolso, metodoPago: venta.metodoPago, referencia: folio, notas: `Devolución de ${venta.folio} — ${motivo}` }
+          data: { empresaId, turnoId: turnoActivo.id, tipo: 'DEVOLUCION', monto: -montoReembolso, metodoPago: venta.metodoPago === 'MIXTO' ? 'EFECTIVO' : venta.metodoPago, referencia: folio, notas: `Devolución de ${venta.folio} — ${motivo}` }
         })
       }
 

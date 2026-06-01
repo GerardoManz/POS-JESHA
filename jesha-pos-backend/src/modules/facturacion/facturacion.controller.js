@@ -186,7 +186,8 @@ exports.obtenerVentaPorToken = async (req, res) => {
     const fechaVenta  = new Date(venta.creadaEn)
     const horas      = (ahora - fechaVenta) / (1000 * 60 * 60)
 
-    if (venta.FacturaCfdi) return res.status(409).json({ error: 'Esta venta ya fue facturada.', uuid: venta.FacturaCfdi.folioFiscal || null })
+    const facturaActiva189 = venta.FacturaCfdi && venta.FacturaCfdi.estado !== 'CANCELADA'
+    if (facturaActiva189) return res.status(409).json({ error: 'Esta venta ya fue facturada.', uuid: venta.FacturaCfdi.folioFiscal || null })
     if (venta.estado === 'CANCELADA') return res.status(400).json({ error: 'Esta venta fue cancelada y no puede facturarse.' })
     if (venta.facturaEstado === 'BLOQUEADA') return res.status(400).json({ error: 'Esta venta no puede facturarse en línea (efectivo mayor a $2,000). Solicita tu factura directamente en sucursal.' })
     if (venta.facturaEstado === 'VENCIDA' || ahora > new Date(venta.facturaLimite)) return res.status(400).json({ error: 'El plazo para solicitar factura venció. Contacta a la sucursal si necesitas ayuda.' })
@@ -240,7 +241,16 @@ exports.solicitarFactura = async (req, res) => {
     })
 
     if (!venta)        return res.status(404).json({ error: 'Venta no encontrada' })
-    if (venta.FacturaCfdi) return res.status(409).json({ error: 'Esta venta ya fue facturada.' })
+    const facturaActiva243 = venta.FacturaCfdi && venta.FacturaCfdi.estado !== 'CANCELADA'
+    if (facturaActiva243) return res.status(409).json({ error: 'Esta venta ya fue facturada.' })
+
+    // Si existe un registro CANCELADA, eliminarlo para liberar el @@unique([ventaId])
+    // del schema. La factura cancelada ya cumplió su ciclo en el SAT (UUID histórico
+    // preservado en Facturapi); el registro local es solo metadata reemplazable.
+    if (venta.FacturaCfdi && venta.FacturaCfdi.estado === 'CANCELADA') {
+      await prisma.facturaCfdi.delete({ where: { id: venta.FacturaCfdi.id } })
+      console.log(`🗑️ Registro CANCELADA ${venta.FacturaCfdi.id} eliminado para permitir re-facturación de venta ${venta.id}`)
+    }
 
     const empresaId = venta.empresaId
     if (venta.estado === 'CANCELADA') return res.status(400).json({ error: 'Venta cancelada.' })
@@ -357,16 +367,45 @@ exports.timbrarManual = async (req, res) => {
     const fp = getFacturapi()
     if (!fp) return res.status(503).json({ error: 'Facturapi no configurada. Agrega FACTURAPI_KEY al .env' })
 
-    const venta = factura.Venta
+    // ── Aceptar datos corregidos del body (opcional) ──
+    const {
+      rfc:           nuevoRfc,
+      razonSocial:   nuevaRazonSocial,
+      regimenFiscal: nuevoRegimen,
+      codigoPostal:  nuevoCp,
+      usoCfdi:       nuevoUso,
+      email:         nuevoEmail
+    } = req.body || {}
+
+    const updates = {}
+    if (nuevoRfc?.trim())          updates.rfcReceptor   = nuevoRfc.trim().toUpperCase()
+    if (nuevaRazonSocial?.trim())  updates.nombreReceptor = nuevaRazonSocial.trim()
+    if (nuevoRegimen)              updates.regimenFiscal  = nuevoRegimen
+    if (nuevoCp?.trim())           updates.cpReceptor     = nuevoCp.trim()
+    if (nuevoUso)                  updates.usoCfdi        = nuevoUso
+    if (nuevoEmail?.trim())        updates.emailReceptor  = nuevoEmail.trim()
+
+    if (Object.keys(updates).length > 0) {
+      await prisma.facturaCfdi.update({ where: { id }, data: updates })
+      console.log(`📝 Factura ${id}: datos corregidos antes de timbrar`)
+    }
+
+    // Refrescar datos (ya corregidos si hubo cambios)
+    const facturaActualizada = await prisma.facturaCfdi.findUnique({
+      where: { id },
+      include: { Venta: { include: { DetalleVenta: { include: { Producto: true } } } } }
+    })
+
+    const venta = facturaActualizada.Venta
 
     // ── Usar helper centralizado que incluye global_information si aplica ──
     const invoicePayload = buildInvoicePayload({
-      rfc:           factura.rfcReceptor,
-      razonSocial:   factura.nombreReceptor,
-      regimenFiscal: factura.regimenFiscal,
-      codigoPostal:  factura.cpReceptor,
-      usoCfdi:       factura.usoCfdi,
-      email:         factura.emailReceptor,
+      rfc:           facturaActualizada.rfcReceptor,
+      razonSocial:   facturaActualizada.nombreReceptor,
+      regimenFiscal: facturaActualizada.regimenFiscal,
+      codigoPostal:  facturaActualizada.cpReceptor,
+      usoCfdi:       facturaActualizada.usoCfdi,
+      email:         facturaActualizada.emailReceptor,
       metodoPago:    venta.metodoPago,
       detalles:      venta.DetalleVenta
     })

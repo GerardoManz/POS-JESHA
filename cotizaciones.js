@@ -610,7 +610,7 @@ window.cargarEnPos = async function(id) {
     if (!cot.DetalleCotizacion || cot.DetalleCotizacion.length === 0) { jeshaToast('Esta cotización no tiene productos', 'warning'); return }
     const posPayload = {
       fuente: 'cotizacion', cotFolio: cot.folio, cotId: cot.id,
-      clienteId: cot.clienteId || null, clienteNombre: cot.Cliente?.nombre || '',
+      clienteId: cot.Cliente?.id || null, clienteNombre: cot.Cliente?.nombre || '',
       items: cot.DetalleCotizacion.map(d => ({
         id:       d.Producto?.id ?? d.productoId,
         nombre:   d.Producto?.nombre || '—',

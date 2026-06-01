@@ -701,3 +701,42 @@ const resolverSucursalId = require('../sucursal/sucursal.helper')
 - **Endpoint**: `GET /bitacoras/abonos/:abonoId/ticket`
 - **Problema**: Nunca llamado por el frontend. Roto por diseño (`req.params` vs `req.query`).
 - **Acción**: Documentado, no se modifica hasta que se necesite.
+
+---
+
+## Operaciones de Inventario Masivo (Restock / Consolidación)
+
+### Reglas operativas (lectura obligatoria antes de cualquier restock)
+
+1. **Nunca ejecutar scripts de restock sin preview.** Ejecutar SELECT de previsualización y revisar NO_EXISTE y AMBIGUO antes de cualquier UPDATE.
+2. **Nunca usar DELETE físico** para productos duplicados. Usar `activo = false`.
+3. **No cambiar `codigoInterno`** de productos desactivados. Los tickets y reportes históricos muestran el valor actual del campo vía `productoId` (no hay snapshot al momento de la venta). Cambiarlo rompe la trazabilidad de ventas antiguas.
+4. **Poner `codigoBarras = NULL`** en productos duplicados desactivados para liberar la ambigüedad entre `codigoInterno` y `codigoBarras`.
+5. **Siempre crear `MovimientoInventario`** para mantener el kardex. Usar `AJUSTE_POSITIVO` para restock, `AJUSTE_NEGATIVO` para salida por consolidación.
+6. **Si el producto duplicado tiene `ProveedorProducto` que el conservado no tiene**, moverlo al conservado. Validar que no viole `@@unique([proveedorId, productoId])`.
+7. **No tocar costos ni precios** en un restock administrativo (`AJUSTE_POSITIVO`). Solo `ENTRADA_COMPRA` actualiza `Producto.costo` y `Producto.costoPromedio`.
+8. **No mezclar limpieza global de catálogo con restock puntual.** Son operaciones con riesgos distintos.
+9. **Usar referencias únicas por lote** en `MovimientoInventario.referencia` (ej: `RESTOCK-MAYO-2026`, `CONSOLIDACION-DUPLICADOS-MAYO-2026`).
+10. **En DBeaver/psql: asegurar COMMIT.** Un script con `BEGIN;` sin `COMMIT;` muestra éxito en sesión local pero no persiste. Para operaciones grandes usar un solo statement atómico sin BEGIN/COMMIT explícitos.
+
+### Referencias de lotes históricos aplicados
+
+| Referencia | Fecha | Operación | Movimientos |
+|------------|-------|-----------|-------------|
+| `RESTOCK-MAYO-2026` | 2026-05-29 | Restock masivo desde Excel | 491 (AJUSTE_POSITIVO) |
+| `CONSOLIDACION-DUPLICADOS-MAYO-2026` | 2026-05-29 | Consolidación de 18 duplicados | 34 (17 POSITIVO + 17 NEGATIVO) |
+
+Detalles completos en: `docs/operaciones/restock-mayo-2026.md`
+
+### Query rápida de validación post-restock
+
+```sql
+SELECT referencia, tipo, COUNT(*) AS movimientos, ROUND(SUM(cantidad), 3) AS total
+FROM "MovimientoInventario"
+WHERE referencia LIKE 'RESTOCK-%' OR referencia LIKE 'CONSOLIDACION-%'
+GROUP BY referencia, tipo ORDER BY referencia, tipo;
+```
+
+### Pitfall conocido: DBeaver + BEGIN sin COMMIT
+
+Durante el restock de mayo 2026, un script con `BEGIN;` pero sin `COMMIT;` al final provocó que DBeaver mostrara los cambios como aplicados (sesión activa), pero al desconectar la sesión PostgreSQL hizo ROLLBACK implícito. El stock volvió a los valores originales y `MovimientoInventario` quedó vacío. **Solución:** regenerar el script como un solo statement atómico sin `BEGIN`/`COMMIT` explícitos.

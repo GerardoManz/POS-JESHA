@@ -407,6 +407,7 @@
   </div>
 
 <script src="config.js"></script>
+<script src="catalogos-sat.js"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════
 //  FIX: Usar la API_URL de config.js en lugar de window.location.origin
@@ -501,6 +502,12 @@ function renderFormulario(d) {
     if (df.email)         document.getElementById('f-email').value   = df.email
     document.getElementById('autocomplete-aviso').style.display = 'flex'
   }
+
+  filtrarUsosPorRegimen(document.getElementById('f-regimen'), document.getElementById('f-uso'))
+
+  document.getElementById('f-regimen').addEventListener('change', function() {
+    filtrarUsosPorRegimen(this, document.getElementById('f-uso'))
+  })
 
   mostrar('estado-form')
 }

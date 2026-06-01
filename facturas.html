@@ -106,11 +106,12 @@
       <div class="det-section">
         <div class="det-section-title">Receptor</div>
         <div class="det-grid">
-          <div class="det-item"><span class="det-label">RFC</span><span class="det-val" id="det-rfc">—</span></div>
-          <div class="det-item"><span class="det-label">Nombre</span><span class="det-val" id="det-nombre">—</span></div>
-          <div class="det-item"><span class="det-label">Régimen</span><span class="det-val" id="det-regimen">—</span></div>
-          <div class="det-item"><span class="det-label">C.P.</span><span class="det-val" id="det-cp">—</span></div>
-          <div class="det-item"><span class="det-label">Uso CFDI</span><span class="det-val" id="det-uso">—</span></div>
+          <div class="det-item"><span class="det-label">RFC</span><input type="text" id="det-rfc" class="det-val det-field" disabled /></div>
+          <div class="det-item"><span class="det-label">Nombre</span><input type="text" id="det-nombre" class="det-val det-field" disabled /></div>
+          <div class="det-item"><span class="det-label">Régimen</span><select id="det-regimen" class="det-val det-field" disabled><option value="">—</option></select></div>
+          <div class="det-item"><span class="det-label">C.P.</span><input type="text" id="det-cp" class="det-val det-field" maxlength="5" disabled /></div>
+          <div class="det-item"><span class="det-label">Uso CFDI</span><select id="det-uso" class="det-val det-field" disabled><option value="">—</option></select></div>
+          <div class="det-item"><span class="det-label">Email</span><input type="email" id="det-email" class="det-val det-field" disabled /></div>
         </div>
       </div>
 
@@ -225,6 +226,7 @@
 
 <script src="config.js"></script>
   <script src="sidebar.js"></script>
+  <script src="catalogos-sat.js"></script>
 <script src="facturas.js"></script>
 </body>
 </html>

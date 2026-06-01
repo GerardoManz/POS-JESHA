@@ -1,4 +1,21 @@
 require('dotenv').config()
+
+// ── Diagnóstico de conexión: a qué base apunta ESTE proceso ──
+// Salvaguarda contra arrancar accidentalmente contra producción.
+;(() => {
+  try {
+    const u = new URL(process.env.DATABASE_URL || 'http://none')
+    const esRemota = !['localhost', '127.0.0.1'].includes(u.hostname)
+    console.log(`🗄️  DB → host=${u.hostname} port=${u.port || '5432'} db=${u.pathname.slice(1)}`)
+    console.log(`🌱 NODE_ENV=${process.env.NODE_ENV || '(sin definir)'}`)
+    if (esRemota && process.env.NODE_ENV !== 'production') {
+      console.warn('⚠️  ATENCIÓN: estás en desarrollo pero la DB es REMOTA. Verifica que no estés tocando producción.')
+    }
+  } catch {
+    console.error('❌ DATABASE_URL inválida o ausente en .env')
+  }
+})()
+
 const app  = require('./app')
 const PORT = process.env.PORT || 3000
 

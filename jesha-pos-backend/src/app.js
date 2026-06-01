@@ -20,11 +20,18 @@ const ALLOWED_ORIGINS = [
   process.env.RENDER_EXTERNAL_URL, // ej: https://jesha-pos-api.onrender.com
 ].filter(Boolean)
 
+  const isProduction = process.env.NODE_ENV === 'production'
+
+  // Acepta cualquier IP privada de la LAN (puertos 3000/5500) SOLO en desarrollo.
+  // En producción este comodín NO aplica: todo pasa por ALLOWED_ORIGINS/FRONTEND_URL.
+  const LAN_ORIGIN_REGEX = /^http:\/\/(localhost|127\.0\.0\.1|192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}):(3000|5500)$/
+
 app.use(cors({
   origin: (origin, callback) => {
     // Permitir requests sin origin (Postman, apps nativas, mismo servidor)
     if (!origin) return callback(null, true)
     if (ALLOWED_ORIGINS.includes(origin)) return callback(null, true)
+    if (!isProduction && LAN_ORIGIN_REGEX.test(origin)) return callback(null, true)
     callback(new Error(`CORS bloqueado: ${origin}`))
   },
   methods:        ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
@@ -34,6 +41,16 @@ app.use(express.json())
 
 // ── Archivos estáticos del frontend ──
 const frontendPath = path.join(__dirname, '../../')
+
+// Guard de estáticos: el frontend vive en la raíz del repo (../../), que también
+// contiene la carpeta del backend. Sin esto se servirían el código fuente, prisma/,
+// package.json, AGENTS.md y seed.js (con contraseñas). Bloqueamos esas rutas.
+const BLOQUEO_ESTATICO = /^\/(jesha-pos-backend|node_modules|\.git)(\/|$)|(^|\/)(AGENTS\.md|seed\.js|fix-password\.js)$/i
+app.use((req, res, next) => {
+  if (BLOQUEO_ESTATICO.test(decodeURIComponent(req.path))) return res.status(404).end()
+  next()
+})
+
 app.use(express.static(frontendPath))
 
 // ── Ruta especial: GET /facturar?token=... → sirve el HTML ──

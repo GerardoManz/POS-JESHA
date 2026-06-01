@@ -186,12 +186,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.querySelectorAll('.metodo-btn').forEach(b => b.classList.remove('active'))
   metodoPagoSeleccionado = null
 
-  // Restaurar carrito de sessionStorage (si el usuario navegó a otro módulo y volvió)
-  const restaurado = restaurarCarritoDeSession()
-
-  if (!restaurado) {
-    actualizarCarrito()
+  const tieneCotizacion = localStorage.getItem('pos_cotizacion')
+  if (tieneCotizacion) {
+    sessionStorage.removeItem('jesha_carrito')
     cargarCotizacionDesdeStorage()
+  } else {
+    const restaurado = restaurarCarritoDeSession()
+    if (!restaurado) {
+      actualizarCarrito()
+    }
   }
 
   configurarEventosCotizar()

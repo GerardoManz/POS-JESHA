@@ -5,21 +5,21 @@
 // ════════════════════════════════════════════════════════════════════
 
 const CONFIG = (() => {
-  const hostname = window.location.hostname
+  const { protocol, hostname, port, origin } = window.location
 
-  // ── Detección automática de entorno ──
-  const isLocal = ['localhost', '127.0.0.1', '192.168.0.190'].includes(hostname)
+  // isLocal: cualquier IP privada o localhost (solo para el log y consumidores)
+  const isLocal =
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    /^192\.168\./.test(hostname) ||
+    /^10\./.test(hostname) ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(hostname)
 
-  // ══════════════════════════════════════════════════════════════════
-  //  ÚNICA LÍNEA QUE EDITAS AL HACER DEPLOY:
-  //  Cambia esta URL por la de tu API en producción
-  //  Ejemplo: 'https://jesha-pos-api.up.railway.app'
-  // ══════════════════════════════════════════════════════════════════
-  const PRODUCTION_API_URL = 'https://jesha-pos-api.onrender.com'
-
-  const API_URL = isLocal
-    ? 'http://localhost:3000'
-    : PRODUCTION_API_URL
+  // SINGLE-ORIGIN: el API vive en el mismo origen que la página.
+  // Excepción: Live Server (:5500) sirve el frontend pero el API está en :3000.
+  const API_URL = (port === '5500')
+    ? `${protocol}//${hostname}:3000`
+    : origin
 
   // Tasa IVA — cambiar aquí afecta cotizaciones y cálculos frontend
   const IVA        = 0.16    // 16% tasa estándar

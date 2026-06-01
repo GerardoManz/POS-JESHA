@@ -89,7 +89,7 @@ function verificarAccesoPagina(pagina) {
 
   const bloqueadas = ROL_BLOQUEADO[rol] || []
   if (bloqueadas.includes(pagina)) {
-    const destino = REDIRECCION_ROL[rol] || 'index.html'
+    const destino = REDIRECCION_ROL[rol] || 'dashboard.html'
     window.location.replace(destino)
     return false
   }

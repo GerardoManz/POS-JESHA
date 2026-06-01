@@ -10,6 +10,36 @@ const EMPRESA = {
 }
 
 // ════════════════════════════════════════════════════════════════════
+//  FUENTE ÚNICA DE VERDAD DEL EFECTIVO EN CAJA
+//  Convención de signo (ledger contable estándar):
+//    · monto POSITIVO = entrada al cajón
+//    · monto NEGATIVO = salida del cajón
+//  Se reconcilia SOLO el efectivo físico:
+//    · APERTURA            → fondo inicial (siempre efectivo)
+//    · metodoPago EFECTIVO → ventas (+), devoluciones (− ya viene negativo),
+//                            abonos de bitácora (+), y ajustes futuros (con signo)
+//  Tarjeta, transferencia, crédito y CIERRE no tocan el cajón → se ignoran.
+//
+//  Reemplaza al antiguo mecanismo `foliosEfectivo`, que decidía "es efectivo"
+//  según el metodoPago de la VENTA y por eso fallaba con:
+//    - ventas MIXTO (cuyo metodoPago es 'MIXTO', no 'EFECTIVO')
+//    - ventas con devolución parcial (cuyo estado pasa a 'DEVOLUCION')
+//
+//  NOTA para AJUSTE (hoy código muerto): si se implementa, guardar
+//  metodoPago: 'EFECTIVO' y monto CON SIGNO (− salida / + entrada).
+// ════════════════════════════════════════════════════════════════════
+
+function calcularEfectivoEnCaja(movimientos) {
+  const total = movimientos.reduce((sum, m) => {
+    if (m.tipo === 'CIERRE')      return sum
+    if (m.tipo === 'APERTURA')    return sum + parseFloat(m.monto)
+    if (m.metodoPago === 'EFECTIVO') return sum + parseFloat(m.monto)
+    return sum
+  }, 0)
+  return parseFloat(total.toFixed(2))
+}
+
+// ════════════════════════════════════════════════════════════════════
 //  GET /turnos-caja/activo
 // ════════════════════════════════════════════════════════════════════
 
@@ -39,7 +69,8 @@ const obtenerActivo = async (req, res) => {
 
 // ════════════════════════════════════════════════════════════════════
 //  GET /turnos-caja/resumen
-//  Devuelve totales ya calculados del turno activo — frontend no suma nada
+//  Totales del turno activo. El efectivo esperado se calcula desde el
+//  ledger MovimientoCaja (misma función que el cierre → preview == final).
 // ════════════════════════════════════════════════════════════════════
 
 const obtenerResumen = async (req, res) => {
@@ -59,23 +90,32 @@ const obtenerResumen = async (req, res) => {
       return res.status(404).json({ error: 'No hay turno abierto', codigo: 'SIN_TURNO' })
     }
 
-    const [totales, numVentas] = await Promise.all([
-      prisma.$queryRaw`
-        SELECT
-          COALESCE(SUM(CASE WHEN v."metodoPago" = 'EFECTIVO' THEN v.total ELSE 0 END), 0)::numeric AS "totalEfectivo",
-          COALESCE(SUM(CASE WHEN v."metodoPago" IN ('DEBITO','CREDITO') THEN v.total ELSE 0 END), 0)::numeric AS "totalTarjeta",
-          COALESCE(SUM(CASE WHEN v."metodoPago" = 'TRANSFERENCIA' THEN v.total ELSE 0 END), 0)::numeric AS "totalTransferencia",
-          COALESCE(SUM(v.total), 0)::numeric AS "totalGeneral",
-          COUNT(v.id)::integer AS "numVentas"
-        FROM "Venta" v
-        WHERE v."turnoId" = ${turno.id} AND v.estado = 'COMPLETADA'
-      `,
-      prisma.venta.count({ where: { turnoId: turno.id, estado: 'COMPLETADA' } })
+    const [movimientos, ventasAgg] = await Promise.all([
+      prisma.movimientoCaja.findMany({ where: { turnoId: turno.id } }),
+      prisma.venta.aggregate({
+        where: { turnoId: turno.id, estado: 'COMPLETADA' },
+        _sum: { total: true },
+        _count: { id: true }
+      })
     ])
 
-    const row = Array.isArray(totales) ? totales[0] : totales
-    const totalEfectivo = parseFloat(row.totalEfectivo) || 0
-    const efectivoEsperado = parseFloat((parseFloat(turno.montoInicial) + totalEfectivo).toFixed(2))
+    // Desglose por método cobrado, derivado de los movimientos de VENTA.
+    // Así MIXTO se reparte correctamente (cada porción es una fila propia).
+    const ventaMovs = movimientos.filter(m => m.tipo === 'VENTA')
+    const sumarVentas = (pred) =>
+      parseFloat(
+        ventaMovs.filter(pred).reduce((s, m) => s + parseFloat(m.monto), 0).toFixed(2)
+      )
+
+    const totalEfectivo      = sumarVentas(m => m.metodoPago === 'EFECTIVO')
+    const totalTarjeta       = sumarVentas(m => m.metodoPago === 'DEBITO' || m.metodoPago === 'CREDITO')
+    const totalTransferencia = sumarVentas(m => m.metodoPago === 'TRANSFERENCIA')
+
+    const totalGeneral = parseFloat(parseFloat(ventasAgg._sum.total || 0).toFixed(2))
+    const numVentas    = ventasAgg._count.id || 0
+
+    // Efectivo esperado = exactamente lo que calculará el cierre.
+    const efectivoEsperado = calcularEfectivoEnCaja(movimientos)
 
     res.json({
       success: true,
@@ -88,11 +128,11 @@ const obtenerResumen = async (req, res) => {
           Sucursal: turno.Sucursal
         },
         totales: {
-          totalEfectivo: parseFloat(row.totalEfectivo) || 0,
-          totalTarjeta: parseFloat(row.totalTarjeta) || 0,
-          totalTransferencia: parseFloat(row.totalTransferencia) || 0,
-          totalGeneral: parseFloat(row.totalGeneral) || 0,
-          numVentas: parseInt(row.numVentas) || 0,
+          totalEfectivo,
+          totalTarjeta,
+          totalTransferencia,
+          totalGeneral,
+          numVentas,
           efectivoEsperado
         }
       }
@@ -183,28 +223,13 @@ const cerrarTurno = async (req, res) => {
         throw { status: 404, error: 'No hay turno abierto', codigo: 'SIN_TURNO' }
       }
 
+      // Ledger del turno (el CIERRE aún no existe → no se incluye).
       const movimientos = await tx.movimientoCaja.findMany({
         where: { turnoId: turno.id }
       })
 
-      const ventasTurno = await tx.venta.findMany({
-        where: { turnoId: turno.id, estado: 'COMPLETADA' },
-        select: { folio: true, metodoPago: true, total: true }
-      })
-      const foliosEfectivo = new Set(
-        ventasTurno.filter(v => v.metodoPago === 'EFECTIVO').map(v => v.folio)
-      )
-
-      const montoCalculado = movimientos.reduce((sum, m) => {
-        if (m.tipo === 'APERTURA') return sum + parseFloat(m.monto)
-        if (m.tipo === 'VENTA' && foliosEfectivo.has(m.referencia)) return sum + parseFloat(m.monto)
-        if (m.tipo === 'DEVOLUCION' && foliosEfectivo.has(m.referencia)) return sum - parseFloat(m.monto)
-        if (m.tipo === 'AJUSTE') return sum - parseFloat(m.monto)
-        if (m.tipo === 'ABONO_BITACORA' && m.metodoPago === 'EFECTIVO') return sum + parseFloat(m.monto)
-        return sum
-      }, 0)
-
-      const diferencia = parseFloat(montoFinalDeclarado) - montoCalculado
+      const montoCalculado = calcularEfectivoEnCaja(movimientos)
+      const diferencia = parseFloat((parseFloat(montoFinalDeclarado) - montoCalculado).toFixed(2))
 
       const turnoCerrado = await tx.turnoCaja.update({
         where: { id: turno.id },

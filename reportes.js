@@ -4,9 +4,9 @@
     const rol = JSON.parse(localStorage.getItem('jesha_usuario') || '{}').rol
     const ROLES_PERMITIDOS = ['SUPERADMIN', 'ADMIN_SUCURSAL']
     if (!ROLES_PERMITIDOS.includes(rol)) {
-      window.location.replace('index.html')
+      window.location.replace('dashboard.html')
     }
-  } catch(e) { window.location.replace('index.html') }
+  } catch(e) { window.location.replace('dashboard.html') }
 })()
 
 
