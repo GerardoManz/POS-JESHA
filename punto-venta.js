@@ -1395,10 +1395,14 @@ async function confirmarVenta() {
       const { pct } = getPctEfectivo()
       const descAmt = parseFloat((totalBruto * (pct / 100)).toFixed(2))
       const totalConDesc = parseFloat((totalBruto - descAmt).toFixed(2))
-      const sumaPagos = pagos.reduce((s, p) => s + parseFloat(p.monto), 0)
-      if (sumaPagos < totalConDesc - 0.01) {
+      const sumaPagos = parseFloat(pagos.reduce((s, p) => s + parseFloat(p.monto), 0).toFixed(2))
+      if (Math.abs(sumaPagos - totalConDesc) > 0.01) {
         ventaEnProceso = false
-        mostrarToast(`Faltan $${(totalConDesc - sumaPagos).toFixed(2)} para cubrir el total`, 'warning')
+        const dif = parseFloat((sumaPagos - totalConDesc).toFixed(2))
+        const msg = dif < 0
+          ? `Faltan $${Math.abs(dif).toFixed(2)} para cubrir el total`
+          : `El pago mixto excede el total por $${dif.toFixed(2)}. Debe sumar exactamente $${totalConDesc.toFixed(2)}`
+        mostrarToast(msg, 'warning')
         return
       }
     }
@@ -2041,37 +2045,23 @@ function recalcularMixto() {
   if (cubierto) cubierto.textContent = `$${suma.toFixed(2)}`
   if (totalRef) totalRef.textContent = `$${totalFinal.toFixed(2)}`
 
-  const diferencia = totalFinal - suma
+  const diferencia = parseFloat((totalFinal - suma).toFixed(2))
   if (falta) {
     if (diferencia > 0.01) {
       falta.textContent = `(faltan $${diferencia.toFixed(2)})`
       falta.style.color = '#e8710a'
     } else if (diferencia < -0.01) {
-      falta.textContent = ''
+      falta.textContent = `(excede $${Math.abs(diferencia).toFixed(2)})`
+      falta.style.color = '#ff6b6b'
     } else {
       falta.textContent = '✓ Cubierto'
       falta.style.color = '#60d080'
     }
   }
 
-  // Cambio solo sobre efectivo
-  if (cambioWrap && cambioEl) {
-    const pagos = obtenerDesgloseMixto()
-    const pagoEfectivo = pagos.find(p => p.metodo === 'EFECTIVO')
-    if (pagoEfectivo && suma > totalFinal + 0.005) {
-      const sumNoEfectivo = pagos.filter(p => p.metodo !== 'EFECTIVO').reduce((s, p) => s + parseFloat(p.monto), 0)
-      const necesarioEfectivo = totalFinal - sumNoEfectivo
-      const sobraEfectivo = parseFloat(pagoEfectivo.monto) - necesarioEfectivo
-      if (sobraEfectivo > 0.005) {
-        cambioEl.textContent = `$${sobraEfectivo.toFixed(2)}`
-        cambioWrap.style.display = 'block'
-      } else {
-        cambioWrap.style.display = 'none'
-      }
-    } else {
-      cambioWrap.style.display = 'none'
-    }
-  }
+  // El pago mixto debe sumar EXACTAMENTE el total: no hay cambio.
+  // El cambio solo existe en venta de efectivo puro.
+  if (cambioWrap) cambioWrap.style.display = 'none'
 }
 
 function obtenerDesgloseMixto() {

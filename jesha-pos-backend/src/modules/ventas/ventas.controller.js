@@ -99,6 +99,14 @@ exports.crearVenta = async (req, res) => {
       return res.status(400).json({ error: 'Total no coincide', codigo: 'TOTAL_MISMATCH', backend: totalEsperado, frontend: total, diferencia })
     }
 
+    // ── Pago mixto debe sumar EXACTAMENTE el total (evita descuadre de caja por cambio) ──
+    if (metodoPago === 'MIXTO') {
+      const sumaPagosMixto = parseFloat(desglosePagos.reduce((s, p) => s + parseFloat(p.monto), 0).toFixed(2))
+      if (Math.abs(sumaPagosMixto - totalEsperado) > 0.01) {
+        return res.status(400).json({ error: 'El pago mixto debe sumar exactamente el total', codigo: 'MIXTO_TOTAL_MISMATCH', totalEsperado, sumaPagos: sumaPagosMixto })
+      }
+    }
+
     const folio = await generarFolio()
     let facturaEstado = 'DISPONIBLE'
     let facturaLimite = new Date()
