@@ -582,7 +582,10 @@ model Categoria {
   departamentoId Int
   nombre         String
   descripcion    String?
+  imagenUrl      String?
+  imagenPublicId String?
   creadoEn       DateTime     @default(now())
+
   Empresa        Empresa?     @relation(fields: [empresaId], references: [id])
   Departamento   Departamento @relation(fields: [departamentoId], references: [id])
   Producto       Producto[]
