@@ -488,9 +488,14 @@ function mostrarProductos(productos) {
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
 
+    const urlImagen = p.imagenUrl || p.Categoria?.imagenUrl || null
+    const srcImagen = urlImagen
+      ? (urlImagen.startsWith('http') ? urlImagen : API_URL + urlImagen)
+      : null
+
     return `
     <div class="tarjeta-producto" data-producto-id="${p.id}" style="cursor:pointer;">
-      ${p.imagenUrl ? `<img src="${p.imagenUrl.startsWith('http') ? p.imagenUrl : API_URL + p.imagenUrl}" alt="${nombreSeguro}" class="producto-imagen" />` : ''}
+      ${srcImagen ? `<img src="${srcImagen}" alt="${nombreSeguro}" class="producto-imagen" />` : ''}
       <div class="producto-info">
         <h4>${nombreSeguro}</h4>
         <p class="producto-codigo">${p.codigoInterno}</p>
