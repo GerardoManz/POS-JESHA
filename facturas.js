@@ -494,6 +494,117 @@ function llenarCatalogosManual() {
   poblarSelectSAT(document.getElementById('m-uso'), CATALOGO_USOS)
 }
 
+async function buscarVentaExactaParaFactura(folio) {
+  const resultDiv = document.getElementById('venta-result')
+
+  document.getElementById('m-folio').value = folio
+  resultDiv.className = 'venta-search-result show'
+  resultDiv.textContent = 'Buscando...'
+  document.getElementById('manual-fiscal-fields').style.display = 'none'
+  document.getElementById('m-rfc').value     = ''
+  document.getElementById('m-razon').value   = ''
+  document.getElementById('m-regimen').value = ''
+  document.getElementById('m-cp').value      = ''
+  document.getElementById('m-uso').value     = ''
+  document.getElementById('m-email').value   = ''
+  document.getElementById('manual-error').style.display = 'none'
+  ventaParaFacturar = null
+  document.getElementById('modal-manual').classList.add('active')
+
+  try {
+    const res = await fetch(`${API_URL}/ventas/folio/${encodeURIComponent(folio)}`, {
+      headers: { 'Authorization': `Bearer ${TOKEN}` }
+    })
+    const data = await res.json().catch(() => ({}))
+
+    if (res.status === 404) {
+      resultDiv.className = 'venta-search-result error show'
+      resultDiv.textContent = 'Venta no encontrada'
+      return
+    }
+
+    if (!res.ok) throw new Error(data.error || 'Error al buscar venta')
+
+    const venta = data.data
+    if (!venta) {
+      resultDiv.className = 'venta-search-result error show'
+      resultDiv.textContent = 'Venta no encontrada'
+      return
+    }
+
+    // Validaciones
+    if (venta.facturaEstado === 'FACTURADA') {
+      resultDiv.className = 'venta-search-result error show'
+      resultDiv.textContent = 'Esta venta ya fue facturada'
+      return
+    }
+    if (venta.facturaEstado === 'BLOQUEADA') {
+      resultDiv.className = 'venta-search-result error show'
+      resultDiv.textContent = 'Venta bloqueada — efectivo mayor a $2,000'
+      return
+    }
+
+    ventaParaFacturar = venta
+    resultDiv.className = 'venta-search-result show'
+    resultDiv.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <strong>${venta.folio}</strong> · ${fmt(venta.total)} · ${venta.metodoPago}
+          <br><span style="font-size:0.78rem;color:var(--muted)">Cliente: ${venta.cliente?.nombre || 'Público general'} · ${venta.estado}</span>
+        </div>
+        <span style="color:#60d080;font-size:0.8rem;font-weight:600;">✓ Disponible</span>
+      </div>
+    `
+
+    // Mostrar campos fiscales
+    document.getElementById('manual-fiscal-fields').style.display = 'block'
+    llenarCatalogosManual()
+
+    // Autocompletar solo si el cliente tiene RFC registrado.
+    // RFC es el indicador mínimo de "este cliente tiene datos fiscales".
+    // Sin RFC, el usuario ingresa todo manualmente para evitar datos no fiscales
+    // (nombre regular) en campos fiscales (razón social).
+    if (venta.cliente && venta.cliente.rfc) {
+      document.getElementById('m-rfc').value   = venta.cliente.rfc || ''
+      document.getElementById('m-razon').value = venta.cliente.razonSocial || venta.cliente.nombre || ''
+      document.getElementById('m-cp').value    = venta.cliente.codigoPostalFiscal || ''
+      document.getElementById('m-email').value = venta.cliente.email || ''
+
+      const selRegimen = document.getElementById('m-regimen')
+      const selUso     = document.getElementById('m-uso')
+
+      if (venta.cliente.regimenFiscal) {
+        selRegimen.value = venta.cliente.regimenFiscal
+        if (selRegimen.value !== venta.cliente.regimenFiscal) {
+          console.warn('Régimen no encontrado en catálogo:', venta.cliente.regimenFiscal)
+          selRegimen.value = ''
+        }
+      }
+
+      if (venta.cliente.usoCfdi) {
+        selUso.value = venta.cliente.usoCfdi
+        if (selUso.value !== venta.cliente.usoCfdi) {
+          console.warn('Uso CFDI no encontrado en catálogo:', venta.cliente.usoCfdi)
+          selUso.value = ''
+        }
+      }
+
+      // Filtrar usos CFDI según régimen autocompletado. El listener 'change'
+      // del régimen no se dispara con asignación programática (.value =),
+      // por lo que el filtro debe llamarse explícitamente.
+      // Mismo patrón usado en verDetalle líneas 149-151.
+      filtrarUsosPorRegimen(selRegimen, selUso)
+    }
+
+    // Focus al RFC
+    setTimeout(() => document.getElementById('m-rfc')?.focus(), 100)
+
+  } catch (e) {
+    resultDiv.className = 'venta-search-result error show'
+    resultDiv.textContent = 'Error: ' + e.message
+  }
+}
+
 async function facturarManualDesdeModal() {
   if (!ventaParaFacturar) return
 
@@ -690,7 +801,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('modal-manual').classList.add('active')
     // Llenar folio y disparar búsqueda
     document.getElementById('m-folio').value = folioAutoFacturar
-    setTimeout(() => buscarVentaParaFactura(), 300)
+    setTimeout(() => buscarVentaExactaParaFactura(folioAutoFacturar), 300)
   }
 })
 

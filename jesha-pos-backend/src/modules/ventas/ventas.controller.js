@@ -572,6 +572,70 @@ exports.obtenerVenta = async (req, res) => {
 }
 
 /**
+ * GET /ventas/folio/:folio
+ */
+exports.obtenerVentaPorFolio = async (req, res) => {
+  try {
+    const empresaId = getEmpresaId(req)
+    const { folio } = req.params
+    const venta = await prisma.venta.findUnique({
+      where: { empresaId_folio: { empresaId, folio } },
+      include: {
+        Usuario:  { select: { id: true, nombre: true } },
+        Cliente:  true,
+        Sucursal: true,
+        DetalleVenta: { include: { Producto: true } }
+      }
+    })
+    if (!venta) return res.status(404).json({ error: 'Venta no encontrada' })
+
+    res.json({
+      success: true,
+      data: {
+        id:            venta.id,
+        folio:         venta.folio,
+        fecha:         venta.creadaEn,
+        usuario:       venta.Usuario.nombre,
+        cliente:       venta.Cliente ? {
+          id:                 venta.Cliente.id,
+          nombre:             venta.Cliente.nombre,
+          rfc:                venta.Cliente.rfc,
+          razonSocial:        venta.Cliente.razonSocial,
+          regimenFiscal:      venta.Cliente.regimenFiscal,
+          codigoPostalFiscal: venta.Cliente.codigoPostalFiscal,
+          usoCfdi:            venta.Cliente.usoCfdi,
+          email:              venta.Cliente.email
+        } : null,
+        sucursal:      venta.Sucursal.nombre,
+        metodoPago:    venta.metodoPago,
+        subtotal:      venta.subtotal,
+        iva:           venta.iva,
+        descuento:     venta.descuento,
+        total:         venta.total,
+        montoPagado:   venta.montoPagado,
+        cambio:        venta.cambio,
+        estado:        venta.estado,
+        tokenQr:       venta.tokenQr,
+        facturaEstado: venta.facturaEstado,
+        desglosePagos: venta.desglosePagos || null,
+        notas:         venta.notas,
+        detalles: venta.DetalleVenta.map(d => ({
+          productoId:     d.productoId,
+          nombre:         d.Producto.nombre,
+          codigo:         d.Producto.codigoInterno,
+          cantidad:       d.cantidad,
+          precioUnitario: d.precioUnitario,
+          subtotal:       d.subtotal
+        }))
+      }
+    })
+  } catch (error) {
+    console.error('❌ Error en obtenerVentaPorFolio:', error)
+    res.status(500).json({ error: error.message })
+  }
+}
+
+/**
  * GET /ventas/historial/lista
  */
 exports.obtenerHistorial = async (req, res) => {

@@ -9,7 +9,8 @@ const { requireRole } = require('../../middlewares/auth.middleware')
 const { 
   crearVenta, 
   obtenerVentas, 
-  obtenerVenta, 
+  obtenerVenta,
+  obtenerVentaPorFolio,
   obtenerHistorial, 
   cancelarVenta,
   actualizarMetodoPago,
@@ -26,6 +27,9 @@ router.get('/', obtenerVentas)
 
 // GET /ventas/historial/lista
 router.get('/historial/lista', obtenerHistorial)
+
+// GET /ventas/folio/:folio — Venta específica por folio exacto
+router.get('/folio/:folio', obtenerVentaPorFolio)
 
 // PATCH /ventas/:id/cancelar — Cancelar venta
 router.patch('/:id/cancelar', cancelarVenta)
