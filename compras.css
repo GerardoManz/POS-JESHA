@@ -148,3 +148,13 @@
 .form-group input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; }
 #panel-precio-singleton { margin-top:12px; padding:16px; border:1px solid var(--panel-border); border-radius:8px; background:rgba(255,255,255,0.02); }
 .comp-table tr.rec-fila-activa { background:rgba(91,142,255,0.12); }
+
+/* ── Resumen de recepción en vivo ── */
+.rec-resumen { margin-bottom:12px; padding:12px 14px; border:1px solid rgba(91,142,255,0.3); border-radius:8px; background:rgba(31,58,102,0.08); }
+.rec-res-row { display:flex; justify-content:space-between; align-items:center; padding:5px 0; font-size:0.85rem; color:var(--muted); border-bottom:1px solid rgba(255,255,255,0.04); }
+.rec-res-row:last-child { border-bottom:none; }
+.rec-res-row span:last-child { font-family:'Barlow Condensed',sans-serif; font-weight:700; color:var(--text); }
+.rec-res-nuevo { font-size:0.95rem; }
+.rec-res-nuevo span:last-child { font-size:1.15rem; color:var(--accent); }
+.rec-res-ajuste-up   { color:#f87171 !important; }
+.rec-res-ajuste-down { color:#60d080 !important; }

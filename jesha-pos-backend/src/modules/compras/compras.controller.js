@@ -5,6 +5,7 @@
 
 const prisma = require('../../lib/prisma')
 const getEmpresaId = require('../../helpers/getEmpresaId')
+const { FACTOR_IVA } = require('../../utils/constantes')
 
 async function generarFolio() {
   const d   = new Date()
@@ -30,7 +31,7 @@ const OC_SELECT = {
     select: {
       id: true, cantidadPedida: true, cantidadRecibida: true,
       precioCosto: true, subtotalPedido: true, subtotalRecibido: true,
-        Producto: { select: { id: true, nombre: true, codigoInterno: true, unidadCompra: true, costo: true, costoPromedio: true, precioVenta: true, precioBase: true, esGranel: true } }
+        Producto: { select: { id: true, nombre: true, codigoInterno: true, unidadCompra: true, costo: true, costoPromedio: true, precioVenta: true, precioBase: true, esGranel: true, tipoFacturaProv: true, costoSinIvaProveedor: true } }
     }
   },
   AbonoCompra: {
@@ -311,7 +312,7 @@ const recibir = async (req, res) => {
             ...(tipoMapeado === 'NETO' ? { costoSinIvaProveedor: null } : {}),
             ...(nuevoPrecioVenta && nuevoPrecioVenta > 0 ? {
               precioVenta: nuevoPrecioVenta,
-              precioBase:  parseFloat((nuevoPrecioVenta / 1.16).toFixed(2)),
+              precioBase:  parseFloat((nuevoPrecioVenta / FACTOR_IVA).toFixed(2)),
               margen:      costoUnit > 0 ? parseFloat(Math.min(((nuevoPrecioVenta / costoUnit - 1) * 100), 999.99).toFixed(2)) : null
             } : {})
           }

@@ -5,6 +5,7 @@ const TOKEN   = localStorage.getItem('jesha_token')
 const USUARIO = JSON.parse(localStorage.getItem('jesha_usuario') || '{}')
 const API_URL = window.__JESHA_API_URL__ || 'http://localhost:3000'
 const LIMIT   = 25
+const IVA_FACTOR = window.__JESHA_IVA_FACTOR__ || 1.16
 
 if (!TOKEN) {
   localStorage.setItem('redirect_after_login', 'compras.html')
@@ -204,6 +205,7 @@ function renderDetalle() {
           : `<div style="display:flex;flex-direction:column;align-items:center;gap:2px;">
                <input type="number" class="input-recibir" id="rec-${d.id}"
                  min="${minAttr}" max="${pendiente}" step="${stepAttr}" inputmode="${imAttr}" value="${pendiente}"
+                 oninput="recRecalcularResumen()"
                  style="width:64px;text-align:center;" />
                <span style="font-size:0.68rem;color:var(--muted);">máx ${pendiente} ${unidad}</span>
              </div>`
@@ -252,7 +254,7 @@ function renderDetalle() {
         ${costoAntLabel}
       </td>
       ${celdaMargen}
-      <td>${fmt(d.subtotalPedido)}</td>
+      <td id="subtot-${d.id}">${fmt(d.subtotalPedido)}</td>
     </tr>`
   }).join('')
 
@@ -298,6 +300,13 @@ function renderDetalle() {
   }
   const spPanel = document.getElementById('modal-precio')
   if (spPanel && !recibiendo) spPanel.classList.remove('active')
+
+  const resumen = document.getElementById('rec-resumen')
+  if (recibiendo) {
+    recRecalcularResumen()
+  } else if (resumen) {
+    resumen.style.display = 'none'
+  }
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -814,7 +823,7 @@ function prCalcularCostoDesdeB() {
   const display = document.getElementById('pr-costo-b-display')
   const inputCosto = document.getElementById('pr-costo')
 
-  const precioProveedor = sinIva > 0 ? parseFloat((sinIva * 1.16).toFixed(2)) : 0
+  const precioProveedor = sinIva > 0 ? parseFloat((sinIva * IVA_FACTOR).toFixed(2)) : 0
 
   if (display) display.value = precioProveedor > 0 ? precioProveedor : ''
   if (inputCosto) inputCosto.value = precioProveedor > 0 ? precioProveedor : ''
@@ -827,7 +836,7 @@ function prCalcularPrecioBase() {
   const pv = parseFloat(document.getElementById('pr-pventa')?.value) || 0
   const pbInput = document.getElementById('pr-precioBase')
   if (!pbInput) return
-  pbInput.value = pv > 0 ? (pv / 1.16).toFixed(2) : ''
+  pbInput.value = pv > 0 ? (pv / IVA_FACTOR).toFixed(2) : ''
 }
 
 // Margen = ((PVenta - Costo) / Costo) × 100
@@ -859,7 +868,10 @@ window.recSeleccionarFila = function(id) {
 
   document.getElementById('sp-costo').value = c.precioCosto > 0 ? c.precioCosto.toFixed(2) : ''
   document.getElementById('sp-precioVenta').value = c.precioVenta > 0 ? c.precioVenta.toFixed(2) : ''
-  document.getElementById('sp-costoSinIva').value = (c.costoSinIva && c.costoSinIva > 0) ? c.costoSinIva.toFixed(2) : ''
+  const sinIvaPrecarga = (c.costoSinIva && c.costoSinIva > 0)
+    ? c.costoSinIva
+    : (esB ? parseFloat(det?.Producto?.costoSinIvaProveedor || 0) : 0)
+  document.getElementById('sp-costoSinIva').value = sinIvaPrecarga > 0 ? sinIvaPrecarga.toFixed(2) : ''
 
   document.getElementById('sp-campos-a').style.display = esB ? 'none' : ''
   document.getElementById('sp-campos-b').style.display = esB ? '' : 'none'
@@ -874,7 +886,7 @@ window.recCalcSingleton = function() {
   const pv    = parseFloat(document.getElementById('sp-precioVenta').value) || 0
   const pb    = document.getElementById('sp-precioBase')
   const wrap  = document.getElementById('sp-info-margen-wrap')
-  if (pb) pb.value = pv > 0 ? (pv / 1.16).toFixed(2) : ''
+  if (pb) pb.value = pv > 0 ? (pv / IVA_FACTOR).toFixed(2) : ''
   if (costo > 0 && pv > 0) {
     const utilidad = pv - costo
     const margen = Math.min((utilidad / costo) * 100, 999.99)
@@ -886,7 +898,7 @@ window.recCalcSingleton = function() {
 
 window.recCalcCostoSingletonB = function() {
   const sinIva = parseFloat(document.getElementById('sp-costoSinIva').value) || 0
-  const conIva = sinIva > 0 ? +(sinIva * 1.16).toFixed(2) : 0
+  const conIva = sinIva > 0 ? +(sinIva * IVA_FACTOR).toFixed(2) : 0
   const costoInput = document.getElementById('sp-costo')
   const display = document.getElementById('sp-costo-b-display')
   if (costoInput) costoInput.value = conIva > 0 ? conIva.toFixed(2) : ''
@@ -906,7 +918,192 @@ window.recGuardarPanel = function() {
   const sp = document.getElementById('sumpv-' + id)
   if (sc) sc.textContent = fmt(costo)
   if (sp) sp.textContent = pv > 0 ? fmt(pv) : '—'
+  recRecalcularResumen()
   recCerrarPanel()
+}
+
+// Recalcula subtotal por línea y total/saldo estimado ANTES de confirmar.
+// Usa cantidadPedida como base (igual que el backend en /recibir).
+window.recRecalcularResumen = function() {
+  if (!ocActual || !ocActual._recibiendo) return
+  let nuevoTotal = 0
+  ;(ocActual.DetalleOrdenCompra || []).forEach(d => {
+    const cantPedida = parseFloat(d.cantidadPedida)
+    const inputRec = document.getElementById('rec-' + d.id)
+    const cantRecNueva = inputRec ? (parseFloat(inputRec.value) || 0) : 0
+    const c = _preciosCache[d.id]
+    // El backend solo actualiza el costo de líneas que se reciben (cant > 0)
+    const aplicaCosto = c && c.precioCosto > 0 && cantRecNueva > 0
+    const costoEf = aplicaCosto ? c.precioCosto : parseFloat(d.precioCosto)
+    const subLinea = parseFloat((costoEf * cantPedida).toFixed(2))
+    nuevoTotal += subLinea
+    const cel = document.getElementById('subtot-' + d.id)
+    if (cel) cel.textContent = fmt(subLinea)
+  })
+  nuevoTotal = parseFloat(nuevoTotal.toFixed(2))
+
+  const totalAnterior = parseFloat(ocActual.totalEstimado || 0)
+  const pagado        = parseFloat(ocActual.totalPagado || 0)
+  const ajuste        = parseFloat((nuevoTotal - totalAnterior).toFixed(2))
+  const saldoEst      = parseFloat((nuevoTotal - pagado).toFixed(2))
+
+  const cont = document.getElementById('rec-resumen')
+  if (cont) cont.style.display = ''
+  const elAnt = document.getElementById('rec-res-anterior')
+  const elAj  = document.getElementById('rec-res-ajuste')
+  const elNue = document.getElementById('rec-res-nuevo')
+  const elSal = document.getElementById('rec-res-saldo')
+  if (elAnt) elAnt.textContent = fmt(totalAnterior)
+  if (elNue) elNue.textContent = fmt(nuevoTotal)
+  if (elSal) elSal.textContent = fmt(saldoEst)
+  if (elAj) {
+    const signo = ajuste > 0 ? '+' : ajuste < 0 ? '−' : ''
+    elAj.textContent = signo + fmt(Math.abs(ajuste))
+    elAj.classList.remove('rec-res-ajuste-up', 'rec-res-ajuste-down')
+    if (ajuste > 0) elAj.classList.add('rec-res-ajuste-up')
+    else if (ajuste < 0) elAj.classList.add('rec-res-ajuste-down')
+  }
+}
+
+// Comprobante de recepción imprimible / descargable (PDF vía window.print).
+// Reusa el patrón y estilo de cotizaciones.js. Suma cantidad RECIBIDA para
+// comparar contra la factura física del proveedor que acaba de llegar.
+window.generarComprobanteRecepcion = function() {
+  if (!ocActual) return
+  const oc  = ocActual
+  const esB = document.getElementById('rec-radio-b')?.checked
+  const tipoLabel = esB ? 'Precio con desglose de IVA' : 'Precio neto final'
+  const LOGO_URL = window.__JESHA_LOGO_URL__ || ''
+
+  let totalRecibido = 0
+  const lineas = (oc.DetalleOrdenCompra || []).map(d => {
+    const inputRec = document.getElementById('rec-' + d.id)
+    const cantRec  = inputRec ? (parseFloat(inputRec.value) || 0) : 0
+    if (cantRec <= 0) return ''
+    const c = _preciosCache[d.id]
+    const costoEf = (c && c.precioCosto > 0) ? c.precioCosto : parseFloat(d.precioCosto)
+    const costoOrden = parseFloat(d.precioCosto)
+    const importe = parseFloat((costoEf * cantRec).toFixed(2))
+    totalRecibido += importe
+    const cambio = costoEf > costoOrden ? ' style="color:#b3261e"' : costoEf < costoOrden ? ' style="color:#1d7a3f"' : ''
+    return `
+      <tr>
+        <td>${d.Producto?.nombre || '—'}<div style="font-size:10px;color:#888">${d.Producto?.codigoInterno || ''}</div></td>
+        <td style="text-align:center">${cantRec} ${d.Producto?.unidadCompra || 'pza'}</td>
+        <td style="text-align:right;color:#888">${fmt(costoOrden)}</td>
+        <td style="text-align:right"${cambio}>${fmt(costoEf)}</td>
+        <td style="text-align:right"><strong>${fmt(importe)}</strong></td>
+      </tr>`
+  }).join('')
+
+  if (!lineas.trim()) { jeshaToast('Captura al menos una cantidad recibida', 'warning'); return }
+
+  totalRecibido = parseFloat(totalRecibido.toFixed(2))
+  let resumenHtml
+  if (esB) {
+    const base = parseFloat((totalRecibido / IVA_FACTOR).toFixed(2))
+    const iva  = parseFloat((totalRecibido - base).toFixed(2))
+    resumenHtml = `
+      <div class="resumen-row"><span>Subtotal (sin IVA):</span><span>${fmt(base)}</span></div>
+      <div class="resumen-row"><span>IVA (${Math.round((IVA_FACTOR - 1) * 100)}%):</span><span>${fmt(iva)}</span></div>
+      <div class="resumen-row total"><span>Total recibido:</span><span>${fmt(totalRecibido)}</span></div>`
+  } else {
+    resumenHtml = `<div class="resumen-row total"><span>Total recibido:</span><span>${fmt(totalRecibido)}</span></div>`
+  }
+
+  // Contexto de la orden (deuda) — usa cantidad pedida, igual que el backend
+  const totalAnterior = parseFloat(oc.totalEstimado || 0)
+  const pagado        = parseFloat(oc.totalPagado || 0)
+  let nuevoTotalOrden = 0
+  ;(oc.DetalleOrdenCompra || []).forEach(d => {
+    const inputRec = document.getElementById('rec-' + d.id)
+    const cantRec  = inputRec ? (parseFloat(inputRec.value) || 0) : 0
+    const c = _preciosCache[d.id]
+    const aplica = c && c.precioCosto > 0 && cantRec > 0
+    const costoEf = aplica ? c.precioCosto : parseFloat(d.precioCosto)
+    nuevoTotalOrden += costoEf * parseFloat(d.cantidadPedida)
+  })
+  nuevoTotalOrden = parseFloat(nuevoTotalOrden.toFixed(2))
+  const ajuste   = parseFloat((nuevoTotalOrden - totalAnterior).toFixed(2))
+  const saldoEst = parseFloat((nuevoTotalOrden - pagado).toFixed(2))
+
+  const html = `<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"/><title>Recepción ${oc.folio}</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:Arial,sans-serif; font-size:12px; color:#222; padding:28px; }
+  .header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:24px; border-bottom:2px solid #1f3a66; padding-bottom:14px; }
+  .empresa p { color:#555; font-size:11px; margin-top:4px; }
+  .folio-box { text-align:right; }
+  .folio-box .folio { font-size:18px; font-weight:700; color:#1f3a66; }
+  .folio-box p { font-size:11px; color:#666; margin-top:2px; }
+  .meta { display:grid; grid-template-columns:1fr 1fr; gap:6px 20px; margin-bottom:18px; background:#f7f8fa; padding:12px; border-radius:6px; font-size:11px; }
+  table { width:100%; border-collapse:collapse; margin-bottom:14px; font-size:11px; }
+  th { background:#1f3a66; color:#fff; padding:8px 10px; text-align:left; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; }
+  td { padding:8px 10px; border-bottom:1px solid #eee; vertical-align:middle; }
+  tr:nth-child(even) td { background:#fafafa; }
+  .resumen-box { display:flex; flex-direction:column; align-items:flex-end; gap:4px; margin-top:8px; }
+  .resumen-row { display:flex; gap:20px; min-width:280px; justify-content:space-between; font-size:12px; color:#555; }
+  .resumen-row span:last-child { font-weight:600; color:#222; }
+  .resumen-row.total { border-top:1px solid #ccc; padding-top:6px; margin-top:4px; font-size:14px; font-weight:700; color:#1f3a66; }
+  .resumen-row.total span:last-child { color:#1f3a66; font-size:16px; }
+  .deuda-box { margin-top:18px; background:#f7f8fa; border:1px solid #e3e6ec; border-radius:6px; padding:12px 14px; font-size:11px; }
+  .deuda-row { display:flex; justify-content:space-between; padding:3px 0; color:#555; }
+  .deuda-row strong { color:#1f3a66; }
+  .footer { margin-top:24px; border-top:1px solid #ddd; padding-top:12px; font-size:10px; color:#888; text-align:center; }
+  @media print { body { padding:14px; } }
+</style></head><body>
+  <div class="header">
+    <div class="empresa">
+      ${LOGO_URL ? `<img src="${LOGO_URL}" alt="JESHA" style="height:60px;width:auto;display:block;margin-bottom:4px;" />` : `<div style="font-size:18px;font-weight:700;color:#1f3a66">FERRETERÍA E ILUMINACIÓN JESHA</div>`}
+      <p>Av. Vialidad San Simón 3, La Toma de Zacatecas, C.P. 98660</p>
+      <p>Guadalupe, Zacatecas · Tel: 492 101 6879 · jeshadelgado544@gmail.com</p>
+    </div>
+    <div class="folio-box">
+      <div class="folio">${oc.folio}</div>
+      <p>Fecha: ${fmtFecha(new Date())}</p>
+      <p style="margin-top:4px;font-size:11px;color:#888">Comprobante de recepción</p>
+    </div>
+  </div>
+
+  <div class="meta">
+    <p><strong>Proveedor:</strong> ${oc.Proveedor?.nombreOficial || '—'}</p>
+    <p><strong>Teléfono:</strong> ${oc.Proveedor?.celular || oc.Proveedor?.telefono || '—'}</p>
+    <p><strong>Recibió:</strong> ${USUARIO?.nombre || oc.Usuario?.nombre || '—'}</p>
+    <p><strong>Sucursal:</strong> ${oc.Sucursal?.nombre || '—'}</p>
+    <p style="grid-column:1/-1"><strong>Tipo de factura:</strong> ${tipoLabel}</p>
+  </div>
+
+  <table>
+    <thead><tr>
+      <th>Producto</th>
+      <th style="width:90px;text-align:center">Recibido</th>
+      <th style="width:90px;text-align:right">Costo orden</th>
+      <th style="width:90px;text-align:right">Costo factura</th>
+      <th style="width:100px;text-align:right">Importe</th>
+    </tr></thead>
+    <tbody>${lineas}</tbody>
+  </table>
+
+  <div class="resumen-box">${resumenHtml}</div>
+
+  <div class="deuda-box">
+    <div class="deuda-row"><span>Total compra anterior (orden)</span><span>${fmt(totalAnterior)}</span></div>
+    <div class="deuda-row"><span>Ajuste por factura</span><span>${ajuste > 0 ? '+' : ajuste < 0 ? '−' : ''}${fmt(Math.abs(ajuste))}</span></div>
+    <div class="deuda-row"><span>Nuevo total compra (orden)</span><strong>${fmt(nuevoTotalOrden)}</strong></div>
+    <div class="deuda-row"><span>Saldo pendiente estimado</span><span>${fmt(saldoEst)}</span></div>
+  </div>
+
+  <div class="footer">
+    <p>Documento interno de recepción — comparar contra la factura del proveedor · Ferretería e Iluminación JESHA</p>
+  </div>
+</body></html>`
+
+  const ventana = window.open('', '_blank')
+  if (!ventana) { jeshaToast('Permite las ventanas emergentes para generar el PDF', 'warning'); return }
+  ventana.document.write(html)
+  ventana.document.close()
+  ventana.onload = () => ventana.print()
 }
 
 window.recCerrarPanel = function() {
@@ -950,7 +1147,7 @@ async function guardarProdRapido() {
   const costoSinIva = esDesgloseB ? (parseFloat(document.getElementById('pr-costoSinIva').value) || null) : null
 
   // Precio base calculado
-  const precioBase = pventa > 0 ? parseFloat((pventa / 1.16).toFixed(2)) : 0
+  const precioBase = pventa > 0 ? parseFloat((pventa / IVA_FACTOR).toFixed(2)) : 0
 
   // Unidad de venta + granel
   const unidadVenta = document.getElementById('pr-unidadVenta').value.trim() || 'pza'

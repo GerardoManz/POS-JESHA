@@ -397,6 +397,15 @@
             </label>
           </div>
           <div id="recepcion-parcial-alert"></div>
+          <div id="rec-resumen" class="rec-resumen" style="display:none;">
+            <div class="rec-res-row"><span>Total anterior</span><span id="rec-res-anterior">$0.00</span></div>
+            <div class="rec-res-row"><span>Ajuste por factura</span><span id="rec-res-ajuste">$0.00</span></div>
+            <div class="rec-res-row rec-res-nuevo"><span>Nuevo total compra</span><span id="rec-res-nuevo">$0.00</span></div>
+            <div class="rec-res-row"><span>Saldo pendiente estimado</span><span id="rec-res-saldo">$0.00</span></div>
+            <div style="display:flex;justify-content:flex-end;margin-top:10px;">
+              <button class="btn-secondary btn-sm" type="button" onclick="generarComprobanteRecepcion()">📄 Previsualizar / PDF</button>
+            </div>
+          </div>
           <div class="table-wrapper">
             <table class="comp-table">
               <thead>
