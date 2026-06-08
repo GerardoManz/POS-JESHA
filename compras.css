@@ -40,16 +40,16 @@
 }
 
 .panel-izq { border-right:1px solid var(--panel-border); padding:20px 16px; display:flex; flex-direction:column; overflow:hidden; }
-.panel-der { padding:20px 24px; overflow-y:auto; display:flex; flex-direction:column; }
+.panel-der { padding:20px 24px; overflow:hidden; min-height:0; display:flex; flex-direction:column; }
 .panel-label { font-size:0.75rem; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.06em; margin-bottom:12px; }
 .lista-prod-modal { flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:4px; }
 .prod-item-modal { display:flex; justify-content:space-between; align-items:center; padding:9px 10px; border-radius:7px; cursor:pointer; transition:background 0.15s; border:1px solid transparent; }
 .prod-item-modal:hover { background:rgba(255,255,255,0.04); border-color:var(--panel-border); }
 .prod-nombre { font-size:0.82rem; color:var(--text); font-weight:500; }
 .prod-precio { font-size:0.8rem; color:var(--muted); white-space:nowrap; }
-.items-wrapper { margin-bottom:16px; border-radius:8px; border:1px solid var(--panel-border); overflow:hidden; }
+.items-wrapper { flex:1; min-height:0; margin-bottom:16px; border-radius:8px; border:1px solid var(--panel-border); overflow:auto; }
 .items-table { width:100%; border-collapse:collapse; font-size:0.85rem; }
-.items-table th { padding:9px 12px; background:rgba(255,255,255,0.03); border-bottom:1px solid var(--panel-border); font-size:0.72rem; font-weight:600; color:var(--muted); text-transform:uppercase; text-align:left; }
+.items-table th { position:sticky; top:0; z-index:1; padding:9px 12px; background:var(--sidebar-bg); border-bottom:1px solid var(--panel-border); font-size:0.72rem; font-weight:600; color:var(--muted); text-transform:uppercase; text-align:left; }
 .items-table td { padding:8px 12px; border-bottom:1px solid rgba(255,255,255,0.04); color:var(--text); vertical-align:middle; }
 .items-table tr:last-child td { border-bottom:none; }
 .items-table input[type="number"] { padding:5px 7px; background:rgba(255,255,255,0.04); border:1px solid var(--panel-border); border-radius:5px; color:var(--text); font-family:'Barlow',sans-serif; font-size:0.82rem; outline:none; }
