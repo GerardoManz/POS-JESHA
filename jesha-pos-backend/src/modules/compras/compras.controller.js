@@ -31,7 +31,8 @@ const OC_SELECT = {
     select: {
       id: true, cantidadPedida: true, cantidadRecibida: true,
       precioCosto: true, subtotalPedido: true, subtotalRecibido: true,
-        Producto: { select: { id: true, nombre: true, codigoInterno: true, unidadCompra: true, costo: true, costoPromedio: true, precioVenta: true, precioBase: true, esGranel: true, tipoFacturaProv: true, costoSinIvaProveedor: true } }
+      costoAnterior: true, precioVentaAnterior: true, precioVentaNuevo: true, facturaDesglosada: true,
+        Producto: { select: { id: true, nombre: true, codigoInterno: true, codigoBarras: true, unidadCompra: true, costo: true, costoPromedio: true, precioVenta: true, precioBase: true, esGranel: true, tipoFacturaProv: true, costoSinIvaProveedor: true, ProveedorProducto: { select: { proveedorId: true, codigoProveedor: true } } } }
     }
   },
   AbonoCompra: {
@@ -267,14 +268,28 @@ const recibir = async (req, res) => {
         const subtotalNuevo = parseFloat((costoUnit * cantNueva).toFixed(2))
         totalRecibidoNuevo += subtotalNuevo
 
-        // Actualizar detalle — acumular cantidades y costo corregido
+        // Foto del producto ANTES de actualizarlo (auditoría) — se reutiliza para el costo promedio
+        const prodAntes = await tx.producto.findUnique({
+          where: { id: detalle.productoId },
+          select: { costo: true, precioVenta: true, costoPromedio: true }
+        })
+        const costoAnterior       = prodAntes?.costo != null ? parseFloat(prodAntes.costo) : null
+        const precioVentaAnterior = prodAntes?.precioVenta != null ? parseFloat(prodAntes.precioVenta) : null
+        const precioVentaNuevo    = (item.precioVenta != null && parseFloat(item.precioVenta) > 0)
+          ? parseFloat(item.precioVenta) : null
+
+        // Actualizar detalle — cantidades, costo corregido y snapshot de auditoría
         await tx.detalleOrdenCompra.update({
           where: { id: detalle.id },
           data:  {
             precioCosto:      costoUnit,
             cantidadRecibida: cantTotalRecibida,
             subtotalPedido:   parseFloat((costoUnit * parseFloat(detalle.cantidadPedida)).toFixed(2)),
-            subtotalRecibido: parseFloat((costoUnit * cantTotalRecibida).toFixed(2))
+            subtotalRecibido: parseFloat((costoUnit * cantTotalRecibida).toFixed(2)),
+            costoAnterior,
+            precioVentaAnterior,
+            precioVentaNuevo,
+            facturaDesglosada: item.tipoFacturaProv === 'DESGLOSE'
           }
         })
 
@@ -288,8 +303,8 @@ const recibir = async (req, res) => {
         const stockAntes   = parseFloat(inv.stockActual)
         const stockDespues = parseFloat((stockAntes + cantNueva).toFixed(3))
 
-        // Calcular costo promedio ponderado
-        const costoActual        = parseFloat((await tx.producto.findUnique({ where: { id: detalle.productoId }, select: { costoPromedio: true } }))?.costoPromedio || costoUnit)
+        // Calcular costo promedio ponderado (reusa prodAntes)
+        const costoActual        = parseFloat(prodAntes?.costoPromedio ?? costoUnit)
         const nuevoCostoPromedio = stockAntes + cantNueva > 0
           ? parseFloat(((stockAntes * costoActual + cantNueva * costoUnit) / (stockAntes + cantNueva)).toFixed(4))
           : costoUnit
@@ -335,6 +350,7 @@ const recibir = async (req, res) => {
             cantidad:     cantNueva,
             stockAntes,
             stockDespues,
+            costoUnitario: costoUnit,
             referencia:   oc.folio
           }
         })

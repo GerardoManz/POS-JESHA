@@ -237,11 +237,46 @@ function renderDetalle() {
       }
     </td>` : ''
 
+    // Auditoría de precios (solo en lectura, cuando la línea ya tiene snapshot)
+    let auditBlock = ''
+    if (!recibiendo && d.costoAnterior != null) {
+      const cAnt = parseFloat(d.costoAnterior)
+      const cNue = parseFloat(d.precioCosto)
+      const cTxt = (cAnt === cNue)
+        ? `<span class="audit-nochg">sin cambio</span>`
+        : `<span class="audit-ant">${fmt(cAnt)}</span> → <strong style="color:${cNue > cAnt ? '#f87171' : '#60d080'};">${fmt(cNue)}</strong>`
+      let pvTxt
+      const pAnt = d.precioVentaAnterior != null ? parseFloat(d.precioVentaAnterior) : null
+      const pNue = d.precioVentaNuevo != null ? parseFloat(d.precioVentaNuevo) : null
+      if (pNue == null || (pAnt != null && pNue === pAnt)) {
+        pvTxt = `<span class="audit-nochg">sin cambio</span>`
+      } else {
+        const pvColor = (pAnt != null && pNue > pAnt) ? '#60d080' : (pAnt != null && pNue < pAnt) ? '#f87171' : 'var(--text)'
+        pvTxt = `<span class="audit-ant">${pAnt != null ? fmt(pAnt) : '—'}</span> → <strong style="color:${pvColor};">${fmt(pNue)}</strong>`
+      }
+      let tagFactura = ''
+      let desgloseFactura = ''
+      if (d.facturaDesglosada === true) {
+        tagFactura = `<span class="audit-tag audit-tag-iva">Desglose IVA</span>`
+        const desg = _desgloseLinea(d.precioCosto)
+        desgloseFactura = `<div class="audit-desglose">${fmt(desg.sIva)} + IVA ${fmt(desg.iva)} = <strong>${fmt(desg.conIva)}</strong></div>`
+      } else if (d.facturaDesglosada === false) {
+        tagFactura = `<span class="audit-tag">Neto</span>`
+      }
+      auditBlock = `
+        <div class="audit-precios">
+          <div><span class="audit-lbl">Costo:</span> ${cTxt} ${tagFactura}</div>
+          ${desgloseFactura}
+          <div><span class="audit-lbl">P. Venta:</span> ${pvTxt}</div>
+        </div>`
+    }
+
     return `
     <tr id="rec-tr-${d.id}" style="${rowStyle}">
       <td>
         ${d.Producto?.nombre || '—'}
         ${estadoFila}
+        ${auditBlock}
       </td>
       <td style="text-align:center">
         <strong>${cantPedida}</strong>
@@ -270,6 +305,7 @@ function renderDetalle() {
 
   const btns = document.getElementById('det-botones-superiores')
   btns.innerHTML = ''
+  btns.innerHTML += `<button class="btn-secondary btn-sm" onclick="generarComprobanteRecepcion()">📄 Descargar PDF</button>`
   if (esPendiente) {
     if (!recibiendo) {
       btns.innerHTML += `<button class="btn-secondary btn-sm" onclick="abrirEdicion(${oc.id})">✏️ Editar</button>`
@@ -301,11 +337,15 @@ function renderDetalle() {
   const spPanel = document.getElementById('modal-precio')
   if (spPanel && !recibiendo) spPanel.classList.remove('active')
 
-  const resumen = document.getElementById('rec-resumen')
+  // Opción A: en recepción solo la factura editable; en lectura solo la tabla normal
+  const tablaProductos = document.getElementById('tabla-productos-wrapper')
+  if (tablaProductos) tablaProductos.style.display = recibiendo ? 'none' : ''
+
   if (recibiendo) {
-    recRecalcularResumen()
-  } else if (resumen) {
-    resumen.style.display = 'none'
+    renderFacturaViva()
+  } else {
+    const fv = document.getElementById('factura-viva')
+    if (fv) fv.style.display = 'none'
   }
 }
 
@@ -918,114 +958,209 @@ window.recGuardarPanel = function() {
   const sp = document.getElementById('sumpv-' + id)
   if (sc) sc.textContent = fmt(costo)
   if (sp) sp.textContent = pv > 0 ? fmt(pv) : '—'
-  recRecalcularResumen()
+  renderFacturaViva()
   recCerrarPanel()
 }
 
 // Recalcula subtotal por línea y total/saldo estimado ANTES de confirmar.
 // Usa cantidadPedida como base (igual que el backend en /recibir).
+// Líneas para la factura viva y el PDF. Cantidad = PEDIDA (decisión de negocio:
+// la factura siempre representa la orden completa al costo capturado).
+//  - efectivoConIva: costo unitario que va a la deuda/total (incluye IVA si es desglose)
+//  - unit: P. Unitario mostrado en la factura (SIN IVA en desglose, final en neto)
+function _mgColor(m) { return m < 10 ? '#f87171' : m < 25 ? '#ffc107' : '#60d080' }
+
+// Desglosa un costo CON IVA en sin-IVA + IVA. Resta para que siempre cuadre.
+function _desgloseLinea(precioCostoConIva) {
+  const conIva = parseFloat(precioCostoConIva) || 0
+  const sIva   = parseFloat((conIva / IVA_FACTOR).toFixed(2))
+  const iva    = parseFloat((conIva - sIva).toFixed(2))
+  return { sIva, iva, conIva }
+}
+
+// Datos por línea (lee del caché _preciosCache; cantidad = PEDIDA).
+//  efectivoConIva: costo unitario con IVA (base de la deuda y del margen)
+//  unit: P. Unitario mostrado (SIN IVA en desglose, final en neto)
+//  pventa / margen: precio de venta y margen calculados sobre costo con IVA
+function _facturaLineas() {
+  if (!ocActual) return { lineas: [], esB: false }
+  // En recepción el tipo viene del radio; en lectura no se confía en el radio (muestra costo final)
+  const esB = ocActual._recibiendo ? !!document.getElementById('rec-radio-b')?.checked : false
+  let i = 0
+  const lineas = (ocActual.DetalleOrdenCompra || []).map(d => {
+    const cant = parseFloat(d.cantidadPedida)
+    const c = _preciosCache[d.id]
+    const efectivo = (c && c.precioCosto > 0) ? c.precioCosto : parseFloat(d.precioCosto)
+    // En recepción el tipo es el global (radio); en lectura, el guardado por línea
+    const lineDesglose = ocActual._recibiendo ? esB : (d.facturaDesglosada === true)
+    const unit = lineDesglose
+      ? ((c && c.costoSinIva > 0) ? c.costoSinIva : parseFloat((efectivo / IVA_FACTOR).toFixed(4)))
+      : efectivo
+    const importe = parseFloat((unit * cant).toFixed(2))
+    const pventa  = (c && c.precioVenta > 0) ? c.precioVenta : parseFloat(d.Producto?.precioVenta || 0)
+    const margen  = efectivo > 0 ? ((pventa - efectivo) / efectivo * 100) : 0
+    return {
+      id: d.id, linea: ++i,
+      nombre: d.Producto?.nombre || '—',
+      codigo: d.Producto?.codigoInterno || '—',
+      um: d.Producto?.unidadCompra || 'pza',
+      cant, unit, importe, pventa, margen,
+      efectivoConIva: parseFloat((efectivo * cant).toFixed(2))
+    }
+  })
+  return { lineas, esB }
+}
+
+// Asegura una entrada de caché por línea (semilla con valores actuales del producto)
+function _seedCache() {
+  const esB = !!document.getElementById('rec-radio-b')?.checked
+  ;(ocActual?.DetalleOrdenCompra || []).forEach(d => {
+    if (!_preciosCache[d.id]) {
+      _preciosCache[d.id] = {
+        precioCosto: parseFloat(d.precioCosto) || 0,
+        precioVenta: parseFloat(d.Producto?.precioVenta || 0) || 0,
+        costoSinIva: esB ? (parseFloat(d.Producto?.costoSinIvaProveedor || 0) || null) : null
+      }
+    }
+  })
+}
+
+// Build completo de la tabla-factura (inputs). Solo al entrar a recepción,
+// al cambiar tipo de factura o al guardar desde el modal.
+window.renderFacturaViva = function() {
+  const cont = document.getElementById('factura-viva')
+  if (!cont) return
+  if (!ocActual || !ocActual._recibiendo) { cont.style.display = 'none'; return }
+  _seedCache()
+  const { lineas, esB } = _facturaLineas()
+  const tbody = document.getElementById('factura-viva-tbody')
+  if (tbody) tbody.innerHTML = lineas.map(l => `
+    <tr>
+      <td>${l.linea}</td>
+      <td>${l.cant}<div class="fv-um">${l.um}</div></td>
+      <td>${l.codigo}</td>
+      <td><div class="fv-desc" title="${(l.nombre || '').replace(/"/g, '&quot;')}">${l.nombre}</div></td>
+      <td class="fv-edit" style="text-align:right">
+        <input class="fv-input" id="fv-cost-${l.id}" type="number" step="0.01" min="0" value="${l.unit.toFixed(2)}" oninput="facOnCost(${l.id})">
+        <div class="fv-ivahint" id="fv-ivah-${l.id}" style="display:${esB ? 'block' : 'none'}">${esB ? 'c/IVA ' + fmt(l.efectivoConIva / l.cant) : ''}</div>
+      </td>
+      <td class="fv-edit" style="text-align:right"><input class="fv-input" id="fv-pv-${l.id}" type="number" step="0.01" min="0" value="${l.pventa > 0 ? l.pventa.toFixed(2) : ''}" oninput="facOnPV(${l.id})"></td>
+      <td class="fv-edit" style="text-align:right"><input class="fv-input" id="fv-mg-${l.id}" type="number" step="0.1" style="width:58px" value="${l.margen.toFixed(1)}" oninput="facOnMG(${l.id})"><span style="color:var(--muted)">%</span></td>
+      <td style="text-align:right" class="num" id="fv-imp-${l.id}">${fmt(l.importe)}</td>
+    </tr>`).join('')
+  lineas.forEach(l => { const mg = document.getElementById('fv-mg-' + l.id); if (mg) mg.style.color = _mgColor(l.margen) })
+  cont.style.display = ''
+  recRecalcularResumen()
+}
+
+function _det(id) { return (ocActual?.DetalleOrdenCompra || []).find(d => d.id === id) }
+
+// Edita COSTO (P. Unitario). En desglose lo capturado es sin IVA.
+window.facOnCost = function(id) {
+  const esB = !!document.getElementById('rec-radio-b')?.checked
+  const raw = parseFloat(document.getElementById('fv-cost-' + id).value) || 0
+  const precioCosto = esB ? parseFloat((raw * IVA_FACTOR).toFixed(2)) : raw
+  const c = _preciosCache[id] || {}
+  _preciosCache[id] = { precioCosto, precioVenta: c.precioVenta || 0, costoSinIva: esB ? (raw || null) : null }
+  const margen = precioCosto > 0 ? ((_preciosCache[id].precioVenta - precioCosto) / precioCosto * 100) : 0
+  const mg = document.getElementById('fv-mg-' + id); if (mg) { mg.value = margen.toFixed(1); mg.style.color = _mgColor(margen) }
+  const d = _det(id)
+  const imp = document.getElementById('fv-imp-' + id); if (imp && d) imp.textContent = fmt(raw * parseFloat(d.cantidadPedida))
+  const ih = document.getElementById('fv-ivah-' + id); if (ih) { ih.style.display = esB ? 'block' : 'none'; ih.textContent = esB ? 'c/IVA ' + fmt(precioCosto) : '' }
+  const sc = document.getElementById('sumcosto-' + id); if (sc) sc.textContent = fmt(precioCosto)
+  recRecalcularResumen()
+}
+
+// Edita P. VENTA → recalcula margen
+window.facOnPV = function(id) {
+  const pv = parseFloat(document.getElementById('fv-pv-' + id).value) || 0
+  const c = _preciosCache[id] || {}
+  _preciosCache[id] = { precioCosto: c.precioCosto || 0, precioVenta: pv, costoSinIva: c.costoSinIva || null }
+  const margen = c.precioCosto > 0 ? ((pv - c.precioCosto) / c.precioCosto * 100) : 0
+  const mg = document.getElementById('fv-mg-' + id); if (mg) { mg.value = margen.toFixed(1); mg.style.color = _mgColor(margen) }
+  const sp = document.getElementById('sumpv-' + id); if (sp) sp.textContent = pv > 0 ? fmt(pv) : '—'
+  recRecalcularResumen()
+}
+
+// Edita % MARGEN → recalcula P. Venta
+window.facOnMG = function(id) {
+  const m = parseFloat(document.getElementById('fv-mg-' + id).value) || 0
+  const c = _preciosCache[id] || {}
+  const costo = c.precioCosto || 0
+  const pv = parseFloat((costo * (1 + m / 100)).toFixed(2))
+  _preciosCache[id] = { precioCosto: costo, precioVenta: pv, costoSinIva: c.costoSinIva || null }
+  const pvEl = document.getElementById('fv-pv-' + id); if (pvEl) pvEl.value = pv > 0 ? pv.toFixed(2) : ''
+  const mg = document.getElementById('fv-mg-' + id); if (mg) mg.style.color = _mgColor(m)
+  const sp = document.getElementById('sumpv-' + id); if (sp) sp.textContent = pv > 0 ? fmt(pv) : '—'
+  recRecalcularResumen()
+}
+
 window.recRecalcularResumen = function() {
   if (!ocActual || !ocActual._recibiendo) return
+  const { lineas, esB } = _facturaLineas()
   let nuevoTotal = 0
-  ;(ocActual.DetalleOrdenCompra || []).forEach(d => {
-    const cantPedida = parseFloat(d.cantidadPedida)
-    const inputRec = document.getElementById('rec-' + d.id)
-    const cantRecNueva = inputRec ? (parseFloat(inputRec.value) || 0) : 0
-    const c = _preciosCache[d.id]
-    // El backend solo actualiza el costo de líneas que se reciben (cant > 0)
-    const aplicaCosto = c && c.precioCosto > 0 && cantRecNueva > 0
-    const costoEf = aplicaCosto ? c.precioCosto : parseFloat(d.precioCosto)
-    const subLinea = parseFloat((costoEf * cantPedida).toFixed(2))
-    nuevoTotal += subLinea
-    const cel = document.getElementById('subtot-' + d.id)
-    if (cel) cel.textContent = fmt(subLinea)
+  lineas.forEach(l => {
+    nuevoTotal += l.efectivoConIva
+    const cel = document.getElementById('subtot-' + l.id)
+    if (cel) cel.textContent = fmt(l.efectivoConIva)
   })
   nuevoTotal = parseFloat(nuevoTotal.toFixed(2))
 
-  const totalAnterior = parseFloat(ocActual.totalEstimado || 0)
-  const pagado        = parseFloat(ocActual.totalPagado || 0)
-  const ajuste        = parseFloat((nuevoTotal - totalAnterior).toFixed(2))
-  const saldoEst      = parseFloat((nuevoTotal - pagado).toFixed(2))
-
-  const cont = document.getElementById('rec-resumen')
-  if (cont) cont.style.display = ''
-  const elAnt = document.getElementById('rec-res-anterior')
-  const elAj  = document.getElementById('rec-res-ajuste')
-  const elNue = document.getElementById('rec-res-nuevo')
-  const elSal = document.getElementById('rec-res-saldo')
-  if (elAnt) elAnt.textContent = fmt(totalAnterior)
-  if (elNue) elNue.textContent = fmt(nuevoTotal)
-  if (elSal) elSal.textContent = fmt(saldoEst)
-  if (elAj) {
-    const signo = ajuste > 0 ? '+' : ajuste < 0 ? '−' : ''
-    elAj.textContent = signo + fmt(Math.abs(ajuste))
-    elAj.classList.remove('rec-res-ajuste-up', 'rec-res-ajuste-down')
-    if (ajuste > 0) elAj.classList.add('rec-res-ajuste-up')
-    else if (ajuste < 0) elAj.classList.add('rec-res-ajuste-down')
+  // Pie de la factura (subtotal/IVA/total) — sin reconstruir los inputs
+  const subtotalF = parseFloat(lineas.reduce((s, l) => s + l.importe, 0).toFixed(2))
+  const ivaF      = parseFloat((nuevoTotal - subtotalF).toFixed(2))
+  const tot = document.getElementById('factura-viva-totales')
+  if (tot) {
+    let rows = `<div class="rec-res-row"><span>Subtotal</span><span>${fmt(subtotalF)}</span></div>`
+    if (esB) rows += `<div class="rec-res-row"><span>IVA (${Math.round((IVA_FACTOR - 1) * 100)}%)</span><span>${fmt(ivaF)}</span></div>`
+    rows += `<div class="rec-res-row rec-res-nuevo"><span>Total factura</span><span>${fmt(nuevoTotal)}</span></div>`
+    tot.innerHTML = rows
   }
 }
 
 // Comprobante de recepción imprimible / descargable (PDF vía window.print).
-// Reusa el patrón y estilo de cotizaciones.js. Suma cantidad RECIBIDA para
-// comparar contra la factura física del proveedor que acaba de llegar.
+// Reusa el patrón y estilo de cotizaciones.js. Usa cantidad PEDIDA, así el total
+// de la factura coincide con el nuevo total/deuda de la orden.
 window.generarComprobanteRecepcion = function() {
   if (!ocActual) return
   const oc  = ocActual
-  const esB = document.getElementById('rec-radio-b')?.checked
-  const tipoLabel = esB ? 'Precio con desglose de IVA' : 'Precio neto final'
   const LOGO_URL = window.__JESHA_LOGO_URL__ || ''
 
-  let totalRecibido = 0
-  const lineas = (oc.DetalleOrdenCompra || []).map(d => {
-    const inputRec = document.getElementById('rec-' + d.id)
-    const cantRec  = inputRec ? (parseFloat(inputRec.value) || 0) : 0
-    if (cantRec <= 0) return ''
-    const c = _preciosCache[d.id]
-    const costoEf = (c && c.precioCosto > 0) ? c.precioCosto : parseFloat(d.precioCosto)
-    const costoOrden = parseFloat(d.precioCosto)
-    const importe = parseFloat((costoEf * cantRec).toFixed(2))
-    totalRecibido += importe
-    const cambio = costoEf > costoOrden ? ' style="color:#b3261e"' : costoEf < costoOrden ? ' style="color:#1d7a3f"' : ''
+  const { lineas: facLineas } = _facturaLineas()
+  if (!facLineas.length) { jeshaToast('La orden no tiene productos', 'warning'); return }
+
+  const filas = facLineas.map(l => {
+    const det = (oc.DetalleOrdenCompra || []).find(d => d.id === l.id)
+    let sub = ''
+    if (det?.facturaDesglosada === true) {
+      const dg = _desgloseLinea(det.precioCosto)
+      sub = `<div class="pdf-desglose-linea">${fmt(dg.sIva)} + IVA ${fmt(dg.iva)} = ${fmt(dg.conIva)}</div>`
+    }
     return `
       <tr>
-        <td>${d.Producto?.nombre || '—'}<div style="font-size:10px;color:#888">${d.Producto?.codigoInterno || ''}</div></td>
-        <td style="text-align:center">${cantRec} ${d.Producto?.unidadCompra || 'pza'}</td>
-        <td style="text-align:right;color:#888">${fmt(costoOrden)}</td>
-        <td style="text-align:right"${cambio}>${fmt(costoEf)}</td>
-        <td style="text-align:right"><strong>${fmt(importe)}</strong></td>
+        <td style="text-align:center">${l.linea}</td>
+        <td style="text-align:center">${l.cant} ${l.um}</td>
+        <td>${l.codigo}</td>
+        <td>${l.nombre}${sub}</td>
+        <td style="text-align:right">${fmt(l.unit)}</td>
+        <td style="text-align:right"><strong>${fmt(l.importe)}</strong></td>
       </tr>`
   }).join('')
 
-  if (!lineas.trim()) { jeshaToast('Captura al menos una cantidad recibida', 'warning'); return }
-
-  totalRecibido = parseFloat(totalRecibido.toFixed(2))
+  const subtotal = parseFloat(facLineas.reduce((s, l) => s + l.importe, 0).toFixed(2))
+  const total    = parseFloat(facLineas.reduce((s, l) => s + l.efectivoConIva, 0).toFixed(2))
+  const iva      = parseFloat((total - subtotal).toFixed(2))
+  const hayDesglose = iva > 0.005
+  const tipoLabel = hayDesglose ? 'Precio con desglose de IVA' : 'Precio neto final'
   let resumenHtml
-  if (esB) {
-    const base = parseFloat((totalRecibido / IVA_FACTOR).toFixed(2))
-    const iva  = parseFloat((totalRecibido - base).toFixed(2))
+  if (hayDesglose) {
     resumenHtml = `
-      <div class="resumen-row"><span>Subtotal (sin IVA):</span><span>${fmt(base)}</span></div>
+      <div class="resumen-row"><span>Subtotal:</span><span>${fmt(subtotal)}</span></div>
       <div class="resumen-row"><span>IVA (${Math.round((IVA_FACTOR - 1) * 100)}%):</span><span>${fmt(iva)}</span></div>
-      <div class="resumen-row total"><span>Total recibido:</span><span>${fmt(totalRecibido)}</span></div>`
+      <div class="resumen-row total"><span>Total:</span><span>${fmt(total)}</span></div>`
   } else {
-    resumenHtml = `<div class="resumen-row total"><span>Total recibido:</span><span>${fmt(totalRecibido)}</span></div>`
+    resumenHtml = `<div class="resumen-row total"><span>Total:</span><span>${fmt(total)}</span></div>`
   }
-
-  // Contexto de la orden (deuda) — usa cantidad pedida, igual que el backend
-  const totalAnterior = parseFloat(oc.totalEstimado || 0)
-  const pagado        = parseFloat(oc.totalPagado || 0)
-  let nuevoTotalOrden = 0
-  ;(oc.DetalleOrdenCompra || []).forEach(d => {
-    const inputRec = document.getElementById('rec-' + d.id)
-    const cantRec  = inputRec ? (parseFloat(inputRec.value) || 0) : 0
-    const c = _preciosCache[d.id]
-    const aplica = c && c.precioCosto > 0 && cantRec > 0
-    const costoEf = aplica ? c.precioCosto : parseFloat(d.precioCosto)
-    nuevoTotalOrden += costoEf * parseFloat(d.cantidadPedida)
-  })
-  nuevoTotalOrden = parseFloat(nuevoTotalOrden.toFixed(2))
-  const ajuste   = parseFloat((nuevoTotalOrden - totalAnterior).toFixed(2))
-  const saldoEst = parseFloat((nuevoTotalOrden - pagado).toFixed(2))
 
   const html = `<!DOCTYPE html>
 <html lang="es"><head><meta charset="UTF-8"/><title>Recepción ${oc.folio}</title>
@@ -1042,6 +1177,7 @@ window.generarComprobanteRecepcion = function() {
   th { background:#1f3a66; color:#fff; padding:8px 10px; text-align:left; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; }
   td { padding:8px 10px; border-bottom:1px solid #eee; vertical-align:middle; }
   tr:nth-child(even) td { background:#fafafa; }
+  .pdf-desglose-linea { font-size:10px; color:#777; margin-top:2px; }
   .resumen-box { display:flex; flex-direction:column; align-items:flex-end; gap:4px; margin-top:8px; }
   .resumen-row { display:flex; gap:20px; min-width:280px; justify-content:space-between; font-size:12px; color:#555; }
   .resumen-row span:last-child { font-weight:600; color:#222; }
@@ -1076,23 +1212,17 @@ window.generarComprobanteRecepcion = function() {
 
   <table>
     <thead><tr>
-      <th>Producto</th>
-      <th style="width:90px;text-align:center">Recibido</th>
-      <th style="width:90px;text-align:right">Costo orden</th>
-      <th style="width:90px;text-align:right">Costo factura</th>
+      <th style="width:40px;text-align:center">Línea</th>
+      <th style="width:70px;text-align:center">Cant</th>
+      <th style="width:90px">Código</th>
+      <th>Descripción</th>
+      <th style="width:90px;text-align:right">P. Unitario</th>
       <th style="width:100px;text-align:right">Importe</th>
     </tr></thead>
-    <tbody>${lineas}</tbody>
+    <tbody>${filas}</tbody>
   </table>
 
   <div class="resumen-box">${resumenHtml}</div>
-
-  <div class="deuda-box">
-    <div class="deuda-row"><span>Total compra anterior (orden)</span><span>${fmt(totalAnterior)}</span></div>
-    <div class="deuda-row"><span>Ajuste por factura</span><span>${ajuste > 0 ? '+' : ajuste < 0 ? '−' : ''}${fmt(Math.abs(ajuste))}</span></div>
-    <div class="deuda-row"><span>Nuevo total compra (orden)</span><strong>${fmt(nuevoTotalOrden)}</strong></div>
-    <div class="deuda-row"><span>Saldo pendiente estimado</span><span>${fmt(saldoEst)}</span></div>
-  </div>
 
   <div class="footer">
     <p>Documento interno de recepción — comparar contra la factura del proveedor · Ferretería e Iluminación JESHA</p>
@@ -1121,6 +1251,7 @@ window.recAplicarTipoFactura = function(tipo) {
   if (_spDetalleActivo != null) {
     esB ? recCalcCostoSingletonB() : recCalcSingleton()
   }
+  renderFacturaViva()
 }
 
 // Toggle granel

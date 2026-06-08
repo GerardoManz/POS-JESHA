@@ -158,3 +158,27 @@
 .rec-res-nuevo span:last-child { font-size:1.15rem; color:var(--accent); }
 .rec-res-ajuste-up   { color:#f87171 !important; }
 .rec-res-ajuste-down { color:#60d080 !important; }
+
+/* ── Tabla-factura editable (recepción) ── */
+#factura-viva-table th.fv-edit { color:#9ab6ff; background:rgba(91,142,255,0.08); }
+#factura-viva-table td.fv-edit { background:rgba(91,142,255,0.05); }
+#factura-viva-table .fv-input { width:100%; max-width:96px; padding:5px 7px; background:rgba(255,255,255,0.07); border:1px solid rgba(120,150,255,0.35); border-radius:6px; color:var(--text); font-family:'Barlow',sans-serif; font-size:0.82rem; text-align:right; outline:none; -moz-appearance:textfield; }
+#factura-viva-table .fv-input:focus { border-color:var(--accent); background:rgba(91,142,255,0.12); }
+#factura-viva-table .fv-input::-webkit-outer-spin-button,
+#factura-viva-table .fv-input::-webkit-inner-spin-button { -webkit-appearance:none; margin:0; }
+#factura-viva-table .fv-desc { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+#factura-viva-table .fv-um { font-size:0.62rem; color:var(--muted); margin-top:1px; }
+.fv-ivahint { font-size:0.62rem; color:var(--accent); margin-top:2px; text-align:right; }
+
+/* ── Auditoría de precios en detalle de compra (antes → después) ── */
+.audit-precios { margin-top:6px; display:flex; flex-direction:column; gap:2px; font-size:0.72rem; line-height:1.45; padding:6px 8px; background:rgba(255,255,255,0.02); border-left:2px solid var(--accent); border-radius:4px; }
+.audit-lbl { color:var(--muted); font-weight:700; text-transform:uppercase; letter-spacing:0.03em; font-size:0.62rem; margin-right:3px; }
+.audit-ant { color:var(--muted); }
+.audit-nochg { color:var(--muted); font-style:italic; }
+
+/* ── Etiqueta de tipo de factura en auditoría ── */
+.audit-tag { display:inline-block; font-size:0.58rem; font-weight:700; text-transform:uppercase; letter-spacing:0.03em; padding:1px 6px; border-radius:4px; margin-left:4px; background:rgba(255,255,255,0.06); color:var(--muted); border:1px solid var(--panel-border); vertical-align:middle; }
+.audit-tag-iva { background:rgba(91,142,255,0.12); color:#9ab6ff; border-color:rgba(91,142,255,0.3); }
+
+/* ── Sublínea de desglose de IVA en auditoría (pantalla) ── */
+.audit-desglose { font-size:0.66rem; color:var(--muted); margin:1px 0 1px 2px; }

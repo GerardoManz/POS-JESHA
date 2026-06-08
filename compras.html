@@ -397,16 +397,7 @@
             </label>
           </div>
           <div id="recepcion-parcial-alert"></div>
-          <div id="rec-resumen" class="rec-resumen" style="display:none;">
-            <div class="rec-res-row"><span>Total anterior</span><span id="rec-res-anterior">$0.00</span></div>
-            <div class="rec-res-row"><span>Ajuste por factura</span><span id="rec-res-ajuste">$0.00</span></div>
-            <div class="rec-res-row rec-res-nuevo"><span>Nuevo total compra</span><span id="rec-res-nuevo">$0.00</span></div>
-            <div class="rec-res-row"><span>Saldo pendiente estimado</span><span id="rec-res-saldo">$0.00</span></div>
-            <div style="display:flex;justify-content:flex-end;margin-top:10px;">
-              <button class="btn-secondary btn-sm" type="button" onclick="generarComprobanteRecepcion()">📄 Previsualizar / PDF</button>
-            </div>
-          </div>
-          <div class="table-wrapper">
+          <div id="tabla-productos-wrapper" class="table-wrapper">
             <table class="comp-table">
               <thead>
                 <tr>
@@ -421,6 +412,29 @@
               </thead>
               <tbody id="det-items-tbody"></tbody>
             </table>
+          </div>
+          <div id="factura-viva" style="display:none;margin-top:16px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+              <span class="det-card-header" style="margin:0;">🧾 Factura del proveedor (vista previa)</span>
+            </div>
+            <div class="table-wrapper">
+              <table class="comp-table" id="factura-viva-table" style="table-layout:fixed;width:100%;">
+                <thead>
+                  <tr>
+                    <th style="width:38px;">#</th>
+                    <th style="width:56px;">Cant</th>
+                    <th style="width:84px;">Código</th>
+                    <th>Descripción</th>
+                    <th class="fv-edit" style="width:108px;text-align:right;">Costo (P. Unit)</th>
+                    <th class="fv-edit" style="width:100px;text-align:right;">P. Venta</th>
+                    <th class="fv-edit" style="width:88px;text-align:right;">Margen</th>
+                    <th style="width:104px;text-align:right;">Importe</th>
+                  </tr>
+                </thead>
+                <tbody id="factura-viva-tbody"></tbody>
+              </table>
+            </div>
+            <div id="factura-viva-totales" class="rec-resumen" style="margin-top:0;border-top-left-radius:0;border-top-right-radius:0;"></div>
           </div>
         </div>
       </div>

@@ -22,15 +22,15 @@ datasource db {
 // ════════════════════════════════════════════════════════════════════
 
 model Empresa {
-  id              Int       @id @default(autoincrement())
-  slug            String    @unique
+  id              Int      @id @default(autoincrement())
+  slug            String   @unique
   nombreComercial String
   razonSocial     String
   rfc             String?
   whatsapp        String
   notas           String?
-  activa          Boolean   @default(true)
-  creadaEn        DateTime  @default(now())
+  activa          Boolean  @default(true)
+  creadaEn        DateTime @default(now())
 
   AbonoBitacora        AbonoBitacora[]
   AlertaStock          AlertaStock[]
@@ -280,6 +280,7 @@ model MovimientoInventario {
   creadoEn                DateTime                 @default(now())
   turnoId                 Int?
   stockMinimoEnEseMomento Decimal?                 @db.Decimal(10, 3)
+  costoUnitario           Decimal?                 @db.Decimal(10, 2)
   Empresa                 Empresa                  @relation(fields: [empresaId], references: [id])
   Producto                Producto                 @relation(fields: [productoId], references: [id], onDelete: Cascade)
   Sucursal                Sucursal                 @relation(fields: [sucursalId], references: [id])
@@ -576,20 +577,20 @@ model Auditoria {
 }
 
 model Categoria {
-  id             Int          @id @default(autoincrement())
-  esGlobal       Boolean      @default(false)
+  id             Int      @id @default(autoincrement())
+  esGlobal       Boolean  @default(false)
   empresaId      Int?
   departamentoId Int
   nombre         String
   descripcion    String?
   imagenUrl      String?
   imagenPublicId String?
-  creadoEn       DateTime     @default(now())
+  creadoEn       DateTime @default(now())
 
-  Empresa        Empresa?     @relation(fields: [empresaId], references: [id])
-  Departamento   Departamento @relation(fields: [departamentoId], references: [id])
-  Producto       Producto[]
-  Promocion      Promocion[]
+  Empresa      Empresa?     @relation(fields: [empresaId], references: [id])
+  Departamento Departamento @relation(fields: [departamentoId], references: [id])
+  Producto     Producto[]
+  Promocion    Promocion[]
 
   @@unique([empresaId, departamentoId, nombre])
   @@index([empresaId])
@@ -703,16 +704,20 @@ model DetalleDevolucion {
 }
 
 model DetalleOrdenCompra {
-  id               Int         @id @default(autoincrement())
-  ordenCompraId    Int
-  productoId       Int
-  cantidadPedida   Decimal     @db.Decimal(10, 3)
-  cantidadRecibida Decimal     @default(0) @db.Decimal(10, 3)
-  precioCosto      Decimal     @db.Decimal(10, 2)
-  subtotalPedido   Decimal     @db.Decimal(10, 2)
-  subtotalRecibido Decimal     @default(0) @db.Decimal(10, 2)
-  OrdenCompra      OrdenCompra @relation(fields: [ordenCompraId], references: [id], onDelete: Cascade)
-  Producto         Producto    @relation(fields: [productoId], references: [id])
+  id                  Int         @id @default(autoincrement())
+  ordenCompraId       Int
+  productoId          Int
+  cantidadPedida      Decimal     @db.Decimal(10, 3)
+  cantidadRecibida    Decimal     @default(0) @db.Decimal(10, 3)
+  precioCosto         Decimal     @db.Decimal(10, 2)
+  subtotalPedido      Decimal     @db.Decimal(10, 2)
+  subtotalRecibido    Decimal     @default(0) @db.Decimal(10, 2)
+  costoAnterior       Decimal?    @db.Decimal(10, 2)
+  precioVentaAnterior Decimal?    @db.Decimal(10, 2)
+  precioVentaNuevo    Decimal?    @db.Decimal(10, 2)
+  facturaDesglosada   Boolean?
+  OrdenCompra         OrdenCompra @relation(fields: [ordenCompraId], references: [id], onDelete: Cascade)
+  Producto            Producto    @relation(fields: [productoId], references: [id])
 }
 
 model DetallePedido {
