@@ -336,7 +336,7 @@ function renderItemsProductos() {
       <td><input type="number" min="0" step="0.01" value="${item.precio.toFixed(2)}" style="width:82px" oninput="actualizarPrecioItem(${i},this.value)" /></td>
       <td><input type="number" min="0" step="0.01" value="${(item.descuento || 0).toFixed(2)}" style="width:82px" oninput="actualizarDescuentoItem(${i},this.value)" /></td>
       <td id="prod-total-${i}"><strong>${fmt((item.precio * item.cantidad) - item.descuento)}</strong></td>
-      <td><button class="btn-icon" onclick="quitarItem(${i})" style="color:#f44336">âœ•</button></td>
+      <td><button class="btn-icon" onclick="quitarItem(${i})" style="color:#f44336">&times;</button></td>
     </tr>
   `).join('')
   actualizarTotal()
@@ -356,7 +356,7 @@ function renderItemsServicios() {
       <td><input type="number" min="1" value="${item.cantidad}" style="width:52px" oninput="actualizarCantidadItem(${i},this.value)" min="${item.esGranel ? 0.001 : 1}" step="${item.esGranel ? 0.001 : 1}" /></td>
       <td><input type="number" min="0" step="0.01" value="${item.precio.toFixed(2)}" style="width:82px" oninput="actualizarPrecioItem(${i},this.value)" /></td>
       <td id="srv-total-${i}"><strong>${fmt(item.precio * item.cantidad)}</strong></td>
-      <td><button class="btn-icon" onclick="quitarItem(${i})" style="color:#f44336">âœ•</button></td>
+      <td><button class="btn-icon" onclick="quitarItem(${i})" style="color:#f44336">&times;</button></td>
     </tr>
   `).join('')
   actualizarTotal()
@@ -462,7 +462,7 @@ async function guardarCotizacion() {
 }
 
 // ════════════════════════════════════════════════════════════════════
-//  BÃšSQUEDA PRODUCTOS EN MODAL
+//  BUSQUEDA PRODUCTOS EN MODAL
 // ════════════════════════════════════════════════════════════════════
 
 let debounceProducto
