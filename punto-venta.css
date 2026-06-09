@@ -426,15 +426,35 @@
 }
 
 .resumen-total {
-  font-size: 1.1rem;
-  font-weight: bold;
-  border-top: 1px solid var(--border-color, #333);
-  padding-top: 8px;
-  color: #4a90e2;
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+  background: linear-gradient(135deg, rgba(74, 144, 226, 0.20), rgba(96, 208, 128, 0.10));
+  border: 1px solid rgba(74, 144, 226, 0.45);
+  border-radius: 12px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  color: #eaf3ff;
+}
+
+.resumen-total-label {
+  font-size: 0.85rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .resumen-total .monto {
-  color: #4a90e2;
+  color: #60d080;
+  font-size: clamp(2rem, 4vw, 2.45rem);
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: 0.01em;
+}
+
+.resumen-total-nota {
+  color: var(--muted, #999);
+  font-size: 0.82rem;
+  font-weight: 500;
 }
 
 /* ── BOTONES DE ACCIÓN ── */
@@ -964,10 +984,13 @@
   border: 1px solid rgba(255,255,255,0.09);
   border-radius: 16px;
   width: 100%;
-  max-width: 420px;
+  max-width: 460px;
+  max-height: min(92vh, 760px);
   box-shadow: 0 32px 80px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.04);
   animation: confirmSlideUp 0.22s cubic-bezier(0.16, 1, 0.3, 1);
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 @keyframes confirmSlideUp {
@@ -1034,7 +1057,57 @@
 
 /* Body */
 .modal-confirm-body {
-  padding: 20px 24px;
+  padding: 18px 24px;
+  display: grid;
+  gap: 14px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.modal-confirm-body::-webkit-scrollbar {
+  width: 8px;
+}
+
+.modal-confirm-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.modal-confirm-body::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.12);
+  border-radius: 999px;
+}
+
+.modal-confirm-total-card {
+  display: grid;
+  gap: 5px;
+  padding: 13px 15px;
+  background: rgba(74, 144, 226, 0.08);
+  border: 1px solid rgba(74, 144, 226, 0.24);
+  border-radius: 12px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+}
+
+.modal-confirm-total-label {
+  color: #eaf3ff;
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.modal-confirm-total-monto {
+  font-family: 'Barlow Condensed', sans-serif;
+  color: #e9edf4;
+  font-size: clamp(1.5rem, 4.5vw, 1.9rem);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.01em;
+}
+
+.modal-confirm-total-nota {
+  color: #7a8599;
+  font-size: 0.74rem;
+  font-weight: 500;
 }
 
 .modal-confirm-resumen {
@@ -1042,7 +1115,7 @@
   border: 1px solid rgba(255,255,255,0.07);
   border-radius: 10px;
   overflow: hidden;
-  margin-bottom: 16px;
+  margin-bottom: 0;
 }
 
 .modal-confirm-row {
@@ -1053,6 +1126,13 @@
   border-bottom: 1px solid rgba(255,255,255,0.05);
 }
 .modal-confirm-row:last-child { border-bottom: none; }
+
+.modal-confirm-section {
+  padding: 14px;
+  background: rgba(255,255,255,0.025);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 12px;
+}
 
 .modal-confirm-label {
   font-size: 0.82rem;
@@ -1089,31 +1169,32 @@
    CAMBIO DESTACADO — Modal CONFIRMAR VENTA (verde, jerarquía suave)
    ════════════════════════════════════════════════════════════════════ */
 .cambio-destacado-confirm {
-  margin-top: 10px;
-  padding: 14px 16px;
-  background: rgba(96, 208, 128, 0.10);
-  border: 1.5px solid rgba(96, 208, 128, 0.32);
-  border-radius: 10px;
+  margin-top: 12px;
+  padding: 20px 18px;
+  background: linear-gradient(135deg, rgba(96, 208, 128, 0.20), rgba(74, 144, 226, 0.10));
+  border: 2px solid rgba(96, 208, 128, 0.48);
+  border-radius: 14px;
+  box-shadow: 0 14px 34px rgba(96, 208, 128, 0.14), inset 0 1px 0 rgba(255,255,255,0.06);
   text-align: center;
 }
 
 .cambio-destacado-label {
   font-family: 'Barlow', sans-serif;
-  font-size: 0.78rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
+  font-size: 0.84rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: #7a8599;
-  margin-bottom: 4px;
+  color: #eaf3ff;
+  margin-bottom: 7px;
 }
 
 .cambio-destacado-monto {
   font-family: 'Barlow Condensed', sans-serif;
-  font-size: 1.8rem;
-  font-weight: 700;
+  font-size: clamp(2.8rem, 9vw, 3.55rem);
+  font-weight: 900;
   color: #60d080;
   letter-spacing: 0.02em;
-  line-height: 1.1;
+  line-height: 0.95;
 }
 
 /* ════════════════════════════════════════════════════════════════════
@@ -1195,19 +1276,13 @@
   margin-top: 1px;
 }
 
-.modal-confirm-aviso {
-  font-size: 0.78rem;
-  color: #7a8599;
-  text-align: center;
-  line-height: 1.5;
-  margin: 0;
-}
-
 /* Acciones */
 .modal-confirm-actions {
   display: flex;
   gap: 10px;
-  padding: 0 24px 22px;
+  padding: 16px 24px 22px;
+  border-top: 1px solid rgba(255,255,255,0.06);
+  background: rgba(10, 12, 15, 0.18);
 }
 
 .modal-confirm-btn-cancel,
@@ -1231,6 +1306,7 @@
   background: transparent;
   border: 1px solid rgba(255,255,255,0.1);
   color: #7a8599;
+  flex: 0.72;
 }
 .modal-confirm-btn-cancel:hover {
   background: rgba(255,255,255,0.05);
@@ -1239,14 +1315,16 @@
 }
 
 .modal-confirm-btn-confirm {
-  background: rgba(96,208,128,0.15);
-  border: 1px solid rgba(96,208,128,0.35);
-  color: #60d080;
+  background: linear-gradient(135deg, #60d080, #45b86b);
+  border: 1px solid rgba(96,208,128,0.65);
+  color: #07140d;
+  box-shadow: 0 10px 26px rgba(96,208,128,0.18);
+  flex: 1.28;
 }
 .modal-confirm-btn-confirm:hover {
-  background: rgba(96,208,128,0.25);
-  border-color: rgba(96,208,128,0.55);
-  box-shadow: 0 4px 16px rgba(96,208,128,0.15);
+  background: linear-gradient(135deg, #72dc90, #51c878);
+  border-color: rgba(96,208,128,0.85);
+  box-shadow: 0 12px 30px rgba(96,208,128,0.24);
 }
 .modal-confirm-btn-confirm:active { transform: scale(0.98); }
 .modal-confirm-btn-confirm:disabled {
