@@ -629,6 +629,7 @@ model Usuario {
   Auditoria            Auditoria[]
   Bitacora             Bitacora[]
   Cotizacion           Cotizacion[]
+  DetalleBitacoraResponsable DetalleBitacora[] @relation("DetalleBitacoraResponsable")
   Devolucion           Devolucion[]
   MovimientoInventario MovimientoInventario[]
   OrdenCompra          OrdenCompra[]
@@ -670,12 +671,16 @@ model DetalleBitacora {
   creadoEn             DateTime  @default(now())
   ventaId              Int?
   inventarioDescontado Boolean   @default(false)
+  fechaManual          DateTime? @db.Date
+  responsableId        Int?
   Bitacora             Bitacora  @relation(fields: [bitacoraId], references: [id], onDelete: Cascade)
   Producto             Producto? @relation(fields: [productoId], references: [id])
   Venta                Venta?    @relation(fields: [ventaId], references: [id])
+  Responsable          Usuario?  @relation("DetalleBitacoraResponsable", fields: [responsableId], references: [id])
 
   @@index([bitacoraId])
   @@index([ventaId])
+  @@index([responsableId])
 }
 
 model DetalleCotizacion {

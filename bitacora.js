@@ -10,6 +10,9 @@ let todasBitacoras     = []
 let productosCache     = []
 let clientesCache      = []
 let productoSeleccionado = null
+let responsablesBitacora = []   // [{ id, nombre }] activos de la empresa, fuente de verdad para el dropdown
+let borrador             = []   // productos en borrador local (no persistidos) — se guardan en lote vía batch
+let borradorSeq          = 0    // id temporal incremental para identificar filas del borrador
 let paginaActual       = 1
 const LIMIT = 25
 
@@ -52,6 +55,46 @@ function claseSaldo(saldo) {
   if (n > 0)  return 'saldo-neg'
   if (n < 0)  return 'saldo-ok'
   return 'saldo-zer'
+}
+
+// Fecha de HOY en formato YYYY-MM-DD usando componentes LOCALES.
+// No usar toISOString(): en UTC-6 (Zacatecas) correría la fecha al día siguiente por la tarde.
+function fechaHoyLocalInput() {
+  const d   = new Date()
+  const y   = d.getFullYear()
+  const m   = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+// ── Responsables para la traza (activos de la empresa; el backend ya filtra) ──
+async function cargarResponsablesBitacora() {
+  try {
+    const res = await apiFetch('/usuarios/responsables-bitacora', { method: 'GET' })
+    // El endpoint devuelve un array directo; se tolera también { data: [...] } por robustez
+    responsablesBitacora = Array.isArray(res) ? res : (res?.data || [])
+  } catch (e) {
+    responsablesBitacora = []
+  }
+}
+
+// Llena el <select> y preselecciona al usuario logueado SOLO si está en la lista del backend
+function poblarResponsablesTraza() {
+  const sel = document.getElementById('trz-responsable')
+  if (!sel) return
+  sel.innerHTML = '<option value="">— Selecciona —</option>' +
+    responsablesBitacora.map(r => `<option value="${r.id}">${r.nombre}</option>`).join('')
+  const actualId = Number(usuario.id)
+  if (responsablesBitacora.some(r => Number(r.id) === actualId)) {
+    sel.value = String(actualId)
+  }
+}
+
+// Prellenado inicial del panel de traza al abrir una bitácora MANUAL ABIERTA
+async function inicializarTraza() {
+  if (!responsablesBitacora.length) await cargarResponsablesBitacora()
+  document.getElementById('trz-fecha').value = fechaHoyLocalInput()
+  poblarResponsablesTraza()
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -157,14 +200,23 @@ async function abrirDetalle(id) {
   try {
     const res = await apiFetch(`/bitacoras/${id}`, { method: 'GET' })
     bitacoraActual = res.data
+    borrador = []   // limpiar borrador al abrir otra bitácora
     renderDetalle()
+    if (bitacoraActual.origen === 'MANUAL' && bitacoraActual.estado === 'ABIERTA') {
+      await inicializarTraza()
+    }
     document.getElementById('modal-detalle').classList.add('active')
   } catch (e) {
     toast('Error al cargar bitácora: ' + e.message, 'error')
   }
 }
 
-function cerrarDetalle() {
+async function cerrarDetalle() {
+  if (borrador.length > 0) {
+    const ok = await confirmarAccion(`Tienes ${borrador.length} producto(s) sin guardar. ¿Salir y descartarlos?`)
+    if (!ok) return
+  }
+  borrador = []
   document.getElementById('modal-detalle').classList.remove('active')
   bitacoraActual        = null
   productoSeleccionado  = null
@@ -224,14 +276,17 @@ function renderDetalle() {
   // Botón agregar producto — SOLO si origen MANUAL y estado ABIERTA
   const btnAgregar   = document.getElementById('btn-agregar-prod')
   const avisoVenta   = document.getElementById('aviso-origen-venta')
+  const trazaPanel   = document.getElementById('traza-panel')
   const esManual     = b.origen === 'MANUAL'
   const esEditable   = b.estado === 'ABIERTA'
   if (esManual && esEditable) {
     btnAgregar.style.display = 'inline-flex'
     avisoVenta.style.display = 'none'
+    trazaPanel.style.display = 'block'
   } else {
     btnAgregar.style.display = 'none'
     avisoVenta.style.display = (b.origen === 'VENTA') ? 'block' : 'none'
+    trazaPanel.style.display = 'none'
   }
 
   // Abono — VENTA requiere turno, MANUAL permite abonar sin turno
@@ -264,13 +319,16 @@ function renderDetalle() {
 
 function renderDetalleItems(detalles) {
   const tbody = document.getElementById('det-items-tbody')
-  if (!detalles.length) {
-    tbody.innerHTML = `<tr><td colspan="7" class="loading-cell"><p>Sin materiales aún</p></td></tr>`
+  const b = bitacoraActual
+  const editable = b && b.origen === 'MANUAL' && b.estado === 'ABIERTA'
+
+  if (!detalles.length && !borrador.length) {
+    tbody.innerHTML = `<tr><td colspan="9" class="loading-cell"><p>Sin materiales aún</p></td></tr>`
+    actualizarBarraBorrador()
     return
   }
-  const b = bitacoraActual
-  const editable = b.origen === 'MANUAL' && b.estado === 'ABIERTA'
-  tbody.innerHTML = detalles.map(d => {
+
+  const htmlGuardados = detalles.map(d => {
     const nombre   = d.Producto?.nombre || '—'
     const unidad   = d.Producto?.unidadVenta || 'pz'
     const cantidad = parseFloat(d.cantidad)
@@ -301,6 +359,11 @@ function renderDetalleItems(detalles) {
       ? `<button class="btn-quitar-prod" data-detid="${d.id}" title="Quitar línea completa y reintegrar stock">✕</button>`
       : ''
 
+    // Traza por renglón: se renderiza desde el backend, nunca desde el panel.
+    // fechaManual viene como string; recortar a YYYY-MM-DD evita el desfase a UTC de new Date().
+    const fechaTxt = d.fechaManual ? String(d.fechaManual).slice(0, 10) : '—'
+    const respTxt  = d.Responsable?.nombre || '—'
+
     return `
       <tr style="${filaStyle}">
         <td>${nombre}${sufijoNombre}</td>
@@ -308,12 +371,18 @@ function renderDetalleItems(detalles) {
         ${celdaCantidad}
         ${celdaPrecio}
         <td><strong>${formatMoney(d.subtotal)}</strong></td>
+        <td>${fechaTxt}</td>
+        <td>${respTxt}</td>
         <td>${origen}</td>
         <td>${btnQuitar}</td>
       </tr>`
   }).join('')
 
-  // Conectar eventos de quitar
+  // Filas del borrador (solo si la bitácora es editable)
+  const htmlBorrador = editable ? filasBorradorHTML() : ''
+  tbody.innerHTML = htmlGuardados + htmlBorrador
+
+  // Conectar eventos de quitar (guardados)
   tbody.querySelectorAll('.btn-quitar-prod').forEach(btn => {
     btn.addEventListener('click', e => {
       e.stopPropagation()
@@ -321,10 +390,108 @@ function renderDetalleItems(detalles) {
     })
   })
 
-  // Conectar eventos de edición inline
+  // Conectar eventos de edición inline (guardados)
   tbody.querySelectorAll('.celda-editable').forEach(td => {
     td.addEventListener('click', () => activarEdicionCelda(td))
   })
+
+  // Conectar eventos del borrador (locales, sin tocar BD)
+  tbody.querySelectorAll('.brr-cant').forEach(inp => {
+    inp.addEventListener('change', () => editarBorradorCampo(parseInt(inp.dataset.tmp), 'cantidad', inp.value))
+  })
+  tbody.querySelectorAll('.brr-precio').forEach(inp => {
+    inp.addEventListener('change', () => editarBorradorCampo(parseInt(inp.dataset.tmp), 'precioUnitario', inp.value))
+  })
+  tbody.querySelectorAll('.btn-quitar-borrador').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation()
+      quitarDelBorrador(parseInt(btn.dataset.tmp))
+    })
+  })
+
+  actualizarBarraBorrador()
+}
+
+// ── Borrador local: filas, edición, quitar, barra y guardado por lote ──
+function filasBorradorHTML() {
+  const inputStyle = 'width:64px;padding:4px 6px;background:rgba(255,255,255,0.05);border:1px solid var(--panel-border);border-radius:5px;color:var(--text);font-family:\'Barlow\',sans-serif;font-size:0.82rem;text-align:right;outline:none;'
+  return borrador.map(it => {
+    const subtotal = it.cantidad * it.precioUnitario
+    return `
+      <tr style="background:rgba(230,180,80,0.08);">
+        <td>${it.nombre}</td>
+        <td>${it.unidadVenta}</td>
+        <td><input type="number" class="brr-cant" data-tmp="${it.tempId}" value="${it.cantidad}" min="0.001" step="0.001" style="${inputStyle}"></td>
+        <td><input type="number" class="brr-precio" data-tmp="${it.tempId}" value="${it.precioUnitario}" min="0" step="0.01" style="${inputStyle.replace('width:64px', 'width:80px')}"></td>
+        <td><strong>${formatMoney(subtotal)}</strong></td>
+        <td>${it.fechaManual}</td>
+        <td>${it.responsableNombre}</td>
+        <td><small style="color:#e6b450;">● Sin guardar</small></td>
+        <td><button class="btn-quitar-borrador" data-tmp="${it.tempId}" title="Quitar del borrador">✕</button></td>
+      </tr>`
+  }).join('')
+}
+
+function editarBorradorCampo(tempId, campo, valor) {
+  const it = borrador.find(x => x.tempId === tempId)
+  if (!it) return
+  const num = parseFloat(valor)
+  if (campo === 'cantidad') {
+    if (!num || num <= 0) { toast('Cantidad debe ser > 0', 'error') }
+    else it.cantidad = num
+  } else if (campo === 'precioUnitario') {
+    if (isNaN(num) || num < 0) { toast('Precio inválido', 'error') }
+    else it.precioUnitario = num
+  }
+  renderDetalleItems(bitacoraActual.DetalleBitacora || [])
+}
+
+function quitarDelBorrador(tempId) {
+  borrador = borrador.filter(x => x.tempId !== tempId)
+  renderDetalleItems(bitacoraActual.DetalleBitacora || [])
+}
+
+function actualizarBarraBorrador() {
+  const barra = document.getElementById('barra-borrador')
+  if (!barra) return
+  const n = borrador.length
+  if (n === 0) { barra.style.display = 'none'; return }
+  barra.style.display = 'flex'
+  const totalBrr = borrador.reduce((s, it) => s + it.cantidad * it.precioUnitario, 0)
+  document.getElementById('barra-borrador-info').textContent =
+    `${n} producto${n === 1 ? '' : 's'} sin guardar · ${formatMoney(totalBrr)}`
+  document.getElementById('btn-guardar-borrador').textContent = `Guardar (${n})`
+}
+
+async function guardarBorrador() {
+  if (!borrador.length) return
+  const btn = document.getElementById('btn-guardar-borrador')
+  btn.disabled = true
+  btn.textContent = 'Guardando...'
+  try {
+    const items = borrador.map(it => ({
+      productoId:     it.productoId,
+      cantidad:       it.cantidad,
+      precioUnitario: it.precioUnitario,
+      fechaManual:    it.fechaManual,
+      responsableId:  it.responsableId
+    }))
+    const res = await apiFetch(`/bitacoras/${bitacoraActual.id}/productos/batch`, {
+      method: 'POST',
+      body: JSON.stringify({ items })
+    })
+    borrador = []
+    bitacoraActual = res.data
+    toast(res.mensaje || 'Productos guardados', res.conStockInsuficiente > 0 ? 'warning' : 'success')
+    renderDetalle()
+    cargarBitacoras(paginaActual)
+  } catch (e) {
+    // El lote es atómico: si falló, no se guardó nada. Se conserva el borrador para corregir.
+    toast(e.message, 'error')
+  } finally {
+    btn.disabled = false
+    btn.textContent = `Guardar (${borrador.length})`
+  }
 }
 
 // ── Edición inline de cantidad / precio ──
@@ -553,39 +720,43 @@ function seleccionarProducto(productoId) {
   document.getElementById('prod-cantidad').focus()
 }
 
-async function confirmarAgregarProducto() {
+function confirmarAgregarProducto() {
   const cantidad       = parseFloat(document.getElementById('prod-cantidad').value)
   const precioUnitario = parseFloat(document.getElementById('prod-precio').value)
+  const fechaManual    = document.getElementById('trz-fecha').value
+  const selResp        = document.getElementById('trz-responsable')
+  const responsableId  = selResp.value
   const errorDiv       = document.getElementById('prod-error')
   errorDiv.classList.remove('show')
 
-  if (!cantidad || cantidad <= 0)        { errorDiv.textContent = 'Cantidad debe ser > 0'; errorDiv.classList.add('show'); return }
-  if (isNaN(precioUnitario) || precioUnitario < 0) { errorDiv.textContent = 'Precio inválido';  errorDiv.classList.add('show'); return }
+  if (!productoSeleccionado)             { errorDiv.textContent = 'Selecciona un producto';   errorDiv.classList.add('show'); return }
+  if (!cantidad || cantidad <= 0)        { errorDiv.textContent = 'Cantidad debe ser > 0';    errorDiv.classList.add('show'); return }
+  if (isNaN(precioUnitario) || precioUnitario < 0) { errorDiv.textContent = 'Precio inválido'; errorDiv.classList.add('show'); return }
+  if (!fechaManual)   { errorDiv.textContent = 'Selecciona la fecha en el panel de arriba';        errorDiv.classList.add('show'); return }
+  if (!responsableId) { errorDiv.textContent = 'Selecciona el responsable en el panel de arriba'; errorDiv.classList.add('show'); return }
 
-  const btn = document.getElementById('btn-confirmar-prod')
-  btn.disabled = true; btn.textContent = 'Agregando...'
+  // Congela la traza (fecha + responsable) del panel en este momento, en la fila del borrador.
+  borrador.push({
+    tempId:            ++borradorSeq,
+    productoId:        productoSeleccionado.id,
+    nombre:            productoSeleccionado.nombre,
+    unidadVenta:       productoSeleccionado.unidadVenta || 'pz',
+    cantidad,
+    precioUnitario,
+    fechaManual,
+    responsableId:     Number(responsableId),
+    responsableNombre: selResp.options[selResp.selectedIndex]?.text || '—'
+  })
 
-  try {
-    const res = await apiFetch(`/bitacoras/${bitacoraActual.id}/productos`, {
-      method: 'POST',
-      body: JSON.stringify({
-        productoId: productoSeleccionado.id,
-        cantidad,
-        precioUnitario
-      })
-    })
-    if (res.stockInsuficiente) toast(res.mensaje, 'warning')
-    else                        toast('Producto agregado', 'success')
-    bitacoraActual = res.data
-    renderDetalle()
-    document.getElementById('buscador-prod-panel').style.display = 'none'
-    cargarBitacoras(paginaActual)
-  } catch (e) {
-    errorDiv.textContent = e.message
-    errorDiv.classList.add('show')
-  } finally {
-    btn.disabled = false; btn.textContent = 'Agregar'
-  }
+  // Volver al buscador para encadenar el siguiente producto (nada se ha guardado aún)
+  productoSeleccionado = null
+  document.getElementById('form-cantidad-prod').style.display = 'none'
+  document.getElementById('search-prod-det').value = ''
+  document.getElementById('lista-prod-det').innerHTML = '<p class="muted-hint">Escribe para buscar...</p>'
+  document.getElementById('search-prod-det').focus()
+
+  renderDetalleItems(bitacoraActual.DetalleBitacora || [])
+  toast('Agregado al borrador', 'success')
 }
 
 async function quitarProducto(detalleId) {
@@ -936,6 +1107,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   await cargarTurnoActivo()
   await cargarClientes()
+  await cargarResponsablesBitacora()
   await cargarBitacoras(1)
 
   // ── Filtros ──
@@ -975,8 +1147,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('btn-agregar-prod').addEventListener('click', abrirBuscadorProducto)
   document.getElementById('search-prod-det').addEventListener('input', e => buscarProductosDet(e.target.value))
   document.getElementById('btn-confirmar-prod').addEventListener('click', confirmarAgregarProducto)
+  document.getElementById('btn-guardar-borrador').addEventListener('click', guardarBorrador)
   document.getElementById('btn-cancelar-prod').addEventListener('click',  () => {
-    document.getElementById('buscador-prod-panel').style.display = 'none'
+    productoSeleccionado = null
+    document.getElementById('form-cantidad-prod').style.display = 'none'
   })
 
   // ── Cierre ──

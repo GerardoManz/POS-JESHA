@@ -203,6 +203,23 @@
             <button class="btn-primary btn-sm" id="btn-agregar-prod" style="display:none;">+ Agregar producto</button>
           </div>
 
+          <!-- Panel de traza (solo MANUAL ABIERTA): fecha + responsable heredados por cada producto -->
+          <div id="traza-panel" style="display:none;margin-bottom:12px;padding:10px 12px;background:rgba(100,180,255,0.06);border:1px solid rgba(100,180,255,0.25);border-radius:8px;">
+            <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
+              <div style="flex:0 0 auto;">
+                <label style="font-size:0.72rem;color:var(--muted);display:block;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.04em;">Fecha</label>
+                <input type="date" id="trz-fecha" style="padding:8px 10px;background:rgba(255,255,255,0.04);border:1px solid var(--panel-border);border-radius:7px;color:var(--text);font-family:'Barlow',sans-serif;font-size:0.9rem;outline:none;" />
+              </div>
+              <div style="flex:1;min-width:160px;">
+                <label style="font-size:0.72rem;color:var(--muted);display:block;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.04em;">Responsable</label>
+                <select id="trz-responsable" style="width:100%;padding:8px 10px;background:rgba(255,255,255,0.04);border:1px solid var(--panel-border);border-radius:7px;color:var(--text);font-family:'Barlow',sans-serif;font-size:0.9rem;outline:none;">
+                  <option value="">— Selecciona —</option>
+                </select>
+              </div>
+            </div>
+            <small style="display:block;margin-top:6px;font-size:0.72rem;color:var(--muted);">Cada producto que agregues hereda esta fecha y responsable.</small>
+          </div>
+
           <div id="aviso-origen-venta" style="display:none;padding:10px;background:rgba(100,180,255,0.08);border-left:3px solid #4a90e2;border-radius:4px;font-size:0.8rem;color:var(--muted);margin-bottom:10px;">
             🛒 Los productos de esta bitácora provienen de ventas a crédito en el POS. No se pueden agregar ni quitar manualmente desde aquí.
           </div>
@@ -233,6 +250,12 @@
             </div>
           </div>
 
+          <!-- Barra de borrador: productos sin guardar + Guardar en lote (batch) -->
+          <div id="barra-borrador" style="display:none;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;padding:8px 12px;background:rgba(230,180,80,0.10);border:1px solid rgba(230,180,80,0.35);border-radius:8px;">
+            <span id="barra-borrador-info" style="font-size:0.8rem;color:#e6b450;"></span>
+            <button class="btn-primary btn-sm" id="btn-guardar-borrador">Guardar (0)</button>
+          </div>
+
           <div class="table-wrapper">
             <table class="bit-table">
               <thead>
@@ -242,12 +265,14 @@
                   <th style="width:60px">Cant.</th>
                   <th style="width:100px">Precio</th>
                   <th style="width:100px">Subtotal</th>
+                  <th style="width:90px">Fecha</th>
+                  <th style="width:120px">Responsable</th>
                   <th style="width:80px">Origen</th>
                   <th style="width:36px"></th>
                 </tr>
               </thead>
               <tbody id="det-items-tbody">
-                <tr><td colspan="7" class="loading-cell"><p>Sin materiales aún</p></td></tr>
+                <tr><td colspan="9" class="loading-cell"><p>Sin materiales aún</p></td></tr>
               </tbody>
             </table>
           </div>

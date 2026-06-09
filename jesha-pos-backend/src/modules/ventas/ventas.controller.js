@@ -6,6 +6,17 @@
 const prisma = require('../../lib/prisma')
 const getEmpresaId = require('../../helpers/getEmpresaId')
 
+// Convierte un instante UTC a la fecha de calendario local de Zacatecas (UTC-6, sin DST)
+// y la devuelve como Date a medianoche UTC, lista para columna @db.Date.
+function fechaLocalZacatecasComoDbDate(date) {
+  const local = new Date(date.getTime() - (6 * 60 * 60 * 1000))
+  return new Date(Date.UTC(
+    local.getUTCFullYear(),
+    local.getUTCMonth(),
+    local.getUTCDate()
+  ))
+}
+
 /**
  * POST /ventas
  */
@@ -378,7 +389,9 @@ exports.crearVenta = async (req, res) => {
               precioUnitario:       d.precioUnitario,
               subtotal:             d.subtotal,
               inventarioDescontado: true,              // ya se descontó en la venta
-              notas:                `Venta ${folio}`
+              notas:                `Venta ${folio}`,
+              fechaManual:          fechaLocalZacatecasComoDbDate(ventaCreada.creadaEn),
+              responsableId:        usuarioId
             }
           })
         }

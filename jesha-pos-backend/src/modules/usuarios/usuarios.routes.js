@@ -1,10 +1,11 @@
 const router = require('express').Router()
-const { listar, crear, editar, cambiarEstado, resetPassword, establecerPin, verificarPin, listarSucursales, listarVendedores } = require('./usuarios.controller')
+const { listar, crear, editar, cambiarEstado, resetPassword, establecerPin, verificarPin, listarSucursales, listarVendedores, listarResponsablesBitacora } = require('./usuarios.controller')
 const { requireAuth, requireRole } = require('../../middlewares/auth.middleware')
 
 // Rutas fijas antes que :id
 router.get('/sucursales', requireAuth, requireRole('SUPERADMIN', 'ADMIN_SUCURSAL'), listarSucursales)
 router.get('/vendedores', requireAuth, listarVendedores)  // cualquier rol — solo id+nombre
+router.get('/responsables-bitacora', requireAuth, listarResponsablesBitacora)
 
 router.get('/',    requireAuth, requireRole('SUPERADMIN', 'ADMIN_SUCURSAL'), listar)
 router.post('/',   requireAuth, requireRole('SUPERADMIN', 'ADMIN_SUCURSAL'), crear)

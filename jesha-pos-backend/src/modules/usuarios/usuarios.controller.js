@@ -1,6 +1,7 @@
 const bcrypt = require('bcryptjs')
 const prisma  = require('../../lib/prisma')
 const { puedeGestionar } = require('../../utils/roles')
+const getEmpresaId = require('../../helpers/getEmpresaId')
 
 async function registrarAudit(solicitante, accion, referencia, ip) {
   try {
@@ -276,6 +277,25 @@ const listarVendedores = async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ error: 'Error al obtener vendedores' }) }
 }
 
+// GET /usuarios/responsables-bitacora — para Bitácora (cualquier rol autenticado)
+// Devuelve id+nombre de usuarios activos de la MISMA empresa.
+const listarResponsablesBitacora = async (req, res) => {
+  try {
+    const empresaId = getEmpresaId(req)
+    const responsables = await prisma.usuario.findMany({
+      where: { empresaId, activo: true },
+      select: { id: true, nombre: true },
+      orderBy: { nombre: 'asc' }
+    })
+    res.json(responsables)
+  } catch (err) {
+    console.error('❌ listar responsables bitacora:', err)
+    res.status(err.status || 500).json({
+      error: err.status ? err.message : 'Error al obtener responsables'
+    })
+  }
+}
+
 // GET /usuarios/sucursales
 const listarSucursales = async (req, res) => {
   try {
@@ -284,4 +304,4 @@ const listarSucursales = async (req, res) => {
   } catch (err) { res.status(500).json({ error: 'Error al obtener sucursales' }) }
 }
 
-module.exports = { listar, crear, editar, cambiarEstado, resetPassword, establecerPin, verificarPin, listarSucursales, listarVendedores }
+module.exports = { listar, crear, editar, cambiarEstado, resetPassword, establecerPin, verificarPin, listarSucursales, listarVendedores, listarResponsablesBitacora }

@@ -17,6 +17,7 @@ router.patch('/:id',                        c.editar)
 router.patch('/:id/estado',                 c.cambiarEstado)
 
 // Productos (solo en bitácoras MANUAL)
+router.post('/:id/productos/batch',         c.agregarProductosBatch)
 router.post('/:id/productos',               c.agregarProducto)
 router.patch('/:id/productos/:detalleId',   c.editarDetalle)
 router.delete('/:id/productos/:detalleId',  c.quitarProducto)

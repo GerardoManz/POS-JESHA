@@ -9,13 +9,30 @@ const prisma = require('../../lib/prisma')
 const getEmpresaId = require('../../helpers/getEmpresaId')
 
 // ── Auditoría ──
-async function audit(usuarioId, sucursalId, accion, ref, empresaId) {
+async function audit(usuarioId, sucursalId, accion, ref, empresaId, valorDespues = null) {
   try {
     const data = { accion, modulo: 'bitacora', referencia: ref, usuarioId, sucursalId }
     if (empresaId) data.empresaId = empresaId
+    if (valorDespues !== null) data.valorDespues = valorDespues
     await prisma.auditoria.create({ data })
   }
   catch(e) { console.error('Audit:', e.message) }
+}
+
+function parseFechaManual(fechaManual) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(fechaManual || '')) {
+    throw new Error('fechaManual debe tener formato YYYY-MM-DD')
+  }
+  const [year, month, day] = fechaManual.split('-').map(n => parseInt(n, 10))
+  const date = new Date(Date.UTC(year, month - 1, day))
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    throw new Error('fechaManual no es una fecha válida')
+  }
+  return date
 }
 
 // ── Generar folio BIT ──
@@ -40,8 +57,10 @@ const BITACORA_SELECT = {
     select: {
       id: true, cantidad: true, precioUnitario: true, subtotal: true,
       inventarioDescontado: true, notas: true, creadoEn: true,
-      Venta:    { select: { id: true, folio: true, creadaEn: true } },
-      Producto: { select: { id: true, nombre: true, codigoInterno: true, unidadVenta: true } }
+      fechaManual: true, responsableId: true,
+      Venta:       { select: { id: true, folio: true, creadaEn: true } },
+      Producto:    { select: { id: true, nombre: true, codigoInterno: true, unidadVenta: true } },
+      Responsable: { select: { id: true, nombre: true } }
     }
   },
   AbonoBitacora: {
@@ -347,7 +366,7 @@ const cambiarEstado = async (req, res) => {
 const agregarProducto = async (req, res) => {
   try {
     const { id } = req.params
-    const { productoId, cantidad, precioUnitario, notas } = req.body
+    const { productoId, cantidad, precioUnitario, notas, fechaManual, responsableId } = req.body
     const { id: usuarioId, sucursalId: sucursalIdToken } = req.usuario
     const sucursalId = sucursalIdToken || parseInt(req.body.sucursalId) || 1
     const empresaId = getEmpresaId(req)
@@ -359,12 +378,36 @@ const agregarProducto = async (req, res) => {
     const precio = parseFloat(precioUnitario)
     if (isNaN(precio) || precio < 0)        return res.status(400).json({ success: false, error: 'Precio unitario inválido' })
 
+    // ── Fecha manual (obligatoria en altas manuales) ──
+    let fechaManualDate
+    try {
+      fechaManualDate = parseFechaManual(fechaManual)
+    } catch (e) {
+      return res.status(400).json({ success: false, error: e.message, codigo: 'FECHA_INVALIDA' })
+    }
+
+    // ── Responsable (obligatorio, misma empresa, activo) ──
+    const respId = Number(responsableId)
+    if (!Number.isInteger(respId) || respId <= 0) {
+      return res.status(400).json({ success: false, error: 'responsableId requerido', codigo: 'RESPONSABLE_REQUERIDO' })
+    }
+    const responsable = await prisma.usuario.findFirst({
+      where: { id: respId, empresaId, activo: true },
+      select: { id: true, nombre: true }
+    })
+    if (!responsable) {
+      return res.status(400).json({ success: false, error: 'Responsable inválido o de otra empresa', codigo: 'RESPONSABLE_INVALIDO' })
+    }
+
     // ── Bitácora ──
     const bitacora = await prisma.bitacora.findUnique({
       where: { id: parseInt(id) },
-      select: { id: true, folio: true, estado: true, origen: true, totalMateriales: true, saldoPendiente: true, clienteId: true }
+      select: { id: true, empresaId: true, folio: true, estado: true, origen: true, totalMateriales: true, saldoPendiente: true, clienteId: true }
     })
     if (!bitacora)                          return res.status(404).json({ success: false, error: 'Bitácora no encontrada' })
+    if (bitacora.empresaId !== empresaId) {
+      return res.status(404).json({ success: false, error: 'Bitácora no encontrada' })
+    }
     if (bitacora.origen !== 'MANUAL') {
       return res.status(403).json({
         success: false,
@@ -402,7 +445,9 @@ const agregarProducto = async (req, res) => {
           precioUnitario:       precio,
           subtotal,
           inventarioDescontado: !stockInsuficiente,
-          notas:                notas?.trim() || null
+          notas:                notas?.trim() || null,
+          fechaManual:          fechaManualDate,
+          responsableId:        responsable.id
         }
       })
 
@@ -454,7 +499,15 @@ const agregarProducto = async (req, res) => {
       return detalle
     })
 
-    await audit(usuarioId, sucursalId, 'AGREGAR_PRODUCTO_BITACORA', `${bitacora.folio} — ${producto.nombre} x${cant}`, empresaId)
+    await audit(usuarioId, sucursalId, 'AGREGAR_PRODUCTO_BITACORA', `${bitacora.folio} — ${producto.nombre} x${cant}`, empresaId, {
+      detalleId:      resultado.id,
+      productoId:     producto.id,
+      cantidad:       cant,
+      precioUnitario: precio,
+      subtotal,
+      fechaManual,
+      responsableId:  responsable.id
+    })
 
     const bitacoraActualizada = await prisma.bitacora.findUnique({ where: { id: parseInt(id) }, select: BITACORA_SELECT })
     res.json({
@@ -469,6 +522,213 @@ const agregarProducto = async (req, res) => {
     })
   } catch (err) {
     console.error('❌ agregar producto bitacora:', err)
+    res.status(500).json({ success: false, error: err.message })
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  POST /bitacoras/:id/productos/batch — Agregar varios productos (SOLO MANUAL)
+//  Atómico: o entran todos los items o ninguno (un item inválido aborta el lote).
+//  Cada item es un renglón nuevo en DetalleBitacora con su propia fecha/responsable
+//  (no hay merge ni suma por producto repetido).
+//  Stock secuencial: un mismo producto repetido se descuenta acumulado dentro del lote.
+//  Stock insuficiente NO aborta el lote (marca inventarioDescontado:false, como agregarProducto).
+//  Totales de bitácora y saldo de cliente se actualizan UNA sola vez al final.
+// ════════════════════════════════════════════════════════════════════
+const agregarProductosBatch = async (req, res) => {
+  try {
+    const { id } = req.params
+    const { items } = req.body
+    const { id: usuarioId, sucursalId: sucursalIdToken } = req.usuario
+    const sucursalId = sucursalIdToken || parseInt(req.body.sucursalId) || 1
+    const empresaId = getEmpresaId(req)
+
+    // ── Validar lote ──
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ success: false, error: 'items debe ser un arreglo con al menos un producto', codigo: 'ITEMS_VACIO' })
+    }
+    if (items.length > 100) {
+      return res.status(400).json({ success: false, error: 'Máximo 100 productos por lote', codigo: 'ITEMS_EXCESO' })
+    }
+
+    // ── Validar forma de cada item + parsear fecha (un item inválido aborta todo) ──
+    const itemsNorm = []
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i] || {}
+      const productoId = parseInt(it.productoId)
+      if (!productoId) {
+        return res.status(400).json({ success: false, error: `Ítem ${i}: productoId requerido`, codigo: 'ITEM_INVALIDO', indice: i })
+      }
+      const cant = parseFloat(it.cantidad)
+      if (!cant || cant <= 0) {
+        return res.status(400).json({ success: false, error: `Ítem ${i}: cantidad debe ser > 0`, codigo: 'ITEM_INVALIDO', indice: i })
+      }
+      const precio = parseFloat(it.precioUnitario)
+      if (isNaN(precio) || precio < 0) {
+        return res.status(400).json({ success: false, error: `Ítem ${i}: precio unitario inválido`, codigo: 'ITEM_INVALIDO', indice: i })
+      }
+      let fechaManualDate
+      try {
+        fechaManualDate = parseFechaManual(it.fechaManual)
+      } catch (e) {
+        return res.status(400).json({ success: false, error: `Ítem ${i}: ${e.message}`, codigo: 'FECHA_INVALIDA', indice: i })
+      }
+      const respId = Number(it.responsableId)
+      if (!Number.isInteger(respId) || respId <= 0) {
+        return res.status(400).json({ success: false, error: `Ítem ${i}: responsableId requerido`, codigo: 'RESPONSABLE_REQUERIDO', indice: i })
+      }
+      itemsNorm.push({ indice: i, productoId, cant, precio, fechaManualDate, respId, notas: it.notas?.trim() || null })
+    }
+
+    // ── Bitácora (validada una sola vez) ──
+    const bitacora = await prisma.bitacora.findUnique({
+      where: { id: parseInt(id) },
+      select: { id: true, empresaId: true, folio: true, estado: true, origen: true, totalMateriales: true, saldoPendiente: true, clienteId: true }
+    })
+    if (!bitacora)                          return res.status(404).json({ success: false, error: 'Bitácora no encontrada' })
+    if (bitacora.empresaId !== empresaId) {
+      return res.status(404).json({ success: false, error: 'Bitácora no encontrada' })
+    }
+    if (bitacora.origen !== 'MANUAL') {
+      return res.status(403).json({ success: false, error: 'Solo se pueden agregar productos a bitácoras MANUAL', codigo: 'ORIGEN_INCORRECTO' })
+    }
+    if (bitacora.estado !== 'ABIERTA') {
+      return res.status(400).json({ success: false, error: `No se pueden agregar productos en estado ${bitacora.estado}`, codigo: 'ESTADO_INVALIDO' })
+    }
+
+    // ── Responsables: todos válidos, activos, misma empresa (una sola query) ──
+    const respIds = [...new Set(itemsNorm.map(x => x.respId))]
+    const responsables = await prisma.usuario.findMany({
+      where: { id: { in: respIds }, empresaId, activo: true },
+      select: { id: true }
+    })
+    const respValidos = new Set(responsables.map(r => r.id))
+    const itemRespMal = itemsNorm.find(x => !respValidos.has(x.respId))
+    if (itemRespMal) {
+      return res.status(400).json({ success: false, error: `Ítem ${itemRespMal.indice}: responsable inválido o de otra empresa`, codigo: 'RESPONSABLE_INVALIDO', indice: itemRespMal.indice })
+    }
+
+    // ── Productos: todos existen, activos, misma empresa (una sola query) ──
+    const prodIds = [...new Set(itemsNorm.map(x => x.productoId))]
+    const productos = await prisma.producto.findMany({
+      where: { id: { in: prodIds }, empresaId, activo: true },
+      select: { id: true, nombre: true }
+    })
+    const prodMap = new Map(productos.map(p => [p.id, p]))
+    const itemProdMal = itemsNorm.find(x => !prodMap.has(x.productoId))
+    if (itemProdMal) {
+      return res.status(404).json({ success: false, error: `Ítem ${itemProdMal.indice}: producto no encontrado o inactivo`, codigo: 'PRODUCTO_INVALIDO', indice: itemProdMal.indice })
+    }
+
+    // ── Transacción única: todo el lote es atómico ──
+    const resultado = await prisma.$transaction(async tx => {
+      // Stock vigente por producto, en memoria, para descuento secuencial
+      const stockMap = new Map()
+      for (const pid of prodIds) {
+        const inv = await tx.inventarioSucursal.findUnique({
+          where: { productoId_sucursalId: { productoId: pid, sucursalId } },
+          select: { stockActual: true }
+        })
+        stockMap.set(pid, { existe: !!inv, stock: parseFloat(inv?.stockActual || 0) })
+      }
+
+      const resumen  = []
+      let totalLote  = 0
+
+      for (const it of itemsNorm) {
+        const prod = prodMap.get(it.productoId)
+        const st   = stockMap.get(it.productoId)
+        const stockActual       = st.stock
+        const stockInsuficiente = it.cant > stockActual
+        const subtotal          = parseFloat((it.cant * it.precio).toFixed(2))
+
+        // 1. Crear detalle (un renglón por item, sin merge)
+        const detalle = await tx.detalleBitacora.create({
+          data: {
+            bitacoraId:           parseInt(id),
+            productoId:           prod.id,
+            cantidad:             it.cant,
+            precioUnitario:       it.precio,
+            subtotal,
+            inventarioDescontado: !stockInsuficiente,
+            notas:                it.notas,
+            fechaManual:          it.fechaManualDate,
+            responsableId:        it.respId
+          }
+        })
+
+        // 2. Descontar inventario si existe registro
+        if (st.existe) {
+          const nuevoStock = Math.max(0, stockActual - it.cant)
+          await tx.inventarioSucursal.update({
+            where: { productoId_sucursalId: { productoId: prod.id, sucursalId } },
+            data:  { stockActual: nuevoStock }
+          })
+          // 3. Movimiento solo si había stock positivo (descuenta lo disponible)
+          if (stockActual > 0) {
+            const cantDescontada = Math.min(it.cant, stockActual)
+            await tx.movimientoInventario.create({
+              data: {
+                empresaId,
+                productoId:   prod.id,
+                sucursalId,
+                usuarioId,
+                tipo:         'SALIDA_BITACORA',
+                cantidad:     cantDescontada,
+                stockAntes:   stockActual,
+                stockDespues: nuevoStock,
+                referencia:   bitacora.folio,
+                notas:        `Bitácora ${bitacora.folio} — ${prod.nombre}`
+              }
+            })
+          }
+          st.stock = nuevoStock   // actualizar memoria para el próximo item del mismo producto
+        }
+
+        totalLote = parseFloat((totalLote + subtotal).toFixed(2))
+        resumen.push({ indice: it.indice, detalleId: detalle.id, productoId: prod.id, cantidad: it.cant, stockInsuficiente })
+      }
+
+      // 4. Totales de bitácora — una sola vez
+      const nuevoTotal = parseFloat((parseFloat(bitacora.totalMateriales) + totalLote).toFixed(2))
+      const nuevoSaldo = parseFloat((parseFloat(bitacora.saldoPendiente) + totalLote).toFixed(2))
+      await tx.bitacora.update({
+        where: { id: parseInt(id) },
+        data:  { totalMateriales: nuevoTotal, saldoPendiente: nuevoSaldo }
+      })
+
+      // 5. Saldo del cliente — una sola vez, solo si hay cliente
+      if (bitacora.clienteId) {
+        await tx.cliente.update({
+          where: { id: bitacora.clienteId },
+          data:  { saldoPendiente: { increment: totalLote } }
+        })
+      }
+
+      return { resumen, totalLote }
+    })
+
+    const conStockInsuf = resultado.resumen.filter(r => r.stockInsuficiente).length
+    await audit(usuarioId, sucursalId, 'AGREGAR_PRODUCTOS_BATCH', `${bitacora.folio} — ${resultado.resumen.length} productos +$${resultado.totalLote.toFixed(2)}`, empresaId, {
+      cantidadItems:        resultado.resumen.length,
+      totalLote:            resultado.totalLote,
+      conStockInsuficiente: conStockInsuf,
+      detalleIds:           resultado.resumen.map(r => r.detalleId)
+    })
+
+    const bitacoraActualizada = await prisma.bitacora.findUnique({ where: { id: parseInt(id) }, select: BITACORA_SELECT })
+    res.json({
+      success:              true,
+      data:                 bitacoraActualizada,
+      agregados:            resultado.resumen.length,
+      conStockInsuficiente: conStockInsuf,
+      resumen:              resultado.resumen,
+      mensaje: conStockInsuf > 0
+        ? `${resultado.resumen.length} productos agregados (${conStockInsuf} con stock insuficiente)`
+        : `${resultado.resumen.length} productos agregados correctamente`
+    })
+  } catch (err) {
+    console.error('❌ agregar productos batch bitacora:', err)
     res.status(500).json({ success: false, error: err.message })
   }
 }
@@ -492,9 +752,12 @@ const editarDetalle = async (req, res) => {
 
     const bitacora = await prisma.bitacora.findUnique({
       where: { id: parseInt(id) },
-      select: { id: true, folio: true, estado: true, origen: true, totalMateriales: true, saldoPendiente: true, totalAbonado: true, clienteId: true }
+      select: { id: true, empresaId: true, folio: true, estado: true, origen: true, totalMateriales: true, saldoPendiente: true, totalAbonado: true, clienteId: true }
     })
     if (!bitacora) return res.status(404).json({ success: false, error: 'Bitácora no encontrada' })
+    if (bitacora.empresaId !== empresaId) {
+      return res.status(404).json({ success: false, error: 'Bitácora no encontrada' })
+    }
     if (bitacora.origen !== 'MANUAL')  return res.status(403).json({ success: false, error: 'Solo se pueden editar detalles de bitácoras MANUAL', codigo: 'ORIGEN_INCORRECTO' })
     if (bitacora.estado !== 'ABIERTA') return res.status(400).json({ success: false, error: `No se pueden editar detalles en estado ${bitacora.estado}` })
 
@@ -643,9 +906,12 @@ const quitarProducto = async (req, res) => {
 
     const bitacora = await prisma.bitacora.findUnique({
       where: { id: parseInt(id) },
-      select: { id: true, folio: true, estado: true, origen: true, totalMateriales: true, saldoPendiente: true, totalAbonado: true, clienteId: true }
+      select: { id: true, empresaId: true, folio: true, estado: true, origen: true, totalMateriales: true, saldoPendiente: true, totalAbonado: true, clienteId: true }
     })
     if (!bitacora)                     return res.status(404).json({ success: false, error: 'Bitácora no encontrada' })
+    if (bitacora.empresaId !== empresaId) {
+      return res.status(404).json({ success: false, error: 'Bitácora no encontrada' })
+    }
     if (bitacora.origen !== 'MANUAL')  return res.status(403).json({ success: false, error: 'Solo se pueden quitar productos de bitácoras MANUAL', codigo: 'ORIGEN_INCORRECTO' })
     if (bitacora.estado !== 'ABIERTA') return res.status(400).json({ success: false, error: `No se pueden quitar productos en estado ${bitacora.estado}` })
 
@@ -865,6 +1131,7 @@ module.exports = {
   editar,
   cambiarEstado,
   agregarProducto,
+  agregarProductosBatch,
   editarDetalle,
   quitarProducto,
   registrarAbono
