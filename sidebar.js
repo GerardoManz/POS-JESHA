@@ -6,7 +6,7 @@
 // ════════════════════════════════════════════════════
 const ROL_BLOQUEADO = {
   ADMIN_SUCURSAL: ['usuarios'],
-  EMPLEADO:       ['reportes', 'usuarios', 'corte-caja', 'dashboard', 'facturas'],
+  EMPLEADO:       ['reportes', 'usuarios', 'corte-caja', 'historial-cortes', 'dashboard', 'facturas'],
   PRECIOS:        ['dashboard', 'punto-venta', 'cotizaciones', 'corte-caja',
                    'historial-cortes', 'compras', 'historial', 'reportes',
                    'facturas', 'bitacora', 'pedidos', 'clientes', 'usuarios'],
