@@ -29,10 +29,11 @@ const fmtFecha = iso => iso ? new Date(iso).toLocaleString('es-MX', {
 const metodoBadge = m => {
   const map = {
     EFECTIVO:        '💵 Efectivo',
-    CREDITO:         '💳 Tarjeta',
-    DEBITO:          '💳 Tarjeta',
+    CREDITO:         '💳 Tarjeta crédito',
+    DEBITO:          '💳 Tarjeta débito',
     TRANSFERENCIA:   '🔄 Transf.',
-    CREDITO_CLIENTE: '🏦 Crédito cliente'
+    CREDITO_CLIENTE: '🏦 Crédito cliente',
+    MIXTO:           '🔀 Mixto'
   }
   return `<span class="metodo-badge">${map[m] || m}</span>`
 }
@@ -199,8 +200,8 @@ window.verDetalle = async function(id) {
     document.getElementById('det-cajero').textContent   = v.usuario || '—'
     document.getElementById('det-sucursal').textContent = v.sucursal || '—'
     document.getElementById('det-metodo').textContent = {
-      EFECTIVO:'💵 Efectivo', CREDITO:'💳 Tarjeta', DEBITO:'💳 Tarjeta',
-      TRANSFERENCIA:'🔄 Transferencia', CREDITO_CLIENTE:'🏦 Crédito cliente'
+      EFECTIVO:'💵 Efectivo', CREDITO:'💳 Tarjeta crédito', DEBITO:'💳 Tarjeta débito',
+      TRANSFERENCIA:'🔄 Transferencia', CREDITO_CLIENTE:'🏦 Crédito cliente', MIXTO:'🔀 Mixto'
     }[v.metodoPago] || v.metodoPago
     document.getElementById('det-factura').textContent  = {
       DISPONIBLE:'Disponible', BLOQUEADA:'Bloqueada', FACTURADA:'Facturada',
@@ -771,7 +772,8 @@ window.abrirModalEditarMetodo = function(ventaId, metodoActual, clienteId, total
     CREDITO:         '💳 Tarjeta crédito',
     DEBITO:          '💳 Tarjeta débito',
     TRANSFERENCIA:   '🔄 Transferencia',
-    CREDITO_CLIENTE: '🏦 Crédito cliente'
+    CREDITO_CLIENTE: '🏦 Crédito cliente',
+    MIXTO:           '🔀 Mixto'
   }
 
   document.getElementById('editar-metodo-actual-label').textContent = metodoLabels[metodoActual] || metodoActual
