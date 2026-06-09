@@ -1814,38 +1814,35 @@ function configurarEventListeners() {
     )
   })
 
-  let _scanLastKey  = 0
-  const SCAN_MS     = 55
+  let _scanLastKey    = 0
+  let _scanFastKeys   = 0
+  let _scanAutoTimer  = null
+  const SCAN_MS       = 55
+  const SCAN_AUTO_MS  = 120
+  const SCAN_MIN_KEYS = 3
 
-  searchProductos.addEventListener('keydown', async e => {
-    const ahora = Date.now()
-    const esRapido = (ahora - _scanLastKey) < SCAN_MS
-    _scanLastKey = ahora
-
-    if (e.key !== 'Enter') return
-    e.preventDefault()
-    if (esRapido) return
-    const q = searchProductos.value.trim()
-    if (!q) return
+  async function buscarYAgregarProducto(q) {
+    const codigo = q.trim()
+    if (!codigo) return
 
     if (searchTimeout) clearTimeout(searchTimeout)
 
     try {
-      const r    = await fetch(`${API_URL}/productos?q=${encodeURIComponent(q)}&take=5`,
+      const r    = await fetch(`${API_URL}/productos?q=${encodeURIComponent(codigo)}&take=5`,
                                { headers: { 'Authorization': `Bearer ${TOKEN}` } })
       const data = await r.json()
       const res  = data.data || []
 
       if (res.length === 1) {
-        // ✅ FIX: Guardamos el producto COMPLETO en la caché antes de agregarlo
-        const idParsed = parseInt(res[0].id, 10);
-        productoCache.set(idParsed, res[0]);
+        const idParsed = parseInt(res[0].id, 10)
+        productoCache.set(idParsed, res[0])
 
-        const esBusquedaCodigo = !q.includes(' ') && q.length <= 20
+        const esBusquedaCodigo = !codigo.includes(' ') && codigo.length <= 20
         if (esBusquedaCodigo) {
           agregarAlCarrito(res[0].id, res[0].nombre, res[0].precioVenta || res[0].precioBase, res[0].esGranel || false, res[0].unidadVenta || '')
           mostrarToast(`✓ ${res[0].nombre} agregado`, 'success')
           searchProductos.value = ''
+          _scanFastKeys = 0
           buscarProductos('')
         } else {
           mostrarProductos(res)
@@ -1855,17 +1852,46 @@ function configurarEventListeners() {
         mostrarProductos(res)
         mostrarToast('Varios resultados — selecciona uno', 'info')
       } else {
-        mostrarToast(`Código “${q}” no encontrado`, 'warning')
+        mostrarToast(`Código “${codigo}” no encontrado`, 'warning')
       }
     } catch (err) {
       console.error('❌ Error escáner:', err)
       mostrarToast('Error buscando producto', 'error')
     }
+  }
+
+  searchProductos.addEventListener('keydown', async e => {
+    const ahora = Date.now()
+    const esTeclaTexto = e.key.length === 1
+
+    if (esTeclaTexto) {
+      const esRapido = _scanLastKey && (ahora - _scanLastKey) < SCAN_MS
+      _scanFastKeys = esRapido ? _scanFastKeys + 1 : 1
+      _scanLastKey = ahora
+    }
+
+    if (e.key !== 'Enter') return
+    e.preventDefault()
+    const vieneDeScanner = _scanFastKeys >= SCAN_MIN_KEYS && _scanLastKey && (ahora - _scanLastKey) < SCAN_AUTO_MS
+    if (vieneDeScanner) return
+
+    if (_scanAutoTimer) clearTimeout(_scanAutoTimer)
+    const q = searchProductos.value.trim()
+    if (!q) return
+    await buscarYAgregarProducto(q)
   })
 
   searchProductos.addEventListener('input', e => {
-    const ahora = Date.now()
-    if ((ahora - _scanLastKey) >= SCAN_MS) buscarProductos(e.target.value)
+    if (_scanFastKeys >= SCAN_MIN_KEYS) {
+      if (_scanAutoTimer) clearTimeout(_scanAutoTimer)
+      _scanAutoTimer = setTimeout(() => {
+        const q = searchProductos.value.trim()
+        if (q) buscarYAgregarProducto(q)
+      }, SCAN_AUTO_MS)
+      return
+    }
+
+    buscarProductos(e.target.value)
   })
 
   metodosPayButtons.forEach(btn => {
