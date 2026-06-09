@@ -619,6 +619,35 @@
   </div>
 </div>
 
+<!-- ══ MODAL BÁSICO (rol EMPLEADO) ══ -->
+<div id="modal-basico" class="modal" style="display:none;">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3>Editar producto</h3>
+      <button class="modal-close" id="basico-close-btn">&times;</button>
+    </div>
+    <form id="basico-form">
+      <div class="form-group full-width">
+        <label for="basico-nombre">Nombre *</label>
+        <input type="text" id="basico-nombre" placeholder="Nombre del producto" />
+      </div>
+      <div class="form-group full-width">
+        <label for="basico-codigo">Código Interno *</label>
+        <input type="text" id="basico-codigo" placeholder="ej: HER-001" />
+      </div>
+      <div class="form-group full-width">
+        <label for="basico-codigoBarras">Código de Barras</label>
+        <input type="text" id="basico-codigoBarras" placeholder="Código de barras (opcional)" />
+      </div>
+      <div id="basico-error" class="error-message"></div>
+      <div class="form-actions">
+        <button type="button" class="btn-secondary" id="basico-cancel-btn">Cancelar</button>
+        <button type="submit" class="btn-primary" id="basico-confirm-btn">Guardar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <!-- ===== SCRIPTS ===== -->
 <script src="config.js"></script>
   <script src="sidebar.js"></script>

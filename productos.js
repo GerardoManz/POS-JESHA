@@ -30,6 +30,7 @@ const IVA_FACTOR = window.__JESHA_IVA_FACTOR__ || 1.16
 const ROL_ACTUAL = JSON.parse(localStorage.getItem('jesha_usuario') || '{}').rol
 const ES_ADMIN = ['SUPERADMIN', 'ADMIN_SUCURSAL', 'PLATFORM_ADMIN'].includes(ROL_ACTUAL)
 const ES_PRECIOS = ROL_ACTUAL === 'PRECIOS'
+const ES_EMPLEADO = ROL_ACTUAL === 'EMPLEADO'
 
 let productosLista     = []
 let departamentosLista = []
@@ -117,6 +118,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Inicializar modal de precios (rol PRECIOS)
   initModalPrecios()
+
+  // Inicializar modal básico (rol EMPLEADO)
+  initModalBasico()
 })
 
 // ═══════════════════════════════════════════════════════════════════
@@ -438,6 +442,9 @@ function accionesFila(p) {
   }
   if (ES_PRECIOS) {
     return `<button class="btn-icon btn-editar-precio" data-id="${p.id}" title="Editar precio">💲</button>`
+  }
+  if (ES_EMPLEADO) {
+    return `<button class="btn-icon btn-editar-basico" data-id="${p.id}" title="Editar datos básicos">✏️</button>`
   }
   return ''
 }
@@ -1191,6 +1198,74 @@ function initModalPrecios() {
   mp?.addEventListener('click', e => { if (e.target === mp && mp._clkOv) cerrarModalPrecios() })
 }
 
+// ════════════════════════════════════════════════════════════════════
+//  MODAL BÁSICO — edición limitada para rol EMPLEADO (3 campos)
+// ════════════════════════════════════════════════════════════════════
+
+let productoBasico = null
+
+function initModalBasico() {
+  const modalB = document.getElementById('modal-basico')
+  if (!modalB) return
+  document.getElementById('basico-close-btn')?.addEventListener('click', cerrarModalBasico)
+  document.getElementById('basico-cancel-btn')?.addEventListener('click', cerrarModalBasico)
+  modalB.addEventListener('mousedown', e => { modalB._clkOv = (e.target === modalB) })
+  modalB.addEventListener('click', e => { if (e.target === modalB && modalB._clkOv) cerrarModalBasico() })
+  document.getElementById('basico-form')?.addEventListener('submit', guardarDatosBasicos)
+}
+
+window.abrirModalBasico = function(id) {
+  const producto = productosLista.find(p => p.id === id)
+  if (!producto) return
+  productoBasico = producto
+  document.getElementById('basico-nombre').value       = producto.nombre || ''
+  document.getElementById('basico-codigo').value       = producto.codigoInterno || ''
+  document.getElementById('basico-codigoBarras').value = producto.codigoBarras || ''
+  mostrarErrorBasico('')
+  document.getElementById('modal-basico').style.display = 'flex'
+  setTimeout(() => document.getElementById('basico-nombre').focus(), 80)
+}
+
+function cerrarModalBasico() {
+  const modalB = document.getElementById('modal-basico')
+  if (modalB) modalB.style.display = 'none'
+  productoBasico = null
+}
+
+async function guardarDatosBasicos(e) {
+  e.preventDefault()
+  if (!productoBasico) return
+  const nombre       = document.getElementById('basico-nombre').value.trim()
+  const codigo       = document.getElementById('basico-codigo').value.trim()
+  const codigoBarras = document.getElementById('basico-codigoBarras').value.trim()
+
+  if (!nombre) return mostrarErrorBasico('El nombre es requerido')
+  if (!codigo) return mostrarErrorBasico('El código interno es requerido')
+
+  const btn = document.getElementById('basico-confirm-btn')
+  if (btn) { btn.disabled = true; btn.dataset.txt = btn.innerHTML; btn.innerHTML = '⟳ Guardando...' }
+
+  try {
+    await apiFetch(`/productos/${productoBasico.id}/datos-basicos`, {
+      method: 'PATCH',
+      body: JSON.stringify({ nombre, codigoInterno: codigo, codigoBarras: codigoBarras || null })
+    })
+    cerrarModalBasico()
+    await cargarProductos()
+  } catch (error) {
+    mostrarErrorBasico(error.message)
+  } finally {
+    if (btn) { btn.disabled = false; if (btn.dataset.txt) btn.innerHTML = btn.dataset.txt }
+  }
+}
+
+function mostrarErrorBasico(msg) {
+  const el = document.getElementById('basico-error')
+  if (!el) return
+  el.textContent = msg
+  el.classList.toggle('show', !!msg)
+}
+
 function mostrarError(msg) {
   const el = document.getElementById('producto-error')
   if (!el) return; el.textContent = msg; el.classList.add('show')
@@ -1363,6 +1438,13 @@ function configurarEventos() {
   if (productosTbody) {
     productosTbody.addEventListener('click', e => {
       // Buscar el botón más cercano con data-id
+      const btnBasico = e.target.closest('.btn-editar-basico')
+      if (btnBasico) {
+        const id = parseInt(btnBasico.dataset.id)
+        if (id) abrirModalBasico(id)
+        return
+      }
+
       const btnEditar = e.target.closest('.btn-editar-producto')
       if (btnEditar) {
         const id = parseInt(btnEditar.dataset.id)

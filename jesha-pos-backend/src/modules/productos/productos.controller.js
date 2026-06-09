@@ -776,6 +776,94 @@ const producto = await prisma.producto.findUnique({
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// EDITAR DATOS BÁSICOS — edición limitada para rol EMPLEADO
+// Solo permite: nombre, codigoInterno, codigoBarras.
+// Cualquier otro campo del body se ignora.
+// ═══════════════════════════════════════════════════════════════════
+
+async function editarDatosBasicos(req, res) {
+    try {
+        const id = parseInt(req.params.id)
+        if (!id || Number.isNaN(id)) {
+            return res.status(400).json({ success: false, error: 'ID inválido' })
+        }
+
+        const nombre        = typeof req.body.nombre        === 'string' ? req.body.nombre.trim()        : ''
+        const codigoInterno = typeof req.body.codigoInterno === 'string' ? req.body.codigoInterno.trim() : ''
+        let   codigoBarras  = typeof req.body.codigoBarras  === 'string' ? req.body.codigoBarras.trim()  : ''
+        if (codigoBarras === '') codigoBarras = null
+
+        if (!nombre)        return res.status(400).json({ success: false, error: 'El nombre es requerido' })
+        if (!codigoInterno) return res.status(400).json({ success: false, error: 'El código interno es requerido' })
+
+        const rol          = req.usuario?.rol
+        const empresaIdRaw = req.usuario?.empresaId
+        const esGlobal     = empresaIdRaw === null && ['PLATFORM_ADMIN', 'SUPERADMIN'].includes(rol)
+        const empresaId    = esGlobal ? null : parseInt(empresaIdRaw)
+
+        if (!esGlobal && (!empresaId || Number.isNaN(empresaId))) {
+            return res.status(401).json({ success: false, error: 'empresaId no encontrado en el token del usuario' })
+        }
+
+        const existente = await prisma.producto.findFirst({
+            where: esGlobal ? { id } : { id, empresaId }
+        })
+        if (!existente) {
+            return res.status(404).json({ success: false, error: 'Producto no encontrado' })
+        }
+
+        const empresaProducto = existente.empresaId
+
+        const dupInterno = await prisma.producto.findFirst({
+            where: { empresaId: empresaProducto, codigoInterno, id: { not: id } },
+            select: { id: true }
+        })
+        if (dupInterno) {
+            return res.status(400).json({ success: false, error: 'El código interno ya existe en otro producto', campo: 'codigoInterno' })
+        }
+
+        if (codigoBarras !== null) {
+            const dupBarras = await prisma.producto.findFirst({
+                where: { empresaId: empresaProducto, codigoBarras, id: { not: id } },
+                select: { id: true }
+            })
+            if (dupBarras) {
+                return res.status(400).json({ success: false, error: 'El código de barras ya existe en otro producto', campo: 'codigoBarras' })
+            }
+        }
+
+        const producto = await prisma.producto.update({
+            where: { id },
+            data: { nombre, codigoInterno, codigoBarras },
+            include: {
+                Categoria: { include: { Departamento: true } },
+                InventarioSucursal: { where: { sucursalId: 1 }, take: 1 }
+            }
+        })
+
+        console.log(`✅ Datos básicos actualizados: ${nombre} (id ${id})`)
+        return res.json({
+            success: true,
+            data: {
+                ...producto,
+                inventario: producto.InventarioSucursal?.length > 0 ? producto.InventarioSucursal[0] : null
+            }
+        })
+    } catch (error) {
+        if (error.code === 'P2002') {
+            const target  = Array.isArray(error.meta?.target) ? error.meta.target.join(',') : String(error.meta?.target || '')
+            const esBarra = target.toLowerCase().includes('barras')
+            return res.status(400).json({
+                success: false,
+                error: esBarra ? 'El código de barras ya existe en otro producto' : 'El código interno ya existe en otro producto'
+            })
+        }
+        console.error('❌ Error editando datos básicos:', error.message)
+        return res.status(400).json({ success: false, error: error.message })
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // EXPORTS
 // ═══════════════════════════════════════════════════════════════════
 
@@ -792,5 +880,6 @@ module.exports = {
     cambiarEstado,
     actualizarImagen,
     eliminarImagen,
-    ajustarInventario
+    ajustarInventario,
+    editarDatosBasicos
 }

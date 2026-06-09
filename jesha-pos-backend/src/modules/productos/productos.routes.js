@@ -76,6 +76,7 @@ router.get('/',                    productosController.listar)
 // GET /productos/:id — Venta específica
 router.post('/',                 requireRole('SUPERADMIN', 'ADMIN_SUCURSAL', 'PLATFORM_ADMIN'), productosController.crear)
 router.put('/:id',               requireRole('SUPERADMIN', 'ADMIN_SUCURSAL', 'PLATFORM_ADMIN'), productosController.editar)
+router.patch('/:id/datos-basicos', requireRole('EMPLEADO', 'ADMIN_SUCURSAL', 'SUPERADMIN', 'PLATFORM_ADMIN'), productosController.editarDatosBasicos)
 router.patch('/:id/estado',      requireRole('SUPERADMIN', 'ADMIN_SUCURSAL', 'PLATFORM_ADMIN'), productosController.cambiarEstado)
 router.patch('/:id/inventario',  requireRole('SUPERADMIN', 'ADMIN_SUCURSAL', 'PLATFORM_ADMIN'), productosController.ajustarInventario)
 
