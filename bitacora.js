@@ -418,7 +418,7 @@ function filasBorradorHTML() {
   return borrador.map(it => {
     const subtotal = it.cantidad * it.precioUnitario
     return `
-      <tr style="background:rgba(230,180,80,0.08);">
+      <tr id="brr-row-${it.tempId}" style="background:rgba(230,180,80,0.08);">
         <td>${it.nombre}</td>
         <td>${it.unidadVenta}</td>
         <td><input type="number" class="brr-cant" data-tmp="${it.tempId}" value="${it.cantidad}" min="0.001" step="0.001" style="${inputStyle}"></td>
@@ -430,6 +430,15 @@ function filasBorradorHTML() {
         <td><button class="btn-quitar-borrador" data-tmp="${it.tempId}" title="Quitar del borrador">✕</button></td>
       </tr>`
   }).join('')
+}
+
+function enfocarFilaBorrador(tempId) {
+  const fila = document.getElementById(`brr-row-${tempId}`)
+  if (!fila) return
+  fila.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  fila.classList.remove('fila-resaltada')
+  void fila.offsetWidth
+  fila.classList.add('fila-resaltada')
 }
 
 function editarBorradorCampo(tempId, campo, valor) {
@@ -674,7 +683,7 @@ async function buscarProductosDet(q) {
       return
     }
     try {
-      const res = await apiFetch(`/productos?buscar=${encodeURIComponent(q)}&limit=10`, { method: 'GET' })
+      const res = await apiFetch(`/productos?buscar=${encodeURIComponent(q)}&limit=100`, { method: 'GET' })
       productosCache = res.data || []
       renderListaProductos(productosCache)
     } catch (e) {
@@ -736,8 +745,9 @@ function confirmarAgregarProducto() {
   if (!responsableId) { errorDiv.textContent = 'Selecciona el responsable en el panel de arriba'; errorDiv.classList.add('show'); return }
 
   // Congela la traza (fecha + responsable) del panel en este momento, en la fila del borrador.
+  const tempId = ++borradorSeq
   borrador.push({
-    tempId:            ++borradorSeq,
+    tempId,
     productoId:        productoSeleccionado.id,
     nombre:            productoSeleccionado.nombre,
     unidadVenta:       productoSeleccionado.unidadVenta || 'pz',
@@ -756,6 +766,7 @@ function confirmarAgregarProducto() {
   document.getElementById('search-prod-det').focus()
 
   renderDetalleItems(bitacoraActual.DetalleBitacora || [])
+  enfocarFilaBorrador(tempId)
   toast('Agregado al borrador', 'success')
 }
 

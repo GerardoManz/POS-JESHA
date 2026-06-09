@@ -31,6 +31,7 @@
 .modal-header h3 { font-family:'Barlow Condensed',sans-serif; font-size:1.2rem; font-weight:700; letter-spacing:0.04em; text-transform:uppercase; }
 .modal-close { background:none; border:none; color:var(--muted); font-size:1.4rem; cursor:pointer; padding:4px 8px; border-radius:6px; }
 .modal-close:hover { background:rgba(255,255,255,0.06); color:var(--text); }
+@keyframes filaResaltada { 0%,70%{background:rgba(96,208,128,0.18)} 100%{background:transparent} }
 
 /* FIX: modal-body-split responsive — usa minmax en vez de px fijo */
 .modal-body-split { display:grid; grid-template-columns:minmax(220px, 280px) 1fr; height:calc(88vh - 70px); overflow:hidden; }
@@ -47,11 +48,12 @@
 .prod-item-modal:hover { background:rgba(255,255,255,0.04); border-color:var(--panel-border); }
 .prod-nombre { font-size:0.82rem; color:var(--text); font-weight:500; }
 .prod-precio { font-size:0.8rem; color:var(--muted); white-space:nowrap; }
-.items-wrapper { flex:1; min-height:0; margin-bottom:16px; border-radius:8px; border:1px solid var(--panel-border); overflow:auto; }
+.items-wrapper { flex:1; min-height:220px; margin-bottom:16px; border-radius:8px; border:1px solid var(--panel-border); overflow:auto; }
 .items-table { width:100%; border-collapse:collapse; font-size:0.85rem; }
 .items-table th { position:sticky; top:0; z-index:1; padding:9px 12px; background:var(--sidebar-bg); border-bottom:1px solid var(--panel-border); font-size:0.72rem; font-weight:600; color:var(--muted); text-transform:uppercase; text-align:left; }
 .items-table td { padding:8px 12px; border-bottom:1px solid rgba(255,255,255,0.04); color:var(--text); vertical-align:middle; }
 .items-table tr:last-child td { border-bottom:none; }
+.items-table tr.fila-resaltada td { animation:filaResaltada 1.4s ease; }
 .items-table input[type="number"] { padding:5px 7px; background:rgba(255,255,255,0.04); border:1px solid var(--panel-border); border-radius:5px; color:var(--text); font-family:'Barlow',sans-serif; font-size:0.82rem; outline:none; }
 .items-table input:focus { border-color:var(--accent); }
 .empty-items { text-align:center; color:var(--muted); font-size:0.82rem; padding:24px; }

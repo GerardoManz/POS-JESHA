@@ -507,7 +507,7 @@ function renderItemsEdicion() {
     const bloqueado = (item.cantidadRecibida || 0) > 0
     const subtotal  = item.costoNeto * item.cantidad
     return `
-    <tr style="${bloqueado ? 'opacity:0.6;' : ''}">
+    <tr id="comp-item-${item.productoId}" style="${bloqueado ? 'opacity:0.6;' : ''}">
       <td style="max-width:150px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:0.82rem;" title="${item.nombre}">
         ${item.nombre}
         ${bloqueado ? `<span style="font-size:0.65rem;color:#ffc107;margin-left:3px;">rec:${item.cantidadRecibida}</span>` : ''}
@@ -549,9 +549,24 @@ function actualizarTotalEdicion() {
   document.getElementById('comp-total').textContent = fmt(t)
 }
 
+function enfocarItemEdicion(productoId) {
+  const fila = document.getElementById(`comp-item-${productoId}`)
+  if (!fila) return
+  fila.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  fila.classList.remove('fila-resaltada')
+  void fila.offsetWidth
+  fila.classList.add('fila-resaltada')
+}
+
 function agregarProductoEdicion(prod) {
   const existe = itemsEdicion.find(i => i.productoId === prod.id)
-  if (existe) { existe.cantidad += 1; renderItemsEdicion(); return }
+  if (existe) {
+    existe.cantidad += 1
+    renderItemsEdicion()
+    enfocarItemEdicion(prod.id)
+    if (typeof jeshaToast === 'function') jeshaToast('Cantidad aumentada', 'info')
+    return
+  }
   const costoNeto = parseFloat(prod.costoPromedio || prod.costo || 0)
   itemsEdicion.push({
     productoId: prod.id,
@@ -562,6 +577,7 @@ function agregarProductoEdicion(prod) {
     cantidadRecibida: 0
   })
   renderItemsEdicion()
+  enfocarItemEdicion(prod.id)
 }
 
 async function guardarCompra() {
@@ -736,7 +752,7 @@ async function buscarProductosModal(q) {
   lista.innerHTML = '<p class="muted-hint">Buscando...</p>'
   try {
     // FIX: Búsqueda global — NO enviar proveedorId para mostrar todo el catálogo
-    const params = new URLSearchParams({ buscar: q, take: 30 })
+    const params = new URLSearchParams({ buscar: q, limit: 100 })
     const data = await apiFetch(`/productos?${params}`)
     const prods = data.data || data
     if (!prods?.length) { lista.innerHTML = '<p class="muted-hint">Sin resultados</p>'; return }

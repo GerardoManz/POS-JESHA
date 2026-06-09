@@ -10,6 +10,8 @@
 .bit-table tbody tr { cursor:pointer; transition:background 0.15s; }
 .bit-table tbody tr:hover td { background:rgba(255,255,255,0.03); }
 .bit-table tbody tr:last-child td { border-bottom:none; }
+.bit-table tr.fila-resaltada td { animation:filaResaltada 1.4s ease; }
+@keyframes filaResaltada { 0%,70%{background:rgba(96,208,128,0.18)} 100%{background:transparent} }
 
 /* ── BADGES DE ESTADO ── */
 .bit-estado-badge { display:inline-block; padding:3px 10px; border-radius:20px; font-size:0.72rem; font-weight:700; letter-spacing:0.04em; text-transform:uppercase; }
@@ -56,7 +58,7 @@
 .det-card { background:rgba(255,255,255,0.02); border:1px solid var(--panel-border); border-radius:10px; padding:14px; }
 .det-card-header { font-size:0.8rem; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.06em; margin-bottom:10px; }
 .det-card-full { height:100%; display:flex; flex-direction:column; }
-.det-card-full .table-wrapper { flex:1; overflow-y:auto; }
+.det-card-full .table-wrapper { flex:1; min-height:220px; overflow:auto; }
 
 /* ── FINANCIERO ── */
 .det-card-financiero { border-color:rgba(31,58,102,0.4); background:rgba(31,58,102,0.08); }
