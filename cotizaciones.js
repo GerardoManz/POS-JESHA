@@ -445,11 +445,13 @@ async function guardarCotizacion() {
   btn.textContent = 'Guardando...'
 
   try {
+    let data
     if (cotizacionActual) {
-      await apiFetch(`/cotizaciones/${cotizacionActual.id}`, { method: 'PUT', body: JSON.stringify({ clienteId, venceEn, notas, detalles, tipo: tipoActual }) })
+      data = await apiFetch(`/cotizaciones/${cotizacionActual.id}`, { method: 'PUT', body: JSON.stringify({ clienteId, venceEn, notas, detalles, tipo: tipoActual }) })
     } else {
-      await apiFetch('/cotizaciones', { method: 'POST', body: JSON.stringify({ clienteId, venceEn, notas, detalles, tipo: tipoActual }) })
+      data = await apiFetch('/cotizaciones', { method: 'POST', body: JSON.stringify({ clienteId, venceEn, notas, detalles, tipo: tipoActual }) })
     }
+    cotizacionActual = data?.data ?? cotizacionActual
     document.getElementById('modal-cotizacion').classList.remove('active')
     paginaActual = 1
     cargarCotizaciones()
@@ -605,8 +607,9 @@ async function cancelarCotizacion(id) {
 
 window.cargarEnPos = async function(id) {
   try {
-    let cot = cotizacionActual?.id === id ? cotizacionActual : null
-    if (!cot) { const d = await apiFetch(`/cotizaciones/${id}`); cot = d.data }
+    const d = await apiFetch(`/cotizaciones/${id}`)
+    const cot = d.data
+    cotizacionActual = cot
     if (!cot.DetalleCotizacion || cot.DetalleCotizacion.length === 0) { jeshaToast('Esta cotización no tiene productos', 'warning'); return }
     const posPayload = {
       fuente: 'cotizacion', cotFolio: cot.folio, cotId: cot.id,
@@ -629,8 +632,9 @@ window.cargarEnPos = async function(id) {
 
 window.descargarPdf = async function(id) {
   try {
-    let cot = cotizacionActual?.id === id ? cotizacionActual : null
-    if (!cot) { const d = await apiFetch(`/cotizaciones/${id}`); cot = d.data }
+    const d = await apiFetch(`/cotizaciones/${id}`)
+    const cot = d.data
+    cotizacionActual = cot
     generarPdf(cot)
   } catch (err) { jeshaToast('Error: ' + err.message, 'error') }
 }
