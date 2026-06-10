@@ -372,7 +372,7 @@
 }
 
 .modal-content.modal-large { max-width: 760px; }
-.modal-content.modal-xl    { max-width: 980px; max-height: 88vh; overflow: hidden; }
+.modal-content.modal-xl    { max-width: 980px; height: min(900px, calc(100vh - 32px)); max-height: calc(100vh - 32px); overflow: hidden; display: flex; flex-direction: column; }
 
 @keyframes slideUp {
   from { opacity: 0; transform: translateY(16px); }
@@ -422,13 +422,14 @@
 /* ── MODAL CREAR/EDITAR — layout ERP full-width ── */
 .modal-body-split,
 .modal-body-erp {
-  height: calc(92vh - 70px);
+  flex: 1;
   min-height: 0;
   padding: 18px 22px 16px;
   display: flex;
   flex-direction: column;
   gap: 14px;
   overflow: hidden;
+  box-sizing: border-box;
 }
 
 .cot-section {
@@ -1008,7 +1009,7 @@
 
 @media (max-width: 920px) {
   .modal-body-split,
-  .modal-body-erp { height: calc(92vh - 70px); padding: 14px; gap: 12px; }
+  .modal-body-erp { padding: 14px; gap: 12px; }
   .cot-datos-grid { grid-template-columns: 1fr; gap: 12px; }
   .cot-footer { grid-template-columns: 1fr; align-items: stretch; }
   .cot-footer-actions { min-width: 0; align-items: stretch; }
@@ -1017,9 +1018,9 @@
 
 @media (max-width: 640px) {
   .modal { padding: 8px; }
-  .modal-xl { width: 100%; max-height: 98vh; }
+  .modal-xl { width: 100%; height: calc(100vh - 16px); max-height: calc(100vh - 16px); }
   .modal-body-split,
-  .modal-body-erp { height: calc(98vh - 66px); padding: 12px; }
+  .modal-body-erp { padding: 12px; }
   .cot-section { padding: 12px; }
   .lista-productos-modal { max-height: 300px; }
   .producto-item-modal { grid-template-columns: 1fr auto; gap: 6px 10px; }

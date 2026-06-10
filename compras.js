@@ -556,25 +556,29 @@ function actualizarTotalEdicion() {
 }
 
 function enfocarItemEdicion(productoId) {
-  const fila = document.getElementById(`comp-item-${productoId}`)
-  if (!fila) return
+  requestAnimationFrame(() => {
+    const fila = document.getElementById(`comp-item-${productoId}`)
+    if (!fila) return
 
-  const wrapper = document.querySelector('.compra-items-wrapper')
-  if (wrapper) {
-    const wrapperRect = wrapper.getBoundingClientRect()
-    const filaRect = fila.getBoundingClientRect()
-    if (filaRect.top < wrapperRect.top) {
-      wrapper.scrollTo({ top: wrapper.scrollTop + (filaRect.top - wrapperRect.top) - 12, behavior: 'smooth' })
-    } else if (filaRect.bottom > wrapperRect.bottom) {
-      wrapper.scrollTo({ top: wrapper.scrollTop + (filaRect.bottom - wrapperRect.bottom) + 12, behavior: 'smooth' })
+    const wrapper = fila.closest('.compra-items-wrapper') || document.querySelector('.compra-items-wrapper')
+    if (wrapper) {
+      const wrapperRect = wrapper.getBoundingClientRect()
+      const filaRect = fila.getBoundingClientRect()
+      const margen = 18
+
+      if (filaRect.top < wrapperRect.top + margen) {
+        wrapper.scrollTo({ top: wrapper.scrollTop + (filaRect.top - wrapperRect.top) - margen, behavior: 'smooth' })
+      } else if (filaRect.bottom > wrapperRect.bottom - margen) {
+        wrapper.scrollTo({ top: wrapper.scrollTop + (filaRect.bottom - wrapperRect.bottom) + margen, behavior: 'smooth' })
+      }
+    } else {
+      fila.scrollIntoView({ behavior: 'smooth', block: 'end' })
     }
-  } else {
-    fila.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-  }
 
-  fila.classList.remove('fila-resaltada')
-  void fila.offsetWidth
-  fila.classList.add('fila-resaltada')
+    fila.classList.remove('fila-resaltada')
+    void fila.offsetWidth
+    fila.classList.add('fila-resaltada')
+  })
 }
 
 function agregarProductoEdicion(prod) {
