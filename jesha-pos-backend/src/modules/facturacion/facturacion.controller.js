@@ -116,12 +116,12 @@ const REGIMENES_FISCALES = [
   { clave: '605', descripcion: 'Sueldos y Salarios e Ingresos Asimilados a Salarios' },
   { clave: '606', descripcion: 'Arrendamiento' },
   { clave: '607', descripcion: 'Régimen de Enajenación o Adquisición de Bienes' },
-  { clave: '608', descripcion: 'Demás Ingresos' },
-  { clave: '610', descripcion: 'Residentes en el Extranjero sin Establecimiento Permanente en México' },
+  { clave: '608', descripcion: 'Demas ingresos' },
+  { clave: '610', descripcion: 'Residentes en el Extranjero sin Establecimiento Permanente en Mexico' },
   { clave: '611', descripcion: 'Ingresos por Dividendos (socios y accionistas)' },
   { clave: '612', descripcion: 'Personas Físicas con Actividades Empresariales y Profesionales' },
   { clave: '614', descripcion: 'Ingresos por intereses' },
-  { clave: '615', descripcion: 'Régimen de los ingresos por obtención de premios' },
+  { clave: '615', descripcion: 'Ingresos por obtención de premios' },
   { clave: '616', descripcion: 'Sin obligaciones fiscales' },
   { clave: '620', descripcion: 'Sociedades Cooperativas de Producción que optan por diferir sus ingresos' },
   { clave: '621', descripcion: 'Incorporación Fiscal' },
@@ -155,7 +155,7 @@ const USOS_CFDI = [
   { clave: 'D10', descripcion: 'Pagos por servicios educativos (colegiaturas)' },
   { clave: 'S01', descripcion: 'Sin efectos fiscales' },
   { clave: 'CP01', descripcion: 'Pagos' },
-  { clave: 'CN01', descripcion: 'Nómina' },
+  { clave: 'CN01', descripcion: 'Nomina' },
 ]
 
 // ════════════════════════════════════════════════════════════════════
@@ -186,8 +186,10 @@ exports.obtenerVentaPorToken = async (req, res) => {
     const fechaVenta  = new Date(venta.creadaEn)
     const horas      = (ahora - fechaVenta) / (1000 * 60 * 60)
 
-    const facturaActiva189 = venta.FacturaCfdi && venta.FacturaCfdi.estado !== 'CANCELADA'
-    if (facturaActiva189) return res.status(409).json({ error: 'Esta venta ya fue facturada.', uuid: venta.FacturaCfdi.folioFiscal || null })
+    // venta.FacturaCfdi ahora es un array (relación 1-a-muchos). La "factura viva"
+    // es la única no cancelada; el índice parcial en BD garantiza que haya máximo una.
+    const facturaActiva189 = venta.FacturaCfdi.find(f => f.estado !== 'CANCELADA')
+    if (facturaActiva189) return res.status(409).json({ error: 'Esta venta ya fue facturada.', uuid: facturaActiva189.folioFiscal || null })
     if (venta.estado === 'CANCELADA') return res.status(400).json({ error: 'Esta venta fue cancelada y no puede facturarse.' })
     if (venta.facturaEstado === 'BLOQUEADA') return res.status(400).json({ error: 'Esta venta no puede facturarse en línea (efectivo mayor a $2,000). Solicita tu factura directamente en sucursal.' })
     if (venta.facturaEstado === 'VENCIDA' || ahora > new Date(venta.facturaLimite)) return res.status(400).json({ error: 'El plazo para solicitar factura venció. Contacta a la sucursal si necesitas ayuda.' })
@@ -241,16 +243,16 @@ exports.solicitarFactura = async (req, res) => {
     })
 
     if (!venta)        return res.status(404).json({ error: 'Venta no encontrada' })
-    const facturaActiva243 = venta.FacturaCfdi && venta.FacturaCfdi.estado !== 'CANCELADA'
+
+    // venta.FacturaCfdi ahora es un array (relación 1-a-muchos). Si existe una
+    // factura viva (no cancelada), la venta ya está facturada y se bloquea.
+    const facturaActiva243 = venta.FacturaCfdi.find(f => f.estado !== 'CANCELADA')
     if (facturaActiva243) return res.status(409).json({ error: 'Esta venta ya fue facturada.' })
 
-    // Si existe un registro CANCELADA, eliminarlo para liberar el @@unique([ventaId])
-    // del schema. La factura cancelada ya cumplió su ciclo en el SAT (UUID histórico
-    // preservado en Facturapi); el registro local es solo metadata reemplazable.
-    if (venta.FacturaCfdi && venta.FacturaCfdi.estado === 'CANCELADA') {
-      await prisma.facturaCfdi.delete({ where: { id: venta.FacturaCfdi.id } })
-      console.log(`🗑️ Registro CANCELADA ${venta.FacturaCfdi.id} eliminado para permitir re-facturación de venta ${venta.id}`)
-    }
+    // NOTA: Ya NO se borra el registro CANCELADA. El índice parcial en BD
+    // (FacturaCfdi_ventaId_viva_key WHERE estado <> 'CANCELADA') permite que
+    // coexistan N facturas canceladas históricas + 1 viva por venta. La nueva
+    // factura se crea sin conflicto y el historial fiscal se conserva íntegro.
 
     const empresaId = venta.empresaId
     if (venta.estado === 'CANCELADA') return res.status(400).json({ error: 'Venta cancelada.' })
