@@ -242,9 +242,12 @@ model FacturaCfdi {
   creadaEn        DateTime      @default(now())
   Empresa         Empresa       @relation(fields: [empresaId], references: [id])
   Cliente         Cliente?      @relation(fields: [clienteId], references: [id])
-  Venta           Venta         @relation(fields: [ventaId], references: [id], onDelete: Cascade)
+  Venta           Venta         @relation(fields: [ventaId], references: [id], onDelete: Restrict)
 
-  @@unique([ventaId])
+  // Unicidad de ventaId garantizada por índice parcial en BD:
+  // FacturaCfdi_ventaId_viva_key WHERE estado <> 'CANCELADA'
+  // (permite N facturas CANCELADA + 1 viva por venta). No declarado en Prisma
+  // porque Prisma no modela índices parciales con WHERE.
   @@index([empresaId])
 }
 
@@ -533,7 +536,7 @@ model Venta {
   DetalleBitacora    DetalleBitacora[]
   DetalleVenta       DetalleVenta[]
   Devolucion         Devolucion[]
-  FacturaCfdi        FacturaCfdi?
+  FacturaCfdi        FacturaCfdi[]
   Cliente            Cliente?          @relation(fields: [clienteId], references: [id])
   Sucursal           Sucursal          @relation(fields: [sucursalId], references: [id])
   TurnoCaja          TurnoCaja         @relation(fields: [turnoId], references: [id])
