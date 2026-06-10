@@ -235,6 +235,7 @@ function abrirModalNuevo() {
   document.getElementById('cot-notas').value          = ''
   document.getElementById('search-producto-modal').value = ''
   document.getElementById('lista-productos-modal').innerHTML = '<p class="muted-hint">Escribe para buscar productos...</p>'
+  cerrarDropdownProductosCot()
   ocultarError('modal-error')
 
   // ── Cliente: habilitado para nueva cotización ──
@@ -268,6 +269,7 @@ window.abrirEdicion = async function(id) {
     document.getElementById('cot-notas').value          = c.notas || ''
     document.getElementById('search-producto-modal').value = ''
     document.getElementById('lista-productos-modal').innerHTML = '<p class="muted-hint">Escribe para buscar...</p>'
+    cerrarDropdownProductosCot()
     ocultarError('modal-error')
 
     // ── Cliente: bloqueado en edición ──
@@ -288,6 +290,8 @@ window.abrirEdicion = async function(id) {
     itemsEdicion = (c.DetalleCotizacion || []).map(d => ({
       productoId: d.productoId || d.Producto?.id,
       nombre:     d.Producto?.nombre || d.concepto || '—',
+      codigoInterno: d.Producto?.codigoInterno || null,
+      codigoBarras:  d.Producto?.codigoBarras || null,
       concepto:   d.concepto || '',
       unidad:     d.unidad || '',
       cantidad:   d.cantidad,
@@ -324,13 +328,16 @@ function renderItems() {
 function renderItemsProductos() {
   const tbody = document.getElementById('items-tbody')
   if (itemsEdicion.length === 0) {
-    tbody.innerHTML = `<tr id="items-empty"><td colspan="7" class="empty-items">Agrega productos desde el panel izquierdo</td></tr>`
+    tbody.innerHTML = `<tr id="items-empty"><td colspan="8" class="empty-items">Agrega productos desde el buscador superior</td></tr>`
     actualizarTotal()
     return
   }
-  tbody.innerHTML = itemsEdicion.map((item, i) => `
-    <tr>
-      <td style="max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${item.nombre}">${item.nombre}</td>
+  tbody.innerHTML = itemsEdicion.map((item, i) => {
+    const codigo = item.codigoInterno || item.codigoBarras || '—'
+    return `
+    <tr id="cot-item-${item.productoId}">
+      <td><span class="cot-item-codigo">${codigo}</span></td>
+      <td><div class="cot-item-desc">${item.nombre}</div></td>
       <td><input type="text" value="${item.unidad || 'PZA'}" style="width:50px" oninput="itemsEdicion[${i}].unidad=this.value" /></td>
       <td><input type="number" min="1" value="${item.cantidad}" style="width:52px" oninput="actualizarCantidadItem(${i},this.value)" min="${item.esGranel ? 0.001 : 1}" step="${item.esGranel ? 0.001 : 1}" /></td>
       <td><input type="number" min="0" step="0.01" value="${item.precio.toFixed(2)}" style="width:82px" oninput="actualizarPrecioItem(${i},this.value)" /></td>
@@ -338,7 +345,7 @@ function renderItemsProductos() {
       <td id="prod-total-${i}"><strong>${fmt((item.precio * item.cantidad) - item.descuento)}</strong></td>
       <td><button class="btn-icon" onclick="quitarItem(${i})" style="color:#f44336">&times;</button></td>
     </tr>
-  `).join('')
+  `}).join('')
   actualizarTotal()
 }
 
@@ -390,13 +397,41 @@ function actualizarTotal() {
   document.getElementById('modal-total').textContent = fmt(total)
 }
 
+function enfocarItemCotizacion(productoId) {
+  const fila = document.getElementById(`cot-item-${productoId}`)
+  if (!fila) return
+
+  const wrapper = document.querySelector('.cot-items-wrapper')
+  if (wrapper) {
+    const wrapperRect = wrapper.getBoundingClientRect()
+    const filaRect = fila.getBoundingClientRect()
+    if (filaRect.top < wrapperRect.top) {
+      wrapper.scrollTo({ top: wrapper.scrollTop + (filaRect.top - wrapperRect.top) - 12, behavior: 'smooth' })
+    } else if (filaRect.bottom > wrapperRect.bottom) {
+      wrapper.scrollTo({ top: wrapper.scrollTop + (filaRect.bottom - wrapperRect.bottom) + 12, behavior: 'smooth' })
+    }
+  } else {
+    fila.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  }
+
+  fila.classList.remove('fila-resaltada')
+  void fila.offsetWidth
+  fila.classList.add('fila-resaltada')
+}
+
 function agregarProductoAItems(prod) {
   const existe = itemsEdicion.find(i => i.productoId === prod.id)
-  if (existe) { existe.cantidad += 1 }
+  if (existe) {
+    existe.cantidad += 1
+    existe.codigoInterno = existe.codigoInterno || prod.codigoInterno || null
+    existe.codigoBarras  = existe.codigoBarras  || prod.codigoBarras  || null
+  }
   else {
     itemsEdicion.push({
       productoId: prod.id,
       nombre:     prod.nombre,
+      codigoInterno: prod.codigoInterno || null,
+      codigoBarras:  prod.codigoBarras || null,
       unidad:     prod.unidadVenta || 'PZA',
       cantidad:   prod.esGranel ? 0.1 : 1,
       precio:     parseFloat(prod.precioVenta || prod.precioBase),
@@ -405,6 +440,7 @@ function agregarProductoAItems(prod) {
     })
   }
   renderItems()
+  enfocarItemCotizacion(prod.id)
 }
 
 function agregarLineaServicio() {
@@ -468,25 +504,52 @@ async function guardarCotizacion() {
 // ════════════════════════════════════════════════════════════════════
 
 let debounceProducto
+function abrirDropdownProductosCot() {
+  const lista = document.getElementById('lista-productos-modal')
+  if (lista) lista.classList.add('is-open')
+}
+
+function cerrarDropdownProductosCot() {
+  const lista = document.getElementById('lista-productos-modal')
+  if (lista) lista.classList.remove('is-open')
+}
+
 async function buscarProductosModal(q) {
   const lista = document.getElementById('lista-productos-modal')
-  if (!q || q.length < 2) { lista.innerHTML = '<p class="muted-hint">Escribe para buscar productos...</p>'; return }
+  if (!lista) return
+  if (!q || q.length < 2) {
+    lista.innerHTML = '<p class="muted-hint">Escribe para buscar productos...</p>'
+    cerrarDropdownProductosCot()
+    return
+  }
   lista.innerHTML = '<p class="muted-hint">Buscando...</p>'
+  abrirDropdownProductosCot()
   try {
-    const data     = await apiFetch(`/productos?buscar=${encodeURIComponent(q)}&take=30`)
+    const params = new URLSearchParams({ buscar: q, limit: 100 })
+    const data     = await apiFetch(`/productos?${params}`)
     const productos = data.data || data
-    if (!productos || productos.length === 0) { lista.innerHTML = '<p class="muted-hint">Sin resultados</p>'; return }
+    if (!productos || productos.length === 0) { lista.innerHTML = '<p class="muted-hint">Sin resultados</p>'; abrirDropdownProductosCot(); return }
     window._productosModalCache = {}
     productos.forEach(p => { window._productosModalCache[p.id] = p })
-    lista.innerHTML = productos.map(p => `
+    lista.innerHTML = productos.map(p => {
+      const codigo = p.codigoInterno || p.codigoBarras || '—'
+      return `
       <div class="producto-item-modal" onclick="window._addProd(${p.id})">
+        <span class="prod-codigo">${codigo}</span>
         <span class="prod-nombre">${p.nombre}</span>
         <span class="prod-precio">${fmt(p.precioVenta || p.precioBase)}</span>
       </div>
-    `).join('')
-  } catch (err) { lista.innerHTML = `<p class="muted-hint" style="color:#f44336">Error: ${err.message}</p>` }
+    `}).join('')
+  } catch (err) { lista.innerHTML = `<p class="muted-hint" style="color:#f44336">Error: ${err.message}</p>`; abrirDropdownProductosCot() }
 }
-window._addProd = function(id) { const p = window._productosModalCache?.[id]; if (p) agregarProductoAItems(p) }
+window._addProd = function(id) {
+  const p = window._productosModalCache?.[id]
+  if (!p) return
+  agregarProductoAItems(p)
+  document.getElementById('search-producto-modal').value = ''
+  document.getElementById('lista-productos-modal').innerHTML = '<p class="muted-hint">Escribe para buscar productos...</p>'
+  cerrarDropdownProductosCot()
+}
 
 // ════════════════════════════════════════════════════════════════════
 //  AUTOCOMPLETE CLIENTES
@@ -817,7 +880,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Tabs de tipo
   document.querySelectorAll('.tipo-tab').forEach(tab => {
-    tab.addEventListener('click', () => { itemsEdicion = []; setTipoModal(tab.dataset.tipo); renderItems() })
+    tab.addEventListener('click', () => { itemsEdicion = []; cerrarDropdownProductosCot(); setTipoModal(tab.dataset.tipo); renderItems() })
   })
 
   // Modal crear/editar
@@ -831,6 +894,23 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('search-producto-modal')?.addEventListener('input', e => {
     clearTimeout(debounceProducto)
     debounceProducto = setTimeout(() => buscarProductosModal(e.target.value.trim()), 350)
+  })
+  document.getElementById('search-producto-modal')?.addEventListener('keydown', e => {
+    const lista = document.getElementById('lista-productos-modal')
+    const abierto = lista?.classList.contains('is-open')
+    if (e.key === 'Escape' && abierto) {
+      e.preventDefault()
+      e.stopPropagation()
+      cerrarDropdownProductosCot()
+      return
+    }
+    if (e.key === 'Enter' && abierto) {
+      const primero = lista.querySelector('.producto-item-modal')
+      if (primero) {
+        e.preventDefault()
+        primero.click()
+      }
+    }
   })
 
   // Autocomplete clientes — búsqueda al escribir + chevron para ver lista completa
@@ -855,6 +935,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         !e.target.closest('#btn-chevron-cliente') &&
         !e.target.closest('#dropdown-clientes'))
       cerrarDropdownClientesCot()
+    if (!e.target.closest('#search-producto-modal') &&
+        !e.target.closest('#lista-productos-modal'))
+      cerrarDropdownProductosCot()
   })
 
   // Modal ver
@@ -866,6 +949,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
+      const listaProd = document.getElementById('lista-productos-modal')
+      if (listaProd?.classList.contains('is-open')) {
+        cerrarDropdownProductosCot()
+        return
+      }
       document.getElementById('modal-cotizacion')?.classList.remove('active')
       document.getElementById('modal-ver')?.classList.remove('active')
       cerrarDropdownClientesCot()

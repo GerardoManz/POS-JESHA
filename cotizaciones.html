@@ -91,31 +91,17 @@
       <button class="modal-close" id="modal-close-btn">&times;</button>
     </div>
 
-    <div class="modal-body-split">
-      <!-- Panel izquierdo: solo visible en tipo PRODUCTOS -->
-      <div class="panel-productos" id="panel-productos-left">
-        <p class="panel-label">Agregar productos</p>
-        <div class="search-group" style="margin-bottom:12px;">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-          <input type="text" id="search-producto-modal" placeholder="Nombre o código..." class="search-input" />
-        </div>
-        <div id="lista-productos-modal" class="lista-productos-modal">
-          <p class="muted-hint">Escribe para buscar productos...</p>
-        </div>
-      </div>
-
-      <!-- Panel derecho: detalle -->
-      <div class="panel-detalle">
-        <p class="panel-label">Detalle</p>
-
-        <div class="form-row">
+    <div class="modal-body-split modal-body-erp">
+      <section class="cot-section cot-datos-section">
+        <p class="panel-label">Datos de la cotización</p>
+        <div class="form-row cot-datos-grid">
           <div class="form-group">
             <label>Cliente</label>
             <div style="position:relative;">
-              <div style="display:flex;gap:6px;align-items:center;">
-                <input type="text" id="cot-cliente-buscar" placeholder="Buscar cliente..." class="search-input" autocomplete="off" style="flex:1;" />
+              <div class="cliente-control">
+                <input type="text" id="cot-cliente-buscar" placeholder="Buscar cliente..." class="search-input" autocomplete="off" />
                 <button type="button" id="btn-chevron-cliente"
-                  style="padding:7px 10px;background:rgba(255,255,255,0.04);border:1px solid var(--border-color,#333);border-radius:6px;color:var(--muted);cursor:pointer;transition:color 0.15s;flex-shrink:0;"
+                  class="btn-icon-field"
                   title="Ver todos los clientes">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
                 </button>
@@ -134,23 +120,43 @@
           <label>Notas</label>
           <textarea id="cot-notas" rows="2" placeholder="Observaciones o condiciones..."></textarea>
         </div>
+      </section>
+
+      <!-- Buscador: solo visible en tipo PRODUCTOS -->
+      <section class="cot-section cot-productos-section" id="panel-productos-left">
+        <p class="panel-label">Agregar productos</p>
+        <div class="producto-search-wrap">
+          <div class="producto-search-row">
+            <div class="search-group producto-search-group">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+              <input type="text" id="search-producto-modal" placeholder="Buscar producto por nombre o código..." class="search-input" />
+            </div>
+          </div>
+          <div id="lista-productos-modal" class="lista-productos-modal">
+            <p class="muted-hint">Escribe para buscar productos...</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="cot-section cot-items-section">
 
         <!-- Tabla items PRODUCTOS -->
-        <div id="tabla-productos-container" class="items-wrapper">
-          <table class="items-table">
+        <div id="tabla-productos-container" class="items-wrapper cot-items-wrapper">
+          <table class="items-table cot-items-table">
             <thead>
               <tr>
-                <th>Producto</th>
-                <th style="width:55px">Unidad</th>
-                <th style="width:60px">Cant.</th>
-                <th style="width:90px">Precio</th>
-                <th style="width:90px">Descuento</th>
-                <th style="width:90px">Importe</th>
-                <th style="width:32px"></th>
+                <th class="col-codigo">Código</th>
+                <th class="col-desc">Descripción</th>
+                <th class="col-unidad">Unidad</th>
+                <th class="col-cantidad">Cant.</th>
+                <th class="col-precio">Precio</th>
+                <th class="col-descuento">Descuento</th>
+                <th class="col-importe">Importe</th>
+                <th class="col-accion"></th>
               </tr>
             </thead>
             <tbody id="items-tbody">
-              <tr id="items-empty"><td colspan="7" class="empty-items">Agrega productos desde el panel izquierdo</td></tr>
+              <tr id="items-empty"><td colspan="8" class="empty-items">Agrega productos desde el buscador superior</td></tr>
             </tbody>
           </table>
         </div>
@@ -174,22 +180,25 @@
           </table>
           <button id="btn-add-servicio" class="btn-add-linea">+ Agregar línea</button>
         </div>
+      </section>
 
-        <div class="total-row">
+      <footer class="cot-footer">
+        <div class="total-row cot-total-row">
           <span>Total:</span>
           <span id="modal-total" class="total-monto">$0.00</span>
         </div>
 
-        <div id="modal-error" class="error-message"></div>
-
-        <div class="form-actions">
-          <button type="button" class="btn-secondary" id="btn-cancel-modal">Cancelar</button>
-          <button type="button" class="btn-primary" id="btn-guardar-cotizacion">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-            Guardar Cotización
-          </button>
+        <div class="cot-footer-actions">
+          <div id="modal-error" class="error-message"></div>
+          <div class="form-actions cot-actions">
+            <button type="button" class="btn-secondary" id="btn-cancel-modal">Cancelar</button>
+            <button type="button" class="btn-primary" id="btn-guardar-cotizacion">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+              Guardar Cotización
+            </button>
+          </div>
         </div>
-      </div>
+      </footer>
     </div>
   </div>
 </div>
