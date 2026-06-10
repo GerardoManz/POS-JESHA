@@ -305,6 +305,13 @@
   color: var(--text, #fff);
 }
 
+.carrito-producto-nombre {
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  line-height: 1.3;
+}
+
 .carrito-empty {
   text-align: center;
   color: var(--muted, #999);

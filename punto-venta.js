@@ -808,7 +808,7 @@ function actualizarCarrito() {
       const unidadLabel = esEmpaque ? (item.unidadCompra || 'caja') : (item.unidadVenta || '')
       return `
       <tr>
-        <td>${item.nombre.substring(0, 18)}</td>
+        <td class="carrito-producto-nombre">${item.nombre}</td>
         <td style="text-align:center;">
           ${precioModificado ? `<span style="font-size:0.65rem;color:var(--muted);text-decoration:line-through;display:block;">$${item.precioOriginal.toFixed(2)}</span>` : ''}
           <input type="number" value="${item.precio}"
