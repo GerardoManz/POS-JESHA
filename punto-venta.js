@@ -15,6 +15,38 @@ const API_URL = window.__JESHA_API_URL__ || 'http://localhost:3000'
 console.log('✅ Punto-venta.js cargado correctamente')
 console.log('✅ Usuario:', USUARIO.nombre || 'Anónimo')
 
+const styleBtnCargarMas = document.createElement('style')
+styleBtnCargarMas.id = 'btn-cargar-mas-styles'
+styleBtnCargarMas.textContent = `
+.btn-cargar-mas {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  max-width: 400px;
+  margin: 20px auto;
+  padding: 14px 24px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 10px;
+  color: #9fb3d4;
+  font-family: 'Barlow', sans-serif;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+.btn-cargar-mas:hover {
+  background: rgba(255,255,255,0.10);
+  color: #e8edf5;
+}
+.btn-cargar-mas .spinner-btn {
+  font-size: 0.85rem;
+}
+`
+document.head.appendChild(styleBtnCargarMas)
+
 // ══════════════════════════════════════════════════════════════════
 //  DOM ELEMENTS
 // ══════════════════════════════════════════════════════════════════
@@ -70,6 +102,11 @@ let ventaEnProceso         = false
 let clientesLista          = []
 let cotIdActual            = null
 const productoCache        = new Map()
+let resultadosBusqueda      = []     // Acumula resultados de la búsqueda activa
+let paginaActual            = 1      // Página actual
+let totalPaginas            = 1      // Total de páginas (del backend)
+let isLoadingMore           = false  // Flag anti-doble-fetch
+let terminoBusquedaActual   = ''     // Para poder hacer "cargar más"
 
 // ══════════════════════════════════════════════════════════════════
 //  PERSISTENCIA DEL CARRITO — sessionStorage
@@ -438,11 +475,17 @@ function mostrarEstadoInicial() {
 
 let searchTimeout
 
-async function buscarProductos(query) {
+async function buscarProductos(query, skip = 0) {
   if (searchTimeout) clearTimeout(searchTimeout)
   const q = query.trim()
 
   if (q.length === 0) {
+    resultadosBusqueda = []
+    paginaActual = 1
+    totalPaginas = 1
+    terminoBusquedaActual = ''
+    const btn = document.getElementById('btn-cargar-mas')
+    if (btn) btn.style.display = 'none'
     if (productoCache.size > 0) {
       mostrarProductos(Array.from(productoCache.values()))
     } else {
@@ -453,20 +496,37 @@ async function buscarProductos(query) {
 
   if (q.length < 1) return
 
+  const esNuevaBusqueda = skip === 0
+  if (esNuevaBusqueda) {
+    resultadosBusqueda = []
+    paginaActual = 1
+    terminoBusquedaActual = q
+    totalPaginas = 1
+  }
+
   const searchIndicator = document.getElementById('search-indicator')
   if (searchIndicator) searchIndicator.style.opacity = '1'
 
   searchTimeout = setTimeout(async () => {
     try {
       const response = await fetch(
-        `${API_URL}/productos?q=${encodeURIComponent(q)}&take=30`,
+        `${API_URL}/productos?q=${encodeURIComponent(q)}&take=30&skip=${skip}`,
         { headers: { 'Authorization': `Bearer ${TOKEN}` } }
       )
       if (!response.ok) throw new Error('Error en búsqueda')
       const data      = await response.json()
       const resultados = data.data || []
+      if (esNuevaBusqueda) {
+        resultadosBusqueda = resultados
+      } else {
+        resultadosBusqueda = [...resultadosBusqueda, ...resultados]
+      }
+      if (data.paginacion) {
+        totalPaginas = data.paginacion.totalPaginas || 1
+        paginaActual = data.paginacion.pagina || 1
+      }
       resultados.forEach(p => productoCache.set(p.id, p))
-      mostrarProductos(resultados)
+      mostrarProductosYMas(resultadosBusqueda)
       if (searchIndicator) searchIndicator.style.opacity = '0'
     } catch (err) {
       console.error('❌ Error buscando:', err)
@@ -514,6 +574,50 @@ function mostrarProductos(productos) {
       </div>
     </div>`
   }).join('')
+}
+
+function mostrarProductosYMas(productos) {
+  mostrarProductos(productos)
+
+  if (paginaActual < totalPaginas) {
+    let btn = document.getElementById('btn-cargar-mas')
+    if (!btn) {
+      productosGrid.insertAdjacentHTML('afterend', `
+        <button id="btn-cargar-mas" class="btn-cargar-mas" onclick="cargarMasResultados()">
+          <span class="btn-texto">Cargar más</span>
+          <span class="spinner-btn" style="display:none;">⏳</span>
+        </button>
+      `)
+      btn = document.getElementById('btn-cargar-mas')
+    }
+    btn.style.display = 'flex'
+    const spinner = btn.querySelector('.spinner-btn')
+    const texto = btn.querySelector('.btn-texto')
+    if (spinner) spinner.style.display = 'none'
+    if (texto) texto.textContent = `Cargar más (${(paginaActual * 30)} de ${resultadosBusqueda.length})`
+  } else {
+    const btn = document.getElementById('btn-cargar-mas')
+    if (btn) btn.style.display = 'none'
+  }
+}
+
+async function cargarMasResultados() {
+  if (isLoadingMore) return
+  if (paginaActual >= totalPaginas) return
+
+  isLoadingMore = true
+  const btn = document.getElementById('btn-cargar-mas')
+  if (btn) {
+    const spinner = btn.querySelector('.spinner-btn')
+    const texto = btn.querySelector('.btn-texto')
+    if (spinner) spinner.style.display = 'inline-block'
+    if (texto) texto.textContent = 'Cargando...'
+  }
+
+  const nextSkip = paginaActual * 30
+  await buscarProductos(terminoBusquedaActual, nextSkip)
+
+  isLoadingMore = false
 }
 
 // ══════════════════════════════════════════════════════════════════
