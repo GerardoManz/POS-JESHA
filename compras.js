@@ -464,6 +464,7 @@ function abrirModalCrear() {
   document.getElementById('comp-notas').value  = ''
   document.getElementById('search-prod-modal').value = ''
   document.getElementById('lista-prod-modal').innerHTML = '<p class="muted-hint">Selecciona un proveedor primero...</p>'
+  cerrarDropdownProductos()
   document.getElementById('crear-error').classList.remove('show')
   const searchProd = document.getElementById('search-prod-modal')
   if (searchProd) { searchProd.disabled = true; searchProd.placeholder = 'Selecciona un proveedor primero...' }
@@ -482,11 +483,14 @@ window.abrirEdicion = async function(id) {
     document.getElementById('comp-notas').value  = ocActual.notas || ''
     document.getElementById('search-prod-modal').value = ''
     document.getElementById('lista-prod-modal').innerHTML = '<p class="muted-hint">Escribe para buscar...</p>'
+    cerrarDropdownProductos()
     document.getElementById('crear-error').classList.remove('show')
 
     itemsEdicion = (ocActual.DetalleOrdenCompra || []).map(d => ({
       productoId:       d.Producto?.id,
       nombre:           d.Producto?.nombre || '—',
+      codigoInterno:    d.Producto?.codigoInterno || null,
+      codigoBarras:     d.Producto?.codigoBarras || null,
       unidad:           d.Producto?.unidadCompra || 'pza',
       cantidad:         d.cantidadPedida,
       costoNeto:        parseFloat(d.precioCosto),
@@ -500,16 +504,18 @@ window.abrirEdicion = async function(id) {
 function renderItemsEdicion() {
   const tbody = document.getElementById('comp-items-tbody')
   if (itemsEdicion.length === 0) {
-    tbody.innerHTML = `<tr id="comp-empty"><td colspan="5" class="empty-items">Agrega productos desde el panel izquierdo</td></tr>`
+    tbody.innerHTML = `<tr id="comp-empty"><td colspan="6" class="empty-items">Agrega productos desde el buscador superior</td></tr>`
     actualizarTotalEdicion(); return
   }
   tbody.innerHTML = itemsEdicion.map((item, i) => {
     const bloqueado = (item.cantidadRecibida || 0) > 0
     const subtotal  = item.costoNeto * item.cantidad
+    const codigo = item.codigoInterno || item.codigoBarras || '—'
     return `
     <tr id="comp-item-${item.productoId}" style="${bloqueado ? 'opacity:0.6;' : ''}">
-      <td style="max-width:150px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:0.82rem;" title="${item.nombre}">
-        ${item.nombre}
+      <td><span class="compra-item-codigo">${codigo}</span></td>
+      <td>
+        <div class="compra-item-desc">${item.nombre}</div>
         ${bloqueado ? `<span style="font-size:0.65rem;color:#ffc107;margin-left:3px;">rec:${item.cantidadRecibida}</span>` : ''}
       </td>
       <td>${bloqueado
@@ -562,6 +568,8 @@ function agregarProductoEdicion(prod) {
   const existe = itemsEdicion.find(i => i.productoId === prod.id)
   if (existe) {
     existe.cantidad += 1
+    existe.codigoInterno = existe.codigoInterno || prod.codigoInterno || null
+    existe.codigoBarras  = existe.codigoBarras  || prod.codigoBarras  || null
     renderItemsEdicion()
     enfocarItemEdicion(prod.id)
     if (typeof jeshaToast === 'function') jeshaToast('Cantidad aumentada', 'info')
@@ -571,6 +579,8 @@ function agregarProductoEdicion(prod) {
   itemsEdicion.push({
     productoId: prod.id,
     nombre: prod.nombre,
+    codigoInterno: prod.codigoInterno || null,
+    codigoBarras: prod.codigoBarras || null,
     unidad: prod.unidadCompra || 'pza',
     cantidad: 1,
     costoNeto,
@@ -704,10 +714,11 @@ function aplicarProveedorSeleccionado(id, alias) {
   document.getElementById('prov-id').value     = id
   document.getElementById('prov-buscar').value = alias
   cerrarDDProv()
+  cerrarDropdownProductos()
   const searchProd = document.getElementById('search-prod-modal')
   if (searchProd) {
     searchProd.disabled    = false
-    searchProd.placeholder = 'Nombre o código...'
+    searchProd.placeholder = 'Buscar producto por nombre o código...'
     searchProd.focus()
   }
   document.getElementById('lista-prod-modal').innerHTML = '<p class="muted-hint">Escribe para buscar productos...</p>'
@@ -746,26 +757,53 @@ async function guardarProveedor() {
 // ════════════════════════════════════════════════════════════════════
 //  BÚSQUEDA PRODUCTOS EN MODAL — FIX: búsqueda GLOBAL (sin proveedorId)
 // ════════════════════════════════════════════════════════════════════
+function abrirDropdownProductos() {
+  const lista = document.getElementById('lista-prod-modal')
+  if (lista) lista.classList.add('is-open')
+}
+
+function cerrarDropdownProductos() {
+  const lista = document.getElementById('lista-prod-modal')
+  if (lista) lista.classList.remove('is-open')
+}
+
 async function buscarProductosModal(q) {
   const lista = document.getElementById('lista-prod-modal')
-  if (!q || q.length < 2) { lista.innerHTML = '<p class="muted-hint">Escribe para buscar...</p>'; return }
+  if (!lista) return
+  if (!q || q.length < 2) {
+    lista.innerHTML = '<p class="muted-hint">Escribe para buscar...</p>'
+    cerrarDropdownProductos()
+    return
+  }
   lista.innerHTML = '<p class="muted-hint">Buscando...</p>'
+  abrirDropdownProductos()
   try {
     // FIX: Búsqueda global — NO enviar proveedorId para mostrar todo el catálogo
     const params = new URLSearchParams({ buscar: q, limit: 100 })
     const data = await apiFetch(`/productos?${params}`)
     const prods = data.data || data
-    if (!prods?.length) { lista.innerHTML = '<p class="muted-hint">Sin resultados</p>'; return }
+    if (!prods?.length) { lista.innerHTML = '<p class="muted-hint">Sin resultados</p>'; abrirDropdownProductos(); return }
     window._prodCache = {}
     prods.forEach(p => { window._prodCache[p.id] = p })
-    lista.innerHTML = prods.map(p => `
+    lista.innerHTML = prods.map(p => {
+      const codigo = p.codigoInterno || p.codigoBarras || '—'
+      return `
       <div class="prod-item-modal" onclick="window._addProdComp(${p.id})">
+        <span class="prod-codigo">${codigo}</span>
         <span class="prod-nombre">${p.nombre}</span>
         <span class="prod-precio">${fmt(p.costo || p.costoPromedio || 0)}</span>
-      </div>`).join('')
-  } catch (err) { lista.innerHTML = `<p class="muted-hint" style="color:#f44336">Error</p>` }
+      </div>`
+    }).join('')
+  } catch (err) { lista.innerHTML = `<p class="muted-hint" style="color:#f44336">Error</p>`; abrirDropdownProductos() }
 }
-window._addProdComp = id => { const p = window._prodCache?.[id]; if (p) agregarProductoEdicion(p) }
+window._addProdComp = id => {
+  const p = window._prodCache?.[id]
+  if (!p) return
+  agregarProductoEdicion(p)
+  document.getElementById('search-prod-modal').value = ''
+  document.getElementById('lista-prod-modal').innerHTML = '<p class="muted-hint">Escribe para buscar...</p>'
+  cerrarDropdownProductos()
+}
 
 function mostrarError(id, msg) {
   const el = document.getElementById(id); if (el) { el.textContent = msg; el.classList.add('show') }
@@ -1400,6 +1438,23 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('search-prod-modal')?.addEventListener('input', e => {
     clearTimeout(debounceProd); debounceProd = setTimeout(() => buscarProductosModal(e.target.value.trim()), 350)
   })
+  document.getElementById('search-prod-modal')?.addEventListener('keydown', e => {
+    const lista = document.getElementById('lista-prod-modal')
+    const abierto = lista?.classList.contains('is-open')
+    if (e.key === 'Escape' && abierto) {
+      e.preventDefault()
+      e.stopPropagation()
+      cerrarDropdownProductos()
+      return
+    }
+    if (e.key === 'Enter' && abierto) {
+      const primero = lista.querySelector('.prod-item-modal')
+      if (primero) {
+        e.preventDefault()
+        primero.click()
+      }
+    }
+  })
 
   // Proveedor — buscador + chevron
   document.getElementById('prov-buscar')?.addEventListener('input', e => {
@@ -1414,6 +1469,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         searchProd.value       = ''
       }
       document.getElementById('lista-prod-modal').innerHTML = '<p class="muted-hint">Selecciona un proveedor primero...</p>'
+      cerrarDropdownProductos()
     } else {
       renderDDProv(filtrarProveedores(q))
     }
@@ -1428,6 +1484,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         !e.target.closest('#btn-chevron-prov') &&
         !e.target.closest('#dd-proveedores'))
       cerrarDDProv()
+    if (!e.target.closest('#search-prod-modal') &&
+        !e.target.closest('#lista-prod-modal'))
+      cerrarDropdownProductos()
   })
 
   document.getElementById('btn-nuevo-prov')?.addEventListener('click', () => {
@@ -1447,6 +1506,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
+      const listaProd = document.getElementById('lista-prod-modal')
+      if (listaProd?.classList.contains('is-open')) {
+        cerrarDropdownProductos()
+        return
+      }
       document.getElementById('modal-crear')?.classList.remove('active')
       document.getElementById('modal-detalle')?.classList.remove('active')
       document.getElementById('modal-prov')?.classList.remove('active')

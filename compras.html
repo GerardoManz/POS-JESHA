@@ -103,34 +103,19 @@
       <h3 id="crear-titulo">Nueva Compra</h3>
       <button class="modal-close" id="crear-close">&times;</button>
     </div>
-    <div class="modal-body-split">
-      <!-- Panel izq: buscar productos -->
-      <div class="panel-izq">
-        <p class="panel-label">Agregar productos</p>
-        <div style="display:flex;gap:6px;margin-bottom:10px;">
-          <div class="search-group" style="flex:1;">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-            <input type="text" id="search-prod-modal" placeholder="Nombre o código..." class="search-input" />
-          </div>
-          <button class="btn-secondary btn-sm" id="btn-nuevo-prod" title="Nuevo producto" style="white-space:nowrap;font-size:0.78rem;">+ Producto</button>
-        </div>
-        <div id="lista-prod-modal" class="lista-prod-modal">
-          <p class="muted-hint">Escribe para buscar...</p>
-        </div>
-      </div>
-      <!-- Panel der: datos compra + tabla -->
-      <div class="panel-der">
+    <div class="modal-body-erp">
+      <section class="compra-section compra-datos-section">
         <p class="panel-label">Datos de la compra</p>
-        <div class="form-row" style="margin-bottom:10px;">
+        <div class="compra-datos-grid">
           <div class="form-group">
             <label>Proveedor *</label>
             <div style="position:relative;">
-              <div style="display:flex;gap:6px;">
-                <input type="text" id="prov-buscar" placeholder="Buscar proveedor..." class="search-input" autocomplete="off" style="flex:1" />
-                <button type="button" id="btn-chevron-prov" style="padding:7px 10px;background:rgba(255,255,255,0.04);border:1px solid var(--border-color,#333);border-radius:6px;color:var(--muted);cursor:pointer;transition:color 0.15s;flex-shrink:0;" title="Ver todos los proveedores">
+              <div class="proveedor-control">
+                <input type="text" id="prov-buscar" placeholder="Buscar proveedor..." class="search-input" autocomplete="off" />
+                <button type="button" id="btn-chevron-prov" class="btn-icon-field" title="Ver todos los proveedores">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
                 </button>
-                <button class="btn-secondary btn-sm" id="btn-nuevo-prov" title="Nuevo proveedor">+</button>
+                <button class="btn-secondary btn-sm btn-proveedor-add" id="btn-nuevo-prov" title="Nuevo proveedor">+</button>
               </div>
               <input type="hidden" id="prov-id" />
               <div id="dd-proveedores" class="dropdown-clientes" style="display:none;position:absolute;z-index:300;width:100%;left:0;top:calc(100% + 4px);background:var(--panel-bg,#1a1a1a);border:1px solid var(--border-color,#333);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.4);overflow:hidden;"></div>
@@ -141,32 +126,55 @@
             <input type="text" id="comp-notas" placeholder="Observaciones..." class="search-input" />
           </div>
         </div>
+      </section>
 
-        <div class="items-wrapper" style="margin-top:4px;">
-          <table class="items-table" style="width:100%;table-layout:auto;">
+      <section class="compra-section compra-productos-section">
+        <p class="panel-label">Agregar productos</p>
+        <div class="producto-search-wrap">
+          <div class="producto-search-row">
+            <div class="search-group producto-search-group">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+              <input type="text" id="search-prod-modal" placeholder="Buscar producto por nombre o código..." class="search-input" />
+            </div>
+            <button class="btn-secondary btn-sm btn-nuevo-producto" id="btn-nuevo-prod" title="Nuevo producto">+ Producto</button>
+          </div>
+          <div id="lista-prod-modal" class="lista-prod-modal">
+            <p class="muted-hint">Escribe para buscar...</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="compra-section compra-tabla-section">
+        <div class="items-wrapper compra-items-wrapper">
+          <table class="items-table compra-items-table">
             <thead>
               <tr>
-                <th style="min-width:140px;">Producto</th>
-                <th style="width:80px;">Cantidad</th>
-                <th style="width:110px;">Costo est.</th>
-                <th style="width:110px;">Subtotal est.</th>
-                <th style="width:28px;"></th>
+                <th class="col-codigo">Código</th>
+                <th class="col-desc">Descripción</th>
+                <th class="col-cantidad">Cantidad</th>
+                <th class="col-costo">Costo est.</th>
+                <th class="col-subtotal">Subtotal est.</th>
+                <th class="col-accion"></th>
               </tr>
             </thead>
             <tbody id="comp-items-tbody"></tbody>
           </table>
         </div>
+      </section>
 
-        <div class="total-row" style="margin-top:8px;">
+      <footer class="compra-footer">
+        <div class="total-row compra-total-row">
           <span>Total estimado:</span>
           <span id="comp-total" class="total-monto">$0.00</span>
         </div>
-        <div id="crear-error" class="error-message"></div>
-        <div class="form-actions" style="justify-content:flex-end;gap:10px;margin-top:10px;">
-          <button class="btn-secondary" id="crear-cancel" style="padding:8px 20px;font-size:0.85rem;">Cancelar</button>
-          <button class="btn-primary" id="crear-guardar" style="padding:8px 24px;font-size:0.85rem;">Guardar Compra</button>
+        <div class="compra-footer-actions">
+          <div id="crear-error" class="error-message"></div>
+          <div class="form-actions compra-actions">
+            <button class="btn-secondary" id="crear-cancel" style="padding:8px 20px;font-size:0.85rem;">Cancelar</button>
+            <button class="btn-primary" id="crear-guardar" style="padding:8px 24px;font-size:0.85rem;">Guardar Compra</button>
+          </div>
         </div>
-      </div>
+      </footer>
     </div>
   </div>
 </div>

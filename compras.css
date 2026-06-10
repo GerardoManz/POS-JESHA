@@ -24,7 +24,7 @@
 .modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75); align-items:center; justify-content:center; padding:16px; }
 .modal.active { display:flex; }
 .modal-content { background:var(--sidebar-bg); border:1px solid var(--panel-border); border-radius:14px; width:98%; max-height:96vh; overflow-y:auto; box-shadow:0 24px 60px rgba(0,0,0,0.6); animation:slideUp 0.2s ease; }
-.modal-xl { max-width:1020px; }
+.modal-xl { max-width:1180px; overflow:hidden; display:flex; flex-direction:column; }
 .modal-detalle-xl { max-width:1180px; overflow:hidden; display:flex; flex-direction:column; }
 @keyframes slideUp { from{opacity:0;transform:translateY(14px)} to{opacity:1;transform:translateY(0)} }
 .modal-header { display:flex; align-items:center; justify-content:space-between; padding:16px 22px; border-bottom:1px solid var(--panel-border); flex-shrink:0; }
@@ -33,22 +33,35 @@
 .modal-close:hover { background:rgba(255,255,255,0.06); color:var(--text); }
 @keyframes filaResaltada { 0%,70%{background:rgba(96,208,128,0.18)} 100%{background:transparent} }
 
-/* FIX: modal-body-split responsive — usa minmax en vez de px fijo */
-.modal-body-split { display:grid; grid-template-columns:minmax(220px, 280px) 1fr; height:calc(88vh - 70px); overflow:hidden; }
-@media (max-width: 768px) {
-  .modal-body-split { grid-template-columns:1fr; height:auto; max-height:calc(90vh - 70px); overflow-y:auto; }
-  .panel-izq { border-right:none; border-bottom:1px solid var(--panel-border); max-height:300px; }
-}
-
-.panel-izq { border-right:1px solid var(--panel-border); padding:20px 16px; display:flex; flex-direction:column; overflow:hidden; }
-.panel-der { padding:20px 24px; overflow:hidden; min-height:0; display:flex; flex-direction:column; }
+/* ── Modal Nueva Compra: layout ERP full-width ── */
+.modal-body-erp { height:calc(92vh - 70px); min-height:0; padding:18px 22px 16px; display:flex; flex-direction:column; gap:14px; overflow:hidden; }
+.compra-section { border:1px solid rgba(255,255,255,0.06); border-radius:12px; background:rgba(255,255,255,0.018); padding:14px; }
+.compra-datos-section { flex:0 0 auto; }
+.compra-productos-section { flex:0 0 auto; position:relative; z-index:5; }
+.compra-tabla-section { flex:1; min-height:0; padding:0; overflow:hidden; background:transparent; }
+.compra-datos-grid { display:grid; grid-template-columns:minmax(320px, 1.15fr) minmax(260px, 0.85fr); gap:14px; align-items:end; }
+.proveedor-control { display:flex; gap:8px; align-items:center; }
+.proveedor-control .search-input { min-width:0; width:100%; }
+.btn-icon-field { flex-shrink:0; padding:8px 11px; background:rgba(255,255,255,0.04); border:1px solid var(--border-color,#333); border-radius:8px; color:var(--muted); cursor:pointer; transition:color 0.15s,border-color 0.15s,background 0.15s; }
+.btn-icon-field:hover { color:var(--text); border-color:rgba(255,255,255,0.2); background:rgba(255,255,255,0.06); }
+.btn-proveedor-add { flex-shrink:0; min-width:38px; justify-content:center; }
+.producto-search-wrap { position:relative; }
+.producto-search-row { display:flex; gap:10px; align-items:center; }
+.producto-search-group { flex:1; min-width:0; padding:0 12px; background:rgba(255,255,255,0.03); border:1px solid var(--panel-border); border-radius:10px; transition:border-color 0.15s,background 0.15s; }
+.producto-search-group:focus-within { border-color:var(--accent); background:rgba(91,142,255,0.06); }
+.producto-search-group .search-input { width:100%; border:0; background:transparent; padding:11px 0; min-width:0; }
+.btn-nuevo-producto { flex-shrink:0; white-space:nowrap; align-self:stretch; }
 .panel-label { font-size:0.75rem; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.06em; margin-bottom:12px; }
-.lista-prod-modal { flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:4px; }
-.prod-item-modal { display:flex; justify-content:space-between; align-items:center; padding:9px 10px; border-radius:7px; cursor:pointer; transition:background 0.15s; border:1px solid transparent; }
-.prod-item-modal:hover { background:rgba(255,255,255,0.04); border-color:var(--panel-border); }
-.prod-nombre { font-size:0.82rem; color:var(--text); font-weight:500; }
-.prod-precio { font-size:0.8rem; color:var(--muted); white-space:nowrap; }
+.lista-prod-modal { display:none; position:absolute; top:calc(100% + 8px); left:0; right:0; z-index:450; max-height:min(360px, 42vh); overflow-y:auto; flex-direction:column; gap:0; background:var(--panel-bg,#151515); border:1px solid rgba(91,142,255,0.35); border-radius:12px; box-shadow:0 18px 45px rgba(0,0,0,0.55); padding:6px; }
+.lista-prod-modal.is-open { display:flex; }
+.lista-prod-modal .muted-hint { padding:16px 12px; }
+.prod-item-modal { display:grid; grid-template-columns:minmax(84px, 120px) minmax(0, 1fr) minmax(82px, auto); gap:12px; align-items:center; padding:10px 12px; border-radius:9px; cursor:pointer; transition:background 0.15s,border-color 0.15s; border:1px solid transparent; }
+.prod-item-modal:hover { background:rgba(255,255,255,0.05); border-color:rgba(255,255,255,0.1); }
+.prod-codigo { color:#9ab6ff; font-size:0.76rem; font-weight:700; letter-spacing:0.02em; overflow-wrap:anywhere; }
+.prod-nombre { font-size:0.84rem; color:var(--text); font-weight:500; line-height:1.35; white-space:normal; word-break:break-word; overflow-wrap:anywhere; }
+.prod-precio { font-size:0.82rem; color:var(--muted); white-space:nowrap; text-align:right; }
 .items-wrapper { flex:1; min-height:220px; margin-bottom:16px; border-radius:8px; border:1px solid var(--panel-border); overflow:auto; }
+.compra-items-wrapper { height:100%; min-height:0; margin:0; border-radius:12px; }
 .items-table { width:100%; border-collapse:collapse; font-size:0.85rem; }
 .items-table th { position:sticky; top:0; z-index:1; padding:9px 12px; background:var(--sidebar-bg); border-bottom:1px solid var(--panel-border); font-size:0.72rem; font-weight:600; color:var(--muted); text-transform:uppercase; text-align:left; }
 .items-table td { padding:8px 12px; border-bottom:1px solid rgba(255,255,255,0.04); color:var(--text); vertical-align:middle; }
@@ -56,6 +69,20 @@
 .items-table tr.fila-resaltada td { animation:filaResaltada 1.4s ease; }
 .items-table input[type="number"] { padding:5px 7px; background:rgba(255,255,255,0.04); border:1px solid var(--panel-border); border-radius:5px; color:var(--text); font-family:'Barlow',sans-serif; font-size:0.82rem; outline:none; }
 .items-table input:focus { border-color:var(--accent); }
+.compra-items-table { table-layout:fixed; min-width:760px; }
+.compra-items-table .col-codigo { width:110px; }
+.compra-items-table .col-cantidad { width:96px; text-align:center; }
+.compra-items-table .col-costo { width:112px; text-align:right; }
+.compra-items-table .col-subtotal { width:120px; text-align:right; }
+.compra-items-table .col-accion { width:44px; text-align:center; }
+.compra-items-table td:nth-child(3), .compra-items-table th:nth-child(3), .compra-items-table td:nth-child(6), .compra-items-table th:nth-child(6) { text-align:center; }
+.compra-items-table td:nth-child(4), .compra-items-table th:nth-child(4), .compra-items-table td:nth-child(5), .compra-items-table th:nth-child(5) { text-align:right; }
+.compra-item-codigo { color:#9ab6ff; font-size:0.78rem; font-weight:700; overflow-wrap:anywhere; }
+.compra-item-desc { white-space:normal; word-break:break-word; overflow-wrap:anywhere; line-height:1.42; font-size:0.86rem; font-weight:500; }
+.compra-footer { flex:0 0 auto; display:grid; grid-template-columns:minmax(220px, 1fr) auto; gap:16px; align-items:end; border-top:1px solid var(--panel-border); padding-top:12px; }
+.compra-total-row { margin:0; padding:0; border-top:0; justify-content:flex-start; gap:12px; }
+.compra-footer-actions { display:flex; flex-direction:column; align-items:flex-end; gap:8px; min-width:320px; }
+.compra-actions { padding-top:0; margin-top:0; }
 .empty-items { text-align:center; color:var(--muted); font-size:0.82rem; padding:24px; }
 .detalle-layout { display:grid; grid-template-columns:320px 1fr; height:calc(96vh - 70px); overflow:hidden; }
 .det-panel-izq { border-right:1px solid var(--panel-border); overflow-y:auto; padding:16px; display:flex; flex-direction:column; gap:12px; }
@@ -184,3 +211,29 @@
 
 /* ── Sublínea de desglose de IVA en auditoría (pantalla) ── */
 .audit-desglose { font-size:0.66rem; color:var(--muted); margin:1px 0 1px 2px; }
+
+@media (max-width: 920px) {
+  .modal-body-erp { height:calc(92vh - 70px); padding:14px; gap:12px; }
+  .compra-datos-grid { grid-template-columns:1fr; gap:12px; }
+  .compra-footer { grid-template-columns:1fr; align-items:stretch; }
+  .compra-footer-actions { min-width:0; align-items:stretch; }
+  .compra-actions { justify-content:flex-end; }
+}
+
+@media (max-width: 640px) {
+  .modal { padding:8px; }
+  .modal-xl { width:100%; max-height:98vh; }
+  .modal-body-erp { height:calc(98vh - 66px); padding:12px; }
+  .compra-section { padding:12px; }
+  .producto-search-row { align-items:stretch; flex-direction:column; }
+  .btn-nuevo-producto { justify-content:center; }
+  .proveedor-control { gap:6px; }
+  .btn-proveedor-add { min-width:36px; padding-left:10px !important; padding-right:10px !important; }
+  .lista-prod-modal { max-height:300px; }
+  .prod-item-modal { grid-template-columns:1fr auto; gap:6px 10px; }
+  .prod-codigo { grid-column:1 / -1; }
+  .prod-precio { align-self:start; }
+  .compra-items-table { min-width:720px; }
+  .compra-total-row { justify-content:space-between; }
+  .compra-actions { flex-wrap:wrap; }
+}
