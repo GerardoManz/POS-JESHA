@@ -277,7 +277,7 @@ html, body {
 
 <div class="pie">¡Gracias por su compra!<br/>Conserve su ticket para aclaraciones</div>
 <div class="pie-legal">
-  3 días para solicitar factura.<br/>
+  El cliente cuenta con 3 días para realizar su factura.<br/>
   Pasado el plazo, JESHA no se hace responsable.<br/>
   No se aceptan devoluciones por mal uso.
 </div>
