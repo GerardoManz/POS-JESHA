@@ -1815,3 +1815,46 @@
 .modal-cotizar-overlay.open {
   display: flex;
 }
+
+/* ══════════════════════════════════════════════════════════════════
+   MODAL GRANEL — Conmutador de modo Cantidad / Importe $
+   (patrón replicado de .tipo-tabs de cotizaciones.css)
+   ══════════════════════════════════════════════════════════════════ */
+.granel-modo-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.granel-modo-tab {
+  flex: 1;
+  padding: 9px 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 8px;
+  color: #7a8599;
+  font-family: 'Barlow', sans-serif;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.granel-modo-tab:hover:not(.active) {
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #e9edf4;
+}
+
+.granel-modo-tab.active {
+  background: rgba(107, 157, 232, 0.14);
+  border-color: rgba(107, 157, 232, 0.45);
+  color: #6b9de8;
+}
+
+/* Preview con ajuste por redondeo (cobro no exacto) — ámbar de advertencia */
+#granel-modal-conversion.granel-preview-ajuste {
+  color: #e8a13c !important;
+  background: rgba(232, 161, 60, 0.08) !important;
+  border-color: rgba(232, 161, 60, 0.22) !important;
+}

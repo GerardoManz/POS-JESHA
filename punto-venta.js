@@ -206,6 +206,8 @@ function actualizarPrecio(productoId, nuevoPrecio) {
     item.precioOriginal = item.precio
   }
   item.precio = parseFloat(parsed.toFixed(2))
+  // Editar el precio manualmente desliga la línea de la captura por importe
+  if (item.capturadoPorImporte) { item.capturadoPorImporte = false; delete item.importeCapturado }
   actualizarCarrito()
 }
 
@@ -216,6 +218,8 @@ function actualizarPrecio(productoId, nuevoPrecio) {
 document.addEventListener('DOMContentLoaded', async () => {
   console.log('📄 DOMContentLoaded: Punto de Venta')
   await verificarTurno()
+  purgarPausadasDeOtroTurno()
+  actualizarBadgePausadas()
   await cargarClientes()
   mostrarEstadoInicial()
   configurarEventListeners()
@@ -294,6 +298,8 @@ async function abrirTurno() {
       return
     }
     turnoActivo = data.data
+    purgarPausadasDeOtroTurno()
+    actualizarBadgePausadas()
     modalAbrirTurno.style.display  = 'none'
       montoInicialTurno.value = '2000'
     turnoStatus.innerHTML          = '✓ Turno abierto'
@@ -680,6 +686,74 @@ async function cargarMasResultados() {
 }
 
 // ══════════════════════════════════════════════════════════════════
+//  UTILIDADES NUMÉRICAS — espejo del redondeo del backend
+//  crearVenta redondea el subtotal de CADA línea a 2 decimales y luego
+//  suma. El frontend debe calcular idéntico para no provocar
+//  TOTAL_MISMATCH con varias líneas granel de 3 decimales.
+// ══════════════════════════════════════════════════════════════════
+
+function _round2(v) { return parseFloat(parseFloat(v).toFixed(2)) }
+function _round3(v) { return parseFloat(parseFloat(v).toFixed(3)) }
+
+function subtotalLinea(item) {
+  return _round2(parseFloat(item.precio) * parseFloat(item.cantidad))
+}
+
+// ── VENTA POR IMPORTE ──
+// Dado un importe en pesos y el precio de catálogo, busca el par
+// (cantidad a 3 decimales, precio de línea a 2 decimales) cuyo subtotal
+// redondeado coincida EXACTAMENTE con el importe pedido, explorando
+// cantidades vecinas (±0.001) y precios vecinos al ideal.
+// El precio de línea nunca se desvía más de ±2% del catálogo
+// (_TOLERANCIA_PRECIO_IMPORTE); si el importe es tan pequeño que el par
+// exacto exigiría más desviación, se conserva el precio de catálogo y
+// se devuelve exacto:false con el cobro real (ej. "$0.48" en vez de "$0.50").
+const _TOLERANCIA_PRECIO_IMPORTE = 0.02
+
+function calcularParExacto(importe, precioBase) {
+  const precioCat = parseFloat(precioBase)
+  if (!precioCat || precioCat <= 0) return null
+  const imp = _round2(importe)
+  if (imp <= 0) return null
+
+  const base = _round3(imp / precioCat)
+  if (base < 0.001) return null
+
+  const candCant = [...new Set([base, _round3(base - 0.001), _round3(base + 0.001)])].filter(c => c >= 0.001)
+  let mejor = null
+
+  for (const cant of candCant) {
+    const ideal = imp / cant
+    const candPrecio = [...new Set([
+      Math.floor(ideal * 100) / 100,
+      _round2(ideal),
+      Math.ceil(ideal * 100) / 100
+    ])].filter(p => p > 0 && Math.abs(p - precioCat) / precioCat <= _TOLERANCIA_PRECIO_IMPORTE)
+
+    for (const p of candPrecio) {
+      const sub = _round2(cant * p)
+      if (Math.round(sub * 100) === Math.round(imp * 100)) {
+        const score = Math.abs(cant - base) * 1000 + Math.abs(p - precioCat)
+        if (!mejor || score < mejor.score) mejor = { cantidad: cant, precio: _round2(p), subtotal: sub, exacto: true, score }
+      }
+    }
+  }
+
+  if (mejor) { const { score, ...par } = mejor; return par }
+
+  // Sin par exacto dentro de tolerancia: intentar precio ajustado simple
+  const precioAj = _round2(imp / base)
+  if (Math.abs(precioAj - precioCat) / precioCat <= _TOLERANCIA_PRECIO_IMPORTE) {
+    return { cantidad: base, precio: precioAj, subtotal: _round2(base * precioAj), exacto: false }
+  }
+
+  // Importe demasiado pequeño para ajustar precio con honestidad:
+  // conservar precio de catálogo y cobrar lo que la cantidad vale realmente
+  const subCat = _round2(base * precioCat)
+  return { cantidad: base, precio: precioCat, subtotal: subCat, exacto: Math.round(subCat * 100) === Math.round(imp * 100) }
+}
+
+// ══════════════════════════════════════════════════════════════════
 //  CARRITO
 // ══════════════════════════════════════════════════════════════════
 
@@ -724,6 +798,7 @@ function agregarAlCarrito(productoId, nombre, precio, esGranel = false, unidadVe
 
 let _granelPendiente = null // { id, nombre, precio, unidadVenta, factorConversion, unidadCompra }
 let _unidadElegida = 'base' // 'base' o 'empaque'
+let _modoCapturaGranel = 'CANTIDAD' // 'CANTIDAD' o 'IMPORTE' — modo activo del modal granel
 
 function abrirModalGranel(id, nombre, precio, unidadVenta, cantidadActual, factorConversion = 1, unidadCompra = '') {
   _granelPendiente = { id, nombre, precio, unidadVenta, factorConversion: factorConversion || 1, unidadCompra: unidadCompra || '' }
@@ -744,7 +819,7 @@ function abrirModalGranel(id, nombre, precio, unidadVenta, cantidadActual, facto
     inputCant.placeholder = unidadVenta ? `Ej: 2.500 ${unidadVenta}` : 'Ej: 2.500'
   }
   if (errorDiv) { errorDiv.style.display = 'none'; errorDiv.textContent = '' }
-  if (convDiv) convDiv.style.display = 'none'
+  if (convDiv) { convDiv.style.display = 'none'; convDiv.classList.remove('granel-preview-ajuste') }
 
   // ── Selector de unidad: mostrar solo si factor > 1 Y no es granel ──
   const cached = productoCache.get(id)
@@ -764,6 +839,19 @@ function abrirModalGranel(id, nombre, precio, unidadVenta, cantidadActual, facto
     } else {
       unidadWrap.style.display = 'none'
     }
+  }
+
+  // ── Tabs de modo de captura (Cantidad / Importe $): solo productos a GRANEL ──
+  const tabsWrap = document.getElementById('granel-modo-tabs-wrap')
+  if (tabsWrap) tabsWrap.style.display = esGranel ? 'flex' : 'none'
+
+  const enCarrito   = carrito.find(i => i.id === id)
+  const modoInicial = (esGranel && enCarrito?.capturadoPorImporte) ? 'IMPORTE' : 'CANTIDAD'
+  _setModoCaptura(modoInicial)
+  if (modoInicial === 'IMPORTE') {
+    const inputImp = document.getElementById('granel-modal-importe')
+    if (inputImp) inputImp.value = enCarrito.importeCapturado ?? ''
+    _actualizarPreviewImporte()
   }
 
   // Ajustar step según tipo de producto
@@ -797,7 +885,12 @@ function abrirModalGranel(id, nombre, precio, unidadVenta, cantidadActual, facto
   }
 
   if (modal) modal.style.display = 'flex'
-  setTimeout(() => { if (inputCant) { inputCant.focus(); inputCant.select() } }, 100)
+  setTimeout(() => {
+    const foco = _modoCapturaGranel === 'IMPORTE'
+      ? document.getElementById('granel-modal-importe')
+      : inputCant
+    if (foco) { foco.focus(); foco.select() }
+  }, 100)
 }
 
 function _setUnidadVisual(modo) {
@@ -846,15 +939,159 @@ function _actualizarConversionModal() {
   }
 }
 
+// ── Conmutador Cantidad / Importe $ (patrón replicado de cotizaciones.js setTipoModal) ──
+function _setModoCaptura(modo) {
+  _modoCapturaGranel = modo
+  document.querySelectorAll('.granel-modo-tab').forEach(t => t.classList.toggle('active', t.dataset.modo === modo))
+
+  const panelCant = document.getElementById('granel-panel-cantidad')
+  const panelImp  = document.getElementById('granel-panel-importe')
+  const inputCant = document.getElementById('granel-modal-cantidad')
+  const inputImp  = document.getElementById('granel-modal-importe')
+  const errorDiv  = document.getElementById('granel-modal-error')
+  const convDiv   = document.getElementById('granel-modal-conversion')
+
+  if (panelCant) panelCant.style.display = modo === 'CANTIDAD' ? 'block' : 'none'
+  if (panelImp)  panelImp.style.display  = modo === 'IMPORTE'  ? 'block' : 'none'
+  // Limpiar solo el input del modo que se abandona (permite prellenado del activo)
+  if (inputCant && modo === 'IMPORTE')  inputCant.value = ''
+  if (inputImp  && modo === 'CANTIDAD') inputImp.value = ''
+  if (errorDiv) { errorDiv.style.display = 'none'; errorDiv.textContent = '' }
+  if (convDiv)  { convDiv.style.display = 'none'; convDiv.classList.remove('granel-preview-ajuste') }
+
+  const foco = modo === 'IMPORTE' ? inputImp : inputCant
+  setTimeout(() => { if (foco) { foco.focus(); foco.select() } }, 60)
+}
+
+// Preview en vivo del modo importe: cantidad equivalente, precio de línea y cobro real
+function _actualizarPreviewImporte() {
+  const convDiv  = document.getElementById('granel-modal-conversion')
+  const errorDiv = document.getElementById('granel-modal-error')
+  const inputImp = document.getElementById('granel-modal-importe')
+  if (!convDiv || !_granelPendiente || _modoCapturaGranel !== 'IMPORTE') return
+
+  if (errorDiv) { errorDiv.style.display = 'none'; errorDiv.textContent = '' }
+  convDiv.classList.remove('granel-preview-ajuste')
+
+  const importe = parseFloat(inputImp?.value) || 0
+  if (importe <= 0) { convDiv.style.display = 'none'; return }
+
+  const { id, precio, unidadVenta } = _granelPendiente
+  const par = calcularParExacto(importe, precio)
+
+  if (!par) {
+    const minImp = Math.max(0.01, _round2(precio * 0.001))
+    convDiv.style.display = 'none'
+    if (errorDiv) { errorDiv.textContent = `Importe mínimo para este producto: $${minImp.toFixed(2)}`; errorDiv.style.display = 'block' }
+    return
+  }
+
+  const u = unidadVenta || 'u.'
+  let html
+  if (par.exacto) {
+    html = `$${par.subtotal.toFixed(2)} = <strong>${par.cantidad.toFixed(3)} ${u}</strong> a $${par.precio.toFixed(2)}/${u}`
+    if (Math.round(par.precio * 100) !== Math.round(precio * 100)) {
+      html += ` <span style="opacity:0.7;">(normal $${precio.toFixed(2)})</span>`
+    }
+  } else {
+    html = `Se cobrarán <strong>$${par.subtotal.toFixed(2)}</strong> = ${par.cantidad.toFixed(3)} ${u} a $${par.precio.toFixed(2)}/${u} — ajuste por redondeo`
+    convDiv.classList.add('granel-preview-ajuste')
+  }
+  convDiv.innerHTML = html
+  convDiv.style.display = 'block'
+
+  // Aviso de stock en vivo
+  const cached = productoCache.get(id)
+  if (cached && cached.stock !== null && cached.stock !== undefined && par.cantidad > parseFloat(cached.stock)) {
+    const stockDisp = parseFloat(cached.stock)
+    const maxImp = Math.floor(stockDisp * precio * 100) / 100
+    if (errorDiv) { errorDiv.textContent = `Excede el stock disponible (máximo $${maxImp.toFixed(2)})`; errorDiv.style.display = 'block' }
+  }
+}
+
+// Confirmación del modo importe: valida, calcula el par exacto y agrega/reemplaza la línea
+function _confirmarImporteGranel() {
+  if (!_granelPendiente) return
+  const inputImp = document.getElementById('granel-modal-importe')
+  const errorDiv = document.getElementById('granel-modal-error')
+  const importe  = parseFloat(inputImp?.value)
+
+  if (isNaN(importe) || importe <= 0) {
+    if (errorDiv) { errorDiv.textContent = 'Ingresa un importe válido mayor a $0.00'; errorDiv.style.display = 'block' }
+    inputImp?.focus()
+    return
+  }
+
+  const { id, nombre, precio, unidadVenta, factorConversion, unidadCompra } = _granelPendiente
+  const par = calcularParExacto(importe, precio)
+
+  if (!par) {
+    const minImp = Math.max(0.01, _round2(precio * 0.001))
+    if (errorDiv) { errorDiv.textContent = `Importe muy pequeño. Mínimo para este producto: $${minImp.toFixed(2)}`; errorDiv.style.display = 'block' }
+    inputImp?.focus()
+    return
+  }
+
+  // Validar stock con la cantidad calculada
+  const cached = productoCache.get(id)
+  if (cached && cached.stock !== null && cached.stock !== undefined) {
+    const stockDisp = parseFloat(cached.stock)
+    if (par.cantidad > stockDisp) {
+      const stockFmt = Number.isInteger(stockDisp) ? stockDisp : stockDisp.toFixed(3).replace(/\.?0+$/, '')
+      const maxImp = Math.floor(stockDisp * precio * 100) / 100
+      if (errorDiv) {
+        errorDiv.textContent = `Stock insuficiente. Disponible: ${stockFmt} ${unidadVenta || ''} (máximo $${maxImp.toFixed(2)})`
+        errorDiv.style.display = 'block'
+      }
+      inputImp?.focus()
+      return
+    }
+  }
+
+  const linea = {
+    id, nombre,
+    precio: par.precio,
+    precioOriginal: precio,
+    cantidad: par.cantidad,
+    cantidadVisible: par.cantidad,
+    esGranel: true,
+    unidadVenta: unidadVenta || '',
+    unidadCompra: unidadCompra || '',
+    factorConversion: factorConversion || 1,
+    unidadElegida: 'base',
+    capturadoPorImporte: true,
+    importeCapturado: par.subtotal
+  }
+
+  const existe = carrito.find(item => item.id === id)
+  if (existe) { Object.assign(existe, linea) } else { carrito.push(linea) }
+
+  if (!productoCache.get(id)) {
+    productoCache.set(id, { id, nombre, precioVenta: precio, precioBase: precio, stock: null, codigoInterno: '', esGranel: true, unidadVenta, unidadCompra, factorConversion: factorConversion || 1 })
+  }
+
+  cerrarModalGranel()
+  actualizarCarrito({ scrollAlFinal: true })
+
+  const detalle = `$${par.subtotal.toFixed(2)} = ${par.cantidad.toFixed(3)} ${unidadVenta || 'u.'}`
+  if (par.exacto) {
+    mostrarToast(`✓ ${nombre}: ${detalle} agregado`, 'success')
+  } else {
+    mostrarToast(`✓ ${nombre}: ${detalle} agregado (cobro ajustado por redondeo)`, 'warning')
+  }
+}
+
 function cerrarModalGranel() {
   const modal = document.getElementById('modal-cantidad-granel')
   if (modal) modal.style.display = 'none'
   _granelPendiente = null
   _unidadElegida = 'base'
+  _modoCapturaGranel = 'CANTIDAD'
 }
 
 function confirmarCantidadGranel() {
   if (!_granelPendiente) return
+  if (_modoCapturaGranel === 'IMPORTE') { _confirmarImporteGranel(); return }
   const inputCant = document.getElementById('granel-modal-cantidad')
   const errorDiv  = document.getElementById('granel-modal-error')
   const cantidad  = parseFloat(inputCant?.value)
@@ -942,6 +1179,14 @@ function actualizarCantidad(productoId, cantidad) {
       // ✅ Bloquear decimales para productos NO granel
       if (!item.esGranel) cantParsed = Math.round(cantParsed)
 
+      // ✅ Línea capturada por importe: al editar la cantidad manualmente el
+      //    precio ajustado deja de ser válido → restaurar precio de catálogo
+      if (item.capturadoPorImporte) {
+        if (item.precioOriginal !== undefined) item.precio = item.precioOriginal
+        item.capturadoPorImporte = false
+        delete item.importeCapturado
+      }
+
       // Si está en modo empaque, la cantidad visible cambia pero la base se recalcula
       if (item.unidadElegida === 'empaque' && item.factorConversion > 1) {
         item.cantidadVisible = cantParsed
@@ -987,6 +1232,7 @@ function actualizarCarrito(opciones = {}) {
                  onchange="actualizarCantidad(${item.id}, this.value)" />
           ${unidadLabel ? `<span style="font-size:0.7rem;color:var(--muted);display:block;">${unidadLabel}</span>` : ""}
           ${esEmpaque ? `<span style="font-size:0.6rem;color:#6b9de8;display:block;">(${item.cantidad} ${item.unidadVenta})</span>` : ""}
+          ${item.capturadoPorImporte ? `<span style="font-size:0.6rem;color:#e8a13c;display:block;">= $${(item.importeCapturado ?? subtotalLinea(item)).toFixed(2)} capturado</span>` : ""}
         </td>
         <td style="text-align:right;">$${(item.precio * item.cantidad).toFixed(2)}</td>
         <td style="text-align:center;">
@@ -997,12 +1243,14 @@ function actualizarCarrito(opciones = {}) {
   }
 
   itemsCount.textContent = `(${carrito.length})`
-  const total = carrito.reduce((sum, item) => sum + (item.precio * item.cantidad), 0)
+  const total = carrito.reduce((sum, item) => sum + subtotalLinea(item), 0)
   resumenTotal.textContent = `$${total.toFixed(2)}`
 
   btnCompletarVenta.disabled = !(carrito.length > 0 && turnoActivo && metodoPagoSeleccionado)
   const btnCotizar = document.getElementById('btn-cotizar-carrito')
   if (btnCotizar) btnCotizar.disabled = carrito.length === 0
+  const btnPausar = document.getElementById('btn-pausar-venta')
+  if (btnPausar) btnPausar.disabled = carrito.length === 0
 
   // Persistir estado del carrito en sessionStorage
   guardarCarritoEnSession()
@@ -1024,6 +1272,16 @@ async function limpiarCarrito() {
   })
   if (!ok) return
 
+  resetVentaActual()
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  RESET DE VENTA ACTIVA — limpieza compartida
+//  Extraído de limpiarCarrito y del cierre post-venta para no duplicar.
+//  Lo reutilizan también pausar/recuperar ventas en espera.
+// ══════════════════════════════════════════════════════════════════
+
+function resetVentaActual() {
   carrito                = []
   cotIdActual            = null
   clienteSeleccionado    = null
@@ -1033,10 +1291,10 @@ async function limpiarCarrito() {
   pinVendedorVerificado  = false
   creditoCliente         = null
   ocultarCreditoCliente()
-  montoRecibido.value    = ''
-  clienteNombre.value    = ''
+  if (montoRecibido) montoRecibido.value = ''
+  if (clienteNombre) clienteNombre.value = ''
   productoCache.clear()
-  searchProductos.value  = ''
+  if (searchProductos) searchProductos.value = ''
   limpiarCarritoSession()
 
   const badge = document.getElementById('cliente-seleccionado-badge')
@@ -1049,6 +1307,277 @@ async function limpiarCarrito() {
   cerrarDropdownClientes()
   mostrarEstadoInicial()
   actualizarCarrito()
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  VENTAS EN PAUSA
+//  Persistencia en localStorage (sobrevive cierre de pestaña/navegador,
+//  alcance: esta caja/PC). Cada pausada se sella con usuarioId y turnoId:
+//  - Solo el usuario que la creó la ve en su lista.
+//  - Al cerrar turno, las pausadas de ese turno se purgan en el
+//    siguiente load del POS (purga diferida).
+//  No reserva inventario: el backend revalida stock al completar.
+// ══════════════════════════════════════════════════════════════════
+
+const PAUSADAS_KEY = 'jesha_ventas_pausadas'
+
+function _generarIdPausada() {
+  if (window.crypto?.randomUUID) return crypto.randomUUID()
+  // Fallback sin Math.random (contextos no seguros)
+  const buf = new Uint32Array(4)
+  crypto.getRandomValues(buf)
+  return `p_${Date.now()}_${Array.from(buf, n => n.toString(16)).join('')}`
+}
+
+function _leerPausadas() {
+  try {
+    const raw = localStorage.getItem(PAUSADAS_KEY)
+    const arr = raw ? JSON.parse(raw) : []
+    return Array.isArray(arr) ? arr : []
+  } catch (e) {
+    console.warn('⚠️ Error leyendo ventas pausadas:', e.message)
+    return []
+  }
+}
+
+function _escribirPausadas(arr) {
+  try {
+    localStorage.setItem(PAUSADAS_KEY, JSON.stringify(arr))
+  } catch (e) {
+    console.warn('⚠️ No se pudieron guardar las ventas pausadas:', e.message)
+  }
+}
+
+// Purga diferida: elimina pausadas de turnos distintos al activo (cierre de turno)
+function purgarPausadasDeOtroTurno() {
+  if (!turnoActivo?.id) return
+  const arr = _leerPausadas()
+  const vivas = arr.filter(p => p.turnoId === turnoActivo.id)
+  if (vivas.length !== arr.length) {
+    _escribirPausadas(vivas)
+    console.log(`🧹 ${arr.length - vivas.length} venta(s) pausada(s) de turnos anteriores eliminadas`)
+  }
+}
+
+// Pausadas visibles para este usuario en el turno activo
+function _misPausadas() {
+  if (!turnoActivo?.id) return []
+  return _leerPausadas().filter(p => p.usuarioId === USUARIO?.id && p.turnoId === turnoActivo.id)
+}
+
+function actualizarBadgePausadas() {
+  const span = document.getElementById('pausadas-count')
+  if (!span) return
+  const n = _misPausadas().length
+  span.textContent = n > 0 ? `(${n})` : ''
+  span.style.display = n > 0 ? 'inline' : 'none'
+}
+
+function _nombreDefaultPausa() {
+  const hora = new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })
+  return `${clienteSeleccionado?.nombre || 'Venta'} — ${hora}`
+}
+
+function _snapshotVentaActual(nombre) {
+  return {
+    id:        _generarIdPausada(),
+    nombre,
+    usuarioId: USUARIO?.id ?? null,
+    turnoId:   turnoActivo?.id ?? null,
+    creadoEn:  Date.now(),
+    carrito:   JSON.parse(JSON.stringify(carrito)),
+    clienteSeleccionado: clienteSeleccionado ? JSON.parse(JSON.stringify(clienteSeleccionado)) : null,
+    metodoPagoSeleccionado,
+    cotizacionId:    cotIdActual || null,
+    descuentoManual: descuentoManual || 0,
+    vendedorSeleccionado: vendedorSeleccionado ? { ...vendedorSeleccionado } : null,
+    total: carrito.reduce((s, i) => s + subtotalLinea(i), 0),
+    items: carrito.length
+  }
+}
+
+function pausarVentaActual(nombre, { silencioso = false } = {}) {
+  if (carrito.length === 0) {
+    if (!silencioso) mostrarToast('El carrito está vacío, no hay nada que pausar', 'warning')
+    return false
+  }
+  if (!turnoActivo?.id) {
+    mostrarToast('Necesitas un turno abierto para pausar ventas', 'error')
+    return false
+  }
+
+  const pausadas = _leerPausadas()
+  pausadas.push(_snapshotVentaActual(nombre))
+  _escribirPausadas(pausadas)
+
+  resetVentaActual()
+  actualizarBadgePausadas()
+  if (!silencioso) mostrarToast(`⏸️ Venta pausada: ${nombre}`, 'success')
+  return true
+}
+
+// ── Modal: nombre de la pausa (opcional con default) ──
+function abrirModalPausar() {
+  if (carrito.length === 0) { mostrarToast('El carrito está vacío, no hay nada que pausar', 'warning'); return }
+  if (!turnoActivo?.id) { mostrarToast('Necesitas un turno abierto para pausar ventas', 'error'); return }
+
+  const input   = document.getElementById('pausar-nombre-input')
+  const resumen = document.getElementById('pausar-resumen')
+  if (input) { input.value = ''; input.placeholder = _nombreDefaultPausa() }
+  if (resumen) {
+    const total = carrito.reduce((s, i) => s + subtotalLinea(i), 0)
+    resumen.textContent = `${carrito.length} producto(s) — $${total.toFixed(2)}`
+  }
+  const modal = document.getElementById('modal-pausar-venta')
+  if (modal) modal.style.display = 'flex'
+  setTimeout(() => { input?.focus() }, 100)
+}
+
+function cerrarModalPausar() {
+  const modal = document.getElementById('modal-pausar-venta')
+  if (modal) modal.style.display = 'none'
+}
+
+function confirmarPausarVenta() {
+  const input  = document.getElementById('pausar-nombre-input')
+  const nombre = (input?.value || '').trim() || _nombreDefaultPausa()
+  cerrarModalPausar()
+  pausarVentaActual(nombre)
+}
+
+// ── Modal: lista de ventas en espera ──
+function abrirModalPausadas() {
+  renderListaPausadas()
+  const modal = document.getElementById('modal-pausadas')
+  if (modal) modal.style.display = 'flex'
+}
+
+function cerrarModalPausadas() {
+  const modal = document.getElementById('modal-pausadas')
+  if (modal) modal.style.display = 'none'
+}
+
+function renderListaPausadas() {
+  const cont = document.getElementById('lista-pausadas')
+  if (!cont) return
+  purgarPausadasDeOtroTurno()
+  const pausadas = _misPausadas()
+
+  if (pausadas.length === 0) {
+    cont.innerHTML = `<div style="padding:28px 10px;text-align:center;color:#7a8599;font-size:0.85rem;">
+      No tienes ventas en espera.<br>
+      <span style="font-size:0.75rem;opacity:0.8;">Usa ⏸️ Pausar para guardar la venta actual y atender otra.</span>
+    </div>`
+    return
+  }
+
+  cont.innerHTML = pausadas.map(p => {
+    const hora = new Date(p.creadoEn).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })
+    const cli  = p.clienteSeleccionado?.nombre ? `· ${escaparHtml(p.clienteSeleccionado.nombre)}` : ''
+    const cot  = p.cotizacionId ? ' · 📋 cotización' : ''
+    return `
+    <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;border:1px solid rgba(255,255,255,0.08);border-radius:10px;background:rgba(255,255,255,0.03);margin-bottom:8px;">
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:0.9rem;font-weight:700;color:#e9edf4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escaparHtml(p.nombre)}</div>
+        <div style="font-size:0.74rem;color:#7a8599;margin-top:2px;">${hora} · ${p.items} producto(s) · $${(p.total || 0).toFixed(2)} ${cli}${cot}</div>
+      </div>
+      <button type="button" data-accion="recuperar" data-id="${p.id}"
+        style="padding:8px 14px;background:rgba(107,157,232,0.12);border:1px solid rgba(107,157,232,0.3);border-radius:8px;color:#6b9de8;font-family:'Barlow',sans-serif;font-size:0.8rem;font-weight:700;cursor:pointer;white-space:nowrap;">
+        ▶ Recuperar
+      </button>
+      <button type="button" data-accion="eliminar" data-id="${p.id}" title="Eliminar"
+        style="padding:8px 10px;background:transparent;border:1px solid rgba(255,107,107,0.25);border-radius:8px;color:#ff6b6b;font-size:0.8rem;cursor:pointer;">
+        🗑
+      </button>
+    </div>`
+  }).join('')
+}
+
+// Espejo del patrón de restauración de restaurarCarritoDeSession (sin tocarla)
+function _aplicarEstadoVenta(p) {
+  carrito = Array.isArray(p.carrito) ? p.carrito : []
+
+  carrito.forEach(item => {
+    if (!productoCache.has(item.id)) {
+      productoCache.set(item.id, {
+        id: item.id, nombre: item.nombre,
+        precioVenta: item.precioOriginal || item.precio,
+        precioBase: item.precioOriginal || item.precio,
+        stock: null, codigoInterno: '',
+        esGranel: item.esGranel || false,
+        unidadVenta: item.unidadVenta || '',
+        unidadCompra: item.unidadCompra || '',
+        factorConversion: item.factorConversion || 1
+      })
+    }
+  })
+
+  cotIdActual           = p.cotizacionId || null
+  descuentoManual       = p.descuentoManual || 0
+  vendedorSeleccionado  = p.vendedorSeleccionado || null
+  pinVendedorVerificado = false // el PIN del vendedor siempre se re-verifica al cobrar
+
+  if (p.clienteSeleccionado?.id) {
+    clienteSeleccionado = p.clienteSeleccionado
+    if (clienteNombre) clienteNombre.value = clienteSeleccionado.nombre || ''
+    const badge = document.getElementById('cliente-seleccionado-badge')
+    const badgeNombre = document.getElementById('cliente-badge-nombre')
+    if (badge && badgeNombre) {
+      badgeNombre.textContent = clienteSeleccionado.nombre || ''
+      badge.style.display = 'flex'
+    }
+    verificarCreditoCliente(clienteSeleccionado.id)
+  }
+
+  if (p.metodoPagoSeleccionado) {
+    metodoPagoSeleccionado = p.metodoPagoSeleccionado
+    document.querySelectorAll('.metodo-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.metodo === metodoPagoSeleccionado)
+    })
+  }
+
+  actualizarCarrito() // re-persiste el estado activo en sessionStorage
+}
+
+function recuperarVentaPausada(id) {
+  const p = _leerPausadas().find(x => x.id === id)
+  if (!p) {
+    mostrarToast('Esa venta pausada ya no existe', 'error')
+    actualizarBadgePausadas()
+    renderListaPausadas()
+    return
+  }
+
+  // Si hay una venta en curso, pausarla automáticamente para no perderla
+  if (carrito.length > 0) {
+    pausarVentaActual(_nombreDefaultPausa(), { silencioso: true })
+    mostrarToast('La venta en curso se pausó automáticamente', 'warning')
+  }
+
+  // Quitar del storage ANTES de restaurar (evita recuperación duplicada)
+  _escribirPausadas(_leerPausadas().filter(x => x.id !== id))
+
+  _aplicarEstadoVenta(p)
+  cerrarModalPausadas()
+  actualizarBadgePausadas()
+  mostrarToast(`▶️ Venta recuperada: ${p.nombre}`, 'success')
+}
+
+async function eliminarVentaPausada(id) {
+  const p = _leerPausadas().find(x => x.id === id)
+  if (!p) { renderListaPausadas(); actualizarBadgePausadas(); return }
+
+  const ok = await jeshaConfirm({
+    title: 'Eliminar venta pausada',
+    message: `¿Eliminar "${p.nombre}"? Esta acción no se puede deshacer.`,
+    confirmText: 'Eliminar', type: 'warning'
+  })
+  if (!ok) return
+
+  _escribirPausadas(_leerPausadas().filter(x => x.id !== id))
+  actualizarBadgePausadas()
+  renderListaPausadas()
+  mostrarToast('Venta pausada eliminada', 'success')
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -1166,7 +1695,7 @@ async function completarVenta() {
 }
 
 function mostrarModalConfirmacion() {
-  const total = carrito.reduce((sum, item) => sum + (item.precio * item.cantidad), 0)
+  const total = carrito.reduce((sum, item) => sum + subtotalLinea(item), 0)
 
   document.getElementById('confirmacion-total').textContent  = `$${total.toFixed(2)}`
   const metodoLabel = { EFECTIVO:'💵 Efectivo', CREDITO:'💳 T. Crédito', DEBITO:'💳 T. Débito', TRANSFERENCIA:'🔄 Transferencia', CREDITO_CLIENTE:'🏦 Crédito cliente', MIXTO:'🔀 Pago Mixto' }
@@ -1306,7 +1835,7 @@ function getPctEfectivo() {
 }
 
 function actualizarResumenConDescuento() {
-  const totalBruto = carrito.reduce((s, i) => s + (i.precio * i.cantidad), 0)
+  const totalBruto = carrito.reduce((s, i) => s + subtotalLinea(i), 0)
   const { pct, esEmpleado } = getPctEfectivo()
   const descAmt    = parseFloat((totalBruto * (pct / 100)).toFixed(2))
   const totalFinal = parseFloat((totalBruto - descAmt).toFixed(2))
@@ -1331,7 +1860,7 @@ function actualizarResumenConDescuento() {
 }
 
 function recalcularCambioModal() {
-  const totalBruto = carrito.reduce((s, i) => s + (i.precio * i.cantidad), 0)
+  const totalBruto = carrito.reduce((s, i) => s + subtotalLinea(i), 0)
   const { pct }    = getPctEfectivo()
   const descAmt    = parseFloat((totalBruto * (pct / 100)).toFixed(2))
   const totalFinal = parseFloat((totalBruto - descAmt).toFixed(2))
@@ -1567,7 +2096,7 @@ async function confirmarVenta() {
         mostrarToast('Pago mixto requiere al menos 2 métodos de pago', 'warning')
         return
       }
-      const totalBruto = carrito.reduce((s, i) => s + (i.precio * i.cantidad), 0)
+      const totalBruto = carrito.reduce((s, i) => s + subtotalLinea(i), 0)
       const { pct } = getPctEfectivo()
       const descAmt = parseFloat((totalBruto * (pct / 100)).toFixed(2))
       const totalConDesc = parseFloat((totalBruto - descAmt).toFixed(2))
@@ -1585,7 +2114,7 @@ async function confirmarVenta() {
 
     if (metodoPagoSeleccionado === 'EFECTIVO') {
       const montoInput = document.getElementById('confirm-monto-recibido')
-      const totalBrutoEf = carrito.reduce((sum, item) => sum + (item.precio * item.cantidad), 0)
+      const totalBrutoEf = carrito.reduce((sum, item) => sum + subtotalLinea(item), 0)
       const { pct: pctEf } = getPctEfectivo()
       const descAmtEf = parseFloat((totalBrutoEf * (pctEf / 100)).toFixed(2))
       const totalVenta = parseFloat((totalBrutoEf - descAmtEf).toFixed(2))
@@ -1604,7 +2133,7 @@ async function confirmarVenta() {
       }
     }
 
-    const total    = carrito.reduce((sum, item) => sum + (item.precio * item.cantidad), 0)
+    const total    = carrito.reduce((sum, item) => sum + subtotalLinea(item), 0)
     const detalles = carrito.map(item => ({
       productoId:     parseInt(item.id),
       cantidad:       parseFloat(item.cantidad),
@@ -1703,36 +2232,12 @@ async function confirmarVenta() {
     modalConfirmacion.style.display = 'none'
     mostrarModalExito(venta.data, totalFinal)
 
-    carrito             = []
-    cotIdActual         = null
-    _carritoRestaurado = false
-    clienteSeleccionado = null
-    montoRecibido.value = ''
-    clienteNombre.value = ''
-    productoCache.clear()
-    searchProductos.value = ''
-    limpiarCarritoSession()
+    resetVentaActual()
 
-    const badge = document.getElementById('cliente-seleccionado-badge')
-    if (badge) badge.style.display = 'none'
-
-    metodoPagoSeleccionado = null
-    document.querySelectorAll('.metodo-btn').forEach(b => b.classList.remove('active'))
-    if (montoEfectivoControl) montoEfectivoControl.style.display = 'none'
-
-    cerrarDropdownClientes()
-    mostrarEstadoInicial()
-    actualizarCarrito()
-
-        // ── FIX: Resetear estado para permitir la siguiente venta ──
+    // ── FIX: Resetear estado para permitir la siguiente venta ──
     ventaEnProceso              = false
     btnConfirmarVenta.disabled  = false
     btnConfirmarVenta.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Confirmar venta`
-    vendedorSeleccionado        = null
-    descuentoManual             = 0
-    pinVendedorVerificado       = false
-    creditoCliente              = null
-    ocultarCreditoCliente()
 
   } catch (err) {
     console.error('❌ Error:', err)
@@ -2177,6 +2682,38 @@ function configurarEventListeners() {
   document.getElementById('granel-modal-btn-base')?.addEventListener('click', () => _setUnidadVisual('base'))
   document.getElementById('granel-modal-btn-empaque')?.addEventListener('click', () => _setUnidadVisual('empaque'))
 
+  // ✅ Tabs de modo de captura granel (Cantidad / Importe $) + input de importe
+  document.querySelectorAll('.granel-modo-tab').forEach(tab => {
+    tab.addEventListener('click', () => _setModoCaptura(tab.dataset.modo))
+  })
+  document.getElementById('granel-modal-importe')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); confirmarCantidadGranel() }
+  })
+  document.getElementById('granel-modal-importe')?.addEventListener('input', _actualizarPreviewImporte)
+
+  // ✅ Ventas en pausa
+  document.getElementById('btn-pausar-venta')?.addEventListener('click', abrirModalPausar)
+  document.getElementById('btn-ver-pausadas')?.addEventListener('click', abrirModalPausadas)
+  document.getElementById('pausar-modal-close')?.addEventListener('click', cerrarModalPausar)
+  document.getElementById('pausar-modal-cancel')?.addEventListener('click', cerrarModalPausar)
+  document.getElementById('pausar-modal-confirm')?.addEventListener('click', confirmarPausarVenta)
+  document.getElementById('pausar-nombre-input')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); confirmarPausarVenta() }
+  })
+  document.getElementById('modal-pausar-venta')?.addEventListener('click', e => {
+    if (e.target.id === 'modal-pausar-venta') cerrarModalPausar()
+  })
+  document.getElementById('pausadas-modal-close')?.addEventListener('click', cerrarModalPausadas)
+  document.getElementById('modal-pausadas')?.addEventListener('click', e => {
+    if (e.target.id === 'modal-pausadas') cerrarModalPausadas()
+  })
+  document.getElementById('lista-pausadas')?.addEventListener('click', e => {
+    const btn = e.target.closest('[data-accion]')
+    if (!btn) return
+    if (btn.dataset.accion === 'recuperar') recuperarVentaPausada(btn.dataset.id)
+    if (btn.dataset.accion === 'eliminar') eliminarVentaPausada(btn.dataset.id)
+  })
+
   console.log('✅ Event listeners configurados')
 }
 
@@ -2233,7 +2770,7 @@ function recalcularMixto() {
     suma += monto
   })
 
-  const totalBruto = carrito.reduce((s, i) => s + (i.precio * i.cantidad), 0)
+  const totalBruto = carrito.reduce((s, i) => s + subtotalLinea(i), 0)
   const { pct } = getPctEfectivo()
   const descAmt = parseFloat((totalBruto * (pct / 100)).toFixed(2))
   const totalFinal = parseFloat((totalBruto - descAmt).toFixed(2))
