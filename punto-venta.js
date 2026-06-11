@@ -999,13 +999,6 @@ function actualizarCarrito(opciones = {}) {
   itemsCount.textContent = `(${carrito.length})`
   const total = carrito.reduce((sum, item) => sum + (item.precio * item.cantidad), 0)
   resumenTotal.textContent = `$${total.toFixed(2)}`
-  const TASA_IVA = 0.16
-  const subtotalSinIva = total / (1 + TASA_IVA)
-  const ivaMonto = total - subtotalSinIva
-  const elSub = document.getElementById('resumen-subtotal')
-  const elIva = document.getElementById('resumen-iva')
-  if (elSub) elSub.textContent = `$${subtotalSinIva.toFixed(2)}`
-  if (elIva) elIva.textContent = `$${ivaMonto.toFixed(2)}`
 
   btnCompletarVenta.disabled = !(carrito.length > 0 && turnoActivo && metodoPagoSeleccionado)
   const btnCotizar = document.getElementById('btn-cotizar-carrito')
