@@ -257,8 +257,9 @@ function renderAccionesModal(v) {
   if (!div) return
 
   const esSuperAdmin  = ['SUPERADMIN', 'ADMIN_SUCURSAL'].includes(USUARIO.rol)
+  const puedeCancelarRol = ['SUPERADMIN', 'ADMIN_SUCURSAL', 'EMPLEADO'].includes(USUARIO.rol)
   const puedeDevolver = v.estado === 'COMPLETADA' || v.estado === 'DEVOLUCION'
-  const puedeCancelar = v.estado === 'COMPLETADA' && esSuperAdmin
+  const puedeCancelar = v.estado === 'COMPLETADA' && puedeCancelarRol
 
   // Editar método: solo SUPERADMIN/ADMIN, venta no cancelada, factura no emitida
   const facturasBloqueantes = ['FACTURADA', 'TIMBRADA']

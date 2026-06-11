@@ -702,7 +702,7 @@ exports.cancelarVenta = async (req, res) => {
     if (venta.estado === 'DEVOLUCION')
       return res.status(409).json({ error: 'Esta venta tiene devoluciones — cancela las devoluciones primero o usa el módulo de devoluciones.' })
 
-    const rolesPermitidos = ['SUPERADMIN', 'ADMIN_SUCURSAL']
+    const rolesPermitidos = ['SUPERADMIN', 'ADMIN_SUCURSAL', 'EMPLEADO']
     if (!rolesPermitidos.includes(usuario.rol))
       return res.status(403).json({ error: 'Sin permiso para cancelar ventas' })
 
