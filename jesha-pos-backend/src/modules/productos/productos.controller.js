@@ -6,6 +6,7 @@
 // FEAT: Nueva función eliminarImagen (para botón "quitar imagen")
 // ═══════════════════════════════════════════════════════════════════
 
+const { Prisma } = require('@prisma/client')
 const prisma = require('../../lib/prisma')
 const getEmpresaId = require('../../helpers/getEmpresaId')
 const { eliminarImagenProducto } = require('../../lib/cloudinary')
@@ -70,6 +71,7 @@ async function listar(req, res) {
 
         const {
             buscar, q, categoriaId, departamentoId, proveedorId,
+            contexto,
             stock,          // 'con' | 'sin' | 'bajo' — reemplaza el antiguo enStock
             enStock,        // compatibilidad hacia atrás con POS
             page = 1,
@@ -92,8 +94,26 @@ async function listar(req, res) {
         }
 
         const terminoBusqueda = buscar || q
+        const incluirFrecuenciaTickets = String(contexto || '').toLowerCase() === 'pos'
+        const terminoRanking = String(terminoBusqueda || '').trim().replace(/^["']+|["']+$/g, '').trim().toLowerCase()
 
-        const where = { activo: true }
+        const rol = req.usuario?.rol
+        const empresaIdRaw = req.usuario?.empresaId
+        const esScopeGlobal = !empresaIdRaw && ['PLATFORM_ADMIN', 'SUPERADMIN'].includes(rol)
+        const empresaIdScope = empresaIdRaw ? parseInt(empresaIdRaw) : null
+
+        if (!esScopeGlobal && (!empresaIdScope || Number.isNaN(empresaIdScope))) {
+            return res.status(401).json({ success: false, error: 'empresaId no encontrado en el token del usuario' })
+        }
+
+        const sucursalRaw = req.usuario?.sucursalId ?? req.query.sucursalId ?? 1
+        const sucursalIdInventario = parseInt(sucursalRaw)
+        if (!sucursalIdInventario || Number.isNaN(sucursalIdInventario)) {
+            return res.status(400).json({ success: false, error: 'sucursalId inválido' })
+        }
+
+        const whereScope = esScopeGlobal ? {} : { empresaId: empresaIdScope }
+        const where = { ...whereScope, activo: true }
 
         // ── Filtro por proveedor ──
         if (proveedorId) {
@@ -150,44 +170,49 @@ async function listar(req, res) {
         // Soporta el nuevo param `stock` (con|sin|bajo) y el legacy `enStock`
         const stockFiltro = stock || (enStock === 'true' ? 'con' : '')
         if (stockFiltro === 'con') {
-            where.InventarioSucursal = { some: { sucursalId: 1, stockActual: { gt: 0 } } }
+            where.InventarioSucursal = { some: { sucursalId: sucursalIdInventario, stockActual: { gt: 0 } } }
         } else if (stockFiltro === 'sin') {
-            where.InventarioSucursal = { none: { sucursalId: 1, stockActual: { gt: 0 } } }
+            where.InventarioSucursal = { none: { sucursalId: sucursalIdInventario, stockActual: { gt: 0 } } }
         }
         // 'bajo' se maneja post-query porque requiere comparar dos columnas
         // (stockActual <= stockMinimoAlerta) que Prisma no soporta en where
 
         // ── Query de datos y conteo en paralelo ──
-        const whereGlobal = { activo: true }
+        const whereGlobal = { ...whereScope, activo: true }
+        const takeConsulta = incluirFrecuenciaTickets && stockFiltro !== 'bajo'
+            ? Math.max(skipNum + takeNum, 150)
+            : (stockFiltro === 'bajo' ? 9999 : takeNum)
+        const skipConsulta = incluirFrecuenciaTickets ? 0 : skipNum
 
         const queries = [
             prisma.producto.findMany({
                 where,
                 include: {
                     Categoria: { include: { Departamento: true } },
-                    InventarioSucursal: { where: { sucursalId: 1 }, take: 1 },
+                    InventarioSucursal: { where: { sucursalId: sucursalIdInventario }, take: 1 },
                     ProveedorProducto: { include: { Proveedor: true } }
                 },
                 orderBy: { nombre: 'asc' },
-                skip: skipNum,
-                take: stockFiltro === 'bajo' ? 9999 : takeNum  // bajo stock necesita filtrar post-query
+                skip: skipConsulta,
+                take: takeConsulta  // bajo stock y ranking POS necesitan filtrar/ordenar post-query
             }),
             prisma.producto.count({ where: stockFiltro === 'bajo' ? { ...where } : where }),
             // Conteos globales para las estadísticas del header
             prisma.producto.count({
-                where: { ...whereGlobal, InventarioSucursal: { some: { sucursalId: 1, stockActual: { gt: 0 } } } }
+                where: { ...whereGlobal, InventarioSucursal: { some: { sucursalId: sucursalIdInventario, stockActual: { gt: 0 } } } }
             }),
             prisma.producto.count({
-                where: { ...whereGlobal, InventarioSucursal: { none: { sucursalId: 1, stockActual: { gt: 0 } } } }
+                where: { ...whereGlobal, InventarioSucursal: { none: { sucursalId: sucursalIdInventario, stockActual: { gt: 0 } } } }
             }),
             prisma.$queryRaw`
                 SELECT COUNT(*)::int AS count
                 FROM "InventarioSucursal" i
                 JOIN "Producto" p ON p.id = i."productoId"
-                WHERE i."sucursalId" = 1
+                WHERE i."sucursalId" = ${sucursalIdInventario}
                   AND i."stockActual" > 0
                   AND i."stockActual" <= i."stockMinimoAlerta"
                   AND p.activo = true
+                  AND (${esScopeGlobal} = true OR p."empresaId" = ${empresaIdScope || 0})
             `.then(r => r[0].count)
         ]
 
@@ -203,12 +228,69 @@ async function listar(req, res) {
                 return sa > 0 && sa <= sm
             })
             total = productos.length
-            // Aplicar paginación manual sobre el resultado filtrado
-            productos = productos.slice(skipNum, skipNum + takeNum)
+            // Aplicar paginación manual sobre el resultado filtrado, salvo ranking POS.
+            if (!incluirFrecuenciaTickets) productos = productos.slice(skipNum, skipNum + takeNum)
+        }
+
+        const frecuenciaTickets = new Map()
+        if (incluirFrecuenciaTickets && productos.length > 0) {
+            const productoIds = [...new Set(productos.map(p => parseInt(p.id)).filter(Boolean))]
+            const desdeFrecuencia = new Date(Date.now() - (90 * 24 * 60 * 60 * 1000))
+
+            if (productoIds.length > 0) {
+                const rowsFrecuencia = await prisma.$queryRaw`
+                    SELECT
+                      dv."productoId",
+                      COUNT(DISTINCT dv."ventaId")::int AS "vecesEnTickets"
+                    FROM "DetalleVenta" dv
+                    JOIN "Venta" v ON v.id = dv."ventaId"
+                    WHERE dv."productoId" IN (${Prisma.join(productoIds)})
+                      AND v."creadaEn" >= ${desdeFrecuencia}
+                      AND v."estado" <> 'CANCELADA'
+                      AND v."sucursalId" = ${sucursalIdInventario}
+                      AND (${esScopeGlobal} = true OR v."empresaId" = ${empresaIdScope || 0})
+                    GROUP BY dv."productoId"
+                `
+
+                rowsFrecuencia.forEach(row => {
+                    frecuenciaTickets.set(Number(row.productoId), Number(row.vecesEnTickets || 0))
+                })
+            }
+        }
+
+        if (incluirFrecuenciaTickets) {
+            const normalizar = valor => String(valor || '').toLowerCase()
+            const scoreProducto = prod => {
+                const nombre = normalizar(prod.nombre)
+                const codigoInterno = normalizar(prod.codigoInterno)
+                const codigoBarras = normalizar(prod.codigoBarras)
+                const stockActual = parseFloat(prod.InventarioSucursal?.[0]?.stockActual || 0)
+                const frecuencia = frecuenciaTickets.get(prod.id) || 0
+
+                let score = 0
+                if (terminoRanking) {
+                    if (codigoInterno === terminoRanking || codigoBarras === terminoRanking) score += 1000000
+                    if (codigoInterno.includes(terminoRanking) || codigoBarras.includes(terminoRanking)) score += 500000
+                    if (nombre.startsWith(terminoRanking)) score += 200000
+                    if (nombre.includes(terminoRanking)) score += 100000
+                }
+                if (stockActual > 0) score += 10000
+                score += frecuencia * 100
+                return score
+            }
+
+            productos = productos
+                .sort((a, b) => {
+                    const porScore = scoreProducto(b) - scoreProducto(a)
+                    if (porScore !== 0) return porScore
+                    return String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es', { sensitivity: 'base' })
+                })
+                .slice(skipNum, skipNum + takeNum)
         }
 
         const data = productos.map(prod => ({
             ...prod,
+            ...(incluirFrecuenciaTickets ? { vecesEnTickets: frecuenciaTickets.get(prod.id) || 0 } : {}),
             stock: prod.InventarioSucursal?.length > 0 ? parseFloat(prod.InventarioSucursal[0].stockActual) : 0,
             inventario: prod.InventarioSucursal?.length > 0 ? {
               ...prod.InventarioSucursal[0],

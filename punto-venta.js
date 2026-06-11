@@ -510,7 +510,7 @@ async function buscarProductos(query, skip = 0) {
   searchTimeout = setTimeout(async () => {
     try {
       const response = await fetch(
-        `${API_URL}/productos?q=${encodeURIComponent(q)}&take=30&skip=${skip}`,
+        `${API_URL}/productos?q=${encodeURIComponent(q)}&take=30&skip=${skip}&contexto=pos`,
         { headers: { 'Authorization': `Bearer ${TOKEN}` } }
       )
       if (!response.ok) throw new Error('Error en búsqueda')
@@ -535,45 +535,104 @@ async function buscarProductos(query, skip = 0) {
   }, 300)
 }
 
-function mostrarProductos(productos) {
-  if (productos.length === 0) {
-    productosGrid.innerHTML = `<div class="sin-resultados">No se encontraron productos</div>`
-    return
-  }
-  productosGrid.innerHTML = productos.map(p => {
-    // Escapar nombre para atributos HTML (alt, etc.) sin romper nada
-    const nombreSeguro = p.nombre
-      .replace(/&/g, '&amp;')
-      .replace(/"/g, '&quot;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
+function escaparHtml(valor = '') {
+  return String(valor)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
 
-    const urlImagen = p.imagenUrl || p.Categoria?.imagenUrl || null
-    const srcImagen = urlImagen
-      ? (urlImagen.startsWith('http') ? urlImagen : API_URL + urlImagen)
-      : null
+function obtenerSrcImagenProducto(p) {
+  const urlImagen = p.imagenUrl || p.Categoria?.imagenUrl || null
+  return urlImagen
+    ? (urlImagen.startsWith('http') ? urlImagen : API_URL + urlImagen)
+    : null
+}
 
-    return `
+function formatearStockProducto(p) {
+  if (!(p.stock > 0)) return 'Agotado'
+  const s = parseFloat(p.stock)
+  const stock = Number.isInteger(s) ? s : s.toFixed(3).replace(/\.?0+$/, '')
+  return `Stock: ${stock}${p.esGranel && p.unidadVenta ? ' ' + p.unidadVenta : ''}`
+}
+
+function renderBadgeGranel(p) {
+  if (!p.esGranel) return ''
+  return `<p style="margin:2px 0 0;"><span style="display:inline-block;padding:1px 6px;font-size:0.65rem;font-weight:700;background:rgba(107,157,232,0.15);color:#6b9de8;border-radius:4px;letter-spacing:0.03em;">GRANEL${p.unidadVenta ? ' · ' + escaparHtml(p.unidadVenta) : ''}</span></p>`
+}
+
+function renderTarjetaProducto(p) {
+  const nombreSeguro = escaparHtml(p.nombre)
+  const srcImagen = obtenerSrcImagenProducto(p)
+  return `
     <div class="tarjeta-producto" data-producto-id="${p.id}" style="cursor:pointer;">
       ${srcImagen ? `<img src="${srcImagen}" alt="${nombreSeguro}" class="producto-imagen" />` : ''}
       <div class="producto-info">
         <h4>${nombreSeguro}</h4>
-        <p class="producto-codigo">${p.codigoInterno}</p>
-        ${p.esGranel ? `<p style="margin:2px 0 0;"><span style="display:inline-block;padding:1px 6px;font-size:0.65rem;font-weight:700;background:rgba(107,157,232,0.15);color:#6b9de8;border-radius:4px;letter-spacing:0.03em;">GRANEL${p.unidadVenta ? ' · ' + p.unidadVenta : ''}</span></p>` : ''}
-        <p class="producto-precio">$${parseFloat(p.precioVenta || p.precioBase).toFixed(2)}${p.esGranel && p.unidadVenta ? `<span style="font-size:0.7rem;color:var(--muted,#999);font-weight:400;"> / ${p.unidadVenta}</span>` : ''}</p>
-        <p class="producto-stock ${p.stock > 0 ? '' : 'agotado'}">
-          ${p.stock > 0 ? `Stock: ${(() => {
-            const s = parseFloat(p.stock)
-            return Number.isInteger(s) ? s : s.toFixed(3).replace(/\.?0+$/, '')
-          })()}${p.esGranel && p.unidadVenta ? ' ' + p.unidadVenta : ''}` : 'Agotado'}
-        </p>
+        <p class="producto-codigo">${escaparHtml(p.codigoInterno || '')}</p>
+        ${renderBadgeGranel(p)}
+        <p class="producto-precio">$${parseFloat(p.precioVenta || p.precioBase).toFixed(2)}${p.esGranel && p.unidadVenta ? `<span style="font-size:0.7rem;color:var(--muted,#999);font-weight:400;"> / ${escaparHtml(p.unidadVenta)}</span>` : ''}</p>
+        <p class="producto-stock ${p.stock > 0 ? '' : 'agotado'}">${formatearStockProducto(p)}</p>
         <button type="button" class="btn-ajustar-stock" data-action="ajustar"
           style="display:block;width:100%;margin-top:8px;padding:8px 0;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:8px;color:#e8edf5;font-family:'Barlow',sans-serif;font-size:0.82rem;font-weight:600;cursor:pointer;transition:background 0.15s,border-color 0.15s;">
           Ajustar
         </button>
       </div>
     </div>`
-  }).join('')
+}
+
+function renderProductoDestacado(p) {
+  const nombreSeguro = escaparHtml(p.nombre)
+  const srcImagen = obtenerSrcImagenProducto(p)
+  const veces = parseInt(p.vecesEnTickets || 0, 10)
+  return `
+    <article class="producto-destacado" data-producto-id="${p.id}" style="cursor:pointer;">
+      <div class="producto-destacado-media">
+        ${srcImagen ? `<img src="${srcImagen}" alt="${nombreSeguro}" class="producto-destacado-imagen" />` : '<div class="producto-destacado-placeholder">J</div>'}
+      </div>
+      <div class="producto-destacado-info">
+        <div class="producto-destacado-topline">
+          <span class="producto-destacado-codigo">${escaparHtml(p.codigoInterno || '')}</span>
+          ${veces > 0 ? `<span class="producto-destacado-badge">Frecuente en esta sucursal · ${veces}</span>` : ''}
+        </div>
+        <h3>${nombreSeguro}</h3>
+        ${renderBadgeGranel(p)}
+        <div class="producto-destacado-bottom">
+          <div>
+            <p class="producto-destacado-precio">$${parseFloat(p.precioVenta || p.precioBase).toFixed(2)}${p.esGranel && p.unidadVenta ? `<span> / ${escaparHtml(p.unidadVenta)}</span>` : ''}</p>
+            <p class="producto-destacado-stock ${p.stock > 0 ? '' : 'agotado'}">${formatearStockProducto(p)}</p>
+          </div>
+          <button type="button" class="btn-ajustar-stock producto-destacado-accion" data-action="ajustar">Ajustar</button>
+        </div>
+      </div>
+    </article>`
+}
+
+function mostrarProductos(productos) {
+  if (productos.length === 0) {
+    productosGrid.innerHTML = `<div class="sin-resultados">No se encontraron productos</div>`
+    return
+  }
+
+  const hayBusquedaActiva = ((terminoBusquedaActual || searchProductos?.value || '').trim().length > 0)
+  if (!hayBusquedaActiva) {
+    productosGrid.innerHTML = productos.map(renderTarjetaProducto).join('')
+    return
+  }
+
+  const principal = productos[0]
+  const secundarios = productos.slice(1)
+  productosGrid.innerHTML = `
+    <div class="resultados-pos">
+      <div class="resultado-principal-label">Resultado principal</div>
+      ${renderProductoDestacado(principal)}
+      ${secundarios.length > 0 ? `
+        <div class="mas-resultados-label">Más resultados (${secundarios.length})</div>
+        <div class="productos-secundarios-grid">
+          ${secundarios.map(renderTarjetaProducto).join('')}
+        </div>` : ''}
+    </div>`
 }
 
 function mostrarProductosYMas(productos) {
@@ -656,7 +715,7 @@ function agregarAlCarrito(productoId, nombre, precio, esGranel = false, unidadVe
     })
   }
 
-  actualizarCarrito()
+  actualizarCarrito({ scrollAlFinal: true })
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -859,7 +918,7 @@ function confirmarCantidadGranel() {
   }
 
   cerrarModalGranel()
-  actualizarCarrito()
+  actualizarCarrito({ scrollAlFinal: true })
 
   // Toast con info de lo agregado
   const unidadMsg = _unidadElegida === 'empaque'
@@ -896,7 +955,8 @@ function actualizarCantidad(productoId, cantidad) {
   }
 }
 
-function actualizarCarrito() {
+function actualizarCarrito(opciones = {}) {
+  const { scrollAlFinal = false } = opciones || {}
   if (carrito.length === 0) {
     carritoTbody.innerHTML = `
       <tr class="carrito-empty">
@@ -953,6 +1013,13 @@ function actualizarCarrito() {
 
   // Persistir estado del carrito en sessionStorage
   guardarCarritoEnSession()
+
+  if (scrollAlFinal && carrito.length > 0) {
+    requestAnimationFrame(() => {
+      const cont = document.querySelector('.carrito-items-container')
+      if (cont) cont.scrollTop = cont.scrollHeight
+    })
+  }
 }
 
 async function limpiarCarrito() {
@@ -1939,7 +2006,7 @@ function configurarEventListeners() {
     if (searchTimeout) clearTimeout(searchTimeout)
 
     try {
-      const r    = await fetch(`${API_URL}/productos?q=${encodeURIComponent(codigo)}&take=5`,
+      const r    = await fetch(`${API_URL}/productos?q=${encodeURIComponent(codigo)}&take=5&contexto=pos`,
                                { headers: { 'Authorization': `Bearer ${TOKEN}` } })
       const data = await r.json()
       const res  = data.data || []
