@@ -36,6 +36,13 @@ const fmtFecha = iso => iso
   ? new Date(iso).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' })
   : '—'
 
+const escapeHtml = value => String(value ?? '')
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;')
+
 function estadoBadge(estado) {
   const m = { PENDIENTE:['pendiente','Pendiente'], CONVERTIDA:['convertida','Convertida'], VENCIDA:['vencida','Vencida'], CANCELADA:['cancelada','Cancelada'] }
   const [cls, label] = m[estado] || ['pendiente', estado]
@@ -418,8 +425,7 @@ function enfocarItemCotizacion(productoId) {
     }
 
     fila.classList.remove('fila-resaltada')
-    void fila.offsetWidth
-    fila.classList.add('fila-resaltada')
+    requestAnimationFrame(() => fila.classList.add('fila-resaltada'))
   })
 }
 
@@ -508,12 +514,14 @@ async function guardarCotizacion() {
 // ════════════════════════════════════════════════════════════════════
 
 let debounceProducto
+let busquedaProductoSeq = 0
 function abrirDropdownProductosCot() {
   const lista = document.getElementById('lista-productos-modal')
   if (lista) lista.classList.add('is-open')
 }
 
 function cerrarDropdownProductosCot() {
+  busquedaProductoSeq++
   const lista = document.getElementById('lista-productos-modal')
   if (lista) lista.classList.remove('is-open')
 }
@@ -521,6 +529,7 @@ function cerrarDropdownProductosCot() {
 async function buscarProductosModal(q) {
   const lista = document.getElementById('lista-productos-modal')
   if (!lista) return
+  const seq = ++busquedaProductoSeq
   if (!q || q.length < 2) {
     lista.innerHTML = '<p class="muted-hint">Escribe para buscar productos...</p>'
     cerrarDropdownProductosCot()
@@ -531,6 +540,7 @@ async function buscarProductosModal(q) {
   try {
     const params = new URLSearchParams({ buscar: q, limit: 100 })
     const data     = await apiFetch(`/productos?${params}`)
+    if (seq !== busquedaProductoSeq) return
     const productos = data.data || data
     if (!productos || productos.length === 0) { lista.innerHTML = '<p class="muted-hint">Sin resultados</p>'; abrirDropdownProductosCot(); return }
     window._productosModalCache = {}
@@ -538,17 +548,22 @@ async function buscarProductosModal(q) {
     lista.innerHTML = productos.map(p => {
       const codigo = p.codigoInterno || p.codigoBarras || '—'
       return `
-      <div class="producto-item-modal" onclick="window._addProd(${p.id})">
-        <span class="prod-codigo">${codigo}</span>
-        <span class="prod-nombre">${p.nombre}</span>
+      <div class="producto-item-modal" data-producto-id="${p.id}">
+        <span class="prod-codigo">${escapeHtml(codigo)}</span>
+        <span class="prod-nombre">${escapeHtml(p.nombre)}</span>
         <span class="prod-precio">${fmt(p.precioVenta || p.precioBase)}</span>
       </div>
     `}).join('')
-  } catch (err) { lista.innerHTML = `<p class="muted-hint" style="color:#f44336">Error: ${err.message}</p>`; abrirDropdownProductosCot() }
+  } catch (err) {
+    if (seq !== busquedaProductoSeq) return
+    lista.innerHTML = `<p class="muted-hint" style="color:#f44336">Error: ${escapeHtml(err.message)}</p>`
+    abrirDropdownProductosCot()
+  }
 }
 window._addProd = function(id) {
   const p = window._productosModalCache?.[id]
   if (!p) return
+  busquedaProductoSeq++
   agregarProductoAItems(p)
   document.getElementById('search-producto-modal').value = ''
   document.getElementById('lista-productos-modal').innerHTML = '<p class="muted-hint">Escribe para buscar productos...</p>'
@@ -915,6 +930,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         primero.click()
       }
     }
+  })
+  document.getElementById('lista-productos-modal')?.addEventListener('click', e => {
+    const item = e.target.closest('.producto-item-modal')
+    if (!item) return
+    const id = parseInt(item.dataset.productoId, 10)
+    if (id) window._addProd(id)
   })
 
   // Autocomplete clientes — búsqueda al escribir + chevron para ver lista completa

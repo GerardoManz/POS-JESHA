@@ -473,6 +473,8 @@
   z-index: 450;
   max-height: min(360px, 42vh);
   overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   background: var(--panel-bg,#151515);
   border: 1px solid rgba(31,58,102,0.5);
   border-radius: 12px;
@@ -482,7 +484,7 @@
   gap: 0;
 }
 
-.lista-productos-modal.is-open { display: flex; }
+.lista-productos-modal.is-open { display: block; }
 .lista-productos-modal .muted-hint { padding: 16px 12px; }
 
 .lista-productos-modal::-webkit-scrollbar { width: 4px; }
@@ -497,6 +499,7 @@
   align-items: center;
   gap: 12px;
   padding: 10px 12px;
+  min-height: 42px;
   border: 1px solid transparent;
   border-radius: 9px;
   cursor: pointer;
