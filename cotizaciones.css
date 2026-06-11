@@ -466,11 +466,12 @@
 /* Lista de productos en el modal */
 .lista-productos-modal {
   display: none;
-  position: absolute;
-  top: calc(100% + 8px);
+  position: fixed;
+  top: 0;
   left: 0;
-  right: 0;
-  z-index: 450;
+  right: auto;
+  z-index: 1400;
+  box-sizing: border-box;
   max-height: min(360px, 42vh);
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -480,8 +481,6 @@
   border-radius: 12px;
   box-shadow: 0 18px 45px rgba(0,0,0,0.55);
   padding: 6px;
-  flex-direction: column;
-  gap: 0;
 }
 
 .lista-productos-modal.is-open { display: block; }
@@ -509,6 +508,30 @@
 .producto-item-modal:hover {
   background: rgba(31,58,102,0.2);
   border-color: rgba(31,58,102,0.5);
+}
+
+.producto-load-more {
+  width: 100%;
+  margin-top: 6px;
+  padding: 10px 12px;
+  background: rgba(31,58,102,0.16);
+  border: 1px solid rgba(31,58,102,0.45);
+  border-radius: 9px;
+  color: #9ab6ff;
+  font-family: 'Barlow', sans-serif;
+  font-size: 0.84rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.producto-load-more:hover:not(:disabled) {
+  background: rgba(31,58,102,0.26);
+  border-color: rgba(91,142,255,0.55);
+}
+
+.producto-load-more:disabled {
+  opacity: 0.6;
+  cursor: wait;
 }
 
 .producto-item-modal .prod-codigo {

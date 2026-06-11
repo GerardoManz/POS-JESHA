@@ -515,15 +515,109 @@ async function guardarCotizacion() {
 
 let debounceProducto
 let busquedaProductoSeq = 0
+const PRODUCTOS_MODAL_LIMIT = 100
+let busquedaProductoTermino = ''
+let busquedaProductoPagina = 1
+let busquedaProductoTotalPaginas = 1
+let busquedaProductoTotal = 0
+let busquedaProductoCargando = false
+let productosModalResultados = []
+
+function posicionarDropdownProductosCot() {
+  const lista = document.getElementById('lista-productos-modal')
+  const input = document.getElementById('search-producto-modal')
+  if (!lista || !input || !lista.classList.contains('is-open')) return
+
+  const anchor = input.closest('.producto-search-group') || input
+  const rect = anchor.getBoundingClientRect()
+  const margen = 8
+  const top = rect.bottom + 8
+  const left = Math.max(margen, rect.left)
+  const width = Math.min(rect.width, window.innerWidth - left - margen)
+  const maxHeight = Math.max(180, window.innerHeight - top - margen)
+
+  lista.style.top = `${top}px`
+  lista.style.left = `${left}px`
+  lista.style.width = `${width}px`
+  lista.style.maxHeight = `${Math.min(460, maxHeight)}px`
+}
+
 function abrirDropdownProductosCot() {
   const lista = document.getElementById('lista-productos-modal')
-  if (lista) lista.classList.add('is-open')
+  if (lista) {
+    lista.classList.add('is-open')
+    posicionarDropdownProductosCot()
+  }
 }
 
 function cerrarDropdownProductosCot() {
-  busquedaProductoSeq++
   const lista = document.getElementById('lista-productos-modal')
-  if (lista) lista.classList.remove('is-open')
+  if (!lista?.classList.contains('is-open')) return
+  busquedaProductoSeq++
+  lista.classList.remove('is-open')
+}
+
+function resetBusquedaProductosModal() {
+  busquedaProductoTermino = ''
+  busquedaProductoPagina = 1
+  busquedaProductoTotalPaginas = 1
+  busquedaProductoTotal = 0
+  busquedaProductoCargando = false
+  productosModalResultados = []
+  window._productosModalCache = {}
+}
+
+function renderProductosModal({ preserveScroll = false } = {}) {
+  const lista = document.getElementById('lista-productos-modal')
+  if (!lista) return
+  const scrollTop = preserveScroll ? lista.scrollTop : 0
+
+  window._productosModalCache = {}
+  productosModalResultados.forEach(p => { window._productosModalCache[p.id] = p })
+
+  const itemsHtml = productosModalResultados.map(p => {
+    const codigo = p.codigoInterno || p.codigoBarras || '—'
+    return `
+      <div class="producto-item-modal" data-producto-id="${p.id}">
+        <span class="prod-codigo">${escapeHtml(codigo)}</span>
+        <span class="prod-nombre">${escapeHtml(p.nombre)}</span>
+        <span class="prod-precio">${fmt(p.precioVenta || p.precioBase)}</span>
+      </div>
+    `
+  }).join('')
+
+  const hayMas = busquedaProductoPagina < busquedaProductoTotalPaginas
+  const total = busquedaProductoTotal || productosModalResultados.length
+  const masHtml = hayMas ? `
+    <button type="button" class="producto-load-more" ${busquedaProductoCargando ? 'disabled' : ''}>
+      ${busquedaProductoCargando ? 'Cargando...' : `Ver más resultados (${productosModalResultados.length} de ${total})`}
+    </button>
+  ` : ''
+
+  lista.innerHTML = itemsHtml + masHtml
+  abrirDropdownProductosCot()
+  if (preserveScroll) lista.scrollTop = scrollTop
+}
+
+async function cargarPaginaProductosModal(page, seq) {
+  const params = new URLSearchParams({ buscar: busquedaProductoTermino, page, limit: PRODUCTOS_MODAL_LIMIT })
+  const data = await apiFetch(`/productos?${params}`)
+  if (seq !== busquedaProductoSeq) return false
+
+  const productos = Array.isArray(data) ? data : (data.data || [])
+  const pag = !Array.isArray(data) ? data.paginacion : null
+  busquedaProductoPagina = pag?.pagina || page
+  busquedaProductoTotalPaginas = pag?.totalPaginas || 1
+  busquedaProductoTotal = pag?.total || productos.length
+
+  if (page === 1) {
+    productosModalResultados = productos
+  } else {
+    const idsActuales = new Set(productosModalResultados.map(p => p.id))
+    productosModalResultados = productosModalResultados.concat(productos.filter(p => !idsActuales.has(p.id)))
+  }
+
+  return true
 }
 
 async function buscarProductosModal(q) {
@@ -531,35 +625,50 @@ async function buscarProductosModal(q) {
   if (!lista) return
   const seq = ++busquedaProductoSeq
   if (!q || q.length < 2) {
+    resetBusquedaProductosModal()
     lista.innerHTML = '<p class="muted-hint">Escribe para buscar productos...</p>'
     cerrarDropdownProductosCot()
     return
   }
+  busquedaProductoTermino = q
+  busquedaProductoPagina = 1
+  busquedaProductoTotalPaginas = 1
+  busquedaProductoTotal = 0
+  productosModalResultados = []
+  busquedaProductoCargando = true
   lista.innerHTML = '<p class="muted-hint">Buscando...</p>'
   abrirDropdownProductosCot()
   try {
-    const params = new URLSearchParams({ buscar: q, limit: 100 })
-    const data     = await apiFetch(`/productos?${params}`)
-    if (seq !== busquedaProductoSeq) return
-    const productos = data.data || data
-    if (!productos || productos.length === 0) { lista.innerHTML = '<p class="muted-hint">Sin resultados</p>'; abrirDropdownProductosCot(); return }
-    window._productosModalCache = {}
-    productos.forEach(p => { window._productosModalCache[p.id] = p })
-    lista.innerHTML = productos.map(p => {
-      const codigo = p.codigoInterno || p.codigoBarras || '—'
-      return `
-      <div class="producto-item-modal" data-producto-id="${p.id}">
-        <span class="prod-codigo">${escapeHtml(codigo)}</span>
-        <span class="prod-nombre">${escapeHtml(p.nombre)}</span>
-        <span class="prod-precio">${fmt(p.precioVenta || p.precioBase)}</span>
-      </div>
-    `}).join('')
+    const ok = await cargarPaginaProductosModal(1, seq)
+    if (!ok) return
+    busquedaProductoCargando = false
+    if (productosModalResultados.length === 0) { lista.innerHTML = '<p class="muted-hint">Sin resultados</p>'; abrirDropdownProductosCot(); return }
+    renderProductosModal()
   } catch (err) {
+    busquedaProductoCargando = false
     if (seq !== busquedaProductoSeq) return
     lista.innerHTML = `<p class="muted-hint" style="color:#f44336">Error: ${escapeHtml(err.message)}</p>`
     abrirDropdownProductosCot()
   }
 }
+
+async function cargarMasProductosModal() {
+  if (busquedaProductoCargando || busquedaProductoPagina >= busquedaProductoTotalPaginas) return
+  const seq = busquedaProductoSeq
+  busquedaProductoCargando = true
+  renderProductosModal({ preserveScroll: true })
+  try {
+    const ok = await cargarPaginaProductosModal(busquedaProductoPagina + 1, seq)
+    if (!ok) return
+  } catch (err) {
+    const lista = document.getElementById('lista-productos-modal')
+    if (lista) lista.insertAdjacentHTML('beforeend', `<p class="muted-hint" style="color:#f44336">Error: ${escapeHtml(err.message)}</p>`)
+  } finally {
+    busquedaProductoCargando = false
+    if (seq === busquedaProductoSeq) renderProductosModal({ preserveScroll: true })
+  }
+}
+
 window._addProd = function(id) {
   const p = window._productosModalCache?.[id]
   if (!p) return
@@ -567,6 +676,7 @@ window._addProd = function(id) {
   agregarProductoAItems(p)
   document.getElementById('search-producto-modal').value = ''
   document.getElementById('lista-productos-modal').innerHTML = '<p class="muted-hint">Escribe para buscar productos...</p>'
+  resetBusquedaProductosModal()
   cerrarDropdownProductosCot()
 }
 
@@ -889,6 +999,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   await cargarClientes()
   cargarCotizaciones()
 
+  const listaProductosModal = document.getElementById('lista-productos-modal')
+  if (listaProductosModal && listaProductosModal.parentElement !== document.body) {
+    document.body.appendChild(listaProductosModal)
+  }
+  window.addEventListener('resize', posicionarDropdownProductosCot)
+  window.addEventListener('scroll', posicionarDropdownProductosCot, true)
+
   let debounce
   document.getElementById('search-input')?.addEventListener('input', () => { clearTimeout(debounce); debounce = setTimeout(() => { paginaActual = 1; cargarCotizaciones() }, 400) })
   document.getElementById('filtro-estado')?.addEventListener('change', () => { paginaActual = 1; cargarCotizaciones() })
@@ -932,6 +1049,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   })
   document.getElementById('lista-productos-modal')?.addEventListener('click', e => {
+    e.stopPropagation()
+    const mas = e.target.closest('.producto-load-more')
+    if (mas) {
+      e.preventDefault()
+      cargarMasProductosModal()
+      return
+    }
     const item = e.target.closest('.producto-item-modal')
     if (!item) return
     const id = parseInt(item.dataset.productoId, 10)
@@ -956,12 +1080,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   })
   document.getElementById('btn-chevron-cliente')?.addEventListener('click', abrirDropdownClientesCot)
   document.addEventListener('click', e => {
+    const searchProd = document.getElementById('search-producto-modal')
+    const listaProd = document.getElementById('lista-productos-modal')
     if (!e.target.closest('#cot-cliente-buscar') &&
         !e.target.closest('#btn-chevron-cliente') &&
         !e.target.closest('#dropdown-clientes'))
       cerrarDropdownClientesCot()
-    if (!e.target.closest('#search-producto-modal') &&
-        !e.target.closest('#lista-productos-modal'))
+    if (!searchProd?.contains(e.target) &&
+        !listaProd?.contains(e.target))
       cerrarDropdownProductosCot()
   })
 
