@@ -328,7 +328,19 @@ function renderDetalleItems(detalles) {
     return
   }
 
-  const htmlGuardados = detalles.map(d => {
+  const detallesOrdenados = [...detalles].sort((a, b) => {
+    const fechaA = new Date(a.fechaManual || a.creadoEn || 0).getTime()
+    const fechaB = new Date(b.fechaManual || b.creadoEn || 0).getTime()
+    if (fechaA !== fechaB) return fechaA - fechaB
+
+    const creadoA = new Date(a.creadoEn || 0).getTime()
+    const creadoB = new Date(b.creadoEn || 0).getTime()
+    if (creadoA !== creadoB) return creadoA - creadoB
+
+    return (a.id || 0) - (b.id || 0)
+  })
+
+  const htmlGuardados = detallesOrdenados.map(d => {
     const nombre   = d.Producto?.nombre || '—'
     const unidad   = d.Producto?.unidadVenta || 'pz'
     const cantidad = parseFloat(d.cantidad)
