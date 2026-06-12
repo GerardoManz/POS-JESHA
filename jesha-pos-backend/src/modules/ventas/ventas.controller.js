@@ -6,6 +6,32 @@
 const prisma = require('../../lib/prisma')
 const getEmpresaId = require('../../helpers/getEmpresaId')
 
+function construirWhereScopeVentas(req) {
+  const { rol, empresaId, sucursalId } = req.usuario || {}
+  const where = {}
+
+  if (rol !== 'PLATFORM_ADMIN') {
+    if (!empresaId && rol !== 'SUPERADMIN') {
+      const err = new Error('empresaId requerido para este rol')
+      err.status = 401
+      throw err
+    }
+
+    if (empresaId) where.empresaId = parseInt(empresaId)
+  }
+
+  if (!['SUPERADMIN', 'PLATFORM_ADMIN'].includes(rol)) {
+    if (!sucursalId) {
+      const err = new Error('Usuario sin sucursal asignada')
+      err.status = 400
+      throw err
+    }
+    where.sucursalId = parseInt(sucursalId)
+  }
+
+  return where
+}
+
 // Convierte un instante UTC a la fecha de calendario local de Zacatecas (UTC-6, sin DST)
 // y la devuelve como Date a medianoche UTC, lista para columna @db.Date.
 function fechaLocalZacatecasComoDbDate(date) {
@@ -450,7 +476,7 @@ exports.crearVenta = async (req, res) => {
 exports.obtenerVentas = async (req, res) => {
   try {
     const { skip = 0, take = 20, search, metodoPago, desde, hasta, turnoId, clienteId, usuarioId } = req.query
-    const where = {}
+    const where = construirWhereScopeVentas(req)
 
     if (turnoId)   where.turnoId   = parseInt(turnoId)
     if (usuarioId) where.usuarioId = parseInt(usuarioId)
@@ -517,7 +543,7 @@ exports.obtenerVentas = async (req, res) => {
     })
   } catch (error) {
     console.error('❌ Error en obtenerVentas:', error)
-    res.status(500).json({ error: error.message })
+    res.status(error.status || 500).json({ error: error.message })
   }
 }
 
@@ -527,8 +553,8 @@ exports.obtenerVentas = async (req, res) => {
 exports.obtenerVenta = async (req, res) => {
   try {
     const { id } = req.params
-    const venta = await prisma.venta.findUnique({
-      where: { id: parseInt(id) },
+    const venta = await prisma.venta.findFirst({
+      where: { id: parseInt(id), ...construirWhereScopeVentas(req) },
       include: {
         Usuario:  { select: { id: true, nombre: true } },
         Cliente:  true,
@@ -580,7 +606,7 @@ exports.obtenerVenta = async (req, res) => {
     })
   } catch (error) {
     console.error('❌ Error en obtenerVenta:', error)
-    res.status(500).json({ error: error.message })
+    res.status(error.status || 500).json({ error: error.message })
   }
 }
 
@@ -589,10 +615,9 @@ exports.obtenerVenta = async (req, res) => {
  */
 exports.obtenerVentaPorFolio = async (req, res) => {
   try {
-    const empresaId = getEmpresaId(req)
     const { folio } = req.params
-    const venta = await prisma.venta.findUnique({
-      where: { empresaId_folio: { empresaId, folio } },
+    const venta = await prisma.venta.findFirst({
+      where: { folio, ...construirWhereScopeVentas(req) },
       include: {
         Usuario:  { select: { id: true, nombre: true } },
         Cliente:  true,
@@ -644,7 +669,7 @@ exports.obtenerVentaPorFolio = async (req, res) => {
     })
   } catch (error) {
     console.error('❌ Error en obtenerVentaPorFolio:', error)
-    res.status(500).json({ error: error.message })
+    res.status(error.status || 500).json({ error: error.message })
   }
 }
 
@@ -686,15 +711,16 @@ exports.cancelarVenta = async (req, res) => {
     const id      = parseInt(req.params.id)
     const usuario = req.usuario   // ← usa req.usuario (middleware JWT de JESHA)
     const { motivo } = req.body
-    const empresaId = getEmpresaId(req)
 
-    const venta = await prisma.venta.findUnique({
-      where:   { id },
+    const venta = await prisma.venta.findFirst({
+      where:   { id, ...construirWhereScopeVentas(req) },
       include: { DetalleVenta: true }
     })
 
     if (!venta)
       return res.status(404).json({ error: 'Venta no encontrada' })
+
+    const empresaId = venta.empresaId
 
     if (venta.estado === 'CANCELADA')
       return res.status(409).json({ error: 'La venta ya está cancelada' })
@@ -705,14 +731,6 @@ exports.cancelarVenta = async (req, res) => {
     const rolesPermitidos = ['SUPERADMIN', 'ADMIN_SUCURSAL', 'EMPLEADO']
     if (!rolesPermitidos.includes(usuario.rol))
       return res.status(403).json({ error: 'Sin permiso para cancelar ventas' })
-
-    // ADMIN_SUCURSAL solo puede cancelar ventas de su sucursal
-    if (usuario.rol !== 'SUPERADMIN' && usuario.sucursalId !== venta.sucursalId) {
-      return res.status(403).json({
-        error: 'No puedes cancelar ventas de otra sucursal',
-        codigo: 'SUCURSAL_INCORRECTA'
-      })
-    }
 
     // === Validar bitácora vinculada (si es venta a crédito) ===
     const detallesBitacora = await prisma.detalleBitacora.findMany({
