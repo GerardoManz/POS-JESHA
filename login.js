@@ -49,6 +49,7 @@ form.addEventListener('submit', async (event) => {
     // Guardar token y datos del usuario
     localStorage.setItem('jesha_token', data.token)
     localStorage.setItem('jesha_usuario', JSON.stringify(data.usuario))
+    localStorage.setItem('jesha_theme', data.usuario?.tema || 'dark')
 
     window.location.href = DASHBOARD_PAGE
 

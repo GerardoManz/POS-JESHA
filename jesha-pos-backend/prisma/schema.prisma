@@ -626,6 +626,7 @@ model Usuario {
   sucursalId           Int?
   pin                  String?
   tienePin             Boolean                @default(false)
+  tema                 String                 @default("dark")
   Empresa              Empresa?               @relation(fields: [empresaId], references: [id])
   AbonoBitacora        AbonoBitacora[]
   AbonoCompra          AbonoCompra[]

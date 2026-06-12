@@ -109,6 +109,7 @@ async function cargarSidebar(paginaActual) {
 
     aplicarPermisosMenu()
     marcarPaginaActiva(paginaActual)
+    configurarThemeToggle()
     configurarLogoutConReintentos(10)
   } catch (error) {
     console.error('❌ Error cargando sidebar.html:', error)
@@ -156,6 +157,46 @@ function marcarPaginaActiva(paginaActual) {
   items.forEach(item => item.classList.remove('active'))
   const itemActivo = document.querySelector(`.menu-item[data-page="${paginaActual}"]`)
   if (itemActivo) { itemActivo.classList.add('active'); console.log(`✓ Menú activo: ${paginaActual}`) }
+}
+
+function getThemeIcon(theme) {
+  if (theme === 'dark') {
+    return '<svg class="theme-icon theme-icon-sun" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>'
+  }
+  return '<svg class="theme-icon theme-icon-moon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.99 13.2A8.5 8.5 0 1 1 10.8 3.01a7 7 0 1 0 10.19 10.19Z"/></svg>'
+}
+
+function pintarThemeToggle(btn, theme) {
+  const nextTheme = theme === 'dark' ? 'light' : 'dark'
+  btn.innerHTML = getThemeIcon(theme)
+  btn.setAttribute('aria-label', `Cambiar a modo ${nextTheme === 'dark' ? 'oscuro' : 'claro'}`)
+  btn.setAttribute('title', `Cambiar a modo ${nextTheme === 'dark' ? 'oscuro' : 'claro'}`)
+}
+
+function configurarThemeToggle() {
+  const btn = document.getElementById('theme-toggle')
+  if (!btn || !window.jeshaTheme) return
+
+  pintarThemeToggle(btn, window.jeshaTheme.getTheme())
+
+  btn.addEventListener('click', async () => {
+    const theme = window.jeshaTheme.toggleTheme()
+    pintarThemeToggle(btn, theme)
+
+    try {
+      await window.apiFetch('/auth/preferencias', {
+        method: 'PATCH',
+        body: JSON.stringify({ tema: theme })
+      })
+    } catch (err) {
+      console.warn('No se pudo guardar el tema:', err.message)
+      if (window.jeshaToast) jeshaToast('Tema aplicado localmente, pero no se pudo guardar en tu usuario', 'warning')
+    }
+  })
+
+  window.addEventListener('jesha:themechange', (event) => {
+    pintarThemeToggle(btn, event.detail?.theme || window.jeshaTheme.getTheme())
+  })
 }
 
 function configurarLogoutConReintentos(intentos) {
