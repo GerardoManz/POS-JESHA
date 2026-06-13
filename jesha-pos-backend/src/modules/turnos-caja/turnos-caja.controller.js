@@ -39,6 +39,24 @@ function calcularEfectivoEnCaja(movimientos) {
   return parseFloat(total.toFixed(2))
 }
 
+function calcularTotalesPorMetodoDesdeMovimientos(movimientos) {
+  const movimientosCaja = movimientos.filter(m => ['VENTA', 'DEVOLUCION'].includes(m.tipo))
+  const sumar = (pred) => parseFloat(
+    movimientosCaja.filter(pred).reduce((s, m) => s + parseFloat(m.monto), 0).toFixed(2)
+  )
+
+  const totalEfectivo      = sumar(m => m.metodoPago === 'EFECTIVO')
+  const totalTarjeta       = sumar(m => m.metodoPago === 'DEBITO' || m.metodoPago === 'CREDITO')
+  const totalTransferencia = sumar(m => m.metodoPago === 'TRANSFERENCIA')
+
+  return {
+    totalEfectivo,
+    totalTarjeta,
+    totalTransferencia,
+    totalGeneral: parseFloat((totalEfectivo + totalTarjeta + totalTransferencia).toFixed(2))
+  }
+}
+
 // ════════════════════════════════════════════════════════════════════
 //  GET /turnos-caja/activo
 // ════════════════════════════════════════════════════════════════════
@@ -94,25 +112,14 @@ const obtenerResumen = async (req, res) => {
       prisma.movimientoCaja.findMany({ where: { turnoId: turno.id } }),
       prisma.venta.aggregate({
         where: { turnoId: turno.id, estado: 'COMPLETADA' },
-        _sum: { total: true },
         _count: { id: true }
       })
     ])
 
-    // Desglose por método cobrado, derivado de los movimientos de VENTA.
-    // Así MIXTO se reparte correctamente (cada porción es una fila propia).
-    const ventaMovs = movimientos.filter(m => m.tipo === 'VENTA')
-    const sumarVentas = (pred) =>
-      parseFloat(
-        ventaMovs.filter(pred).reduce((s, m) => s + parseFloat(m.monto), 0).toFixed(2)
-      )
-
-    const totalEfectivo      = sumarVentas(m => m.metodoPago === 'EFECTIVO')
-    const totalTarjeta       = sumarVentas(m => m.metodoPago === 'DEBITO' || m.metodoPago === 'CREDITO')
-    const totalTransferencia = sumarVentas(m => m.metodoPago === 'TRANSFERENCIA')
-
-    const totalGeneral = parseFloat(parseFloat(ventasAgg._sum.total || 0).toFixed(2))
-    const numVentas    = ventasAgg._count.id || 0
+    // Desglose neto por método, derivado del ledger de caja.
+    // VENTA suma, DEVOLUCION resta y MIXTO ya viene separado por método.
+    const { totalEfectivo, totalTarjeta, totalTransferencia, totalGeneral } = calcularTotalesPorMetodoDesdeMovimientos(movimientos)
+    const numVentas = ventasAgg._count.id || 0
 
     // Efectivo esperado = exactamente lo que calculará el cierre.
     const efectivoEsperado = calcularEfectivoEnCaja(movimientos)
@@ -323,27 +330,34 @@ const obtenerHistorial = async (req, res) => {
       prisma.turnoCaja.count({ where })
     ])
 
-    // Query 3: totales por método de pago para cada turno
+    // Query 3: totales netos por método de pago para cada turno desde MovimientoCaja.
+    // Incluye DEVOLUCION con monto negativo para reflejar cancelaciones/reembolsos.
     const turnoIds = turnos.map(t => t.id)
-    const ventasPorTurno = await prisma.venta.groupBy({
+    const movimientosPorTurno = turnoIds.length === 0 ? [] : await prisma.movimientoCaja.groupBy({
       by: ['turnoId', 'metodoPago'],
       where: {
         turnoId: { in: turnoIds },
-        estado: 'COMPLETADA'
+        tipo: { in: ['VENTA', 'DEVOLUCION'] },
+        metodoPago: { in: ['DEBITO', 'CREDITO', 'TRANSFERENCIA'] }
       },
-      _sum: { total: true }
+      _sum: { monto: true }
     })
 
     const totalesPorTurno = {}
-    for (const v of ventasPorTurno) {
-      if (!totalesPorTurno[v.turnoId]) {
-        totalesPorTurno[v.turnoId] = { totalTarjeta: 0, totalTransferencia: 0 }
+    for (const m of movimientosPorTurno) {
+      if (!totalesPorTurno[m.turnoId]) {
+        totalesPorTurno[m.turnoId] = { totalTarjeta: 0, totalTransferencia: 0 }
       }
-      if (v.metodoPago === 'DEBITO' || v.metodoPago === 'CREDITO') {
-        totalesPorTurno[v.turnoId].totalTarjeta += parseFloat(v._sum.total || 0)
-      } else if (v.metodoPago === 'TRANSFERENCIA') {
-        totalesPorTurno[v.turnoId].totalTransferencia += parseFloat(v._sum.total || 0)
+      if (m.metodoPago === 'DEBITO' || m.metodoPago === 'CREDITO') {
+        totalesPorTurno[m.turnoId].totalTarjeta += parseFloat(m._sum.monto || 0)
+      } else if (m.metodoPago === 'TRANSFERENCIA') {
+        totalesPorTurno[m.turnoId].totalTransferencia += parseFloat(m._sum.monto || 0)
       }
+    }
+
+    for (const totales of Object.values(totalesPorTurno)) {
+      totales.totalTarjeta = parseFloat(totales.totalTarjeta.toFixed(2))
+      totales.totalTransferencia = parseFloat(totales.totalTransferencia.toFixed(2))
     }
 
     res.json({

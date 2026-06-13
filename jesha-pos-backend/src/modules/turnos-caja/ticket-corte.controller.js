@@ -35,22 +35,27 @@ const generarTicketCorte = async (req, res) => {
       return res.status(400).json({ error: 'El turno aún está abierto' })
     }
 
-    const [totalesRaw] = await prisma.$queryRaw`
-      SELECT
-        COALESCE(SUM(v.total) FILTER (WHERE v."metodoPago" = 'EFECTIVO'), 0)::numeric AS "totalEfectivo",
-        COALESCE(SUM(v.total) FILTER (WHERE v."metodoPago" IN ('DEBITO','CREDITO')), 0)::numeric AS "totalTarjeta",
-        COALESCE(SUM(v.total) FILTER (WHERE v."metodoPago" = 'TRANSFERENCIA'), 0)::numeric AS "totalTransferencia",
-        COUNT(v.id)::integer AS "numVentas"
-      FROM "Venta" v
-      WHERE v."turnoId" = ${turno.id} AND v.estado = 'COMPLETADA'
-    `
+    const [totalesRaw, ventasAgg] = await Promise.all([
+      prisma.movimientoCaja.groupBy({
+        by: ['metodoPago'],
+        where: {
+          turnoId: turno.id,
+          tipo: { in: ['VENTA', 'DEVOLUCION'] },
+          metodoPago: { in: ['EFECTIVO', 'DEBITO', 'CREDITO', 'TRANSFERENCIA'] }
+        },
+        _sum: { monto: true }
+      }),
+      prisma.venta.count({ where: { turnoId: turno.id, estado: 'COMPLETADA' } })
+    ])
 
-    const t = Array.isArray(totalesRaw) ? totalesRaw[0] : totalesRaw
-    const totalEfectivo      = parseFloat(t.totalEfectivo) || 0
-    const totalTarjeta       = parseFloat(t.totalTarjeta) || 0
-    const totalTransferencia = parseFloat(t.totalTransferencia) || 0
-    const totalGeneral       = totalEfectivo + totalTarjeta + totalTransferencia
-    const numVentas          = parseInt(t.numVentas) || 0
+    const totalPorMetodo = Object.fromEntries(
+      totalesRaw.map(t => [t.metodoPago, parseFloat(t._sum.monto || 0)])
+    )
+    const totalEfectivo      = parseFloat((totalPorMetodo.EFECTIVO || 0).toFixed(2))
+    const totalTarjeta       = parseFloat(((totalPorMetodo.DEBITO || 0) + (totalPorMetodo.CREDITO || 0)).toFixed(2))
+    const totalTransferencia = parseFloat((totalPorMetodo.TRANSFERENCIA || 0).toFixed(2))
+    const totalGeneral       = parseFloat((totalEfectivo + totalTarjeta + totalTransferencia).toFixed(2))
+    const numVentas          = ventasAgg || 0
 
     const html = generarHTMLCorte({
       turno, numVentas, totalEfectivo, totalTarjeta, totalTransferencia, totalGeneral
