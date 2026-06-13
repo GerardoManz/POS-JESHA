@@ -16,6 +16,23 @@ async function generarFolio() {
   return `COT-${año}${mes}${dia}-${sec}`
 }
 
+function parseFechaManual(fechaManual) {
+  if (!fechaManual) return null
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(fechaManual)) {
+    throw new Error('fechaManual debe tener formato YYYY-MM-DD')
+  }
+  const [year, month, day] = fechaManual.split('-').map(n => parseInt(n, 10))
+  const date = new Date(Date.UTC(year, month - 1, day))
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    throw new Error('fechaManual no es una fecha válida')
+  }
+  return date
+}
+
 async function audit(usuarioId, sucursalId, accion, referencia, empresaId) {
   try {
     const data = { accion, modulo: 'cotizaciones', referencia }
@@ -35,7 +52,7 @@ const COTIZACION_SELECT = {
   DetalleCotizacion: {
     select: {
       id: true, productoId: true, cantidad: true, precioUnitario: true, descuento: true,
-      subtotal: true, concepto: true, unidad: true,
+      subtotal: true, concepto: true, unidad: true, fechaManual: true,
       Producto: {
         select: { id: true, nombre: true, codigoInterno: true,
                   codigoBarras: true, unidadVenta: true, imagenUrl: true }
@@ -44,13 +61,13 @@ const COTIZACION_SELECT = {
   }
 }
 
-function calcularDetalle(precioUnitario, cantidad, descuento) {
+function calcularDetalle(precioUnitario, cantidad, descuento, fechaManual) {
   const pu  = parseFloat(precioUnitario)
   const qty = parseFloat(cantidad)
   const dto = parseFloat(descuento || 0)
   const importe  = parseFloat((pu * qty).toFixed(2))
   const subtotal = parseFloat((importe - dto).toFixed(2))
-  return { precioUnitario: pu, cantidad: qty, descuento: dto, subtotal }
+  return { precioUnitario: pu, cantidad: qty, descuento: dto, subtotal, fechaManual: parseFechaManual(fechaManual) }
 }
 
 async function listar({ sucursalId, rol, estado, excluirCanceladas, tipo, buscar, page = 1, limit = 30 }) {
@@ -122,7 +139,7 @@ async function crear({ sucursalId, usuarioId, clienteId, empresaId, tipo = 'PROD
       const pid  = parseInt(d.productoId)
       const p    = mapa[pid]
       const precioFinal = p ? (d.precioUnitario ?? p.precioBase) : (d.precioUnitario || 0)
-      const calc = calcularDetalle(precioFinal, d.cantidad, d.descuento)
+      const calc = calcularDetalle(precioFinal, d.cantidad, d.descuento, d.fechaManual)
       return {
         productoId: pid,
         concepto:   p?.nombre || d.concepto || null,
@@ -132,7 +149,7 @@ async function crear({ sucursalId, usuarioId, clienteId, empresaId, tipo = 'PROD
     })
   } else {
     rows = detalles.map(d => {
-      const calc = calcularDetalle(d.precioUnitario, d.cantidad, d.descuento)
+      const calc = calcularDetalle(d.precioUnitario, d.cantidad, d.descuento, d.fechaManual)
       return { concepto: d.concepto || '', unidad: d.unidad || '', ...calc }
     })
   }
@@ -181,7 +198,7 @@ async function editar(id, { clienteId, notas, venceEn, detalles, tipo, usuarioId
         const p    = mapa[pid]
         // Guard: si el producto no está en el mapa usar los valores que vienen del frontend
         const precioFinal = p ? (d.precioUnitario ?? p.precioBase) : (d.precioUnitario || 0)
-        const calc = calcularDetalle(precioFinal, d.cantidad, d.descuento)
+        const calc = calcularDetalle(precioFinal, d.cantidad, d.descuento, d.fechaManual)
         return {
           productoId: pid,
           concepto:   p?.nombre || d.concepto || null,
@@ -191,7 +208,7 @@ async function editar(id, { clienteId, notas, venceEn, detalles, tipo, usuarioId
       })
     } else {
       rows = detalles.map(d => {
-        const calc = calcularDetalle(d.precioUnitario, d.cantidad, d.descuento)
+        const calc = calcularDetalle(d.precioUnitario, d.cantidad, d.descuento, d.fechaManual)
         return { concepto: d.concepto || '', unidad: d.unidad || '', ...calc }
       })
     }

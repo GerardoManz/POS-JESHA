@@ -697,6 +697,7 @@ model DetalleCotizacion {
   precioUnitario Decimal    @db.Decimal(10, 2)
   descuento      Decimal    @default(0) @db.Decimal(10, 2)
   subtotal       Decimal    @db.Decimal(10, 2)
+  fechaManual    DateTime?  @db.Date
   Cotizacion     Cotizacion @relation(fields: [cotizacionId], references: [id], onDelete: Cascade)
   Producto       Producto?  @relation(fields: [productoId], references: [id])
 }

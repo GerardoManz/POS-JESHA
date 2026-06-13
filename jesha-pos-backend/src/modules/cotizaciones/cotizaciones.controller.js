@@ -118,7 +118,7 @@ const crear = async (req, res) => {
     res.status(201).json({ success: true, data: cotizacion })
   } catch (err) {
     console.error('❌ Error creando cotización:', err.message)
-    const status = err.message.includes('no encontrado') ? 400 : 500
+    const status = err.message.includes('no encontrado') || err.message.includes('fechaManual') ? 400 : 500
     res.status(status).json({ success: false, error: err.message })
   }
 }
@@ -150,7 +150,7 @@ const editar = async (req, res) => {
   } catch (err) {
     console.error('❌ Error editando cotización:', err.message)
     const status = err.message.includes('no encontrada') ? 404
-      : err.message.includes('No se puede editar') ? 400
+      : err.message.includes('No se puede editar') || err.message.includes('fechaManual') ? 400
       : 500
     res.status(status).json({ success: false, error: err.message })
   }

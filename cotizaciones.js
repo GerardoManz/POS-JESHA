@@ -36,6 +36,102 @@ const fmtFecha = iso => iso
   ? new Date(iso).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' })
   : '—'
 
+function fechaHoyLocalInput() {
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+const fechaInputValue = value => value ? String(value).slice(0, 10) : ''
+const fechaTabla = value => fechaInputValue(value) || '—'
+const round2 = value => parseFloat((parseFloat(value || 0)).toFixed(2))
+
+function desgloseLineaCotizacion(detalle) {
+  const cantidad = parseFloat(detalle.cantidad || 0)
+  const precioConIva = parseFloat(detalle.precioUnitario || 0)
+  const descuentoConIva = parseFloat(detalle.descuento || 0)
+  const importeConIva = round2(precioConIva * cantidad)
+  const importeSinIva = round2(importeConIva / IVA_FACTOR)
+  const descuentoSinIva = round2(descuentoConIva / IVA_FACTOR)
+  const netoConIva = round2(importeConIva - descuentoConIva)
+  const netoSinIva = round2(importeSinIva - descuentoSinIva)
+  const iva = round2(netoConIva - netoSinIva)
+  const precioSinIva = round2(precioConIva / IVA_FACTOR)
+  const ivaUnitario = round2(precioConIva - precioSinIva)
+  return { cantidad, precioConIva, precioSinIva, ivaUnitario, importeSinIva, descuentoConIva, descuentoSinIva, netoConIva, netoSinIva, iva }
+}
+
+function resumenProductosCotizacion(detalles = []) {
+  return detalles.reduce((acc, d) => {
+    const dg = desgloseLineaCotizacion(d)
+    acc.subtotalSinIva += dg.importeSinIva
+    acc.descuentoSinIva += dg.descuentoSinIva
+    acc.iva += dg.iva
+    return acc
+  }, { subtotalSinIva: 0, descuentoSinIva: 0, iva: 0 })
+}
+
+function numeroALetras(n) {
+  n = Math.floor(Number(n) || 0)
+  if (n === 0) return 'cero'
+
+  const unidades = ['', 'uno', 'dos', 'tres', 'cuatro', 'cinco', 'seis', 'siete', 'ocho', 'nueve']
+  const especiales = ['diez', 'once', 'doce', 'trece', 'catorce', 'quince', 'dieciséis', 'diecisiete', 'dieciocho', 'diecinueve']
+  const decenas = ['', '', 'veinte', 'treinta', 'cuarenta', 'cincuenta', 'sesenta', 'setenta', 'ochenta', 'noventa']
+  const centenas = ['', 'ciento', 'doscientos', 'trescientos', 'cuatrocientos', 'quinientos', 'seiscientos', 'setecientos', 'ochocientos', 'novecientos']
+
+  const menorMil = num => {
+    if (num === 0) return ''
+    if (num === 100) return 'cien'
+    const c = Math.floor(num / 100)
+    const r = num % 100
+    const partes = []
+    if (c) partes.push(centenas[c])
+    if (r) {
+      if (r < 10) partes.push(unidades[r])
+      else if (r < 20) partes.push(especiales[r - 10])
+      else if (r < 30) partes.push(r === 20 ? 'veinte' : `veinti${unidades[r - 20]}`)
+      else {
+        const d = Math.floor(r / 10)
+        const u = r % 10
+        partes.push(u ? `${decenas[d]} y ${unidades[u]}` : decenas[d])
+      }
+    }
+    return partes.join(' ')
+  }
+
+  const millones = Math.floor(n / 1000000)
+  const miles = Math.floor((n % 1000000) / 1000)
+  const resto = n % 1000
+  const partes = []
+
+  if (millones) partes.push(millones === 1 ? 'un millón' : `${numeroALetras(millones)} millones`)
+  if (miles) partes.push(miles === 1 ? 'mil' : `${menorMil(miles)} mil`)
+  if (resto) partes.push(menorMil(resto))
+
+  return partes.join(' ')
+}
+
+function montoEnLetras(monto) {
+  const total = Math.max(0, round2(monto))
+  const pesos = Math.floor(total)
+  const centavos = String(Math.round((total - pesos) * 100)).padStart(2, '0')
+  let texto = numeroALetras(pesos)
+    .replace(/veintiuno$/g, 'veintiún')
+    .replace(/ y uno$/g, ' y un')
+    .replace(/ uno$/g, ' un')
+    .replace(/^uno$/g, 'un')
+  const centavosNumero = Number(centavos)
+  let centavosTexto = numeroALetras(centavosNumero)
+    .replace(/veintiuno$/g, 'veintiún')
+    .replace(/ y uno$/g, ' y un')
+    .replace(/ uno$/g, ' un')
+    .replace(/^uno$/g, 'un')
+  return `Cantidad en letra: ${texto.toUpperCase()} CON ${centavosTexto.toUpperCase()} ${centavosNumero === 1 ? 'CENTAVO' : 'CENTAVOS'}`
+}
+
 const escapeHtml = value => String(value ?? '')
   .replace(/&/g, '&amp;')
   .replace(/</g, '&lt;')
@@ -170,6 +266,7 @@ window.verCotizacion = async function(id) {
 
       document.getElementById('ver-servicios-tbody').innerHTML = (c.DetalleCotizacion || []).map(d => `
         <tr>
+          <td>${fechaTabla(d.fechaManual)}</td>
           <td>${d.concepto || '—'}</td>
           <td style="text-align:center">${d.unidad || '—'}</td>
           <td style="text-align:center">${d.cantidad}</td>
@@ -194,6 +291,7 @@ window.verCotizacion = async function(id) {
         return `
           <tr>
             <td style="text-align:center">${imgHtml}<div style="font-size:0.7rem;color:var(--muted);margin-top:2px">${clave}</div></td>
+            <td>${fechaTabla(d.fechaManual)}</td>
             <td>${d.Producto?.nombre || d.concepto || d.nombre || '—'}</td>
             <td style="text-align:center">${d.unidad || '—'}</td>
             <td style="text-align:center">${d.cantidad}</td>
@@ -206,8 +304,9 @@ window.verCotizacion = async function(id) {
 
       // Calcular desglose IVA (precios con IVA → desglose hacia atrás)
       const totalConIva   = parseFloat(c.total)
-      const baseGravable  = parseFloat((totalConIva / IVA_FACTOR).toFixed(2))
-      const ivaAmount     = parseFloat((totalConIva - baseGravable).toFixed(2))
+      const resumen       = resumenProductosCotizacion(c.DetalleCotizacion || [])
+      const baseGravable  = round2(resumen.subtotalSinIva - resumen.descuentoSinIva)
+      const ivaAmount     = round2(totalConIva - baseGravable)
       const descTotal     = (c.DetalleCotizacion || []).reduce((s, d) => s + parseFloat(d.descuento || 0), 0)
 
       document.getElementById('ver-subtotal').textContent       = fmt(baseGravable)
@@ -303,7 +402,8 @@ window.abrirEdicion = async function(id) {
       unidad:     d.unidad || '',
       cantidad:   d.cantidad,
       precio:     parseFloat(d.precioUnitario),
-      descuento:  parseFloat(d.descuento || 0)
+      descuento:  parseFloat(d.descuento || 0),
+      fechaManual: fechaInputValue(d.fechaManual)
     }))
 
     setTipoModal(tipoActual)
@@ -335,7 +435,7 @@ function renderItems() {
 function renderItemsProductos() {
   const tbody = document.getElementById('items-tbody')
   if (itemsEdicion.length === 0) {
-    tbody.innerHTML = `<tr id="items-empty"><td colspan="8" class="empty-items">Agrega productos desde el buscador superior</td></tr>`
+    tbody.innerHTML = `<tr id="items-empty"><td colspan="9" class="empty-items">Agrega productos desde el buscador superior</td></tr>`
     actualizarTotal()
     return
   }
@@ -344,6 +444,7 @@ function renderItemsProductos() {
     return `
     <tr id="cot-item-${item.productoId}">
       <td><span class="cot-item-codigo">${codigo}</span></td>
+      <td><input type="date" value="${item.fechaManual || ''}" style="width:120px" oninput="itemsEdicion[${i}].fechaManual=this.value" /></td>
       <td><div class="cot-item-desc">${item.nombre}</div></td>
       <td><input type="text" value="${item.unidad || 'PZA'}" style="width:50px" oninput="itemsEdicion[${i}].unidad=this.value" /></td>
       <td><input type="number" min="1" value="${item.cantidad}" style="width:52px" oninput="actualizarCantidadItem(${i},this.value)" min="${item.esGranel ? 0.001 : 1}" step="${item.esGranel ? 0.001 : 1}" /></td>
@@ -359,12 +460,13 @@ function renderItemsProductos() {
 function renderItemsServicios() {
   const tbody = document.getElementById('servicios-tbody')
   if (itemsEdicion.length === 0) {
-    tbody.innerHTML = `<tr id="servicios-empty"><td colspan="6" class="empty-items">Agrega líneas con el botón +</td></tr>`
+    tbody.innerHTML = `<tr id="servicios-empty"><td colspan="7" class="empty-items">Agrega líneas con el botón +</td></tr>`
     actualizarTotal()
     return
   }
   tbody.innerHTML = itemsEdicion.map((item, i) => `
     <tr>
+      <td><input type="date" value="${item.fechaManual || ''}" style="width:120px" oninput="itemsEdicion[${i}].fechaManual=this.value" /></td>
       <td><input type="text" value="${item.concepto || ''}" placeholder="Descripción del servicio" style="width:100%;min-width:180px" oninput="itemsEdicion[${i}].concepto=this.value" /></td>
       <td><input type="text" value="${item.unidad || ''}" placeholder="m2" style="width:60px" oninput="itemsEdicion[${i}].unidad=this.value" /></td>
       <td><input type="number" min="1" value="${item.cantidad}" style="width:52px" oninput="actualizarCantidadItem(${i},this.value)" min="${item.esGranel ? 0.001 : 1}" step="${item.esGranel ? 0.001 : 1}" /></td>
@@ -446,7 +548,8 @@ function agregarProductoAItems(prod) {
       cantidad:   prod.esGranel ? 0.1 : 1,
       precio:     parseFloat(prod.precioVenta || prod.precioBase),
       descuento:  0,
-      esGranel:   prod.esGranel || false
+      esGranel:   prod.esGranel || false,
+      fechaManual: fechaHoyLocalInput()
     })
   }
   renderItems()
@@ -454,7 +557,7 @@ function agregarProductoAItems(prod) {
 }
 
 function agregarLineaServicio() {
-  itemsEdicion.push({ concepto: '', unidad: '', cantidad: 1, precio: 0, descuento: 0 })
+  itemsEdicion.push({ concepto: '', unidad: '', cantidad: 1, precio: 0, descuento: 0, fechaManual: fechaHoyLocalInput() })
   renderItems()
 }
 
@@ -474,7 +577,8 @@ async function guardarCotizacion() {
       unidad:         i.unidad,
       cantidad:       i.cantidad,
       precioUnitario: i.precio,
-      descuento:      i.descuento || 0
+      descuento:      i.descuento || 0,
+      fechaManual:    i.fechaManual || null
     }))
   } else {
     detalles = itemsEdicion.map(i => ({
@@ -482,7 +586,8 @@ async function guardarCotizacion() {
       unidad:         i.unidad,
       cantidad:       i.cantidad,
       precioUnitario: i.precio,
-      descuento:      0
+      descuento:      0,
+      fechaManual:    i.fechaManual || null
     }))
   }
 
@@ -833,10 +938,18 @@ window.descargarPdf = async function(id) {
 
 const LOGO_URL = window.__JESHA_LOGO_URL__
 
+function logoPdfUrl() {
+  if (!LOGO_URL) return ''
+  return LOGO_URL.replace('/image/upload/', '/image/upload/e_trim/c_fit,w_840,h_300,q_100,f_png/')
+}
+
 function generarPdf(c) {
   const esProductos = c.tipo !== 'SERVICIOS'
   const vigencia    = c.venceEn ? `<p><strong>Vigencia:</strong> ${fmtFecha(c.venceEn)}</p>` : ''
   const notas       = c.notas  ? `<p style="margin-top:16px;font-size:12px;color:#555"><strong>Notas:</strong> ${c.notas}</p>` : ''
+  const totalNumerico = parseFloat(c.total || 0)
+  const totalLetras = montoEnLetras(totalNumerico)
+  const logoUrl = logoPdfUrl()
 
   let tablaHtml = ''
   let resumenHtml = ''
@@ -844,9 +957,7 @@ function generarPdf(c) {
   if (esProductos) {
     // Tabla con imagen + clave + descuento + IVA desglosado
     const lineas = (c.DetalleCotizacion || []).map(d => {
-      const importe  = parseFloat(d.precioUnitario) * parseFloat(d.cantidad)
-      const descuento = parseFloat(d.descuento || 0)
-      const neto     = importe - descuento
+      const dg = desgloseLineaCotizacion(d)
       const imgHtml  = d.Producto?.imagenUrl
         ? `<img src="${d.Producto.imagenUrl}" style="width:48px;height:48px;object-fit:contain;display:block;margin:0 auto" />`
         : `<div style="width:48px;height:48px;background:#f5f5f5;border:1px solid #ddd;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:18px;margin:0 auto">📦</div>`
@@ -855,30 +966,37 @@ function generarPdf(c) {
       return `
         <tr>
           <td style="text-align:center;padding:8px">${imgHtml}<div style="font-size:10px;color:#888;margin-top:2px">${clave}</div></td>
-          <td style="text-align:center">${parseFloat(d.cantidad)}</td>
+          <td style="text-align:center">${fechaTabla(d.fechaManual)}</td>
+          <td style="text-align:center">${dg.cantidad}</td>
           <td style="text-align:center">${unidad}</td>
           <td>${d.Producto?.nombre || d.concepto || '—'}</td>
-          <td style="text-align:right">$${parseFloat(d.precioUnitario).toFixed(2)}</td>
-          <td style="text-align:right">$${descuento.toFixed(2)}</td>
-          <td style="text-align:right"><strong>$${neto.toFixed(2)}</strong></td>
+          <td style="text-align:right">$${dg.precioSinIva.toFixed(2)}</td>
+          <td style="text-align:right">$${dg.ivaUnitario.toFixed(2)}</td>
+          <td style="text-align:right">$${dg.precioConIva.toFixed(2)}</td>
+          <td style="text-align:right">$${dg.descuentoConIva.toFixed(2)}</td>
+          <td style="text-align:right"><strong>$${dg.netoConIva.toFixed(2)}</strong></td>
         </tr>`
     }).join('')
 
-    const totalConIva  = parseFloat(c.total)
-    const baseGravable = parseFloat((totalConIva / IVA_FACTOR).toFixed(2))
-    const ivaAmount    = parseFloat((totalConIva - baseGravable).toFixed(2))
-    const descTotal    = (c.DetalleCotizacion || []).reduce((s, d) => s + parseFloat(d.descuento || 0), 0)
+    const resumen = resumenProductosCotizacion(c.DetalleCotizacion || [])
+    const subtotalSinIva = round2(resumen.subtotalSinIva)
+    const descuentoSinIva = round2(resumen.descuentoSinIva)
+    const subtotalNetoSinIva = round2(subtotalSinIva - descuentoSinIva)
+    const ivaAmount = round2(totalNumerico - subtotalNetoSinIva)
 
     tablaHtml = `
       <table>
         <thead>
           <tr>
             <th style="width:80px;text-align:center">IMAGEN/CLAVE</th>
-            <th style="width:50px;text-align:center">CANT</th>
+            <th style="width:70px;text-align:center">FECHA</th>
+            <th style="width:45px;text-align:center">CANT</th>
             <th style="width:60px;text-align:center">UNIDAD</th>
             <th>DESCRIPCIÓN</th>
-            <th style="width:90px;text-align:right">P.U.</th>
-            <th style="width:80px;text-align:right">DESCUENTO</th>
+            <th style="width:75px;text-align:right">P.U. SIN IVA</th>
+            <th style="width:65px;text-align:right">IVA UNIT.</th>
+            <th style="width:75px;text-align:right">P.U. C/IVA</th>
+            <th style="width:75px;text-align:right">DESCUENTO</th>
             <th style="width:90px;text-align:right">IMPORTE</th>
           </tr>
         </thead>
@@ -887,15 +1005,18 @@ function generarPdf(c) {
 
     resumenHtml = `
       <div class="resumen-box">
-        <div class="resumen-row"><span>Subtotal (sin IVA):</span><span>$${baseGravable.toFixed(2)}</span></div>
-        ${descTotal > 0 ? `<div class="resumen-row"><span>Descuento total:</span><span>-$${descTotal.toFixed(2)}</span></div>` : ''}
+        <div class="resumen-row"><span>Subtotal sin IVA:</span><span>$${subtotalSinIva.toFixed(2)}</span></div>
+        ${descuentoSinIva > 0 ? `<div class="resumen-row"><span>Descuento sin IVA:</span><span>-$${descuentoSinIva.toFixed(2)}</span></div>` : ''}
+        ${descuentoSinIva > 0 ? `<div class="resumen-row"><span>Subtotal neto sin IVA:</span><span>$${subtotalNetoSinIva.toFixed(2)}</span></div>` : ''}
         <div class="resumen-row"><span>IVA (16%):</span><span>$${ivaAmount.toFixed(2)}</span></div>
-        <div class="resumen-row total"><span>Total:</span><span>$${totalConIva.toFixed(2)}</span></div>
+        <div class="resumen-row total"><span>Total:</span><span>$${totalNumerico.toFixed(2)}</span></div>
+        <div class="resumen-letras">${totalLetras}</div>
       </div>`
   } else {
     // SERVICIOS — tabla simple
     const lineas = (c.DetalleCotizacion || []).map(d => `
       <tr>
+        <td style="text-align:center">${fechaTabla(d.fechaManual)}</td>
         <td>${d.concepto || '—'}</td>
         <td style="text-align:center">${d.unidad || '—'}</td>
         <td style="text-align:center">${d.cantidad}</td>
@@ -904,10 +1025,16 @@ function generarPdf(c) {
       </tr>`
     ).join('')
 
+    const subtotalServicios = round2((c.DetalleCotizacion || []).reduce((s, d) => s + parseFloat(d.subtotal || 0), 0))
+    const ivaServicios = round2(subtotalServicios * IVA)
+    const totalServicios = round2(subtotalServicios + ivaServicios)
+    const totalServiciosLetras = montoEnLetras(totalServicios)
+
     tablaHtml = `
       <table>
         <thead>
           <tr>
+            <th style="width:80px;text-align:center">FECHA</th>
             <th>CONCEPTO</th>
             <th style="width:80px;text-align:center">UNIDAD</th>
             <th style="width:60px;text-align:center">CANTIDAD</th>
@@ -920,7 +1047,10 @@ function generarPdf(c) {
 
     resumenHtml = `
       <div class="resumen-box">
-        <div class="resumen-row total"><span>Total:</span><span>$${parseFloat(c.total).toFixed(2)}</span></div>
+        <div class="resumen-row"><span>Subtotal del trabajo:</span><span>$${subtotalServicios.toFixed(2)}</span></div>
+        <div class="resumen-row"><span>IVA (${Math.round(IVA * 100)}%):</span><span>$${ivaServicios.toFixed(2)}</span></div>
+        <div class="resumen-row total"><span>Total a pagar:</span><span>$${totalServicios.toFixed(2)}</span></div>
+        <div class="resumen-letras">${totalServiciosLetras}</div>
       </div>`
   }
 
@@ -933,27 +1063,30 @@ function generarPdf(c) {
   * { margin:0; padding:0; box-sizing:border-box; }
   body { font-family:Arial,sans-serif; font-size:12px; color:#222; padding:28px; }
   .header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:24px; border-bottom:2px solid #1f3a66; padding-bottom:14px; }
+  .empresa { min-width:${esProductos ? 'auto' : '320px'}; }
+  .logo-jesha { width:${esProductos ? '170px' : '280px'}; height:${esProductos ? '70px' : '100px'}; object-fit:contain; object-position:left center; display:block; margin-bottom:8px; filter:brightness(0) contrast(2); }
   .empresa p { color:#555; font-size:11px; margin-top:4px; }
   .folio-box { text-align:right; }
   .folio-box .folio { font-size:18px; font-weight:700; color:#1f3a66; }
   .folio-box p { font-size:11px; color:#666; margin-top:2px; }
   .meta { display:grid; grid-template-columns:1fr 1fr; gap:6px 20px; margin-bottom:18px; background:#f7f8fa; padding:12px; border-radius:6px; font-size:11px; }
-  table { width:100%; border-collapse:collapse; margin-bottom:14px; font-size:11px; }
-  th { background:#1f3a66; color:#fff; padding:8px 10px; text-align:left; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; }
-  td { padding:8px 10px; border-bottom:1px solid #eee; vertical-align:middle; }
+  table { width:100%; border-collapse:collapse; margin-bottom:14px; font-size:10px; }
+  th { background:#1f3a66; color:#fff; padding:7px 8px; text-align:left; font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:0.03em; }
+  td { padding:7px 8px; border-bottom:1px solid #eee; vertical-align:middle; }
   tr:nth-child(even) td { background:#fafafa; }
   .resumen-box { display:flex; flex-direction:column; align-items:flex-end; gap:4px; margin-top:8px; }
   .resumen-row { display:flex; gap:20px; min-width:260px; justify-content:space-between; font-size:12px; color:#555; }
   .resumen-row span:last-child { font-weight:600; color:#222; }
   .resumen-row.total { border-top:1px solid #ccc; padding-top:6px; margin-top:4px; font-size:14px; font-weight:700; color:#1f3a66; }
   .resumen-row.total span:last-child { color:#1f3a66; font-size:16px; }
+  .resumen-letras { max-width:420px; text-align:right; margin-top:6px; color:#333; font-size:11px; font-weight:700; }
   .footer { margin-top:24px; border-top:1px solid #ddd; padding-top:12px; font-size:10px; color:#888; text-align:center; }
 </style>
 </head>
 <body>
   <div class="header">
     <div class="empresa">
-      <img src="${LOGO_URL}" alt="JESHA" style="height:60px;width:auto;display:block;margin-bottom:4px;" />
+      ${logoUrl ? `<img src="${logoUrl}" alt="JESHA" class="logo-jesha" />` : `<div style="font-size:18px;font-weight:700;color:#1f3a66;margin-bottom:8px;">FERRETERÍA E ILUMINACIÓN JESHA</div>`}
       <p>Av. Vialidad San Simón 3, La Toma de Zacatecas, C.P. 98660</p>
       <p>Guadalupe, Zacatecas · Tel: 492 101 6879 · jeshadelgado544@gmail.com</p>
     </div>
