@@ -199,15 +199,42 @@ function configurarThemeToggle() {
   })
 }
 
+let logoutGlobalConfigurado = false
+let cerrandoSesion = false
+
+function obtenerLogoutDesdeTarget(target) {
+  let nodo = target
+  while (nodo && nodo !== document) {
+    if (nodo.id === 'logout-btn') return nodo
+    nodo = nodo.parentElement
+  }
+  return null
+}
+
+function cerrarSesion() {
+  if (cerrandoSesion) return
+  cerrandoSesion = true
+  localStorage.removeItem('jesha_token')
+  localStorage.removeItem('jesha_usuario')
+  window.location.replace('login.html')
+}
+
 function configurarLogoutConReintentos(intentos) {
+  if (!logoutGlobalConfigurado) {
+    document.addEventListener('click', (e) => {
+      const logoutBtn = obtenerLogoutDesdeTarget(e.target)
+      if (!logoutBtn) return
+
+      e.preventDefault()
+      e.stopPropagation()
+      cerrarSesion()
+    }, true)
+    logoutGlobalConfigurado = true
+  }
+
   const logoutBtn = document.getElementById('logout-btn')
   if (logoutBtn) {
-    logoutBtn.addEventListener('click', (e) => {
-      e.preventDefault()
-      localStorage.removeItem('jesha_token')
-      localStorage.removeItem('jesha_usuario')
-      window.location.href = 'login.html'
-    })
+    logoutBtn.setAttribute('type', 'button')
     console.log('✓ Botón de salida vinculado')
   } else if (intentos > 0) {
     requestAnimationFrame(() => configurarLogoutConReintentos(intentos - 1))

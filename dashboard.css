@@ -86,11 +86,18 @@ body {
   border-right: 1px solid var(--panel-border);
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
   padding: 24px 14px;
   position: sticky;
   top: 0;
   height: 100vh;
+  overflow: hidden;
+}
+
+.sidebar > div:first-child {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
 }
 
 .brand {
@@ -153,8 +160,10 @@ body {
 /* ── MENÚ ── */
 .menu {
   display: flex;
+  flex: 1;
   flex-direction: column;
   gap: 2px;
+  min-height: 0;
 }
 
 .menu-item {
@@ -193,6 +202,7 @@ body {
 .sidebar-footer {
   border-top: 1px solid var(--panel-border);
   padding-top: 16px;
+  flex-shrink: 0;
 }
 
 .logout {
@@ -209,6 +219,7 @@ body {
   font-size: 0.875rem;
   font-weight: 500;
   cursor: pointer;
+  touch-action: manipulation;
   transition: background 0.15s, color 0.15s;
   margin-bottom: 12px;
 }
@@ -355,7 +366,9 @@ body {
 
 @media (max-width: 800px) {
   .app-shell { grid-template-columns: 1fr; }
-  .sidebar { height: auto; position: static; }
+  .sidebar { height: auto; position: static; overflow: visible; }
+  .sidebar > div:first-child { flex: none; }
+  .menu { flex: none; }
   .panel-grid { grid-template-columns: 1fr; }
 }
 
