@@ -67,7 +67,7 @@ const obtener = async (req, res) => {
 
 const crear = async (req, res) => {
   try {
-    const { clienteId, tipo = 'PRODUCTOS', detalles, notas, venceEn } = req.body
+    const { clienteId, tipo = 'PRODUCTOS', detalles, notas, venceEn, descuento } = req.body
     const { id: usuarioId, sucursalId: sucursalIdToken } = req.usuario
     const sucursalId = sucursalIdToken || parseInt(req.body.sucursalId) || 1
     const empresaId = getEmpresaId(req)
@@ -112,7 +112,8 @@ const crear = async (req, res) => {
       tipo,
       detalles,
       notas,
-      venceEn
+      venceEn,
+      descuento
     })
 
     res.status(201).json({ success: true, data: cotizacion })
@@ -131,7 +132,7 @@ const crear = async (req, res) => {
 const editar = async (req, res) => {
   try {
     const { id } = req.params
-    const { clienteId, notas, venceEn, detalles } = req.body
+    const { clienteId, notas, venceEn, detalles, descuento } = req.body
     const { id: usuarioId, sucursalId: sucursalIdToken } = req.usuario
     const sucursalId = sucursalIdToken || parseInt(req.body.sucursalId) || 1
     const empresaId = getEmpresaId(req)
@@ -141,6 +142,7 @@ const editar = async (req, res) => {
       notas,
       venceEn,
       detalles,
+      descuento,
       usuarioId,
       sucursalId,
       empresaId

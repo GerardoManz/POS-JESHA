@@ -44,7 +44,7 @@ async function audit(usuarioId, sucursalId, accion, referencia, empresaId) {
 }
 
 const COTIZACION_SELECT = {
-  id: true, folio: true, estado: true, tipo: true, total: true,
+  id: true, folio: true, estado: true, tipo: true, total: true, descuento: true,
   venceEn: true, notas: true, creadaEn: true,
   Cliente:  { select: { id: true, nombre: true, rfc: true, telefono: true } },
   Usuario:  { select: { id: true, nombre: true } },
@@ -118,7 +118,7 @@ async function obtenerPorId(id) {
   return prisma.cotizacion.findUnique({ where: { id: parseInt(id) }, select: COTIZACION_SELECT })
 }
 
-async function crear({ sucursalId, usuarioId, clienteId, empresaId, tipo = 'PRODUCTOS', detalles, notas, venceEn }) {
+async function crear({ sucursalId, usuarioId, clienteId, empresaId, tipo = 'PRODUCTOS', detalles, notas, venceEn, descuento }) {
   clienteId = clienteId ? parseInt(clienteId) : null
   if (isNaN(clienteId)) clienteId = null
 
@@ -154,11 +154,13 @@ async function crear({ sucursalId, usuarioId, clienteId, empresaId, tipo = 'PROD
     })
   }
 
-  const total = parseFloat(rows.reduce((s, r) => s + r.subtotal, 0).toFixed(2))
+  const subtotalLineas = parseFloat(rows.reduce((s, r) => s + r.subtotal, 0).toFixed(2))
+  const descuentoAmt = parseFloat(descuento || 0)
+  const total = parseFloat((subtotalLineas - descuentoAmt).toFixed(2))
   const folio = await generarFolio()
 
   const cotizacion = await prisma.cotizacion.create({
-    data: { empresaId, folio, sucursalId, usuarioId, clienteId, tipo, total, estado: 'PENDIENTE',
+    data: { empresaId, folio, sucursalId, usuarioId, clienteId, tipo, total, descuento: descuentoAmt, estado: 'PENDIENTE',
             notas: notas || null, venceEn: venceEn ? new Date(venceEn) : null,
             DetalleCotizacion: { create: rows } },
     select: COTIZACION_SELECT
@@ -167,12 +169,12 @@ async function crear({ sucursalId, usuarioId, clienteId, empresaId, tipo = 'PROD
   return cotizacion
 }
 
-async function editar(id, { clienteId, notas, venceEn, detalles, tipo, usuarioId, sucursalId, empresaId }) {
+async function editar(id, { clienteId, notas, venceEn, detalles, tipo, usuarioId, sucursalId, empresaId, descuento }) {
   clienteId = clienteId ? parseInt(clienteId) : null
   if (isNaN(clienteId)) clienteId = null
 
   const existente = await prisma.cotizacion.findUnique({
-    where: { id: parseInt(id) }, select: { id: true, folio: true, estado: true, tipo: true }
+    where: { id: parseInt(id) }, select: { id: true, folio: true, estado: true, tipo: true, descuento: true }
   })
   if (!existente) throw new Error('Cotización no encontrada')
   if (existente.estado !== 'PENDIENTE') throw new Error(`No se puede editar en estado ${existente.estado}`)
@@ -212,13 +214,24 @@ async function editar(id, { clienteId, notas, venceEn, detalles, tipo, usuarioId
         return { concepto: d.concepto || '', unidad: d.unidad || '', ...calc }
       })
     }
-    updateData.total = parseFloat(rows.reduce((s, r) => s + r.subtotal, 0).toFixed(2))
+    const subtotalLineas = parseFloat(rows.reduce((s, r) => s + r.subtotal, 0).toFixed(2))
+    const descuentoAmt = descuento !== undefined ? parseFloat(descuento || 0) : parseFloat(existente.descuento || 0)
+    updateData.total = parseFloat((subtotalLineas - descuentoAmt).toFixed(2))
+    updateData.descuento = descuentoAmt
     const cot = await prisma.$transaction(async (tx) => {
       await tx.detalleCotizacion.deleteMany({ where: { cotizacionId: parseInt(id) } })
       return tx.cotizacion.update({ where: { id: parseInt(id) }, data: { ...updateData, DetalleCotizacion: { create: rows } }, select: COTIZACION_SELECT })
     })
     await audit(usuarioId, sucursalId, 'EDITAR_COTIZACION', existente.folio, empresaId)
     return cot
+  }
+
+  if (descuento !== undefined) {
+    const lineas = await prisma.detalleCotizacion.findMany({ where: { cotizacionId: parseInt(id) }, select: { subtotal: true } })
+    const subtotalLineas = parseFloat(lineas.reduce((s, l) => s + parseFloat(l.subtotal), 0).toFixed(2))
+    const descuentoAmt = parseFloat(descuento || 0)
+    updateData.descuento = descuentoAmt
+    updateData.total = parseFloat((subtotalLineas - descuentoAmt).toFixed(2))
   }
 
   const cot = await prisma.cotizacion.update({ where: { id: parseInt(id) }, data: updateData, select: COTIZACION_SELECT })

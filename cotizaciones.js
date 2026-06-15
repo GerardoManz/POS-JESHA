@@ -20,6 +20,7 @@ if (!TOKEN) {
 let cotizacionActual = null
 let itemsEdicion     = []   // { productoId?, concepto?, unidad, cantidad, precio, descuento, nombre? }
 let tipoActual       = 'PRODUCTOS'
+let descuentoGlobalPct = 0   // porcentaje de descuento global sobre el total
 let clientesLista    = []
 let paginaActual     = 1
 const LIMIT          = 20
@@ -302,15 +303,22 @@ window.verCotizacion = async function(id) {
         `
       }).join('')
 
-      // Calcular desglose IVA (precios con IVA → desglose hacia atrás)
+      // Calcular desglose IVA (fórmula SAT: base = total / 1.16, IVA = total - base)
       const totalConIva   = parseFloat(c.total)
       const resumen       = resumenProductosCotizacion(c.DetalleCotizacion || [])
-      const baseGravable  = round2(resumen.subtotalSinIva - resumen.descuentoSinIva)
+      const baseGravable  = round2(totalConIva / IVA_FACTOR)
       const ivaAmount     = round2(totalConIva - baseGravable)
       const descTotal     = (c.DetalleCotizacion || []).reduce((s, d) => s + parseFloat(d.descuento || 0), 0)
+      const descGlobal    = parseFloat(c.descuento || 0)
+      const descGlobalSinIva = round2(descGlobal / IVA_FACTOR)
 
-      document.getElementById('ver-subtotal').textContent       = fmt(baseGravable)
+      document.getElementById('ver-subtotal').textContent       = fmt(resumen.subtotalSinIva)
       document.getElementById('ver-descuento-total').textContent = fmt(descTotal)
+      document.getElementById('ver-descuento-global').style.display = descGlobal > 0 ? 'flex' : 'none'
+      if (descGlobal > 0) {
+        document.getElementById('ver-descuento-global-monto').textContent = fmt(descGlobal)
+      }
+      document.getElementById('ver-base-gravable').textContent  = fmt(baseGravable)
       document.getElementById('ver-iva').textContent             = fmt(ivaAmount)
       document.getElementById('ver-total').textContent           = fmt(totalConIva)
     }
@@ -336,6 +344,7 @@ function abrirModalNuevo() {
   cotizacionActual = null
   itemsEdicion     = []
   tipoActual       = 'PRODUCTOS'
+  descuentoGlobalPct = 0
   document.getElementById('modal-titulo').textContent = 'Nueva Cotización'
   document.getElementById('cot-vence').value          = ''
   document.getElementById('cot-notas').value          = ''
@@ -343,6 +352,14 @@ function abrirModalNuevo() {
   document.getElementById('lista-productos-modal').innerHTML = '<p class="muted-hint">Escribe para buscar productos...</p>'
   cerrarDropdownProductosCot()
   ocultarError('modal-error')
+
+  // ── Resetear descuento ──
+  const inputDesc = document.getElementById('cot-descuento-input')
+  if (inputDesc) { inputDesc.value = ''; inputDesc.style.borderColor = '' }
+  const avisoDesc = document.getElementById('cot-descuento-aviso')
+  if (avisoDesc) avisoDesc.style.display = 'none'
+  const filaDesc = document.getElementById('cot-descuento-fila')
+  if (filaDesc) filaDesc.style.display = 'none'
 
   // ── Cliente: habilitado para nueva cotización ──
   const clienteInput = document.getElementById('cot-cliente-buscar')
@@ -387,6 +404,19 @@ window.abrirEdicion = async function(id) {
     clienteInput.style.cursor   = 'not-allowed'
     document.getElementById('cot-cliente-id').value    = clienteId
     document.getElementById('btn-chevron-cliente').style.display = 'none'
+
+    // ── Restaurar descuento global ──
+    const descAmt = parseFloat(c.descuento || 0)
+    if (descAmt > 0) {
+      const totalAntesDesc = parseFloat(c.total) + descAmt
+      descuentoGlobalPct = totalAntesDesc > 0 ? parseFloat(((descAmt / totalAntesDesc) * 100).toFixed(1)) : 0
+    } else {
+      descuentoGlobalPct = 0
+    }
+    const inputDesc = document.getElementById('cot-descuento-input')
+    if (inputDesc) { inputDesc.value = descuentoGlobalPct > 0 ? descuentoGlobalPct : ''; inputDesc.style.borderColor = '' }
+    const avisoDesc = document.getElementById('cot-descuento-aviso')
+    if (avisoDesc) avisoDesc.style.display = 'none'
 
     // ── Tabs de tipo: ocultar el que no corresponde ──
     document.querySelectorAll('.tipo-tab').forEach(tab => {
@@ -502,8 +532,23 @@ function actualizarFilaTotal(i) {
 }
 
 function actualizarTotal() {
-  const total = itemsEdicion.reduce((s, i) => s + (i.precio * i.cantidad) - (i.descuento || 0), 0)
-  document.getElementById('modal-total').textContent = fmt(total)
+  const totalLineas = itemsEdicion.reduce((s, i) => s + (i.precio * i.cantidad) - (i.descuento || 0), 0)
+  const pct = descuentoGlobalPct
+  const descAmt = parseFloat((totalLineas * (pct / 100)).toFixed(2))
+  const totalFinal = parseFloat((totalLineas - descAmt).toFixed(2))
+
+  document.getElementById('modal-total').textContent = fmt(totalFinal)
+
+  const filaDesc = document.getElementById('cot-descuento-fila')
+  const elDesc = document.getElementById('modal-descuento')
+  if (filaDesc && elDesc) {
+    if (pct > 0 && totalLineas > 0) {
+      elDesc.textContent = `-${fmt(descAmt)} (${pct}%)`
+      filaDesc.style.display = 'flex'
+    } else {
+      filaDesc.style.display = 'none'
+    }
+  }
 }
 
 function enfocarItemCotizacion(productoId) {
@@ -570,6 +615,10 @@ async function guardarCotizacion() {
   const venceEn   = document.getElementById('cot-vence').value || null
   const notas     = document.getElementById('cot-notas').value.trim() || null
 
+  // Calcular descuento global
+  const totalLineas = itemsEdicion.reduce((s, i) => s + (i.precio * i.cantidad) - (i.descuento || 0), 0)
+  const descAmt = parseFloat((totalLineas * (descuentoGlobalPct / 100)).toFixed(2))
+
   let detalles
   if (tipoActual === 'PRODUCTOS') {
     detalles = itemsEdicion.map(i => ({
@@ -598,9 +647,9 @@ async function guardarCotizacion() {
   try {
     let data
     if (cotizacionActual) {
-      data = await apiFetch(`/cotizaciones/${cotizacionActual.id}`, { method: 'PUT', body: JSON.stringify({ clienteId, venceEn, notas, detalles, tipo: tipoActual }) })
+      data = await apiFetch(`/cotizaciones/${cotizacionActual.id}`, { method: 'PUT', body: JSON.stringify({ clienteId, venceEn, notas, detalles, tipo: tipoActual, descuento: descAmt }) })
     } else {
-      data = await apiFetch('/cotizaciones', { method: 'POST', body: JSON.stringify({ clienteId, venceEn, notas, detalles, tipo: tipoActual }) })
+      data = await apiFetch('/cotizaciones', { method: 'POST', body: JSON.stringify({ clienteId, venceEn, notas, detalles, tipo: tipoActual, descuento: descAmt }) })
     }
     cotizacionActual = data?.data ?? cotizacionActual
     document.getElementById('modal-cotizacion').classList.remove('active')
@@ -981,8 +1030,10 @@ function generarPdf(c) {
     const resumen = resumenProductosCotizacion(c.DetalleCotizacion || [])
     const subtotalSinIva = round2(resumen.subtotalSinIva)
     const descuentoSinIva = round2(resumen.descuentoSinIva)
-    const subtotalNetoSinIva = round2(subtotalSinIva - descuentoSinIva)
-    const ivaAmount = round2(totalNumerico - subtotalNetoSinIva)
+    const baseGravable = round2(totalNumerico / IVA_FACTOR)
+    const ivaAmount = round2(totalNumerico - baseGravable)
+    const descGlobal = parseFloat(c.descuento || 0)
+    const descGlobalSinIva = round2(descGlobal / IVA_FACTOR)
 
     tablaHtml = `
       <table>
@@ -1006,8 +1057,9 @@ function generarPdf(c) {
     resumenHtml = `
       <div class="resumen-box">
         <div class="resumen-row"><span>Subtotal sin IVA:</span><span>$${subtotalSinIva.toFixed(2)}</span></div>
-        ${descuentoSinIva > 0 ? `<div class="resumen-row"><span>Descuento sin IVA:</span><span>-$${descuentoSinIva.toFixed(2)}</span></div>` : ''}
-        ${descuentoSinIva > 0 ? `<div class="resumen-row"><span>Subtotal neto sin IVA:</span><span>$${subtotalNetoSinIva.toFixed(2)}</span></div>` : ''}
+        ${descuentoSinIva > 0 ? `<div class="resumen-row"><span>Descuento por línea (sin IVA):</span><span>-$${descuentoSinIva.toFixed(2)}</span></div>` : ''}
+        ${descGlobal > 0 ? `<div class="resumen-row"><span>Descuento global:</span><span style="color:#e8710a;">-$${descGlobal.toFixed(2)}</span></div>` : ''}
+        <div class="resumen-row"><span>Base gravable:</span><span>$${baseGravable.toFixed(2)}</span></div>
         <div class="resumen-row"><span>IVA (16%):</span><span>$${ivaAmount.toFixed(2)}</span></div>
         <div class="resumen-row total"><span>Total:</span><span>$${totalNumerico.toFixed(2)}</span></div>
         <div class="resumen-letras">${totalLetras}</div>
@@ -1242,5 +1294,26 @@ document.addEventListener('DOMContentLoaded', async () => {
       document.getElementById('modal-ver')?.classList.remove('active')
       cerrarDropdownClientesCot()
     }
+  })
+
+  // ── Descuento global: visibilidad por rol ──
+  const puedeDescuento = ['SUPERADMIN', 'ADMIN_SUCURSAL'].includes(USUARIO.rol)
+  const wrapDesc = document.getElementById('cot-descuento-wrap')
+  if (wrapDesc) wrapDesc.style.display = puedeDescuento ? '' : 'none'
+
+  // ── Evento: input de descuento ──
+  document.getElementById('cot-descuento-input')?.addEventListener('input', function() {
+    const aviso = document.getElementById('cot-descuento-aviso')
+    const val = parseFloat(this.value) || 0
+    if (val > 10) {
+      this.value = 10
+      this.style.borderColor = 'var(--orange)'
+      if (aviso) aviso.style.display = 'block'
+      setTimeout(() => { this.style.borderColor = ''; if (aviso) aviso.style.display = 'none' }, 2500)
+    } else if (val < 0) {
+      this.value = 0
+    }
+    descuentoGlobalPct = parseFloat(this.value) || 0
+    actualizarTotal()
   })
 })

@@ -121,6 +121,15 @@
           <label>Notas</label>
           <textarea id="cot-notas" rows="2" placeholder="Observaciones o condiciones..."></textarea>
         </div>
+
+        <!-- Descuento global (solo SUPERADMIN / ADMIN_SUCURSAL) -->
+        <div class="form-row cot-datos-grid" id="cot-descuento-wrap" style="display:none;">
+          <div class="form-group">
+            <label>Descuento % <span style="font-weight:400;color:var(--muted)">(opcional, máx 10%)</span></label>
+            <input type="number" id="cot-descuento-input" min="0" max="10" step="0.5" placeholder="0" style="width:120px" />
+            <p id="cot-descuento-aviso" style="display:none;font-size:0.7rem;color:var(--orange);margin-top:4px">Máximo permitido: 10%</p>
+          </div>
+        </div>
       </section>
 
       <!-- Buscador: solo visible en tipo PRODUCTOS -->
@@ -186,6 +195,10 @@
       </section>
 
       <footer class="cot-footer">
+        <div class="total-row cot-total-row" id="cot-descuento-fila" style="display:none;">
+          <span>Descuento</span>
+          <span id="modal-descuento" style="color:var(--orange);">—</span>
+        </div>
         <div class="total-row cot-total-row">
           <span>Total:</span>
           <span id="modal-total" class="total-monto">$0.00</span>
@@ -264,7 +277,9 @@
       <div id="ver-resumen-productos" style="display:none;">
         <div class="resumen-totales">
           <div class="resumen-linea-tot"><span>Subtotal (sin IVA):</span><span id="ver-subtotal">$0.00</span></div>
-          <div class="resumen-linea-tot"><span>Descuento total:</span><span id="ver-descuento-total">$0.00</span></div>
+          <div class="resumen-linea-tot"><span>Descuento por línea:</span><span id="ver-descuento-total">$0.00</span></div>
+          <div class="resumen-linea-tot" id="ver-descuento-global" style="display:none;"><span>Descuento global:</span><span id="ver-descuento-global-monto" style="color:var(--orange);">$0.00</span></div>
+          <div class="resumen-linea-tot"><span>Base gravable:</span><span id="ver-base-gravable">$0.00</span></div>
           <div class="resumen-linea-tot"><span>IVA (16%):</span><span id="ver-iva">$0.00</span></div>
           <div class="resumen-linea-tot total-final"><span>Total:</span><span id="ver-total">$0.00</span></div>
         </div>
