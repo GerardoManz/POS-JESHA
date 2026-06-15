@@ -1169,6 +1169,20 @@ function eliminarDelCarrito(productoId) {
   actualizarCarrito()
 }
 
+function obtenerSkuCarrito(item) {
+  const cached = productoCache.get(item.id) || {}
+  return item.codigoInterno || item.codigoBarras || cached.codigoInterno || cached.codigoBarras || ''
+}
+
+function ajustarCantidadCarrito(productoId, delta) {
+  const item = carrito.find(i => i.id === productoId)
+  if (!item) return
+
+  const base = parseFloat(item.cantidadVisible || item.cantidad || 0)
+  const siguiente = base + delta
+  actualizarCantidad(productoId, siguiente)
+}
+
 function actualizarCantidad(productoId, cantidad) {
   const item = carrito.find(i => i.id === productoId)
   if (item) {
@@ -1215,34 +1229,42 @@ function actualizarCarrito(opciones = {}) {
       const esEmpaque = item.unidadElegida === 'empaque' && item.factorConversion > 1
       const cantidadVisible = item.cantidadVisible || item.cantidad
       const unidadLabel = esEmpaque ? (item.unidadCompra || 'caja') : (item.unidadVenta || '')
+      const sku = obtenerSkuCarrito(item)
       return `
-      <tr>
-        <td class="carrito-producto-nombre">${item.nombre}</td>
+      <tr class="carrito-row">
+        <td class="carrito-producto-nombre">
+          <div class="cart-product-title">${escaparHtml(item.nombre)}</div>
+          ${sku ? `<div class="cart-product-sku">SKU: ${escaparHtml(sku)}</div>` : ''}
+        </td>
         <td style="text-align:center;">
-          ${precioModificado ? `<span style="font-size:0.65rem;color:var(--muted);text-decoration:line-through;display:block;">$${item.precioOriginal.toFixed(2)}</span>` : ''}
+          ${precioModificado ? `<span class="cart-price-before">$${item.precioOriginal.toFixed(2)}</span>` : ''}
           <input type="number" value="${item.precio}"
                  min="0" step="0.01"
-                 style="width:60px;padding:3px;text-align:center;font-size:0.8rem;${precioModificado ? 'color:#e8710a;font-weight:600;' : ''}"
+                 class="cart-price-input ${precioModificado ? 'is-modified' : ''}"
                  onchange="actualizarPrecio(${item.id}, this.value)" />
         </td>
         <td style="text-align:center;">
-          <input type="number" value="${cantidadVisible}"
-                 min="${item.esGranel ? 0.001 : 1}" step="1"
-                 style="width:50px;padding:3px;text-align:center;"
-                 onchange="actualizarCantidad(${item.id}, this.value)" />
+          <div class="cart-qty-control">
+            <button type="button" class="cart-qty-btn" onclick="ajustarCantidadCarrito(${item.id}, -1)" aria-label="Restar cantidad">−</button>
+            <input type="number" value="${cantidadVisible}"
+                   min="${item.esGranel ? 0.001 : 1}" step="1"
+                   class="cart-qty-input"
+                   onchange="actualizarCantidad(${item.id}, this.value)" />
+            <button type="button" class="cart-qty-btn" onclick="ajustarCantidadCarrito(${item.id}, 1)" aria-label="Sumar cantidad">+</button>
+          </div>
           ${unidadLabel ? `<span style="font-size:0.7rem;color:var(--muted);display:block;">${unidadLabel}</span>` : ""}
           ${esEmpaque ? `<span style="font-size:0.6rem;color:#6b9de8;display:block;">(${item.cantidad} ${item.unidadVenta})</span>` : ""}
           ${item.capturadoPorImporte ? `<span style="font-size:0.6rem;color:#e8a13c;display:block;">= $${(item.importeCapturado ?? subtotalLinea(item)).toFixed(2)} capturado</span>` : ""}
         </td>
-        <td style="text-align:right;">$${(item.precio * item.cantidad).toFixed(2)}</td>
+        <td style="text-align:right;"><span class="cart-subtotal">$${subtotalLinea(item).toFixed(2)}</span></td>
         <td style="text-align:center;">
-          <button class="btn-eliminar" onclick="eliminarDelCarrito(${item.id})">❌</button>
+          <button class="btn-eliminar cart-delete-btn" onclick="eliminarDelCarrito(${item.id})" aria-label="Eliminar producto">🗑</button>
         </td>
       </tr>`
     }).join('')
   }
 
-  itemsCount.textContent = `(${carrito.length})`
+  itemsCount.textContent = `${carrito.length}`
   const total = carrito.reduce((sum, item) => sum + subtotalLinea(item), 0)
   resumenTotal.textContent = `$${total.toFixed(2)}`
 
