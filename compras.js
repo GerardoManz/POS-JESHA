@@ -177,7 +177,7 @@ function renderDetalle() {
     const rowStyle     = yaCompleto && recibiendo ? 'opacity:0.45;' : ''
     const unidad       = d.Producto?.unidadCompra || 'pza'
     const granel       = d.Producto?.esGranel === true
-    const stepAttr     = granel ? '0.001' : '1'
+    const stepAttr     = '1'
     const minAttr      = granel ? '0' : '1'
     const imAttr       = granel ? 'decimal' : 'numeric'
 
@@ -520,7 +520,7 @@ function renderItemsEdicion() {
       </td>
       <td>${bloqueado
         ? `<span style="color:var(--muted);font-size:0.82rem;">${item.cantidad}</span>`
-        : `<input type="number" min="0.001" step="0.001" value="${item.cantidad}" oninput="editItem(${i},'cantidad',this.value)" />`
+        : `<input type="number" min="0.001" step="1" value="${item.cantidad}" oninput="editItem(${i},'cantidad',this.value)" />`
       }</td>
       <td><span style="color:var(--muted);">${fmt(item.costoNeto)}</span></td>
       <td><span id="item-sub-${i}">${fmt(subtotal)}</span></td>

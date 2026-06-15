@@ -1227,7 +1227,7 @@ function actualizarCarrito(opciones = {}) {
         </td>
         <td style="text-align:center;">
           <input type="number" value="${cantidadVisible}"
-                 min="${item.esGranel ? 0.001 : 1}" step="${item.esGranel ? 0.001 : 1}"
+                 min="${item.esGranel ? 0.001 : 1}" step="1"
                  style="width:50px;padding:3px;text-align:center;"
                  onchange="actualizarCantidad(${item.id}, this.value)" />
           ${unidadLabel ? `<span style="font-size:0.7rem;color:var(--muted);display:block;">${unidadLabel}</span>` : ""}
