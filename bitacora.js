@@ -234,6 +234,11 @@ function renderDetalle() {
   document.getElementById('det-estado-badge').outerHTML     = `<span id="det-estado-badge" class="bit-estado-badge ${b.estado.toLowerCase()}">${badgeEstado(b.estado).match(/>([^<]+)</)[1]}</span>`
   document.getElementById('det-titulo-header').textContent  = b.titulo || ''
 
+  const btnEditar = document.getElementById('btn-editar-titulo')
+  if (btnEditar) {
+    btnEditar.style.display = (b.estado === 'ABIERTA' || b.estado === 'PAUSADA') ? '' : 'none'
+  }
+
   // Info
   document.getElementById('det-cliente').textContent   = b.Cliente?.nombre   || '—'
   document.getElementById('det-telefono').textContent  = b.Cliente?.telefono || '—'
@@ -552,6 +557,56 @@ function activarEdicionCelda(td) {
   inp.addEventListener('keydown', ev => {
     if (ev.key === 'Enter') { ev.preventDefault(); inp.blur() }
     if (ev.key === 'Escape') { ev.preventDefault(); renderDetalle() }
+  })
+}
+
+// ── Edición inline del título en el modal de detalle ──
+function activarEdicionTitulo() {
+  const span = document.getElementById('det-titulo-header')
+  const b = bitacoraActual
+  if (!b || span.querySelector('input')) return
+
+  const input = document.createElement('input')
+  input.type = 'text'
+  input.value = b.titulo || ''
+  input.maxLength = 200
+  input.style.cssText = 'color:var(--muted);font-size:0.9rem;background:rgba(255,255,255,0.08);border:1px solid var(--accent);border-radius:5px;padding:2px 8px;font-family:inherit;outline:none;'
+
+  span.replaceWith(input)
+  input.focus()
+  input.select()
+
+  const guardar = async () => {
+    const nuevoTitulo = input.value.trim()
+    if (b.origen === 'MANUAL' && !nuevoTitulo) {
+      toast('El título es obligatorio en bitácoras manuales', 'warning')
+      input.replaceWith(span)
+      return
+    }
+    if (nuevoTitulo === (b.titulo || '')) {
+      input.replaceWith(span)
+      return
+    }
+    try {
+      const res = await apiFetch(`/bitacoras/${b.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ titulo: nuevoTitulo })
+      })
+      bitacoraActual = res.data
+      toast('Nombre actualizado', 'success')
+      input.replaceWith(span)
+      renderDetalle()
+      cargarBitacoras(paginaActual)
+    } catch (e) {
+      toast('Error: ' + e.message, 'error')
+      input.replaceWith(span)
+    }
+  }
+
+  input.addEventListener('blur', guardar)
+  input.addEventListener('keydown', ev => {
+    if (ev.key === 'Enter') { ev.preventDefault(); input.blur() }
+    if (ev.key === 'Escape') { ev.preventDefault(); input.replaceWith(span) }
   })
 }
 
@@ -1162,6 +1217,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // ── Detalle ──
   document.getElementById('det-close').addEventListener('click', cerrarDetalle)
+  document.getElementById('btn-editar-titulo')?.addEventListener('click', activarEdicionTitulo)
 
   // ── Abono ──
   document.getElementById('btn-abonar').addEventListener('click', registrarAbono)

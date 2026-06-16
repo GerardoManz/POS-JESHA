@@ -187,9 +187,12 @@ const editar = async (req, res) => {
 
     const existente = await prisma.bitacora.findUnique({
       where: { id: parseInt(id) },
-      select: { id: true, folio: true, estado: true, origen: true }
+      select: { id: true, empresaId: true, folio: true, estado: true, origen: true }
     })
     if (!existente) return res.status(404).json({ success: false, error: 'Bitácora no encontrada' })
+    if (existente.empresaId !== empresaId) {
+      return res.status(404).json({ success: false, error: 'Bitácora no encontrada' })
+    }
     if (['CERRADA_VENTA','CERRADA_INTERNA'].includes(existente.estado))
       return res.status(400).json({ success: false, error: 'No se puede editar una bitácora cerrada' })
 
