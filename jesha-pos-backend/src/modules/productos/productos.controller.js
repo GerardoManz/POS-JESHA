@@ -377,9 +377,14 @@ async function crear(req, res) {
         const empresaId = getEmpresaId(req)
 
         if (!nombre || !codigoInterno || !categoriaId || !precioBase) {
+            const faltantes = []
+            if (!nombre) faltantes.push('nombre')
+            if (!codigoInterno) faltantes.push('codigoInterno')
+            if (!categoriaId) faltantes.push('categoriaId')
+            if (!precioBase) faltantes.push('precioBase')
             return res.status(400).json({
                 success: false,
-                error: 'Faltan campos requeridos: nombre, codigoInterno, categoriaId, precioBase'
+                error: `Faltan campos requeridos: ${faltantes.join(', ')}`
             })
         }
 
@@ -470,9 +475,14 @@ async function editar(req, res) {
         } = req.body
 
         if (!nombre || !codigoInterno || !categoriaId || !precioBase) {
+            const faltantes = []
+            if (!nombre) faltantes.push('nombre')
+            if (!codigoInterno) faltantes.push('codigoInterno')
+            if (!categoriaId) faltantes.push('categoriaId')
+            if (!precioBase) faltantes.push('precioBase')
             return res.status(400).json({
                 success: false,
-                error: 'Faltan campos requeridos'
+                error: `Faltan campos requeridos: ${faltantes.join(', ')}`
             })
         }
 
