@@ -246,6 +246,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const paginaActual = document.body.getAttribute('data-page') || ''
   if (!verificarAccesoPagina(paginaActual)) return
   cargarSidebar(paginaActual)
+  iniciarVersionChecker()
 })
 
 // ════════════════════════════════════════════════════════════════════
@@ -303,6 +304,89 @@ window.handle401 = function(status) {
     return true
   }
   return false
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  CHEQUEO DE NUEVA VERSIÓN — avisa (NO recarga solo) cuando hay deploy nuevo
+//  Lee /version.json (generado en el build de Cloudflare con el commit SHA).
+//  Banner manual: el usuario decide cuándo recargar — nunca auto-reload en POS.
+//  Pertenece al ORIGEN del frontend (no a la API): por eso usa fetch directo,
+//  root-relative, y NO apiFetch. En local (:5500) /version.json da 404 → silencio.
+// ════════════════════════════════════════════════════════════════════
+let versionActual          = null
+let bannerVersionMostrado  = false
+let versionCheckerIniciado = false
+let ultimoChequeoVersion   = 0
+
+async function chequearVersionApp() {
+  // Debounce: focus + visibilitychange pueden dispararse juntos al volver a la pestaña
+  if (Date.now() - ultimoChequeoVersion < 5000) return
+  ultimoChequeoVersion = Date.now()
+
+  try {
+    const res = await fetch(`/version.json?t=${Date.now()}`, { cache: 'no-store' })
+    if (!res.ok) return                          // 404 en local/dev: esperado, ignorar
+    const data = await res.json().catch(() => null)
+    if (!data || !data.v) return                 // JSON inválido o sin campo v: ignorar
+
+    if (versionActual === null) {                // primera lectura: fija baseline
+      versionActual = data.v
+      return
+    }
+    if (data.v !== versionActual && !bannerVersionMostrado) {
+      mostrarBannerNuevaVersion()
+    }
+  } catch (_) {
+    // offline / red caída: ignorar en silencio, se reintenta en el próximo ciclo
+  }
+}
+
+function mostrarBannerNuevaVersion() {
+  if (bannerVersionMostrado) return
+  if (document.getElementById('jesha-banner-version')) return
+  bannerVersionMostrado = true
+
+  const banner = document.createElement('div')
+  banner.id = 'jesha-banner-version'
+  // Barra fija superior SIN backdrop: visible sobre todo, pero NO bloquea el
+  // modal de cobro del POS (z-index 100000 > modales 9999 y #dd-bit-clientes 99999)
+  Object.assign(banner.style, {
+    position: 'fixed', top: '0', left: '0', right: '0',
+    zIndex: '100000',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    gap: '14px', flexWrap: 'wrap',
+    padding: '10px 18px',
+    background: 'rgba(31,58,102,0.97)',
+    borderBottom: '1px solid rgba(255,255,255,0.14)',
+    color: '#e9edf4',
+    fontFamily: "'Barlow', sans-serif",
+    fontSize: '0.9rem', fontWeight: '600',
+    boxShadow: '0 6px 24px rgba(0,0,0,0.45)',
+    pointerEvents: 'auto'
+  })
+  banner.innerHTML = `
+    <span style="line-height:1.4;">Hay una nueva versión disponible. Actualiza para ver los cambios.</span>
+    <button id="jesha-btn-actualizar" style="
+      padding:7px 18px; border-radius:8px; cursor:pointer;
+      background:rgba(96,208,128,0.16); border:1px solid rgba(96,208,128,0.4);
+      color:#60d080; font-family:'Barlow',sans-serif; font-size:0.875rem; font-weight:700;
+    ">Actualizar</button>
+  `
+  document.body.appendChild(banner)
+  document.getElementById('jesha-btn-actualizar')
+    .addEventListener('click', () => window.location.reload())
+}
+
+function iniciarVersionChecker() {
+  if (versionCheckerIniciado) return            // guard: nunca duplica setInterval/listeners
+  versionCheckerIniciado = true
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') chequearVersionApp()
+  })
+  window.addEventListener('focus', chequearVersionApp)
+  setInterval(chequearVersionApp, 60000)
+  chequearVersionApp()                          // lectura inicial: fija la baseline
 }
 
 // ════════════════════════════════════════════════════════════════════

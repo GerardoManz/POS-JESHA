@@ -105,6 +105,36 @@ npm run studio    # Prisma Studio
 # Frontend: servir con npx serve . o Live Server en VS Code
 ```
 
+## Deploy Frontend - Cloudflare Workers
+
+El Worker de produccion `jeshapos` sirve un frontend estatico desde `dist/`. No se publica la raiz del repo.
+
+`build-frontend.sh` genera `dist/` por whitelist: copia solo `*.html`, `*.css`, `*.js` del primer nivel, `Imagenes/` y `version.json`. Cualquier archivo o carpeta nueva queda fuera por defecto hasta agregarse conscientemente a esa whitelist.
+
+Deploy manual:
+
+```bash
+bash build-frontend.sh
+npx wrangler deploy --dry-run
+npx wrangler deploy
+```
+
+Cloudflare Workers Builds debe usar este build command:
+
+```bash
+bash build-frontend.sh
+```
+
+`version.json` debe conservar este contrato porque `sidebar.js` lee `data.v` para mostrar el aviso de nueva version:
+
+```json
+{ "v": "...", "builtAt": "..." }
+```
+
+En deploy manual, `v` puede ser un timestamp. En Workers Builds, `v` puede ser el SHA del commit si `WORKERS_CI_COMMIT_SHA` esta disponible.
+
+`README.md` y `AGENTS.md` viven en el repo, pero no se publican: no estan en la whitelist de `build-frontend.sh`.
+
 ## Autenticacion
 
 - JWT almacenado en `localStorage` como `jesha_token`
