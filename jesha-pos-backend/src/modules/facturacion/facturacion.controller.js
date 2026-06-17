@@ -6,7 +6,7 @@
 // ════════════════════════════════════════════════════════════════════
 
 const prisma = require('../../lib/prisma')
-const getEmpresaId = require('../../helpers/getEmpresaId')
+const resolverEmpresaScope = require('../../helpers/resolverEmpresaScope')
 
 const TASA_IVA   = parseFloat(process.env.TASA_IVA || '0.16')
 const IVA_FACTOR = 1 + TASA_IVA
@@ -215,6 +215,8 @@ exports.obtenerVentaPorToken = async (req, res) => {
     })
   } catch (err) {
     console.error('❌ Error obtenerVentaPorToken:', err)
+    // Portal público: 500 fijo intencional. No usa resolverEmpresaScope ni
+    // propaga .status (no hay errores expose aquí); cualquier fallo es interno.
     res.status(500).json({ error: 'Error interno del servidor' })
   }
 }
@@ -348,6 +350,8 @@ exports.solicitarFactura = async (req, res) => {
     res.json({ success: true, timbrado: false, mensaje: `Solicitud de factura recibida. Te enviaremos la factura a ${emailTrimmed} cuando sea procesada.`, facturaId: factura.id })
   } catch (err) {
     console.error('❌ Error solicitarFactura:', err)
+    // Portal público: 500 fijo intencional. No usa resolverEmpresaScope; los
+    // errores de Facturapi del happy path se manejan en su propio try/catch.
     res.status(500).json({ error: 'Error al procesar la solicitud: ' + err.message })
   }
 }
@@ -357,9 +361,12 @@ exports.solicitarFactura = async (req, res) => {
 // ════════════════════════════════════════════════════════════════════
 exports.timbrarManual = async (req, res) => {
   try {
+    const scope = resolverEmpresaScope(req)
+    const whereScope = scope.modo === 'GLOBAL' ? {} : { empresaId: scope.empresaId }
+
     const id = parseInt(req.params.id)
-    const factura = await prisma.facturaCfdi.findUnique({
-      where: { id },
+    const factura = await prisma.facturaCfdi.findFirst({
+      where: { id, ...whereScope },
       include: { Venta: { include: { DetalleVenta: { include: { Producto: true } } } } }
     })
 
@@ -388,13 +395,13 @@ exports.timbrarManual = async (req, res) => {
     if (nuevoEmail?.trim())        updates.emailReceptor  = nuevoEmail.trim()
 
     if (Object.keys(updates).length > 0) {
-      await prisma.facturaCfdi.update({ where: { id }, data: updates })
+      await prisma.facturaCfdi.update({ where: { id, ...whereScope }, data: updates })
       console.log(`📝 Factura ${id}: datos corregidos antes de timbrar`)
     }
 
     // Refrescar datos (ya corregidos si hubo cambios)
-    const facturaActualizada = await prisma.facturaCfdi.findUnique({
-      where: { id },
+    const facturaActualizada = await prisma.facturaCfdi.findFirst({
+      where: { id, ...whereScope },
       include: { Venta: { include: { DetalleVenta: { include: { Producto: true } } } } }
     })
 
@@ -415,13 +422,17 @@ exports.timbrarManual = async (req, res) => {
     const invoice = await fp.invoices.create(invoicePayload)
 
     const actualizada = await prisma.facturaCfdi.update({
-      where: { id },
+      where: { id, ...whereScope },
       data: {
         folioFiscal: invoice.uuid, facturapiId: invoice.id,
         estado: 'TIMBRADA', timbradaEn: new Date()
       }
     })
-    await prisma.venta.update({ where: { id: venta.id }, data: { facturaEstado: 'FACTURADA' } })
+    // Defensa en profundidad: la venta se actualiza con el mismo scope.
+    await prisma.venta.updateMany({
+      where: { id: venta.id, ...whereScope },
+      data: { facturaEstado: 'FACTURADA' }
+    })
 
     // Enviar email
     try { await fp.invoices.sendByEmail(invoice.id) } catch (e) { console.warn('⚠️  No se pudo enviar email:', e.message) }
@@ -430,7 +441,7 @@ exports.timbrarManual = async (req, res) => {
     res.json({ success: true, uuid: invoice.uuid, data: actualizada })
   } catch (err) {
     console.error('❌ Error timbrarManual:', err)
-    res.status(500).json({ error: 'Error al timbrar: ' + err.message })
+    res.status(err.expose ? (err.status || 500) : 500).json({ error: 'Error al timbrar: ' + err.message })
   }
 }
 
@@ -439,7 +450,12 @@ exports.timbrarManual = async (req, res) => {
 // ════════════════════════════════════════════════════════════════════
 exports.descargarPdf = async (req, res) => {
   try {
-    const factura = await prisma.facturaCfdi.findUnique({ where: { id: parseInt(req.params.id) } })
+    const scope = resolverEmpresaScope(req)
+    const whereScope = scope.modo === 'GLOBAL' ? {} : { empresaId: scope.empresaId }
+
+    const factura = await prisma.facturaCfdi.findFirst({
+      where: { id: parseInt(req.params.id), ...whereScope }
+    })
     if (!factura) return res.status(404).json({ error: 'Factura no encontrada' })
     if (!factura.facturapiId) return res.status(400).json({ error: 'Factura sin ID de Facturapi — no se puede descargar' })
 
@@ -452,7 +468,7 @@ exports.descargarPdf = async (req, res) => {
     stream.pipe(res)
   } catch (err) {
     console.error('❌ Error descargar PDF:', err)
-    res.status(500).json({ error: 'Error al descargar PDF: ' + err.message })
+    res.status(err.expose ? (err.status || 500) : 500).json({ error: 'Error al descargar PDF: ' + err.message })
   }
 }
 
@@ -461,7 +477,12 @@ exports.descargarPdf = async (req, res) => {
 // ════════════════════════════════════════════════════════════════════
 exports.descargarXml = async (req, res) => {
   try {
-    const factura = await prisma.facturaCfdi.findUnique({ where: { id: parseInt(req.params.id) } })
+    const scope = resolverEmpresaScope(req)
+    const whereScope = scope.modo === 'GLOBAL' ? {} : { empresaId: scope.empresaId }
+
+    const factura = await prisma.facturaCfdi.findFirst({
+      where: { id: parseInt(req.params.id), ...whereScope }
+    })
     if (!factura) return res.status(404).json({ error: 'Factura no encontrada' })
     if (!factura.facturapiId) return res.status(400).json({ error: 'Factura sin ID de Facturapi' })
 
@@ -474,7 +495,7 @@ exports.descargarXml = async (req, res) => {
     stream.pipe(res)
   } catch (err) {
     console.error('❌ Error descargar XML:', err)
-    res.status(500).json({ error: 'Error al descargar XML: ' + err.message })
+    res.status(err.expose ? (err.status || 500) : 500).json({ error: 'Error al descargar XML: ' + err.message })
   }
 }
 
@@ -483,7 +504,12 @@ exports.descargarXml = async (req, res) => {
 // ════════════════════════════════════════════════════════════════════
 exports.enviarEmail = async (req, res) => {
   try {
-    const factura = await prisma.facturaCfdi.findUnique({ where: { id: parseInt(req.params.id) } })
+    const scope = resolverEmpresaScope(req)
+    const whereScope = scope.modo === 'GLOBAL' ? {} : { empresaId: scope.empresaId }
+
+    const factura = await prisma.facturaCfdi.findFirst({
+      where: { id: parseInt(req.params.id), ...whereScope }
+    })
     if (!factura) return res.status(404).json({ error: 'Factura no encontrada' })
     if (!factura.facturapiId) return res.status(400).json({ error: 'Factura sin ID de Facturapi' })
 
@@ -495,6 +521,6 @@ exports.enviarEmail = async (req, res) => {
     res.json({ success: true, mensaje: `Email enviado a ${factura.emailReceptor || 'el correo registrado'}` })
   } catch (err) {
     console.error('❌ Error enviar email:', err)
-    res.status(500).json({ error: 'Error al enviar email: ' + err.message })
+    res.status(err.expose ? (err.status || 500) : 500).json({ error: 'Error al enviar email: ' + err.message })
   }
 }

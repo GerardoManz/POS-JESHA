@@ -654,7 +654,9 @@ async function guardarProducto(e) {
   if (!nombre)    return mostrarError('El nombre es requerido')
   if (!codigo)    return mostrarError('El código interno es requerido')
   if (!categoria || categoria === '__NUEVA_CAT__') return mostrarError('La categoría es requerida')
-  if (!precioBase)  return mostrarError('El precio base (sin IVA) es requerido')
+  if (!precioVenta || parseFloat(precioVenta) <= 0) return mostrarError('El precio de venta al público es requerido')
+  const precioBaseNum = parseFloat(precioBase)
+  if (isNaN(precioBaseNum) || precioBaseNum <= 0) return mostrarError('El precio base debe ser mayor a 0')
   
   // Obtener proveedorId del select
   const proveedorId = modalProveedorSelect?.value || null
@@ -669,7 +671,7 @@ async function guardarProducto(e) {
     costo:            parseFloat(document.getElementById('producto-costo').value) || null,
     costoSinIvaProveedor: parseFloat(document.getElementById('producto-costoSinIva')?.value) || null,
     tipoFacturaProv:  tipoFactura,
-    precioBase:       parseFloat(precioBase),
+    precioBase:       precioBaseNum,
     precioVenta:      precioVenta ? parseFloat(precioVenta) : null,
     categoriaId:      parseInt(categoria),
     proveedorId:      proveedorId ? parseInt(proveedorId) : null,

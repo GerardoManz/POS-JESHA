@@ -4,6 +4,7 @@
 // ════════════════════════════════════════════════════════════════════
 
 const prisma = require('../../lib/prisma')
+const resolverEmpresaScope = require('../../helpers/resolverEmpresaScope')
 
 // Inicialización de Facturapi (misma lógica que en facturacion.controller.js)
 let facturapi = null
@@ -22,10 +23,13 @@ function getFacturapi() {
 // GET /facturas — listar con filtros
 exports.listar = async (req, res) => {
   try {
+    const scope = resolverEmpresaScope(req)
+    const whereScope = scope.modo === 'GLOBAL' ? {} : { empresaId: scope.empresaId }
+
     const { q, desde, hasta, estado, page = 1, take = 20 } = req.query
     const skip = (parseInt(page) - 1) * parseInt(take)
 
-    const where = {}
+    const where = { ...whereScope }
 
     if (estado) where.estado = estado
 
@@ -56,11 +60,11 @@ exports.listar = async (req, res) => {
       prisma.facturaCfdi.count({ where })
     ])
 
-    // Stats globales
+    // Stats — respetan el mismo scope que la consulta principal
     const [pendientes, timbradas, canceladas] = await Promise.all([
-      prisma.facturaCfdi.count({ where: { estado: 'PENDIENTE_TIMBRADO' } }),
-      prisma.facturaCfdi.count({ where: { estado: { in: ['TIMBRADA', 'FACTURADA'] } } }),
-      prisma.facturaCfdi.count({ where: { estado: 'CANCELADA' } }),
+      prisma.facturaCfdi.count({ where: { ...whereScope, estado: 'PENDIENTE_TIMBRADO' } }),
+      prisma.facturaCfdi.count({ where: { ...whereScope, estado: { in: ['TIMBRADA', 'FACTURADA'] } } }),
+      prisma.facturaCfdi.count({ where: { ...whereScope, estado: 'CANCELADA' } }),
     ])
 
     res.json({
@@ -68,7 +72,7 @@ exports.listar = async (req, res) => {
       data,
       total,
       stats: {
-        total:      await prisma.facturaCfdi.count(),
+        total:      await prisma.facturaCfdi.count({ where: whereScope }),
         pendientes,
         timbradas,
         canceladas
@@ -80,15 +84,18 @@ exports.listar = async (req, res) => {
     })
   } catch (err) {
     console.error('❌ Error listando facturas:', err)
-    res.status(500).json({ error: err.message })
+    res.status(err.expose ? (err.status || 500) : 500).json({ error: err.message })
   }
 }
 
 // GET /facturas/:id — detalle
 exports.obtener = async (req, res) => {
   try {
-    const factura = await prisma.facturaCfdi.findUnique({
-      where: { id: parseInt(req.params.id) },
+    const scope = resolverEmpresaScope(req)
+    const whereScope = scope.modo === 'GLOBAL' ? {} : { empresaId: scope.empresaId }
+
+    const factura = await prisma.facturaCfdi.findFirst({
+      where: { id: parseInt(req.params.id), ...whereScope },
       include: {
         Venta: {
           select: { folio: true, total: true, metodoPago: true, creadaEn: true },
@@ -98,25 +105,32 @@ exports.obtener = async (req, res) => {
     if (!factura) return res.status(404).json({ error: 'Factura no encontrada' })
     res.json({ success: true, data: factura })
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(err.expose ? (err.status || 500) : 500).json({ error: err.message })
   }
 }
 
 // PATCH /facturas/:id/cancelar
 exports.cancelar = async (req, res) => {
   try {
+    const scope = resolverEmpresaScope(req)
+    const whereScope = scope.modo === 'GLOBAL' ? {} : { empresaId: scope.empresaId }
+
     const id = parseInt(req.params.id)
-    const factura = await prisma.facturaCfdi.findUnique({ where: { id } })
+
+    // Scoping: solo encuentra la factura si pertenece al scope del usuario.
+    // 404 (no 403) para no revelar la existencia de recursos de otra empresa.
+    const factura = await prisma.facturaCfdi.findFirst({ where: { id, ...whereScope } })
     if (!factura) return res.status(404).json({ error: 'Factura no encontrada' })
     if (factura.estado === 'CANCELADA') return res.status(400).json({ error: 'Ya está cancelada' })
 
     if (factura.estado === 'PENDIENTE_TIMBRADO') {
+      // Defensa en profundidad: la venta se libera con el mismo scope.
       await prisma.$transaction([
-        prisma.venta.update({
-          where: { id: factura.ventaId },
+        prisma.venta.updateMany({
+          where: { id: factura.ventaId, ...whereScope },
           data: { facturaEstado: 'DISPONIBLE' }
         }),
-        prisma.facturaCfdi.delete({ where: { id } })
+        prisma.facturaCfdi.delete({ where: { id, ...whereScope } })
       ])
       console.log(`🗑️ Factura PENDIENTE_TIMBRADO ${id} eliminada — venta ${factura.ventaId} liberada por ${req.usuario?.nombre}`)
       return res.json({ success: true, mensaje: 'Factura eliminada. La venta está disponible para re-facturar.' })
@@ -134,11 +148,11 @@ exports.cancelar = async (req, res) => {
 
     const [actualizada] = await prisma.$transaction([
       prisma.facturaCfdi.update({
-        where: { id },
+        where: { id, ...whereScope },
         data: { estado: 'CANCELADA' }
       }),
-      prisma.venta.update({
-        where: { id: factura.ventaId },
+      prisma.venta.updateMany({
+        where: { id: factura.ventaId, ...whereScope },
         data: { facturaEstado: 'DISPONIBLE' }
       })
     ])
@@ -147,6 +161,6 @@ exports.cancelar = async (req, res) => {
     res.json({ success: true, data: actualizada })
   } catch (err) {
     console.error('❌ Error cancelando factura:', err)
-    res.status(500).json({ error: 'No se pudo cancelar la factura: ' + err.message })
+    res.status(err.expose ? (err.status || 500) : 500).json({ error: 'No se pudo cancelar la factura: ' + err.message })
   }
 }
