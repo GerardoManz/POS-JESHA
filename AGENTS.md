@@ -245,6 +245,45 @@ PLATFORM_ADMIN          → Todas las empresas, todas las sucursales
 - Otherwise → production API (`https://jesha-pos-api.onrender.com`)
 - IVA rate: `0.16` (16%) — stored in `CONFIG.IVA`
 
+## Cloudflare Workers - Deploy Seguro
+
+El Worker de produccion se llama `jeshapos` y es assets-only. `wrangler.toml` debe mantenerse sin `main` y con `[assets] directory = "./dist"`, `html_handling = "auto-trailing-slash"` y `not_found_handling = "404-page"`.
+
+Regla de oro: **whitelist, no denylist**. `build-frontend.sh` copia solo lo explicitamente permitido: `*.html`, `*.css`, `*.js` del primer nivel, `Imagenes/` y `version.json`. Cualquier archivo o carpeta nueva queda fuera por defecto. Para publicar algo nuevo, agregarlo conscientemente a la whitelist; nunca publicar por descarte.
+
+Prohibiciones operativas:
+
+- Nunca usar `assets.directory = "."`.
+- Nunca publicar la raiz del repo.
+- Nunca usar `npx wrangler deploy --temporary` para este proyecto.
+- Nunca pegar tokens de Cloudflare en el chat o en archivos del repo.
+- Nunca pushear `main` local divergente; usar PR por GitHub para llevar cambios a `main`.
+
+`dist/` es la unica carpeta publica. `README.md`, `AGENTS.md`, `jesha-pos-backend/`, `SAT/`, `files/`, `repomix-output.xml` y cualquier otro archivo fuera de la whitelist viven en el repo pero NO se publican.
+
+Contrato de versionado del banner:
+
+```json
+{ "v": "...", "builtAt": "..." }
+```
+
+`sidebar.js` consume `data.v`. No cambiar `version.json` a claves como `version` o `buildTime` sin actualizar tambien el checker.
+
+Validaciones obligatorias antes de cualquier deploy real:
+
+```powershell
+Test-Path dist\jesha-pos-backend
+Test-Path dist\repomix-output.xml
+Test-Path dist\AGENTS.md
+Test-Path dist\SAT
+Test-Path dist\files
+Test-Path dist\version.json
+```
+
+Resultado esperado: `False`, `False`, `False`, `False`, `False`, `True`.
+
+Siempre ejecutar `npx wrangler deploy --dry-run` antes de `npx wrangler deploy`. Si `dry-run` falla o `dist/` contiene archivos fuera de whitelist, detenerse y reportar.
+
 ## Frontend Patterns
 
 ### Page Structure
