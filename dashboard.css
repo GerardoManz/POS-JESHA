@@ -510,3 +510,101 @@ input[type="date"].filter-date:focus {
   border-color: var(--accent);
   color: var(--text);
 }
+
+/* ════════════════════════════════════════════════════════════════════
+   SIDEBAR COLAPSABLE
+   ════════════════════════════════════════════════════════════════════ */
+
+/* Transición suave del ancho de columna */
+.app-shell {
+  transition: grid-template-columns 0.3s ease;
+}
+
+/* Estado colapsado: sidebar se reduce a 60px */
+.app-shell.sidebar-collapsed {
+  grid-template-columns: 60px 1fr;
+}
+
+/* ── Botón toggle ── */
+.sidebar-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: transparent;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  color: var(--menu-text);
+  cursor: pointer;
+  margin-bottom: 14px;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s;
+}
+
+.sidebar-toggle:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.sidebar-toggle .chevron {
+  transition: transform 0.3s ease;
+}
+
+/* ── Estado COLAPSADO ── */
+
+/* Toggle centrado, chevron gira 180° */
+.sidebar-collapsed .sidebar-toggle {
+  align-self: center;
+}
+
+.sidebar-collapsed .sidebar-toggle .chevron {
+  transform: rotate(180deg);
+}
+
+/* Ocultar textos y elementos no esenciales */
+.sidebar-collapsed .brand-text,
+.sidebar-collapsed .theme-toggle,
+.sidebar-collapsed .menu-section-label,
+.sidebar-collapsed .menu-text,
+.sidebar-collapsed .logout-text,
+.sidebar-collapsed .sidebar-footer small {
+  display: none;
+}
+
+/* Íconos centrados en modo colapsado */
+.sidebar-collapsed .menu-item {
+  justify-content: center;
+  gap: 0;
+}
+
+.sidebar-collapsed .logout {
+  justify-content: center;
+  gap: 0;
+}
+
+.sidebar-collapsed .brand {
+  justify-content: center;
+}
+
+.sidebar-collapsed .brand img {
+  height: 26px;
+}
+
+@media (max-width: 800px) {
+  .app-shell.sidebar-collapsed { grid-template-columns: 1fr; }
+
+  /* Anular estilos colapsados en móvil */
+  .sidebar-collapsed .brand-text,
+  .sidebar-collapsed .theme-toggle,
+  .sidebar-collapsed .menu-section-label,
+  .sidebar-collapsed .menu-text,
+  .sidebar-collapsed .logout-text,
+  .sidebar-collapsed .sidebar-footer small { display: revert; }
+  .sidebar-collapsed .menu-item { justify-content: flex-start; gap: 10px; }
+  .sidebar-collapsed .logout { justify-content: flex-start; gap: 8px; }
+  .sidebar-collapsed .brand { justify-content: flex-start; }
+  .sidebar-collapsed .brand img { height: 36px; }
+  .sidebar-collapsed .sidebar-toggle { align-self: flex-start; }
+  .sidebar-collapsed .sidebar-toggle .chevron { transform: none; }
+}
