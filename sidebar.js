@@ -109,6 +109,7 @@ async function cargarSidebar(paginaActual) {
 
     aplicarPermisosMenu()
     marcarPaginaActiva(paginaActual)
+    configurarSidebarCollapse()
     configurarThemeToggle()
     configurarLogoutConReintentos(10)
   } catch (error) {
@@ -157,6 +158,24 @@ function marcarPaginaActiva(paginaActual) {
   items.forEach(item => item.classList.remove('active'))
   const itemActivo = document.querySelector(`.menu-item[data-page="${paginaActual}"]`)
   if (itemActivo) { itemActivo.classList.add('active'); console.log(`✓ Menú activo: ${paginaActual}`) }
+}
+
+function configurarSidebarCollapse() {
+  const appShell = document.querySelector('.app-shell')
+  const toggleBtn = document.getElementById('sidebar-toggle')
+  if (!appShell || !toggleBtn) return
+
+  const collapsed = localStorage.getItem('jesha_sidebar_collapsed') === 'true'
+  if (collapsed) {
+    appShell.classList.add('sidebar-collapsed')
+    toggleBtn.setAttribute('aria-label', 'Expandir menú')
+  }
+
+  toggleBtn.addEventListener('click', () => {
+    const isNowCollapsed = appShell.classList.toggle('sidebar-collapsed')
+    localStorage.setItem('jesha_sidebar_collapsed', String(isNowCollapsed))
+    toggleBtn.setAttribute('aria-label', isNowCollapsed ? 'Expandir menú' : 'Colapsar menú')
+  })
 }
 
 function getThemeIcon(theme) {
