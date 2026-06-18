@@ -52,6 +52,19 @@ Ferreteria JESHA/
 │       └── schema.prisma                                # Full database schema
 ```
 
+## Git Workflow — Regla Local Actual
+
+De momento, el flujo por defecto es trabajar directamente sobre `main` local, salvo que el usuario indique explícitamente crear una rama o PR.
+
+Reglas para evitar divergencias:
+
+- Mantener `main` local sincronizado con `origin/main` antes de empezar cambios: ejecutar `git fetch origin` y revisar el estado real.
+- No dejar WIP largo acumulado en `main`; si el trabajo queda incompleto, preguntar si se preserva en una rama WIP antes de cambiar de tarea.
+- No crear ramas de feature/PR por iniciativa propia salvo instrucción explícita del usuario.
+- Si GitHub usa `Rebase and merge` o `Squash merge`, no asumir que `git branch -d` detectará el merge por ancestría; verificar equivalencia con `git log --cherry-mark --left-right`.
+- Antes de reordenar historia local o reconciliar divergencias, crear una rama de respaldo.
+- No borrar stashes ni ramas de respaldo hasta que el usuario confirme que ya no se necesitan.
+
 ## Arquitectura Multi-Tenant (Fase 1-SaaS)
 
 ### `Empresa` — Modelo Tenant
