@@ -222,11 +222,38 @@ exports.crearVenta = async (req, res) => {
       if (metodoPago === 'EFECTIVO' && montoPagadoFinal > totalEsperado) {
         cambioFinal = parseFloat((montoPagadoFinal - totalEsperado).toFixed(2))
       } else if (metodoPago === 'MIXTO') {
-        const pagoEfectivo = desglosePagos.find(p => p.metodo === 'EFECTIVO')
+        const filasEfectivo = desglosePagos.filter(p => p.metodo === 'EFECTIVO')
+
+        // Guard P3: una sola línea de efectivo (el cálculo de necesario asume una fuente)
+        if (filasEfectivo.length > 1) {
+          const err = new Error('El pago mixto admite una sola línea de efectivo')
+          err.status = 400
+          err.codigo = 'MIXTO_EFECTIVO_DUPLICADO'
+          throw err
+        }
+
+        const pagoEfectivo = filasEfectivo[0]
         if (pagoEfectivo) {
-          const sumNoEfectivo = desglosePagos.filter(p => p.metodo !== 'EFECTIVO').reduce((s, p) => s + parseFloat(p.monto), 0)
-          const necesarioEfectivo = totalEsperado - sumNoEfectivo
-          const sobraEfectivo = parseFloat(pagoEfectivo.monto) - necesarioEfectivo
+          const sumNoEfectivo = desglosePagos
+            .filter(p => p.metodo !== 'EFECTIVO')
+            .reduce((s, p) => s + parseFloat(p.monto), 0)
+          const necesarioEfectivo = parseFloat((totalEsperado - sumNoEfectivo).toFixed(2))
+
+          // recibido = lo que el cliente entregó en efectivo.
+          // Fallback a monto (neto) en ventas antiguas / frontend sin actualizar → cambio 0.
+          const recibidoEfectivo = parseFloat(
+            parseFloat(pagoEfectivo.recibido ?? pagoEfectivo.monto).toFixed(2)
+          )
+
+          // Guard P2: el efectivo entregado no puede ser menor al neto requerido
+          if (recibidoEfectivo < necesarioEfectivo - 0.005) {
+            const err = new Error(`El efectivo recibido ($${recibidoEfectivo.toFixed(2)}) es menor al requerido ($${necesarioEfectivo.toFixed(2)})`)
+            err.status = 400
+            err.codigo = 'MIXTO_EFECTIVO_INSUFICIENTE'
+            throw err
+          }
+
+          const sobraEfectivo = recibidoEfectivo - necesarioEfectivo
           if (sobraEfectivo > 0.005) cambioFinal = parseFloat(sobraEfectivo.toFixed(2))
         }
       }
