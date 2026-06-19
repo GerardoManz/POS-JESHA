@@ -2038,16 +2038,8 @@ function mostrarModalExito(ventaData, totalFinal) {
       aplicaLogica = true
     }
   } else if (metodoPagoSeleccionado === 'MIXTO') {
-    const pagos = obtenerDesgloseMixto()
-    const pagoEfectivo = pagos.find(p => p.metodo === 'EFECTIVO')
-    if (pagoEfectivo) {
-      const sumNoEfectivo = pagos
-        .filter(p => p.metodo !== 'EFECTIVO')
-        .reduce((s, p) => s + parseFloat(p.monto), 0)
-      const necesarioEfectivo = totalFinal - sumNoEfectivo
-      cambioFinal = parseFloat((parseFloat(pagoEfectivo.monto) - necesarioEfectivo).toFixed(2))
-      aplicaLogica = true
-    }
+    cambioFinal = parseFloat(ventaData.cambio || 0)
+    aplicaLogica = cambioFinal > 0 || (ventaData.desglosePagos?.some(p => p.metodo === 'EFECTIVO'))
   }
 
   if (aplicaLogica) {
@@ -2112,18 +2104,42 @@ async function confirmarVenta() {
 
     // Validar pago mixto
     if (metodoPagoSeleccionado === 'MIXTO') {
+      // Refrescar estado del DOM antes de leerlo (recalcula netos y cambio)
+      recalcularMixto()
       const pagos = obtenerDesgloseMixto()
+
       if (pagos.length < 2) {
         ventaEnProceso = false
         mostrarToast('Pago mixto requiere al menos 2 métodos de pago', 'warning')
         return
       }
+
       const totalBruto = carrito.reduce((s, i) => s + subtotalLinea(i), 0)
       const { pct } = getPctEfectivo()
       const descAmt = parseFloat((totalBruto * (pct / 100)).toFixed(2))
       const totalConDesc = parseFloat((totalBruto - descAmt).toFixed(2))
+
+      // Guard: los pagos no-efectivo no pueden exceder el total
+      const sumNoEf = parseFloat(
+        pagos.filter(p => p.metodo !== 'EFECTIVO').reduce((s, p) => s + parseFloat(p.monto), 0).toFixed(2)
+      )
+      if (sumNoEf > totalConDesc + 0.005) {
+        ventaEnProceso = false
+        mostrarToast('Los pagos con tarjeta/transferencia exceden el total. Ajusta los montos.', 'warning')
+        return
+      }
+
+      // Guard: el efectivo entregado no puede ser menor al neto requerido
+      const pagoEf = pagos.find(p => p.metodo === 'EFECTIVO')
+      if (pagoEf && pagoEf.recibido !== undefined && pagoEf.recibido < pagoEf.monto - 0.005) {
+        ventaEnProceso = false
+        mostrarToast(`Efectivo insuficiente: recibido $${pagoEf.recibido.toFixed(2)} < requerido $${pagoEf.monto.toFixed(2)}`, 'warning')
+        return
+      }
+
+      // Red de seguridad: la suma de netos debe igualar el total
       const sumaPagos = parseFloat(pagos.reduce((s, p) => s + parseFloat(p.monto), 0).toFixed(2))
-      if (Math.abs(sumaPagos - totalConDesc) > 0.01) {
+      if (Math.abs(sumaPagos - totalConDesc) > 0.005) {
         ventaEnProceso = false
         const dif = parseFloat((sumaPagos - totalConDesc).toFixed(2))
         const msg = dif < 0
@@ -2614,6 +2630,7 @@ function configurarEventListeners() {
     const badge = document.getElementById('confirm-empleado-badge')
     if (badge) badge.style.display = this.value !== '' ? 'block' : 'none'
     actualizarResumenConDescuento()
+    if (metodoPagoSeleccionado === 'MIXTO') recalcularMixto()
   })
 
   document.getElementById('confirm-descuento-input')?.addEventListener('input', function() {
@@ -2631,6 +2648,7 @@ function configurarEventListeners() {
       this.value = 0
     }
     actualizarResumenConDescuento()
+    if (metodoPagoSeleccionado === 'MIXTO') recalcularMixto()
   })
 
   document.getElementById('confirm-vendedor-select')?.addEventListener('change', function() {
@@ -2763,76 +2781,139 @@ function inicializarPagoMixto(totalVenta) {
 function agregarFilaMixto(metodoDefault) {
   const list = document.getElementById('mixto-pagos-list')
   const row = document.createElement('div')
-  row.style.cssText = 'display:flex;gap:8px;align-items:center;margin-bottom:8px;'
-  row.innerHTML = `
-    <select class="mixto-metodo" style="flex:1;padding:7px 10px;background:rgba(255,255,255,0.04);border:1px solid var(--panel-border);border-radius:8px;color:var(--text);font-size:0.85rem;color-scheme:dark;">
-      <option value="EFECTIVO" ${metodoDefault==='EFECTIVO'?'selected':''}>💵 Efectivo</option>
-      <option value="CREDITO" ${metodoDefault==='CREDITO'?'selected':''}>💳 T. Crédito</option>
-      <option value="DEBITO" ${metodoDefault==='DEBITO'?'selected':''}>💳 T. Débito</option>
-      <option value="TRANSFERENCIA" ${metodoDefault==='TRANSFERENCIA'?'selected':''}>🔄 Transf.</option>
-    </select>
-    <input type="number" class="mixto-monto" min="0" step="0.01" placeholder="$0.00"
-      style="width:110px;padding:7px 10px;background:rgba(255,255,255,0.04);border:1px solid var(--panel-border);border-radius:8px;color:var(--text);font-size:0.85rem;text-align:right;" />
-    <button type="button" class="mixto-quitar" style="background:none;border:none;color:#ff6b6b;font-size:1.1rem;cursor:pointer;padding:4px 8px;" title="Quitar">✕</button>
-  `
-  row.querySelector('.mixto-monto').addEventListener('input', recalcularMixto)
+  row.className = 'mixto-row'
+
+  if (metodoDefault === 'EFECTIVO') {
+    row.classList.add('mixto-row-efectivo')
+    row.innerHTML = `
+      <select class="mixto-metodo" disabled>
+        <option value="EFECTIVO" selected>💵 Efectivo</option>
+      </select>
+      <input type="number" class="mixto-recibido" min="0" step="0.01" placeholder="Recibido $" />
+      <input type="number" class="mixto-monto" placeholder="$0.00" readonly tabindex="-1" />
+      <span class="mixto-cambio-celda">$0.00</span>
+      <button type="button" class="mixto-quitar" title="Quitar">✕</button>
+    `
+    row.querySelector('.mixto-recibido').addEventListener('input', recalcularMixto)
+  } else {
+    row.innerHTML = `
+      <select class="mixto-metodo">
+        <option value="CREDITO" ${metodoDefault==='CREDITO'?'selected':''}>💳 T. Crédito</option>
+        <option value="DEBITO" ${metodoDefault==='DEBITO'?'selected':''}>💳 T. Débito</option>
+        <option value="TRANSFERENCIA" ${metodoDefault==='TRANSFERENCIA'?'selected':''}>🔄 Transf.</option>
+      </select>
+      <input type="number" class="mixto-monto" min="0" step="0.01" placeholder="$0.00" />
+      <button type="button" class="mixto-quitar" title="Quitar">✕</button>
+    `
+    row.querySelector('.mixto-monto').addEventListener('input', recalcularMixto)
+  }
+
   row.querySelector('.mixto-quitar').addEventListener('click', () => {
     row.remove()
     recalcularMixto()
   })
   list.appendChild(row)
-  setTimeout(() => row.querySelector('.mixto-monto')?.focus(), 50)
+  const focusSel = metodoDefault === 'EFECTIVO' ? '.mixto-recibido' : '.mixto-monto'
+  setTimeout(() => row.querySelector(focusSel)?.focus(), 50)
 }
 
 function recalcularMixto() {
   const rows = document.querySelectorAll('#mixto-pagos-list > div')
-  let suma = 0
-  rows.forEach(row => {
-    const monto = parseFloat(row.querySelector('.mixto-monto')?.value) || 0
-    suma += monto
-  })
 
   const totalBruto = carrito.reduce((s, i) => s + subtotalLinea(i), 0)
   const { pct } = getPctEfectivo()
   const descAmt = parseFloat((totalBruto * (pct / 100)).toFixed(2))
   const totalFinal = parseFloat((totalBruto - descAmt).toFixed(2))
 
-  const cubierto = document.getElementById('mixto-cubierto')
-  const falta = document.getElementById('mixto-falta')
+  let sumNoEfectivo = 0
+  let filaEfectivo = null
+  rows.forEach(row => {
+    if (row.querySelector('.mixto-recibido')) {
+      filaEfectivo = row
+    } else {
+      sumNoEfectivo += parseFloat(row.querySelector('.mixto-monto')?.value) || 0
+    }
+  })
+  sumNoEfectivo = parseFloat(sumNoEfectivo.toFixed(2))
+
+  const cubiertoEl = document.getElementById('mixto-cubierto')
+  const faltaEl = document.getElementById('mixto-falta')
   const totalRef = document.getElementById('mixto-total-ref')
   const cambioWrap = document.getElementById('mixto-cambio-wrap')
   const cambioEl = document.getElementById('mixto-cambio')
 
-  if (cubierto) cubierto.textContent = `$${suma.toFixed(2)}`
   if (totalRef) totalRef.textContent = `$${totalFinal.toFixed(2)}`
 
-  const diferencia = parseFloat((totalFinal - suma).toFixed(2))
-  if (falta) {
-    if (diferencia > 0.01) {
-      falta.textContent = `(faltan $${diferencia.toFixed(2)})`
-      falta.style.color = '#e8710a'
-    } else if (diferencia < -0.01) {
-      falta.textContent = `(excede $${Math.abs(diferencia).toFixed(2)})`
-      falta.style.color = '#ff6b6b'
+  const pintarDiferencia = (dif) => {
+    if (!faltaEl) return
+    if (dif > 0.005) {
+      faltaEl.textContent = `(faltan $${dif.toFixed(2)})`
+      faltaEl.style.color = '#e8710a'
+    } else if (dif < -0.005) {
+      faltaEl.textContent = `(excede $${Math.abs(dif).toFixed(2)})`
+      faltaEl.style.color = '#ff6b6b'
     } else {
-      falta.textContent = '✓ Cubierto'
-      falta.style.color = '#60d080'
+      faltaEl.textContent = '✓ Cubierto'
+      faltaEl.style.color = '#60d080'
     }
   }
 
-  // El pago mixto debe sumar EXACTAMENTE el total: no hay cambio.
-  // El cambio solo existe en venta de efectivo puro.
-  if (cambioWrap) cambioWrap.style.display = 'none'
+  if (!filaEfectivo) {
+    if (cubiertoEl) cubiertoEl.textContent = `$${sumNoEfectivo.toFixed(2)}`
+    pintarDiferencia(parseFloat((totalFinal - sumNoEfectivo).toFixed(2)))
+    if (cambioWrap) cambioWrap.style.display = 'none'
+    return
+  }
+
+  const recibido = parseFloat(filaEfectivo.querySelector('.mixto-recibido')?.value) || 0
+  const montoInput = filaEfectivo.querySelector('.mixto-monto')
+  const cambioCelda = filaEfectivo.querySelector('.mixto-cambio-celda')
+  const necesarioEfectivo = parseFloat((totalFinal - sumNoEfectivo).toFixed(2))
+
+  if (necesarioEfectivo < -0.005) {
+    if (montoInput) montoInput.value = ''
+    if (cambioCelda) cambioCelda.textContent = '$0.00'
+    if (cambioEl) cambioEl.textContent = '$0.00'
+    if (cambioWrap) cambioWrap.style.display = 'none'
+    if (cubiertoEl) cubiertoEl.textContent = `$${sumNoEfectivo.toFixed(2)}`
+    if (faltaEl) {
+      faltaEl.textContent = '(los otros pagos exceden el total)'
+      faltaEl.style.color = '#ff6b6b'
+    }
+    return
+  }
+
+  const netoEfectivo = Math.max(0, necesarioEfectivo)
+  if (montoInput) montoInput.value = netoEfectivo > 0 ? netoEfectivo.toFixed(2) : ''
+
+  const sobra = recibido - necesarioEfectivo
+  const cambio = sobra > 0.005 ? parseFloat(sobra.toFixed(2)) : 0
+  if (cambioCelda) cambioCelda.textContent = `$${cambio.toFixed(2)}`
+  if (cambioEl) cambioEl.textContent = `$${cambio.toFixed(2)}`
+  if (cambioWrap) cambioWrap.style.display = 'flex'
+
+  const efectivoAplicado = Math.min(recibido, netoEfectivo)
+  const cubierto = parseFloat((sumNoEfectivo + efectivoAplicado).toFixed(2))
+  if (cubiertoEl) cubiertoEl.textContent = `$${cubierto.toFixed(2)}`
+  pintarDiferencia(parseFloat((totalFinal - cubierto).toFixed(2)))
 }
 
 function obtenerDesgloseMixto() {
   const rows = document.querySelectorAll('#mixto-pagos-list > div')
   const pagos = []
   rows.forEach(row => {
-    const metodo = row.querySelector('.mixto-metodo')?.value
+    const recibidoInput = row.querySelector('.mixto-recibido')
     const monto = parseFloat(row.querySelector('.mixto-monto')?.value) || 0
-    if (metodo && monto > 0) {
-      pagos.push({ metodo, monto: parseFloat(monto.toFixed(2)) })
+    if (recibidoInput) {
+      const recibido = parseFloat(recibidoInput.value) || 0
+      if (monto > 0) {
+        pagos.push({ metodo: 'EFECTIVO', monto: parseFloat(monto.toFixed(2)), recibido: parseFloat(recibido.toFixed(2)) })
+      }
+    } else {
+      const metodo = row.querySelector('.mixto-metodo')?.value
+      if (metodo && monto > 0) {
+        pagos.push({ metodo, monto: parseFloat(monto.toFixed(2)) })
+      }
     }
   })
   return pagos
