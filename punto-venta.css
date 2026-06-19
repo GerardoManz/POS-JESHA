@@ -1837,6 +1837,87 @@
   transform: none;
 }
 
+.mixto-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.mixto-metodo,
+.mixto-monto,
+.mixto-recibido {
+  background: var(--input-bg) !important;
+  border: 1px solid var(--panel-border) !important;
+  color: var(--text) !important;
+  color-scheme: var(--color-scheme) !important;
+}
+
+.mixto-metodo:focus,
+.mixto-monto:focus,
+.mixto-recibido:focus {
+  outline: none;
+  border-color: var(--accent-strong) !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.mixto-metodo {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 10px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+}
+
+.mixto-monto {
+  width: 110px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  text-align: right;
+}
+
+.mixto-recibido {
+  width: 105px;
+  padding: 7px 8px;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  text-align: right;
+}
+
+.mixto-cambio-celda {
+  width: 75px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #60d080;
+  text-align: right;
+  padding: 0 2px;
+  white-space: nowrap;
+}
+
+.mixto-row-efectivo .mixto-metodo {
+  flex: 0 0 auto;
+  max-width: 100px;
+}
+
+.mixto-row-efectivo .mixto-monto {
+  display: none;
+}
+
+:root[data-theme="light"] .mixto-cambio-celda {
+  color: var(--success);
+}
+
+.mixto-quitar {
+  padding: 4px 8px;
+  border: 0;
+  background: transparent;
+  color: var(--danger);
+  font-size: 1.1rem;
+  font-family: 'Barlow', sans-serif !important;
+  cursor: pointer;
+}
+
 /* ════════════════════════════════════════════════════════════════════
    MODAL GUARDAR COTIZACIÓN — pegar al final de punto-venta.css
    ════════════════════════════════════════════════════════════════════ */
