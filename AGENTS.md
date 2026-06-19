@@ -52,18 +52,80 @@ Ferreteria JESHA/
 │       └── schema.prisma                                # Full database schema
 ```
 
-## Git Workflow — Regla Local Actual
+## Git Workflow — Cómo subir cambios a `main` (procedimiento explícito)
 
-De momento, el flujo por defecto es trabajar directamente sobre `main` local, salvo que el usuario indique explícitamente crear una rama o PR.
+### Modelo de trabajo
 
-Reglas para evitar divergencias:
+- **Default: trabajo directo sobre `main`.** Los cambios de rutina (correcciones, ajustes de lógica, fixes puntuales) se commitean en `main` local y se empujan a `origin/main`. No se crean ramas para esto.
+- **Excepción deliberada: rama + PR.** Solo para features grandes y aislables que el usuario pida explícitamente (ej. PR2 pago mixto ya integrado; PR3/PR4 de granel/pausadas/hover pendientes). Tras el merge, limpiar la rama local y remota como se hizo en PR2.
+- **Regla de oro ante errores: NUNCA crear una rama para escapar de un problema.** Si algo sale mal, se resuelve sobre `main` con `stash`, `rebase` o `revert`. La proliferación de ramas divergentes es exactamente lo que se quiere evitar.
+- **Producción es en vivo.** Cada push a `origin/main` despliega automáticamente: backend a Render, frontend a Cloudflare, golpeando a las cajeras reales. En push directo no hay gate de revisión, así que **probar en Brave contra el entorno local antes de empujar es obligatorio.**
 
-- Mantener `main` local sincronizado con `origin/main` antes de empezar cambios: ejecutar `git fetch origin` y revisar el estado real.
-- No dejar WIP largo acumulado en `main`; si el trabajo queda incompleto, preguntar si se preserva en una rama WIP antes de cambiar de tarea.
-- No crear ramas de feature/PR por iniciativa propia salvo instrucción explícita del usuario.
-- Si GitHub usa `Rebase and merge` o `Squash merge`, no asumir que `git branch -d` detectará el merge por ancestría; verificar equivalencia con `git log --cherry-mark --left-right`.
-- Antes de reordenar historia local o reconciliar divergencias, crear una rama de respaldo.
-- No borrar stashes ni ramas de respaldo hasta que el usuario confirme que ya no se necesitan.
+### 1. Pre-flight (antes de tocar cualquier archivo)
+
+```powershell
+git switch main
+git fetch origin
+git status --short --branch
+```
+
+Esperado: `## main...origin/main` sin `ahead`/`behind`.
+- Si dice `behind N`: `git pull --ff-only origin main` y reconfirmar.
+- Si dice `ahead` inesperado o `diverged`: **PARAR** (ver tabla de recuperación).
+
+### 2. Verificar ANTES de commitear
+
+1. `node --check <archivo>` en **cada** `.js` tocado. Si falla, no continuar.
+2. Probar en Brave contra local (`npm run dev`). Confirmar el comportamiento real, no asumirlo.
+3. Revisar exactamente qué cambió:
+   ```powershell
+   git --no-pager diff
+   git status --short
+   ```
+   `status` debe mostrar SOLO los archivos esperados. Si aparece algo más, **PARAR** y revisar antes de hacer stage.
+
+### 3. Commit y push
+
+```powershell
+git add <archivos-específicos>                     # nunca "git add ." a ciegas
+git commit -m "tipo(scope): mensaje en español"    # un solo propósito por commit
+git push origin main
+```
+
+`git push origin main` debe aceptarse como fast-forward.
+
+### 4. Confirmar después del push
+
+```powershell
+git status --short --branch        # ## main...origin/main, sin ahead
+git --no-pager log --oneline -3
+```
+
+Luego verificar el deploy: Render (backend) y Cloudflare (frontend) reconstruyen solos. Si tocaste frontend, revisar el banner de versión y la checklist de "Cloudflare Workers - Deploy Seguro".
+
+---
+
+### Cuándo PARAR y qué hacer (recuperación sin crear ramas)
+
+Regla transversal: si aparece `force`, `non-fast-forward`, `diverged`, `fetch first`, o un conflicto que no puedes resolver con confianza → **detente y reporta la salida literal antes de seguir.** No improvises, no uses `--force`, no uses `git reset --hard` sobre `main`.
+
+| Síntoma | Qué significa | Recuperación (sobre `main`, sin rama) |
+|---------|---------------|----------------------------------------|
+| `push` rechazado: `non-fast-forward` / `fetch first` | `origin/main` avanzó; estás detrás | `git fetch origin` → `git pull --rebase origin main` (reaplica tus commits encima, historia lineal) → reintentar push |
+| Working tree sucio al sincronizar | Cambios sin commitear que estorban | `git stash push -m "wip <desc>"` → sincronizar → `git stash pop` |
+| Commit equivocado **NO** empujado | Error en el último commit local | `git reset --soft HEAD~1` (conserva cambios en staging para rehacer). NUNCA `--hard` |
+| Commit equivocado **YA** empujado | No se reescribe historia en `main` | `git revert <sha>` → `git push origin main`. `main` solo avanza, nunca se reescribe |
+| `pull --ff-only` falla: `diverged` | Local y remoto tienen commits distintos | **PARAR.** `git tag respaldo-main-<fecha>` (tag, no rama) → `git pull --rebase origin main` → reportar antes de seguir |
+| Conflicto en `rebase` irresoluble | El replay chocó | `git rebase --abort` (vuelve al estado previo) → reportar el conflicto |
+| Rechazo del remoto por permisos / protección de rama | Acceso o regla de GitHub | PARAR y reportar; no reintentar con flags |
+
+El tag de respaldo (`respaldo-main-<fecha>`) es la **única** red de seguridad tipo "rama" permitida, y técnicamente es un tag: no aparece en `git branch` ni contamina el listado. Se usa solo antes de un rebase de reconciliación y se borra (`git tag -d respaldo-main-<fecha>`) una vez confirmado que todo quedó bien.
+
+### Recordatorios de merge (si en algún momento se usa rama + PR)
+
+- Si el PR se integra con `Rebase and merge` o `Squash merge`, el SHA cambia: `git branch -d` NO detectará el merge por ancestría. Verificar equivalencia con `git --no-pager cherry main <rama>` (espera `-`) o `git log --cherry-mark --left-right` antes de borrar con `-D`.
+- No borrar stashes ni tags/ramas de respaldo hasta confirmar que ya no se necesitan.
+- No dejar WIP largo acumulado en `main`; si el trabajo queda incompleto, aparcarlo en `stash` (nunca en una rama nueva improvisada).
 
 ## Arquitectura Multi-Tenant (Fase 1-SaaS)
 
@@ -270,7 +332,7 @@ Prohibiciones operativas:
 - Nunca publicar la raiz del repo.
 - Nunca usar `npx wrangler deploy --temporary` para este proyecto.
 - Nunca pegar tokens de Cloudflare en el chat o en archivos del repo.
-- Nunca pushear `main` local divergente; usar PR por GitHub para llevar cambios a `main`.
+- Nunca pushear `main` local divergente ni con `--force` (ver "Git Workflow"). Los cambios llegan a `main` por push directo o, para features grandes, por PR; en ambos casos `main` solo avanza hacia adelante.
 
 `dist/` es la unica carpeta publica. `README.md`, `AGENTS.md`, `jesha-pos-backend/`, `SAT/`, `files/`, `repomix-output.xml` y cualquier otro archivo fuera de la whitelist viven en el repo pero NO se publican.
 
@@ -417,14 +479,17 @@ FRONTEND_URL=...
 cd jesha-pos-backend
 npm run dev          # Start with nodemon (local)
 npm start            # Production start
-npm run migrate     # Prisma migrations
-npm run build       # Generate Prisma client + migrate
-npm run seed        # Seed database
-npm run studio      # Prisma Studio
+npm run seed         # Seed database
+npm run studio       # Prisma Studio
+npx prisma generate  # Regenerar el cliente Prisma tras un cambio de esquema
 
 # Frontend (static files)
 # Serve with: npx serve .  OR  Live Server in VS Code
 ```
+
+> ⚠️ **NO usar `npm run migrate`, `prisma migrate` ni `prisma db push` en este proyecto.** Los cambios de esquema se aplican como `ALTER TABLE` manual: primero en local (pgAdmin), luego en producción (DBeaver), siempre dentro de una transacción con verificación `SELECT COUNT(*)` antes del `COMMIT`. Después de aplicar el SQL, ejecutar `npx prisma generate` para sincronizar el cliente.
+>
+> Aunque `package.json` contenga scripts `migrate`/`build` que invoquen `prisma migrate`, no se ejecutan manualmente. **Pendiente de verificar:** si el build de Render dispara `prisma migrate` automáticamente, eso contradice el protocolo de ALTER manual y debe revisarse.
 
 ---
 
