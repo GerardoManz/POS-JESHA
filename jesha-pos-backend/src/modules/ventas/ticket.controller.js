@@ -146,6 +146,15 @@ function generarHTMLTicket(venta, qrDataUrl, fechaStr, pagos) {
     ? `<tr class="bold"><td class="lbl">Autorización:</td><td class="val">${refAutorizacion}</td></tr>`
     : ''
 
+  const seccionFirma = pagos.totalCredito > 0
+    ? `<tr><td colspan="2" class="firma-box">
+         <div class="firma-linea"></div>
+         <div class="firma-texto">Firma de recibido</div>
+         <div class="firma-linea"></div>
+         <div class="firma-texto">El cliente acepta que el precio puede variar al momento de surtir</div>
+       </td></tr>`
+    : ''
+
   const logoHTML = `<img src="${LOGO_URL}" alt="JESHA" class="logo" />`
 
   return `<!DOCTYPE html>
@@ -191,9 +200,8 @@ html, body {
 .info-tbl td{padding:0.3mm 0;vertical-align:top;overflow:hidden;}
 .info-tbl .lbl{text-align:left;font-weight:700;width:52%;}
 .info-tbl .val{text-align:right;font-weight:900;width:48%;}
-.tbl-hdr{width:100%;border-collapse:collapse;table-layout:fixed;font-size:8px;font-weight:900;}
-.tbl-hdr .col-desc{width:60%;text-align:left;}
-.tbl-hdr .col-imp{width:40%;text-align:right;}
+.col-desc{width:60%;text-align:left;padding:0.8mm 1mm 0.8mm 0;font-size:8px;font-weight:900;word-break:break-word;}
+.col-imp{width:40%;text-align:right;padding:0.8mm 0;}
 .tbl{width:100%;border-collapse:collapse;table-layout:fixed;}
 .tbl .td-prod{width:60%;padding:0.8mm 1mm 0.8mm 0;font-size:8px;font-weight:900;word-break:break-word;overflow-wrap:break-word;line-height:1.2;vertical-align:top;}
 .tbl .td-det{font-size:7px;font-weight:700;}
@@ -205,6 +213,9 @@ html, body {
 .qr-lbl{font-size:7px;font-weight:900;margin-top:0.5mm;}
 .pie{text-align:center;font-size:8px;font-weight:900;margin-top:1mm;line-height:1.3;}
 .pie-legal{text-align:center;font-size:8px;font-weight:900;margin-top:1mm;line-height:1.25;}
+.firma-box{text-align:center;padding-top:3mm;}
+.firma-linea{border-bottom:1px solid #000;width:80%;margin:2mm auto 0.5mm;}
+.firma-texto{font-size:7px;font-weight:700;}
 .no-print{display:block;margin:10px auto 5px;padding:10px 24px;background:#1f3a66;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;}
 @media print{
   .no-print{display:none!important;}
@@ -238,10 +249,10 @@ html, body {
 
 <hr class="sep-bold"/>
 
-<table class="tbl-hdr"><tr><td class="col-desc">Descripción</td><td class="col-imp">Importe</td></tr></table>
-<hr class="sep"/>
-
 <table class="tbl">
+  <thead>
+    <tr><td class="col-desc">Descripción</td><td class="col-imp">Importe</td></tr>
+  </thead>
   <tbody>
     ${filaProductos || '<tr><td colspan="2" style="text-align:center;padding:2mm 0;">Sin productos</td></tr>'}
   </tbody>
@@ -266,6 +277,7 @@ html, body {
   ${seccionMixto}
   ${seccionPago}
   ${pagos.totalCredito > 0 ? `<tr class="bold"><td class="lbl">A crédito:</td><td class="val">${fmt(pagos.totalCredito)}</td></tr>` : ''}
+  ${seccionFirma}
 </table>
 
 <hr class="sep"/>
