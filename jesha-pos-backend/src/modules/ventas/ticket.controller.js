@@ -147,12 +147,11 @@ function generarHTMLTicket(venta, qrDataUrl, fechaStr, pagos) {
     : ''
 
   const seccionFirma = pagos.totalCredito > 0
-    ? `<tr><td colspan="2" class="firma-box">
-         <div class="firma-linea"></div>
-         <div class="firma-texto">Firma de recibido</div>
-         <div class="firma-linea"></div>
-         <div class="firma-texto">El cliente acepta que el precio puede variar al momento de surtir</div>
-       </td></tr>`
+    ? `<div class="firma-recibido">
+         <div class="firma-espacio"></div>
+         <div class="firma-linea-texto">________________________</div>
+         <div>Firma de recibido</div>
+       </div>`
     : ''
 
   const logoHTML = `<img src="${LOGO_URL}" alt="JESHA" class="logo" />`
@@ -213,9 +212,9 @@ html, body {
 .qr-lbl{font-size:7px;font-weight:900;margin-top:0.5mm;}
 .pie{text-align:center;font-size:8px;font-weight:900;margin-top:1mm;line-height:1.3;}
 .pie-legal{text-align:center;font-size:8px;font-weight:900;margin-top:1mm;line-height:1.25;}
-.firma-box{text-align:center;padding-top:3mm;}
-.firma-linea{border-bottom:1px solid #000;width:80%;margin:2mm auto 0.5mm;}
-.firma-texto{font-size:7px;font-weight:700;}
+.firma-recibido{text-align:center;margin:4mm 0 1mm;font-size:7px;font-weight:700;line-height:1.25;}
+.firma-espacio{height:7mm;}
+.firma-linea-texto{font-size:8px;font-weight:700;letter-spacing:0;}
 .no-print{display:block;margin:10px auto 5px;padding:10px 24px;background:#1f3a66;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;}
 @media print{
   .no-print{display:none!important;}
@@ -250,10 +249,8 @@ html, body {
 <hr class="sep-bold"/>
 
 <table class="tbl">
-  <thead>
-    <tr><td class="col-desc">Descripción</td><td class="col-imp">Importe</td></tr>
-  </thead>
   <tbody>
+    <tr><td class="col-desc">Descripción</td><td class="col-imp">Importe</td></tr>
     ${filaProductos || '<tr><td colspan="2" style="text-align:center;padding:2mm 0;">Sin productos</td></tr>'}
   </tbody>
 </table>
@@ -277,7 +274,6 @@ html, body {
   ${seccionMixto}
   ${seccionPago}
   ${pagos.totalCredito > 0 ? `<tr class="bold"><td class="lbl">A crédito:</td><td class="val">${fmt(pagos.totalCredito)}</td></tr>` : ''}
-  ${seccionFirma}
 </table>
 
 <hr class="sep"/>
@@ -293,6 +289,8 @@ html, body {
   Pasado el plazo, JESHA no se hace responsable.<br/>
   No se aceptan devoluciones por mal uso.
 </div>
+
+${seccionFirma}
 
 <button class="no-print" onclick="window.print()">Imprimir Ticket</button>
 <script>window.addEventListener('load',()=>{setTimeout(()=>window.print(),600)})</script>
