@@ -85,6 +85,10 @@
     .msg-error { color:#e07070; font-size:0.82rem; margin-top:10px; text-align:center; min-height:18px; }
     .msg-ok { color:#6fcf6f; font-size:0.82rem; margin-top:10px; text-align:center; min-height:18px; }
     .hint { font-size:0.76rem; color:var(--muted); margin-top:3px; }
+    .historial-tabs { display:flex; gap:0; margin-bottom:16px; border-bottom:2px solid var(--panel-border); }
+    .tab-btn { padding:10px 22px; background:transparent; border:none; border-bottom:2px solid transparent; margin-bottom:-2px; color:var(--muted); font-family:'Barlow Condensed',sans-serif; font-size:0.85rem; font-weight:600; text-transform:uppercase; letter-spacing:0.04em; cursor:pointer; transition:all 0.15s; }
+    .tab-btn:hover { color:var(--text); }
+    .tab-btn.active { color:var(--accent); border-bottom-color:var(--accent); }
   </style>
 </head>
 <body data-page="usuarios">
@@ -105,9 +109,20 @@
         </svg>
         Nuevo Usuario
       </button>
+      <button class="btn-primary" id="btn-nuevo-trab" style="display:none;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
+        Nuevo Trabajador
+      </button>
     </div>
 
-    <div class="toolbar">
+    <div class="historial-tabs" style="margin-bottom:16px;">
+      <button id="tab-usuarios" class="tab-btn active">Usuarios del sistema</button>
+      <button id="tab-trabajadores" class="tab-btn">Trabajadores</button>
+    </div>
+
+    <div class="toolbar" id="toolbar-usuarios">
       <div class="search-wrap">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
@@ -122,6 +137,16 @@
         <option value="PRECIOS">Precios</option>
         <option value="PLATFORM_ADMIN">Platform Admin</option>
       </select>
+    </div>
+
+    <div class="toolbar" id="toolbar-trabajadores" style="display:none;">
+      <div class="search-wrap">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+        </svg>
+        <input type="text" id="buscar-trab" class="search-input" placeholder="Buscar trabajador...">
+      </div>
+      <span id="total-trabajadores" style="color:var(--muted);font-size:0.875rem;margin-left:auto;"></span>
     </div>
 
     <div class="table-wrap">
@@ -273,6 +298,39 @@
       <button type="button" class="btn-secondary" id="btn-cerrar-reset-modal">Cancelar</button>
       <button type="button" class="btn-submit" id="btn-reset-guardar">Actualizar Contraseña</button>
     </div>
+  </div>
+</div>
+
+<!-- ── MODAL TRABAJADOR ── -->
+<div id="modal-trabajador" class="modal-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="modal-trab-titulo">Nuevo Trabajador</h3>
+      <button class="btn-close" id="btn-cerrar-trab">&times;</button>
+    </div>
+    <form id="form-trabajador">
+      <div class="form-group">
+        <label>Nombre *</label>
+        <input type="text" id="f-trab-nombre" placeholder="Pedro López" required maxlength="150">
+      </div>
+      <div class="form-group">
+        <label>Apodo</label>
+        <input type="text" id="f-trab-apodo" placeholder="Chuy, Güero, Maestro..." maxlength="100">
+      </div>
+      <div class="form-group">
+        <label>Teléfono</label>
+        <input type="text" id="f-trab-telefono" placeholder="492 123 4567">
+      </div>
+      <div class="form-group">
+        <label>Notas</label>
+        <input type="text" id="f-trab-notas" placeholder="Obra centro, soldador, etc." maxlength="500">
+      </div>
+      <div class="msg-error" id="msg-trabajador"></div>
+      <div class="modal-footer">
+        <button type="button" class="btn-secondary" id="btn-cerrar-trab-modal">Cancelar</button>
+        <button type="submit" class="btn-submit" id="btn-guardar-trab">Crear Trabajador</button>
+      </div>
+    </form>
   </div>
 </div>
 

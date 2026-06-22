@@ -19,6 +19,7 @@
 .bit-estado-badge.pausada        { background:rgba(122,133,153,0.15); color:var(--muted); }
 .bit-estado-badge.cerrada_venta  { background:rgba(96,208,128,0.15);  color:#60d080; }
 .bit-estado-badge.cerrada_interna{ background:rgba(232,113,10,0.15);  color:var(--orange); }
+.bit-estado-badge.cancelada       { background:rgba(255,80,80,0.15);    color:#ff5050; }
 
 /* ── BADGES DE ORIGEN ── */
 .bit-origen-badge { display:inline-block; padding:3px 10px; border-radius:20px; font-size:0.72rem; font-weight:700; letter-spacing:0.04em; white-space:nowrap; }

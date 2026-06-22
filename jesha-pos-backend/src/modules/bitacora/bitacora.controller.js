@@ -35,6 +35,11 @@ function parseFechaManual(fechaManual) {
   return date
 }
 
+function nombreTrabajador(t) {
+  if (!t) return '—'
+  return t.apodo ? `${t.apodo} (${t.nombre})` : t.nombre
+}
+
 // ── Generar folio BIT ──
 async function generarFolioBitacora(tx) {
   const fecha  = new Date()
@@ -57,10 +62,19 @@ const BITACORA_SELECT = {
     select: {
       id: true, cantidad: true, precioUnitario: true, subtotal: true,
       inventarioDescontado: true, notas: true, creadoEn: true,
-      fechaManual: true, responsableId: true,
-      Venta:       { select: { id: true, folio: true, creadaEn: true } },
-      Producto:    { select: { id: true, nombre: true, codigoInterno: true, unidadVenta: true } },
-      Responsable: { select: { id: true, nombre: true } }
+      fechaManual: true, responsableId: true, retiroBitacoraId: true,
+      recibeTrabajadorId: true, recibeNombre: true,
+      Venta:            { select: { id: true, folio: true, creadaEn: true } },
+      Producto:         { select: { id: true, nombre: true, codigoInterno: true, unidadVenta: true } },
+      Responsable:      { select: { id: true, nombre: true } },
+      RecibeTrabajador: { select: { id: true, nombre: true, apodo: true } }
+    }
+  },
+  RetiroBitacora: {
+    orderBy: { creadoEn: 'asc' },
+    select: {
+      id: true, recibeNombre: true, fechaManual: true, total: true, saldoAnterior: true, saldoDespues: true, creadoEn: true,
+      DetalleBitacora: { select: { id: true } }
     }
   },
   AbonoBitacora: {
@@ -83,7 +97,12 @@ const listar = async (req, res) => {
     const where = {}
 
     if (rol !== 'SUPERADMIN' && sucursalId) where.sucursalId = sucursalId
-    if (estado)    where.estado    = estado
+    if (estado) {
+      where.estado = estado
+    } else {
+      // Por defecto: excluir cerradas y canceladas (archivadas)
+      where.estado = { notIn: ['CERRADA_VENTA', 'CERRADA_INTERNA', 'CANCELADA'] }
+    }
     if (origen)    where.origen    = origen
     if (clienteId && clienteId !== 'null') where.clienteId = parseInt(clienteId)
     if (buscar) {
@@ -233,11 +252,11 @@ const cambiarEstado = async (req, res) => {
     const { id: usuarioId, sucursalId, rol } = req.usuario
     const empresaId = getEmpresaId(req)
 
-    const validos = ['ABIERTA', 'CERRADA_INTERNA']
+    const validos = ['ABIERTA', 'CERRADA_INTERNA', 'CANCELADA']
     if (!validos.includes(estado)) {
       return res.status(400).json({
         success: false,
-        error: `Estado inválido: ${estado}. Solo se permite ABIERTA (reabrir) o CERRADA_INTERNA (cierre manual).`
+        error: `Estado inválido: ${estado}. Solo se permite ABIERTA (reabrir), CERRADA_INTERNA (cierre manual) o CANCELADA.`
       })
     }
 
@@ -246,7 +265,7 @@ const cambiarEstado = async (req, res) => {
       select: {
         id: true, folio: true, estado: true, saldoPendiente: true,
         saldoAlCerrar: true, clienteId: true, origen: true,
-        cerradaEn: true, notas: true
+        cerradaEn: true, notas: true, totalAbonado: true, empresaId: true
       }
     })
     if (!existente) return res.status(404).json({ success: false, error: 'Bitácora no encontrada' })
@@ -265,10 +284,11 @@ const cambiarEstado = async (req, res) => {
       await prisma.$transaction(async tx => {
         const saldo = parseFloat(existente.saldoPendiente)
         const updateData = {
-          estado:        'CERRADA_INTERNA',
-          cerradaEn:     new Date(),
-          saldoAlCerrar: saldo,
-          notas:         motivo.trim()
+          estado:         'CERRADA_INTERNA',
+          cerradaEn:      new Date(),
+          saldoPendiente: 0,
+          saldoAlCerrar:  saldo,
+          notas:          motivo.trim()
         }
         // Al cerrar con saldo > 0, liberar el saldo del cliente (si tiene)
         if (saldo > 0 && existente.clienteId) {
@@ -283,6 +303,86 @@ const cambiarEstado = async (req, res) => {
       await audit(usuarioId, sucursalId, 'CERRAR_BITACORA_INTERNA', `${existente.folio} - saldo:$${parseFloat(existente.saldoPendiente).toFixed(2)} - ${motivo}`, empresaId)
       const b = await prisma.bitacora.findUnique({ where: { id: parseInt(id) }, select: BITACORA_SELECT })
       return res.json({ success: true, data: b, mensaje: 'Bitácora cerrada manualmente' })
+    }
+
+    // ──────────────────────────────────────────────────────────
+    // CASO 3: CANCELAR (CANCELADA)
+    // Solo ABIERTA/PAUSADA sin abonos. Reintegra stock.
+    // ──────────────────────────────────────────────────────────
+    if (estado === 'CANCELADA') {
+      if (existente.estado !== 'ABIERTA' && existente.estado !== 'PAUSADA') {
+        return res.status(400).json({ success: false, error: `Solo se pueden cancelar bitácoras en estado ABIERTA o PAUSADA (actual: ${existente.estado})` })
+      }
+      const totalAbonado = parseFloat(existente.totalAbonado)
+      if (totalAbonado > 0) {
+        return res.status(400).json({ success: false, error: `No se puede cancelar: la bitácora tiene abonos por $${totalAbonado.toFixed(2)}. Debe quedar en $0 antes de cancelar.`, codigo: 'TIENE_ABONOS' })
+      }
+      if (!motivo?.trim()) {
+        return res.status(400).json({ success: false, error: 'Debe indicar un motivo para cancelar la bitácora', codigo: 'MOTIVO_REQUERIDO' })
+      }
+
+      await prisma.$transaction(async tx => {
+        // 1. Reintegrar stock de todos los detalles con inventarioDescontado
+        const detalles = await tx.detalleBitacora.findMany({
+          where: { bitacoraId: parseInt(id), inventarioDescontado: true },
+          select: { id: true, productoId: true, cantidad: true, RecibeTrabajador: { select: { nombre: true } } }
+        })
+        for (const det of detalles) {
+          if (det.productoId) {
+            const inv = await tx.inventarioSucursal.findUnique({
+              where: { productoId_sucursalId: { productoId: det.productoId, sucursalId } },
+              select: { stockActual: true }
+            })
+            if (inv) {
+              const stockAntes = parseFloat(inv.stockActual)
+              const cant = parseFloat(det.cantidad)
+              const stockDespues = parseFloat((stockAntes + cant).toFixed(3))
+              await tx.inventarioSucursal.update({
+                where: { productoId_sucursalId: { productoId: det.productoId, sucursalId } },
+                data: { stockActual: stockDespues }
+              })
+              await tx.movimientoInventario.create({
+                data: {
+                  empresaId,
+                  productoId: det.productoId,
+                  sucursalId,
+                  usuarioId,
+                  tipo: 'DEVOLUCION_ENTRADA',
+                  cantidad: cant,
+                  stockAntes,
+                  stockDespues,
+                  referencia: existente.folio,
+                  notas: `Cancelación bitácora ${existente.folio}`
+                }
+              })
+            }
+          }
+        }
+
+        // 2. Cancelar bitácora
+        await tx.bitacora.update({
+          where: { id: parseInt(id) },
+          data: {
+            estado:         'CANCELADA',
+            cerradaEn:      new Date(),
+            saldoPendiente: 0,
+            notas:          `[CANCELADA ${new Date().toISOString().split('T')[0]}] ${motivo.trim()}\n${existente.notas || ''}`.trim()
+          }
+        })
+
+        // 3. Liberar saldo del cliente si tenía
+        const saldo = parseFloat(existente.saldoPendiente)
+        if (saldo > 0 && existente.clienteId) {
+          await tx.cliente.update({
+            where: { id: existente.clienteId },
+            data: { saldoPendiente: { decrement: saldo } }
+          })
+        }
+      })
+
+      await audit(usuarioId, sucursalId, 'CANCELAR_BITACORA', `${existente.folio} - ${motivo}`, empresaId)
+      const b = await prisma.bitacora.findUnique({ where: { id: parseInt(id) }, select: BITACORA_SELECT })
+      return res.json({ success: true, data: b, mensaje: 'Bitácora cancelada. Stock reintegrado.' })
     }
 
     // ──────────────────────────────────────────────────────────
@@ -362,6 +462,45 @@ const cambiarEstado = async (req, res) => {
 }
 
 // ════════════════════════════════════════════════════════════════════
+//  DELETE /bitacoras/:id — Eliminar bitácora CANCELADA
+//  Solo SUPERADMIN. Solo estado CANCELADA. Irreversible.
+// ════════════════════════════════════════════════════════════════════
+const eliminar = async (req, res) => {
+  try {
+    const { id } = req.params
+    const { id: usuarioId, sucursalId, rol } = req.usuario
+    const empresaId = getEmpresaId(req)
+
+    if (rol !== 'SUPERADMIN') {
+      return res.status(403).json({ success: false, error: 'Solo SUPERADMIN puede eliminar bitácoras', codigo: 'PERMISO_DENEGADO' })
+    }
+
+    const existente = await prisma.bitacora.findUnique({
+      where: { id: parseInt(id) },
+      select: { id: true, empresaId: true, estado: true, folio: true }
+    })
+    if (!existente || existente.empresaId !== empresaId) {
+      return res.status(404).json({ success: false, error: 'Bitácora no encontrada' })
+    }
+    if (existente.estado !== 'CANCELADA') {
+      return res.status(400).json({ success: false, error: 'Solo se pueden eliminar bitácoras CANCELADA', codigo: 'ESTADO_INVALIDO' })
+    }
+
+    await prisma.$transaction(async tx => {
+      await tx.detalleBitacora.deleteMany({ where: { bitacoraId: parseInt(id) } })
+      await tx.abonoBitacora.deleteMany({ where: { bitacoraId: parseInt(id) } })
+      await tx.bitacora.delete({ where: { id: parseInt(id) } })
+    })
+
+    await audit(usuarioId, sucursalId, 'ELIMINAR_BITACORA', `${existente.folio} — eliminación permanente`, empresaId)
+    res.json({ success: true, mensaje: `Bitácora ${existente.folio} eliminada permanentemente` })
+  } catch (err) {
+    console.error('❌ eliminar bitacora:', err)
+    res.status(500).json({ success: false, error: err.message })
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════
 //  POST /bitacoras/:id/productos — Agregar producto (SOLO MANUAL)
 //  Descuenta inventario de la sucursal del usuario.
 //  Si stock insuficiente: permite la operación pero devuelve flag.
@@ -369,7 +508,7 @@ const cambiarEstado = async (req, res) => {
 const agregarProducto = async (req, res) => {
   try {
     const { id } = req.params
-    const { productoId, cantidad, precioUnitario, notas, fechaManual, responsableId } = req.body
+    const { productoId, cantidad, precioUnitario, notas, fechaManual, responsableId, recibeTrabajadorId } = req.body
     const { id: usuarioId, sucursalId: sucursalIdToken } = req.usuario
     const sucursalId = sucursalIdToken || parseInt(req.body.sucursalId) || 1
     const empresaId = getEmpresaId(req)
@@ -396,10 +535,23 @@ const agregarProducto = async (req, res) => {
     }
     const responsable = await prisma.usuario.findFirst({
       where: { id: respId, empresaId, activo: true },
-      select: { id: true, nombre: true }
+      select: { id: true, nombre: true, apodo: true }
     })
     if (!responsable) {
       return res.status(400).json({ success: false, error: 'Responsable inválido o de otra empresa', codigo: 'RESPONSABLE_INVALIDO' })
+    }
+
+    // ── Recibe (obligatorio, misma empresa, activo) ──
+    const recibeId = Number(recibeTrabajadorId)
+    if (!Number.isInteger(recibeId) || recibeId <= 0) {
+      return res.status(400).json({ success: false, error: 'recibeTrabajadorId requerido', codigo: 'RECIBE_REQUERIDO' })
+    }
+    const trabajador = await prisma.trabajador.findFirst({
+      where: { id: recibeId, empresaId, activo: true },
+      select: { id: true, nombre: true, apodo: true }
+    })
+    if (!trabajador) {
+      return res.status(400).json({ success: false, error: 'Trabajador inválido, inactivo o de otra empresa', codigo: 'RECIBE_INVALIDO' })
     }
 
     // ── Bitácora ──
@@ -450,7 +602,9 @@ const agregarProducto = async (req, res) => {
           inventarioDescontado: !stockInsuficiente,
           notas:                notas?.trim() || null,
           fechaManual:          fechaManualDate,
-          responsableId:        responsable.id
+          responsableId:        responsable.id,
+          recibeTrabajadorId:   trabajador.id,
+          recibeNombre:         nombreTrabajador(trabajador)
         }
       })
 
@@ -503,13 +657,15 @@ const agregarProducto = async (req, res) => {
     })
 
     await audit(usuarioId, sucursalId, 'AGREGAR_PRODUCTO_BITACORA', `${bitacora.folio} — ${producto.nombre} x${cant}`, empresaId, {
-      detalleId:      resultado.id,
-      productoId:     producto.id,
-      cantidad:       cant,
-      precioUnitario: precio,
+      detalleId:          resultado.id,
+      productoId:         producto.id,
+      cantidad:           cant,
+      precioUnitario:     precio,
       subtotal,
       fechaManual,
-      responsableId:  responsable.id
+      responsableId:      responsable.id,
+      recibeTrabajadorId: trabajador.id,
+      recibeNombre:       nombreTrabajador(trabajador)
     })
 
     const bitacoraActualizada = await prisma.bitacora.findUnique({ where: { id: parseInt(id) }, select: BITACORA_SELECT })
@@ -580,7 +736,11 @@ const agregarProductosBatch = async (req, res) => {
       if (!Number.isInteger(respId) || respId <= 0) {
         return res.status(400).json({ success: false, error: `Ítem ${i}: responsableId requerido`, codigo: 'RESPONSABLE_REQUERIDO', indice: i })
       }
-      itemsNorm.push({ indice: i, productoId, cant, precio, fechaManualDate, respId, notas: it.notas?.trim() || null })
+      const recibeId = Number(it.recibeTrabajadorId)
+      if (!Number.isInteger(recibeId) || recibeId <= 0) {
+        return res.status(400).json({ success: false, error: `Ítem ${i}: recibeTrabajadorId requerido`, codigo: 'RECIBE_REQUERIDO', indice: i })
+      }
+      itemsNorm.push({ indice: i, productoId, cant, precio, fechaManualDate, respId, recibeId, notas: it.notas?.trim() || null })
     }
 
     // ── Bitácora (validada una sola vez) ──
@@ -611,6 +771,18 @@ const agregarProductosBatch = async (req, res) => {
       return res.status(400).json({ success: false, error: `Ítem ${itemRespMal.indice}: responsable inválido o de otra empresa`, codigo: 'RESPONSABLE_INVALIDO', indice: itemRespMal.indice })
     }
 
+    // ── Trabajadores (Recibe): todos válidos, activos, misma empresa (una sola query) ──
+    const trabIds = [...new Set(itemsNorm.map(x => x.recibeId))]
+    const trabajadores = await prisma.trabajador.findMany({
+      where: { id: { in: trabIds }, empresaId, activo: true },
+      select: { id: true, nombre: true, apodo: true }
+    })
+    const trabMap = new Map(trabajadores.map(t => [t.id, t]))
+    const itemTrabMal = itemsNorm.find(x => !trabMap.has(x.recibeId))
+    if (itemTrabMal) {
+      return res.status(400).json({ success: false, error: `Ítem ${itemTrabMal.indice}: trabajador (recibe) inválido, inactivo o de otra empresa`, codigo: 'RECIBE_INVALIDO', indice: itemTrabMal.indice })
+    }
+
     // ── Productos: todos existen, activos, misma empresa (una sola query) ──
     const prodIds = [...new Set(itemsNorm.map(x => x.productoId))]
     const productos = await prisma.producto.findMany({
@@ -623,8 +795,35 @@ const agregarProductosBatch = async (req, res) => {
       return res.status(404).json({ success: false, error: `Ítem ${itemProdMal.indice}: producto no encontrado o inactivo`, codigo: 'PRODUCTO_INVALIDO', indice: itemProdMal.indice })
     }
 
+    // ── Retiro/lote: un registro persistente por cada guardado de borrador ──
+    const totalLotePrevisto = parseFloat(itemsNorm.reduce((sum, it) => sum + (it.cant * it.precio), 0).toFixed(2))
+    const saldoActual = parseFloat(bitacora.saldoPendiente || 0)
+    const saldoPrevisto = parseFloat((saldoActual + totalLotePrevisto).toFixed(2))
+    const recibeIdsUnicos = [...new Set(itemsNorm.map(x => x.recibeId))]
+    const respIdsUnicos = [...new Set(itemsNorm.map(x => x.respId))]
+    const fechasUnicas = [...new Set(itemsNorm.map(x => x.fechaManualDate.toISOString().slice(0, 10)))]
+    const recibeNombreRetiro = [...new Set(itemsNorm.map(x => nombreTrabajador(trabMap.get(x.recibeId))))].join(', ')
+    const recibeTrabajadorIdRetiro = recibeIdsUnicos.length === 1 ? recibeIdsUnicos[0] : null
+    const responsableIdRetiro = respIdsUnicos.length === 1 ? respIdsUnicos[0] : null
+    const fechaManualRetiro = fechasUnicas.length === 1 ? itemsNorm[0].fechaManualDate : null
+
     // ── Transacción única: todo el lote es atómico ──
     const resultado = await prisma.$transaction(async tx => {
+      const retiro = await tx.retiroBitacora.create({
+        data: {
+          empresaId,
+          bitacoraId: parseInt(id),
+          usuarioId,
+          responsableId: responsableIdRetiro,
+          recibeTrabajadorId: recibeTrabajadorIdRetiro,
+          recibeNombre: recibeNombreRetiro,
+          fechaManual: fechaManualRetiro,
+          total: totalLotePrevisto,
+          saldoAnterior: saldoActual,
+          saldoDespues: saldoPrevisto
+        }
+      })
+
       // Stock vigente por producto, en memoria, para descuento secuencial
       const stockMap = new Map()
       for (const pid of prodIds) {
@@ -656,7 +855,10 @@ const agregarProductosBatch = async (req, res) => {
             inventarioDescontado: !stockInsuficiente,
             notas:                it.notas,
             fechaManual:          it.fechaManualDate,
-            responsableId:        it.respId
+            responsableId:        it.respId,
+            recibeTrabajadorId:   it.recibeId,
+            recibeNombre:         nombreTrabajador(trabMap.get(it.recibeId)),
+            retiroBitacoraId:     retiro.id
           }
         })
 
@@ -708,13 +910,14 @@ const agregarProductosBatch = async (req, res) => {
         })
       }
 
-      return { resumen, totalLote }
+      return { resumen, totalLote, retiroId: retiro.id }
     })
 
     const conStockInsuf = resultado.resumen.filter(r => r.stockInsuficiente).length
     await audit(usuarioId, sucursalId, 'AGREGAR_PRODUCTOS_BATCH', `${bitacora.folio} — ${resultado.resumen.length} productos +$${resultado.totalLote.toFixed(2)}`, empresaId, {
       cantidadItems:        resultado.resumen.length,
       totalLote:            resultado.totalLote,
+      retiroId:             resultado.retiroId,
       conStockInsuficiente: conStockInsuf,
       detalleIds:           resultado.resumen.map(r => r.detalleId)
     })
@@ -725,6 +928,7 @@ const agregarProductosBatch = async (req, res) => {
       data:                 bitacoraActualizada,
       agregados:            resultado.resumen.length,
       conStockInsuficiente: conStockInsuf,
+      retiroId:             resultado.retiroId,
       resumen:              resultado.resumen,
       mensaje: conStockInsuf > 0
         ? `${resultado.resumen.length} productos agregados (${conStockInsuf} con stock insuficiente)`
@@ -744,7 +948,7 @@ const agregarProductosBatch = async (req, res) => {
 const editarDetalle = async (req, res) => {
   try {
     const { id, detalleId } = req.params
-    const { cantidad, precioUnitario } = req.body
+    const { cantidad, precioUnitario, recibeTrabajadorId } = req.body
     const { id: usuarioId, sucursalId: sucursalIdToken } = req.usuario
     const sucursalId = sucursalIdToken || 1
     const empresaId = getEmpresaId(req)
@@ -777,6 +981,23 @@ const editarDetalle = async (req, res) => {
 
     if (isNaN(cantidadNueva) || cantidadNueva < 0) return res.status(400).json({ success: false, error: 'Cantidad inválida' })
     if (isNaN(precioNuevo) || precioNuevo < 0)     return res.status(400).json({ success: false, error: 'Precio inválido' })
+
+    // ── Recibe (opcional en edición) ──
+    let trabData = {}
+    if (recibeTrabajadorId !== undefined) {
+      const recibeId = Number(recibeTrabajadorId)
+      if (!Number.isInteger(recibeId) || recibeId <= 0) {
+        return res.status(400).json({ success: false, error: 'recibeTrabajadorId inválido', codigo: 'RECIBE_INVALIDO' })
+      }
+      const trab = await prisma.trabajador.findFirst({
+        where: { id: recibeId, empresaId, activo: true },
+        select: { id: true, nombre: true, apodo: true }
+      })
+      if (!trab) {
+        return res.status(400).json({ success: false, error: 'Trabajador inválido, inactivo o de otra empresa', codigo: 'RECIBE_INVALIDO' })
+      }
+      trabData = { recibeTrabajadorId: trab.id, recibeNombre: nombreTrabajador(trab) }
+    }
 
     const subtotalNuevo  = parseFloat((cantidadNueva * precioNuevo).toFixed(2))
     const subtotalOrig   = parseFloat(detalle.subtotal)
@@ -855,7 +1076,8 @@ const editarDetalle = async (req, res) => {
           cantidad:             cantidadNueva,
           precioUnitario:       precioNuevo,
           subtotal:             subtotalNuevo,
-          inventarioDescontado: !stockInsuficiente
+          inventarioDescontado: !stockInsuficiente,
+          ...trabData
         }
       })
 
@@ -1133,6 +1355,7 @@ module.exports = {
   crear,
   editar,
   cambiarEstado,
+  eliminar,
   agregarProducto,
   agregarProductosBatch,
   editarDetalle,

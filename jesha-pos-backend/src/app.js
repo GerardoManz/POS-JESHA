@@ -81,6 +81,7 @@ app.use('/bitacoras',    requireAuth, require('./modules/bitacora/bitacora.route
 app.use('/compras',      requireAuth, require('./modules/compras/compras.routes'))
 app.use('/devoluciones', requireAuth, require('./modules/devoluciones/devoluciones.routes'))
 app.use('/sucursales', requireAuth, require('./modules/sucursal/sucursal.routes'))
+app.use('/trabajadores', requireAuth, require('./modules/trabajadores/trabajadores.routes'))
 app.use('/precios',     requireAuth, requireRole('PRECIOS', 'ADMIN_SUCURSAL', 'SUPERADMIN', 'PLATFORM_ADMIN'), require('./modules/precios/precios.routes'))
 
 // ── Imágenes de productos ──

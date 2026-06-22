@@ -11,6 +11,7 @@ let productosCache     = []
 let clientesCache      = []
 let productoSeleccionado = null
 let responsablesBitacora = []   // [{ id, nombre }] activos de la empresa, fuente de verdad para el dropdown
+let trabajadoresActivos  = []   // [{ id, nombre }] activos de la empresa, para dropdown Recibe
 let borrador             = []   // productos en borrador local (no persistidos) — se guardan en lote vía batch
 let borradorSeq          = 0    // id temporal incremental para identificar filas del borrador
 let paginaActual       = 1
@@ -40,7 +41,7 @@ function toast(msg, tipo = 'info') {
 }
 
 function badgeEstado(estado) {
-  const nombres = { ABIERTA: 'Abierta', PAUSADA: 'Pausada', CERRADA_VENTA: 'Pagada', CERRADA_INTERNA: 'Cerrada interna' }
+  const nombres = { ABIERTA: 'Abierta', PAUSADA: 'Pausada', CERRADA_VENTA: 'Pagada', CERRADA_INTERNA: 'Cerrada interna', CANCELADA: 'Cancelada' }
   return `<span class="bit-estado-badge ${estado.toLowerCase()}">${nombres[estado] || estado}</span>`
 }
 
@@ -93,8 +94,32 @@ function poblarResponsablesTraza() {
 // Prellenado inicial del panel de traza al abrir una bitácora MANUAL ABIERTA
 async function inicializarTraza() {
   if (!responsablesBitacora.length) await cargarResponsablesBitacora()
+  if (!trabajadoresActivos.length) await cargarTrabajadores()
   document.getElementById('trz-fecha').value = fechaHoyLocalInput()
   poblarResponsablesTraza()
+  poblarTrabajadoresTraza()
+}
+
+// ── Trabajadores para el selector Recibe ──
+async function cargarTrabajadores() {
+  try {
+    const res = await apiFetch('/trabajadores', { method: 'GET' })
+    trabajadoresActivos = Array.isArray(res) ? res : (res?.data || [])
+  } catch (e) {
+    trabajadoresActivos = []
+  }
+}
+
+function poblarTrabajadoresTraza() {
+  const sel = document.getElementById('trz-recibe')
+  if (!sel) return
+  sel.innerHTML = '<option value="">— Selecciona —</option>' +
+    trabajadoresActivos.map(t => `<option value="${t.id}">${nombreTrabajadorLabel(t)}</option>`).join('')
+}
+
+function nombreTrabajadorLabel(t) {
+  if (!t) return '—'
+  return t.apodo ? `${t.apodo} (${t.nombre})` : t.nombre
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -328,91 +353,86 @@ function renderDetalleItems(detalles) {
   const editable = b && b.origen === 'MANUAL' && b.estado === 'ABIERTA'
 
   if (!detalles.length && !borrador.length) {
-    tbody.innerHTML = `<tr><td colspan="9" class="loading-cell"><p>Sin materiales aún</p></td></tr>`
+    tbody.innerHTML = `<tr><td colspan="10" class="loading-cell"><p>Sin materiales aún</p></td></tr>`
     actualizarBarraBorrador()
     return
   }
 
-  const detallesOrdenados = [...detalles].sort((a, b) => {
-    const fechaA = new Date(a.fechaManual || a.creadoEn || 0).getTime()
-    const fechaB = new Date(b.fechaManual || b.creadoEn || 0).getTime()
-    if (fechaA !== fechaB) return fechaA - fechaB
+  // ── Agrupar por retiroBitacoraId ──
+  const retirosMap = new Map()
+  const sinRetiro = []
+  for (const d of detalles) {
+    if (d.retiroBitacoraId) {
+      if (!retirosMap.has(d.retiroBitacoraId)) retirosMap.set(d.retiroBitacoraId, [])
+      retirosMap.get(d.retiroBitacoraId).push(d)
+    } else {
+      sinRetiro.push(d)
+    }
+  }
 
-    const creadoA = new Date(a.creadoEn || 0).getTime()
-    const creadoB = new Date(b.creadoEn || 0).getTime()
-    if (creadoA !== creadoB) return creadoA - creadoB
+  // ── Info de retiros desde bitacoraActual.RetiroBitacora ──
+  const retirosInfo = new Map()
+  if (b.RetiroBitacora) {
+    for (const r of b.RetiroBitacora) {
+      retirosInfo.set(r.id, r)
+    }
+  }
 
-    return (a.id || 0) - (b.id || 0)
-  })
+  let html = ''
 
-  const htmlGuardados = detallesOrdenados.map(d => {
-    const nombre   = d.Producto?.nombre || '—'
-    const unidad   = d.Producto?.unidadVenta || 'pz'
-    const cantidad = parseFloat(d.cantidad)
-    const todoDevuelto = cantidad <= 0.001
-    const filaStyle = todoDevuelto
-      ? 'opacity:0.45;text-decoration:line-through;'
-      : ''
-    const sufijoNombre = todoDevuelto
-      ? ' <small style="color:#ff9999;text-decoration:none;display:inline-block;">(devuelto)</small>'
-      : ''
+  // ── Renderizar retiros agrupados ──
+  for (const [retiroId, items] of retirosMap) {
+    const ri = retirosInfo.get(retiroId)
+    const fechaRetiro = ri?.fechaManual ? String(ri.fechaManual).slice(0, 10) : '—'
+    const recibe = ri?.recibeNombre || '—'
+    const totalRetiro = parseFloat(ri?.total || 0)
+    const itemsCount = ri?.DetalleBitacora?.length || items.length
 
-    const origen = d.Venta
-      ? `<small style="color:var(--muted);">VTA: ${d.Venta.folio}</small>`
-      : (d.inventarioDescontado
-          ? '<small style="color:#60d080;">Descontado</small>'
-          : '<small style="color:#ff9999;">⚠️ sin stock</small>')
+    // Cabecera del retiro
+    html += `<tr style="background:rgba(74,144,226,0.08);border-top:2px solid rgba(74,144,226,0.3);">
+      <td colspan="10" style="padding:8px 14px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span style="font-weight:700;color:var(--accent);">📦 Retiro #${retiroId}</span>
+            <span style="font-size:0.8rem;color:var(--muted);">${fechaRetiro}</span>
+            <span style="font-size:0.8rem;color:var(--text);">Recibe: ${recibe}</span>
+            <span style="font-weight:700;color:var(--orange);">${formatMoney(totalRetiro)}</span>
+            <span style="font-size:0.72rem;color:var(--muted);">${itemsCount} prod.</span>
+          </div>
+          <button class="btn-ticket-retiro btn-sm btn-secondary" data-retiro-id="${retiroId}" title="Imprimir vale de este retiro">🧾 Imprimir</button>
+        </div>
+      </td>
+    </tr>`
 
-    // Celdas editables solo si la bitácora es MANUAL y está ABIERTA
-    const celdaCantidad = (editable && !todoDevuelto)
-      ? `<td class="celda-editable" data-detid="${d.id}" data-campo="cantidad" data-original="${cantidad}" title="Click para editar">${cantidad.toLocaleString('es-MX')} <span class="edit-icon">✎</span></td>`
-      : `<td>${cantidad.toLocaleString('es-MX')}</td>`
+    // Items del retiro
+    html += items.map(d => filaProductoGuardadoHTML(d, editable)).join('')
+  }
 
-    const celdaPrecio = (editable && !todoDevuelto)
-      ? `<td class="celda-editable" data-detid="${d.id}" data-campo="precioUnitario" data-original="${d.precioUnitario}" title="Click para editar">${formatMoney(d.precioUnitario)} <span class="edit-icon">✎</span></td>`
-      : `<td>${formatMoney(d.precioUnitario)}</td>`
+  // ── Productos sin retiro (venta, históricos) ──
+  if (sinRetiro.length) {
+    html += sinRetiro.map(d => filaProductoGuardadoHTML(d, editable)).join('')
+  }
 
-    const btnQuitar = (editable && !todoDevuelto)
-      ? `<button class="btn-quitar-prod" data-detid="${d.id}" title="Quitar línea completa y reintegrar stock">✕</button>`
-      : ''
-
-    // Traza por renglón: se renderiza desde el backend, nunca desde el panel.
-    // fechaManual viene como string; recortar a YYYY-MM-DD evita el desfase a UTC de new Date().
-    const fechaTxt = d.fechaManual ? String(d.fechaManual).slice(0, 10) : '—'
-    const respTxt  = d.Responsable?.nombre || '—'
-
-    return `
-      <tr style="${filaStyle}">
-        <td>${nombre}${sufijoNombre}</td>
-        <td>${unidad}</td>
-        ${celdaCantidad}
-        ${celdaPrecio}
-        <td><strong>${formatMoney(d.subtotal)}</strong></td>
-        <td>${fechaTxt}</td>
-        <td>${respTxt}</td>
-        <td>${origen}</td>
-        <td>${btnQuitar}</td>
-      </tr>`
-  }).join('')
-
-  // Filas del borrador (solo si la bitácora es editable)
+  // ── Filas del borrador (solo si la bitácora es editable) ──
   const htmlBorrador = editable ? filasBorradorHTML() : ''
-  tbody.innerHTML = htmlGuardados + htmlBorrador
+  tbody.innerHTML = html + htmlBorrador
 
-  // Conectar eventos de quitar (guardados)
+  // ── Eventos ──
   tbody.querySelectorAll('.btn-quitar-prod').forEach(btn => {
     btn.addEventListener('click', e => {
       e.stopPropagation()
       quitarProducto(parseInt(btn.dataset.detid))
     })
   })
-
-  // Conectar eventos de edición inline (guardados)
   tbody.querySelectorAll('.celda-editable').forEach(td => {
     td.addEventListener('click', () => activarEdicionCelda(td))
   })
-
-  // Conectar eventos del borrador (locales, sin tocar BD)
+  tbody.querySelectorAll('.btn-ticket-retiro').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation()
+      imprimirTicketRetiro(parseInt(btn.dataset.retiroId))
+    })
+  })
   tbody.querySelectorAll('.brr-cant').forEach(inp => {
     inp.addEventListener('change', () => editarBorradorCampo(parseInt(inp.dataset.tmp), 'cantidad', inp.value))
   })
@@ -429,6 +449,57 @@ function renderDetalleItems(detalles) {
   actualizarBarraBorrador()
 }
 
+// ── Renderizar una fila de producto guardado ──
+function filaProductoGuardadoHTML(d, editable) {
+  const nombre   = d.Producto?.nombre || '—'
+  const unidad   = d.Producto?.unidadVenta || 'pz'
+  const cantidad = parseFloat(d.cantidad)
+  const todoDevuelto = cantidad <= 0.001
+  const filaStyle = todoDevuelto ? 'opacity:0.45;text-decoration:line-through;' : ''
+  const sufijoNombre = todoDevuelto ? ' <small style="color:#ff9999;text-decoration:none;display:inline-block;">(devuelto)</small>' : ''
+
+  const origen = d.Venta
+    ? `<small style="color:var(--muted);">VTA: ${d.Venta.folio}</small>`
+    : (d.inventarioDescontado ? '<small style="color:#60d080;">Descontado</small>' : '<small style="color:#ff9999;">⚠️ sin stock</small>')
+
+  const celdaCantidad = (editable && !todoDevuelto)
+    ? `<td class="celda-editable" data-detid="${d.id}" data-campo="cantidad" data-original="${cantidad}" title="Click para editar">${cantidad.toLocaleString('es-MX')} <span class="edit-icon">✎</span></td>`
+    : `<td>${cantidad.toLocaleString('es-MX')}</td>`
+
+  const celdaPrecio = (editable && !todoDevuelto)
+    ? `<td class="celda-editable" data-detid="${d.id}" data-campo="precioUnitario" data-original="${d.precioUnitario}" title="Click para editar">${formatMoney(d.precioUnitario)} <span class="edit-icon">✎</span></td>`
+    : `<td>${formatMoney(d.precioUnitario)}</td>`
+
+  const btnQuitar = (editable && !todoDevuelto)
+    ? `<button class="btn-quitar-prod" data-detid="${d.id}" title="Quitar línea completa y reintegrar stock">✕</button>`
+    : ''
+
+  const fechaTxt = d.fechaManual ? String(d.fechaManual).slice(0, 10) : '—'
+  const respTxt  = d.Responsable?.nombre || '—'
+  const recibeTxt = d.recibeNombre || d.RecibeTrabajador?.nombre || '—'
+
+  return `<tr style="${filaStyle}">
+    <td>${nombre}${sufijoNombre}</td>
+    <td>${unidad}</td>
+    ${celdaCantidad}
+    ${celdaPrecio}
+    <td><strong>${formatMoney(d.subtotal)}</strong></td>
+    <td>${fechaTxt}</td>
+    <td>${respTxt}</td>
+    <td>${recibeTxt}</td>
+    <td>${origen}</td>
+    <td>${btnQuitar}</td>
+  </tr>`
+}
+
+// ── Imprimir ticket de un retiro específico ──
+function imprimirTicketRetiro(retiroId) {
+  const base = (typeof API_URL !== 'undefined' ? API_URL : window.__JESHA_API_URL__ || '').replace(/\/$/, '')
+  const url = `${base}/bitacoras/${bitacoraActual.id}/retiros/${retiroId}/ticket`
+  const TOKEN = localStorage.getItem('jesha_token')
+  window.open(`${url}?token=${TOKEN}`, '_blank', 'width=380,height=700')
+}
+
 // ── Borrador local: filas, edición, quitar, barra y guardado por lote ──
 function filasBorradorHTML() {
   const inputStyle = 'width:64px;padding:4px 6px;background:rgba(255,255,255,0.05);border:1px solid var(--panel-border);border-radius:5px;color:var(--text);font-family:\'Barlow\',sans-serif;font-size:0.82rem;text-align:right;outline:none;'
@@ -443,6 +514,7 @@ function filasBorradorHTML() {
         <td><strong>${formatMoney(subtotal)}</strong></td>
         <td>${it.fechaManual}</td>
         <td>${it.responsableNombre}</td>
+        <td>${it.recibeNombre}</td>
         <td><small style="color:#e6b450;">● Sin guardar</small></td>
         <td><button class="btn-quitar-borrador" data-tmp="${it.tempId}" title="Quitar del borrador">✕</button></td>
       </tr>`
@@ -496,11 +568,12 @@ async function guardarBorrador() {
   btn.textContent = 'Guardando...'
   try {
     const items = borrador.map(it => ({
-      productoId:     it.productoId,
-      cantidad:       it.cantidad,
-      precioUnitario: it.precioUnitario,
-      fechaManual:    it.fechaManual,
-      responsableId:  it.responsableId
+      productoId:        it.productoId,
+      cantidad:          it.cantidad,
+      precioUnitario:    it.precioUnitario,
+      fechaManual:       it.fechaManual,
+      responsableId:     it.responsableId,
+      recibeTrabajadorId: it.recibeTrabajadorId
     }))
     const res = await apiFetch(`/bitacoras/${bitacoraActual.id}/productos/batch`, {
       method: 'POST',
@@ -512,7 +585,6 @@ async function guardarBorrador() {
     renderDetalle()
     cargarBitacoras(paginaActual)
   } catch (e) {
-    // El lote es atómico: si falló, no se guardó nada. Se conserva el borrador para corregir.
     toast(e.message, 'error')
   } finally {
     btn.disabled = false
@@ -520,7 +592,6 @@ async function guardarBorrador() {
   }
 }
 
-// ── Edición inline de cantidad / precio ──
 function activarEdicionCelda(td) {
   if (td.querySelector('input')) return  // ya está activa
   const detid    = parseInt(td.dataset.detid)
@@ -658,6 +729,16 @@ function renderAcciones() {
     acciones.push(`<button class="btn-danger" id="btn-abrir-cierre">🔒 Cerrar manualmente</button>`)
   }
 
+  // ABIERTA o PAUSADA sin abonos → botón "Cancelar bitácora"
+  if ((b.estado === 'ABIERTA' || b.estado === 'PAUSADA') && parseFloat(b.totalAbonado || 0) <= 0) {
+    acciones.push(`<button class="btn-warning" id="btn-cancelar-bitacora">🚫 Cancelar bitácora</button>`)
+  }
+
+  // CANCELADA → botón "Borrar permanentemente" (solo SUPERADMIN)
+  if (b.estado === 'CANCELADA' && esSUPER) {
+    acciones.push(`<button class="btn-danger" id="btn-borrar-bitacora">🗑️ Borrar permanentemente</button>`)
+  }
+
   // Cerradas → botón "Reabrir" (solo SUPERADMIN dentro de 30 días)
   if (['CERRADA_VENTA', 'CERRADA_INTERNA'].includes(b.estado) && esSUPER) {
     const diasDesdeCierre = b.cerradaEn
@@ -677,6 +758,64 @@ function renderAcciones() {
 
   const btnReabrir = document.getElementById('btn-abrir-reapertura')
   if (btnReabrir) btnReabrir.addEventListener('click', abrirModalReabrir)
+
+  const btnCancelar = document.getElementById('btn-cancelar-bitacora')
+  if (btnCancelar) btnCancelar.addEventListener('click', abrirModalCancelar)
+
+  const btnBorrar = document.getElementById('btn-borrar-bitacora')
+  if (btnBorrar) btnBorrar.addEventListener('click', borrarBitacora)
+}
+
+async function abrirModalCancelar() {
+  document.getElementById('cancelar-motivo').value = ''
+  document.getElementById('cancelar-error').classList.remove('show')
+  document.getElementById('modal-cancelar').classList.add('active')
+}
+
+function cerrarModalCancelar() {
+  document.getElementById('modal-cancelar').classList.remove('active')
+}
+
+async function confirmarCancelacion() {
+  const motivo = document.getElementById('cancelar-motivo').value.trim()
+  const errorDiv = document.getElementById('cancelar-error')
+  errorDiv.classList.remove('show')
+  if (!motivo) {
+    errorDiv.textContent = 'El motivo es obligatorio'
+    errorDiv.classList.add('show')
+    return
+  }
+  const btn = document.getElementById('cancelar-confirmar')
+  btn.disabled = true; btn.textContent = 'Cancelando...'
+  try {
+    const res = await apiFetch(`/bitacoras/${bitacoraActual.id}/estado`, {
+      method: 'PATCH',
+      body: JSON.stringify({ estado: 'CANCELADA', motivo })
+    })
+    toast(res.mensaje || 'Bitácora cancelada', 'success')
+    cerrarModalCancelar()
+    bitacoraActual = res.data
+    renderDetalle()
+    cargarBitacoras(paginaActual)
+  } catch (e) {
+    errorDiv.textContent = e.message
+    errorDiv.classList.add('show')
+  } finally {
+    btn.disabled = false; btn.textContent = 'Confirmar cancelación'
+  }
+}
+
+async function borrarBitacora() {
+  const ok = await confirmarAccion('¿Eliminar esta bitácora permanentemente? Esta acción NO se puede deshacer.')
+  if (!ok) return
+  try {
+    await apiFetch(`/bitacoras/${bitacoraActual.id}`, { method: 'DELETE' })
+    toast('Bitácora eliminada permanentemente', 'success')
+    cerrarDetalle()
+    cargarBitacoras(paginaActual)
+  } catch (e) {
+    toast('Error: ' + e.message, 'error')
+  }
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -802,6 +941,8 @@ function confirmarAgregarProducto() {
   const fechaManual    = document.getElementById('trz-fecha').value
   const selResp        = document.getElementById('trz-responsable')
   const responsableId  = selResp.value
+  const selRecibe      = document.getElementById('trz-recibe')
+  const recibeId       = selRecibe ? selRecibe.value : ''
   const errorDiv       = document.getElementById('prod-error')
   errorDiv.classList.remove('show')
 
@@ -810,8 +951,9 @@ function confirmarAgregarProducto() {
   if (isNaN(precioUnitario) || precioUnitario < 0) { errorDiv.textContent = 'Precio inválido'; errorDiv.classList.add('show'); return }
   if (!fechaManual)   { errorDiv.textContent = 'Selecciona la fecha en el panel de arriba';        errorDiv.classList.add('show'); return }
   if (!responsableId) { errorDiv.textContent = 'Selecciona el responsable en el panel de arriba'; errorDiv.classList.add('show'); return }
+  if (!recibeId)      { errorDiv.textContent = 'Selecciona quién recibe en el panel de arriba';   errorDiv.classList.add('show'); return }
 
-  // Congela la traza (fecha + responsable) del panel en este momento, en la fila del borrador.
+  // Congela la traza (fecha + responsable + recibe) del panel en este momento, en la fila del borrador.
   const tempId = ++borradorSeq
   borrador.push({
     tempId,
@@ -822,7 +964,9 @@ function confirmarAgregarProducto() {
     precioUnitario,
     fechaManual,
     responsableId:     Number(responsableId),
-    responsableNombre: selResp.options[selResp.selectedIndex]?.text || '—'
+    responsableNombre: selResp.options[selResp.selectedIndex]?.text || '—',
+    recibeTrabajadorId: Number(recibeId),
+    recibeNombre:      selRecibe.options[selRecibe.selectedIndex]?.text || '—'
   })
 
   // Volver al buscador para encadenar el siguiente producto (nada se ha guardado aún)
@@ -1186,6 +1330,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   await cargarTurnoActivo()
   await cargarClientes()
   await cargarResponsablesBitacora()
+  await cargarTrabajadores()
   await cargarBitacoras(1)
 
   // ── Filtros ──
@@ -1241,4 +1386,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('reabrir-close').addEventListener('click',    cerrarModalReabrir)
   document.getElementById('reabrir-cancel').addEventListener('click',   cerrarModalReabrir)
   document.getElementById('reabrir-confirmar').addEventListener('click', confirmarReapertura)
+
+  // ── Cancelar ──
+  document.getElementById('cancelar-close').addEventListener('click',    cerrarModalCancelar)
+  document.getElementById('cancelar-cancel').addEventListener('click',   cerrarModalCancelar)
+  document.getElementById('cancelar-confirmar').addEventListener('click', confirmarCancelacion)
 })

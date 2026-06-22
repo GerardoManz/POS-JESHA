@@ -34,6 +34,7 @@
         <option value="PAUSADA">Pausada</option>
         <option value="CERRADA_VENTA">Cerrada (pagada)</option>
         <option value="CERRADA_INTERNA">Cerrada interna</option>
+        <option value="CANCELADA">Cancelada</option>
       </select>
       <select id="filtro-origen" class="filter-select">
         <option value="">Todos los orígenes</option>
@@ -218,8 +219,14 @@
                   <option value="">— Selecciona —</option>
                 </select>
               </div>
+              <div style="flex:1;min-width:160px;">
+                <label style="font-size:0.72rem;color:var(--muted);display:block;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.04em;">Recibe *</label>
+                <select id="trz-recibe" style="width:100%;padding:8px 10px;background:rgba(255,255,255,0.04);border:1px solid var(--panel-border);border-radius:7px;color:var(--text);font-family:'Barlow',sans-serif;font-size:0.9rem;outline:none;">
+                  <option value="">— Selecciona —</option>
+                </select>
+              </div>
             </div>
-            <small style="display:block;margin-top:6px;font-size:0.72rem;color:var(--muted);">Cada producto que agregues hereda esta fecha y responsable.</small>
+            <small style="display:block;margin-top:6px;font-size:0.72rem;color:var(--muted);">Cada producto que agregues hereda esta fecha, responsable y quién recibe.</small>
           </div>
 
           <div id="aviso-origen-venta" style="display:none;padding:10px;background:rgba(100,180,255,0.08);border-left:3px solid #4a90e2;border-radius:4px;font-size:0.8rem;color:var(--muted);margin-bottom:10px;">
@@ -268,13 +275,14 @@
                   <th style="width:100px">Precio</th>
                   <th style="width:100px">Subtotal</th>
                   <th style="width:90px">Fecha</th>
-                  <th style="width:120px">Responsable</th>
+                  <th style="width:100px">Responsable</th>
+                  <th style="width:100px">Recibe</th>
                   <th style="width:80px">Origen</th>
                   <th style="width:36px"></th>
                 </tr>
               </thead>
               <tbody id="det-items-tbody">
-                <tr><td colspan="9" class="loading-cell"><p>Sin materiales aún</p></td></tr>
+                <tr><td colspan="10" class="loading-cell"><p>Sin materiales aún</p></td></tr>
               </tbody>
             </table>
           </div>
@@ -301,6 +309,35 @@
       <div class="form-actions">
         <button class="btn-secondary" id="cierre-cancel">Cancelar</button>
         <button class="btn-danger" id="cierre-confirmar">Cerrar bitácora</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL CANCELACIÓN ══ -->
+<div id="modal-cancelar" class="modal">
+  <div class="modal-content" style="max-width:480px;">
+    <div class="modal-header">
+      <h3>Cancelar bitácora</h3>
+      <button class="modal-close" id="cancelar-close">&times;</button>
+    </div>
+    <div style="padding:20px 22px;">
+      <div style="padding:10px;background:rgba(255,193,7,0.12);border:1px solid rgba(255,193,7,0.3);border-radius:6px;font-size:0.85rem;color:#ffc107;margin-bottom:14px;">
+        ⚠️ <strong>Acción irreversible.</strong> Al cancelar:<br>
+        • El stock se reintegrará al inventario.<br>
+        • La deuda pendiente se liberará del cliente.<br>
+        • Solo se puede cancelar si no tiene abonos registrados.<br>
+        • Una vez cancelada, se podrá eliminar permanentemente.
+      </div>
+      <div class="form-group" style="margin-bottom:14px;">
+        <label>Motivo de cancelación *</label>
+        <textarea id="cancelar-motivo" rows="4" placeholder="Ej: Error al registrar / Productos no entregados / Bitácora duplicada..."
+          style="width:100%;resize:vertical;padding:9px 12px;background:rgba(255,255,255,0.04);border:1px solid var(--panel-border);border-radius:8px;color:var(--text);font-family:'Barlow',sans-serif;font-size:0.9rem;outline:none;" maxlength="500"></textarea>
+      </div>
+      <div id="cancelar-error" class="error-message"></div>
+      <div class="form-actions">
+        <button class="btn-secondary" id="cancelar-cancel">Cancelar</button>
+        <button class="btn-warning" id="cancelar-confirmar">Confirmar cancelación</button>
       </div>
     </div>
   </div>

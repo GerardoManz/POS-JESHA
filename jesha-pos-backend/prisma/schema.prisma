@@ -49,7 +49,9 @@ model Empresa {
   Producto             Producto[]
   Promocion            Promocion[]
   Proveedor            Proveedor[]
+  RetiroBitacora       RetiroBitacora[]
   Sucursal             Sucursal[]
+  Trabajador           Trabajador[]
   TurnoCaja            TurnoCaja[]
   Usuario              Usuario[]
   Venta                Venta[]
@@ -129,6 +131,7 @@ model Bitacora {
   Sucursal        Sucursal          @relation(fields: [sucursalId], references: [id])
   Usuario         Usuario           @relation(fields: [usuarioId], references: [id])
   DetalleBitacora DetalleBitacora[]
+  RetiroBitacora  RetiroBitacora[]
 
   @@unique([empresaId, folio])
   @@index([clienteId])
@@ -639,6 +642,8 @@ model Usuario {
   MovimientoInventario MovimientoInventario[]
   OrdenCompra          OrdenCompra[]
   Pedido               Pedido[]
+  RetiroBitacoraUsuario RetiroBitacora[] @relation("RetiroBitacoraUsuario")
+  RetiroBitacoraResponsable RetiroBitacora[] @relation("RetiroBitacoraResponsable")
   TurnoCaja            TurnoCaja[]
   Sucursal             Sucursal?              @relation(fields: [sucursalId], references: [id])
   Venta                Venta[]
@@ -678,14 +683,21 @@ model DetalleBitacora {
   inventarioDescontado Boolean   @default(false)
   fechaManual          DateTime? @db.Date
   responsableId        Int?
+  recibeTrabajadorId   Int?
+  recibeNombre         String?
+  retiroBitacoraId     Int?
   Bitacora             Bitacora  @relation(fields: [bitacoraId], references: [id], onDelete: Cascade)
   Producto             Producto? @relation(fields: [productoId], references: [id])
   Venta                Venta?    @relation(fields: [ventaId], references: [id])
   Responsable          Usuario?  @relation("DetalleBitacoraResponsable", fields: [responsableId], references: [id])
+  RecibeTrabajador     Trabajador? @relation("DetalleBitacoraRecibe", fields: [recibeTrabajadorId], references: [id], onDelete: SetNull)
+  RetiroBitacora       RetiroBitacora? @relation(fields: [retiroBitacoraId], references: [id], onDelete: SetNull)
 
   @@index([bitacoraId])
   @@index([ventaId])
   @@index([responsableId])
+  @@index([recibeTrabajadorId])
+  @@index([retiroBitacoraId])
 }
 
 model DetalleCotizacion {
@@ -786,6 +798,51 @@ model ProveedorProducto {
   @@unique([proveedorId, productoId])
 }
 
+model RetiroBitacora {
+  id                 Int       @id @default(autoincrement())
+  empresaId          Int
+  bitacoraId         Int
+  usuarioId          Int
+  responsableId      Int?
+  recibeTrabajadorId Int?
+  recibeNombre       String
+  fechaManual        DateTime? @db.Date
+  total              Decimal   @default(0) @db.Decimal(12, 2)
+  saldoAnterior      Decimal   @default(0) @db.Decimal(12, 2)
+  saldoDespues       Decimal   @default(0) @db.Decimal(12, 2)
+  creadoEn           DateTime  @default(now())
+
+  Empresa            Empresa    @relation(fields: [empresaId], references: [id])
+  Bitacora           Bitacora   @relation(fields: [bitacoraId], references: [id], onDelete: Cascade)
+  Usuario            Usuario    @relation("RetiroBitacoraUsuario", fields: [usuarioId], references: [id])
+  Responsable        Usuario?   @relation("RetiroBitacoraResponsable", fields: [responsableId], references: [id], onDelete: SetNull)
+  RecibeTrabajador   Trabajador? @relation("RetiroBitacoraRecibe", fields: [recibeTrabajadorId], references: [id], onDelete: SetNull)
+  DetalleBitacora    DetalleBitacora[]
+
+  @@index([empresaId])
+  @@index([bitacoraId])
+  @@index([recibeTrabajadorId])
+}
+
+model Trabajador {
+  id        Int      @id @default(autoincrement())
+  empresaId Int
+  nombre    String
+  apodo     String?
+  telefono  String?
+  notas     String?
+  activo    Boolean  @default(true)
+  creadoEn  DateTime @default(now())
+
+  Empresa              Empresa              @relation(fields: [empresaId], references: [id])
+  DetalleBitacoraRecibe DetalleBitacora[]    @relation("DetalleBitacoraRecibe")
+  RetiroBitacoraRecibe  RetiroBitacora[]      @relation("RetiroBitacoraRecibe")
+
+  @@unique([empresaId, nombre])
+  @@index([empresaId])
+}
+
+
 // ════════════════════════════════════════════════════════════════════
 //  ENUMS
 // ════════════════════════════════════════════════════════════════════
@@ -807,6 +864,7 @@ enum EstadoBitacora {
   PAUSADA
   CERRADA_VENTA
   CERRADA_INTERNA
+  CANCELADA
 }
 
 enum EstadoCotizacion {

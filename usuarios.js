@@ -159,6 +159,10 @@ async function cargarSucursales() {
 
 function renderizarTabla() {
   if (!tablaBody) return
+  const head = document.querySelector('.table-wrap thead tr')
+  if (head) {
+    head.innerHTML = '<th>Nombre</th><th>Usuario</th><th>Rol</th><th>Estado</th><th>Último Login</th><th>Acciones</th>'
+  }
 
   if (usuariosLista.length === 0) {
     tablaBody.innerHTML = `
@@ -535,8 +539,200 @@ function togglePassword() {
     input.type = input.type === 'password' ? 'text' : 'password'
   }
 }
-
 // ── INICIAR ──
 console.log('🚀 Inicializando módulo de usuarios...')
+
+// ══════════════════════════════════════════════════════════════════
+//  TRABAJADORES
+// ══════════════════════════════════════════════════════════════════
+let vistaActual = 'usuarios'
+let trabajadoresLista = []
+let trabajadorActual = null
+
+const tabUsuarios      = document.getElementById('tab-usuarios')
+const tabTrabajadores  = document.getElementById('tab-trabajadores')
+const toolbarUsuarios  = document.getElementById('toolbar-usuarios')
+const toolbarTrab      = document.getElementById('toolbar-trabajadores')
+const buscarTrab       = document.getElementById('buscar-trab')
+const totalTrab        = document.getElementById('total-trabajadores')
+const btnNuevoTrab     = document.getElementById('btn-nuevo-trab')
+const modalTrabajador  = document.getElementById('modal-trabajador')
+const formTrabajador   = document.getElementById('form-trabajador')
+const btnCerrarTrab    = document.getElementById('btn-cerrar-trab')
+const btnCerrarTrabModal = document.getElementById('btn-cerrar-trab-modal')
+const msgTrabajador    = document.getElementById('msg-trabajador')
+const modalTrabTitulo  = document.getElementById('modal-trab-titulo')
+const btnGuardarTrab   = document.getElementById('btn-guardar-trab')
+const btnNuevoUsuarioEl = document.getElementById('btn-nuevo')
+
+function cambiarVista(vista) {
+  vistaActual = vista
+  const btnTrab = document.getElementById('btn-nuevo-trab')
+  if (vista === 'usuarios') {
+    tabUsuarios.classList.add('active')
+    tabTrabajadores.classList.remove('active')
+    toolbarUsuarios.style.display = ''
+    toolbarTrab.style.display = 'none'
+    btnNuevoUsuarioEl.style.display = ''
+    if (btnTrab) btnTrab.style.display = 'none'
+    cargarUsuarios()
+  } else {
+    tabUsuarios.classList.remove('active')
+    tabTrabajadores.classList.add('active')
+    toolbarUsuarios.style.display = 'none'
+    toolbarTrab.style.display = ''
+    btnNuevoUsuarioEl.style.display = 'none'
+    if (btnTrab) btnTrab.style.display = ''
+    cargarTrabajadores()
+  }
+}
+
+async function cargarTrabajadores() {
+  try {
+    tablaBody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:40px;"><div class="spinner"></div><p style="margin-top:12px;color:var(--muted);">Cargando trabajadores...</p></td></tr>`
+    const params = new URLSearchParams()
+    if (buscarTrab && buscarTrab.value) params.append('buscar', buscarTrab.value)
+    params.append('activo', 'all')
+
+    const res = await fetch(`${API_URL}/trabajadores?${params}`, {
+      headers: { 'Authorization': `Bearer ${TOKEN}` }
+    })
+    if (window.handle401 && window.handle401(res.status)) return
+    if (!res.ok) throw new Error(`Error ${res.status}`)
+    trabajadoresLista = await res.json()
+    if (totalTrab) totalTrab.textContent = `${trabajadoresLista.length} trabajador${trabajadoresLista.length !== 1 ? 'es' : ''}`
+    renderizarTablaTrabajadores()
+  } catch (e) {
+    console.error('❌ Error trabajadores:', e)
+    tablaBody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:#ff9999;padding:20px;">Error: ${e.message}</td></tr>`
+  }
+}
+
+function renderizarTablaTrabajadores() {
+  if (!tablaBody) return
+  const head = document.querySelector('.table-wrap thead tr')
+  if (head) {
+    head.innerHTML = '<th>Nombre / Apodo</th><th>Teléfono</th><th>Notas</th><th>Estado</th><th>Creado</th><th>Acciones</th>'
+  }
+  if (!trabajadoresLista.length) {
+    tablaBody.innerHTML = `<tr><td colspan="6" class="empty-state">No hay trabajadores registrados</td></tr>`
+    return
+  }
+  tablaBody.innerHTML = trabajadoresLista.map(t => {
+    const badgeClass = t.activo ? 'badge-vendedor' : 'badge-precios'
+    const badgeText = t.activo ? 'Activo' : 'Inactivo'
+    const estadoClass = t.activo ? 'on' : ''
+    return `<tr>
+      <td>
+        <div class="user-name">${t.nombre}</div>
+        ${t.apodo ? `<div class="user-username">Apodo: ${t.apodo}</div>` : ''}
+      </td>
+      <td>${t.telefono || '—'}</td>
+      <td>${t.notas || '—'}</td>
+      <td><span class="badge ${badgeClass}">${badgeText}</span></td>
+      <td>${new Date(t.creadoEn).toLocaleDateString('es-MX')}</td>
+      <td>
+        <div class="toggle-wrap">
+          <button class="toggle ${estadoClass}" onclick="toggleTrabajador(${t.id})"></button>
+          <span class="toggle-label ${estadoClass}">${t.activo ? 'Activo' : 'Inactivo'}</span>
+        </div>
+      </td>
+      <td>
+        <div class="actions">
+          <button class="btn-icon" onclick="abrirModalTrabajador(${t.id})" title="Editar">✏️</button>
+        </div>
+      </td>
+    </tr>`
+  }).join('')
+}
+
+async function toggleTrabajador(id) {
+  try {
+    const t = trabajadoresLista.find(x => x.id === id)
+    if (!t) return
+    const res = await fetch(`${API_URL}/trabajadores/${id}/estado`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
+      body: JSON.stringify({ activo: !t.activo })
+    })
+    if (window.handle401 && window.handle401(res.status)) return
+    if (!res.ok) throw new Error((await res.json()).error || 'Error')
+    cargarTrabajadores()
+  } catch (e) {
+    console.error('❌ toggle trabajador:', e)
+  }
+}
+
+function cerrarModalTrabajador() {
+  if (modalTrabajador) modalTrabajador.classList.remove('open')
+  trabajadorActual = null
+}
+
+function abrirModalTrabajador(id) {
+  const t = id ? trabajadoresLista.find(x => x.id === id) : null
+  trabajadorActual = t
+  if (modalTrabTitulo) modalTrabTitulo.textContent = t ? 'Editar Trabajador' : 'Nuevo Trabajador'
+  if (btnGuardarTrab) btnGuardarTrab.textContent = t ? 'Guardar Cambios' : 'Crear Trabajador'
+  document.getElementById('f-trab-nombre').value = t?.nombre || ''
+  document.getElementById('f-trab-apodo').value = t?.apodo || ''
+  document.getElementById('f-trab-telefono').value = t?.telefono || ''
+  document.getElementById('f-trab-notas').value = t?.notas || ''
+  if (msgTrabajador) { msgTrabajador.textContent = ''; msgTrabajador.classList.remove('show') }
+  if (modalTrabajador) modalTrabajador.classList.add('open')
+}
+
+async function guardarTrabajador(e) {
+  e.preventDefault()
+  const nombre = document.getElementById('f-trab-nombre').value.trim()
+  const apodo = document.getElementById('f-trab-apodo').value.trim()
+  const telefono = document.getElementById('f-trab-telefono').value.trim()
+  const notas = document.getElementById('f-trab-notas').value.trim()
+
+  if (!nombre) { mostraErrorTrab('El nombre es obligatorio'); return }
+
+  try {
+    const metodo = trabajadorActual ? 'PUT' : 'POST'
+    const url = trabajadorActual ? `${API_URL}/trabajadores/${trabajadorActual.id}` : `${API_URL}/trabajadores`
+    const body = { nombre, apodo, telefono, notas }
+
+    const res = await fetch(url, {
+      method: metodo,
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
+      body: JSON.stringify(body)
+    })
+    if (window.handle401 && window.handle401(res.status)) return
+    if (!res.ok) {
+      const err = await res.json()
+      throw new Error(err.error || 'Error al guardar trabajador')
+    }
+    cerrarModalTrabajador()
+    cargarTrabajadores()
+  } catch (e) {
+    mostraErrorTrab(e.message)
+  }
+}
+
+function mostraErrorTrab(msg) {
+  if (msgTrabajador) {
+    msgTrabajador.textContent = msg
+    msgTrabajador.classList.add('show')
+  }
+}
+
+// ── Eventos ──
+if (tabUsuarios) tabUsuarios.addEventListener('click', () => cambiarVista('usuarios'))
+if (tabTrabajadores) tabTrabajadores.addEventListener('click', () => cambiarVista('trabajadores'))
+if (btnNuevoTrab) btnNuevoTrab.addEventListener('click', () => abrirModalTrabajador())
+if (formTrabajador) formTrabajador.addEventListener('submit', guardarTrabajador)
+if (btnCerrarTrab) btnCerrarTrab.addEventListener('click', cerrarModalTrabajador)
+if (btnCerrarTrabModal) btnCerrarTrabModal.addEventListener('click', cerrarModalTrabajador)
+
+if (buscarTrab) {
+  buscarTrab.addEventListener('input', () => {
+    clearTimeout(window.searchTrabTimeout)
+    window.searchTrabTimeout = setTimeout(cargarTrabajadores, 300)
+  })
+}
+
 cargarUsuarios()
 cargarSucursales()
