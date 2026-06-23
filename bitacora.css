@@ -5,8 +5,8 @@
 /* ── TABLA ── */
 .bit-table { width:100%; border-collapse:collapse; font-size:0.875rem; }
 .bit-table thead { position:sticky; top:0; background:var(--panel-bg,#111); z-index:1; }
-.bit-table th { padding:10px 14px; text-align:left; border-bottom:1px solid var(--panel-border); font-weight:600; color:var(--muted); font-size:0.75rem; text-transform:uppercase; letter-spacing:0.04em; white-space:nowrap; }
-.bit-table td { padding:11px 14px; border-bottom:1px solid rgba(255,255,255,0.04); color:var(--text); vertical-align:middle; }
+.bit-table th { padding:11px 16px; text-align:left; border-bottom:1px solid var(--panel-border); font-weight:600; color:var(--muted); font-size:0.75rem; text-transform:uppercase; letter-spacing:0.04em; white-space:nowrap; }
+.bit-table td { padding:13px 16px; border-bottom:1px solid rgba(255,255,255,0.04); color:var(--text); vertical-align:middle; font-size:0.9rem; }
 .bit-table tbody tr { cursor:pointer; transition:background 0.15s; }
 .bit-table tbody tr:hover td { background:rgba(255,255,255,0.03); }
 .bit-table tbody tr:last-child td { border-bottom:none; }
@@ -41,7 +41,7 @@
 .modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75); z-index:1000; align-items:center; justify-content:center; padding:16px; }
 .modal.active { display:flex; }
 .modal-content { background:var(--sidebar-bg); border:1px solid var(--panel-border); border-radius:14px; width:98%; max-height:96vh; overflow-y:auto; box-shadow:0 24px 60px rgba(0,0,0,0.6); animation:slideUp 0.2s ease; }
-.modal-detalle-xl { max-width:1180px; overflow:hidden; display:flex; flex-direction:column; }
+.modal-detalle-xl { max-width:1400px; overflow:hidden; display:flex; flex-direction:column; }
 @keyframes slideUp { from{opacity:0;transform:translateY(14px)} to{opacity:1;transform:translateY(0)} }
 .modal-header { display:flex; align-items:center; justify-content:space-between; padding:16px 22px; border-bottom:1px solid var(--panel-border); flex-shrink:0; }
 .modal-header h3 { font-family:'Barlow Condensed',sans-serif; font-size:1.2rem; font-weight:700; letter-spacing:0.04em; text-transform:uppercase; }
@@ -49,17 +49,17 @@
 .modal-close:hover { background:rgba(255,255,255,0.06); color:var(--text); }
 
 /* ── LAYOUT DETALLE ── */
-.detalle-layout { display:grid; grid-template-columns:320px 1fr; height:calc(96vh - 70px); overflow:hidden; }
-.det-panel-izq  { border-right:1px solid var(--panel-border); overflow-y:auto; padding:16px; display:flex; flex-direction:column; gap:12px; }
+.detalle-layout { display:grid; grid-template-columns:260px 1fr; height:calc(98vh - 60px); overflow:hidden; }
+.det-panel-izq  { border-right:1px solid var(--panel-border); overflow-y:auto; padding:12px; display:flex; flex-direction:column; gap:10px; }
 .det-panel-der  { overflow-y:auto; padding:16px; }
-.det-panel-izq::-webkit-scrollbar, .det-panel-der::-webkit-scrollbar { width:4px; }
-.det-panel-izq::-webkit-scrollbar-thumb, .det-panel-der::-webkit-scrollbar-thumb { background:var(--panel-border); border-radius:2px; }
+.det-panel-izq::-webkit-scrollbar, .det-panel-der::-webkit-scrollbar { width:6px; }
+.det-panel-izq::-webkit-scrollbar-thumb, .det-panel-der::-webkit-scrollbar-thumb { background:var(--panel-border); border-radius:3px; }
 
 /* ── CARDS PANEL IZQ ── */
 .det-card { background:rgba(255,255,255,0.02); border:1px solid var(--panel-border); border-radius:10px; padding:14px; }
 .det-card-header { font-size:0.8rem; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.06em; margin-bottom:10px; }
 .det-card-full { height:100%; display:flex; flex-direction:column; }
-.det-card-full .table-wrapper { flex:1; min-height:220px; overflow:auto; }
+.det-card-full .table-wrapper { flex:1; min-height:200px; overflow:auto; }
 
 /* ── FINANCIERO ── */
 .det-card-financiero { border-color:rgba(31,58,102,0.4); background:rgba(31,58,102,0.08); }
