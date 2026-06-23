@@ -385,8 +385,8 @@ function renderDetalleItems(detalles) {
     const ri = retirosInfo.get(retiroId)
     const fechaRetiro = ri?.fechaManual ? String(ri.fechaManual).slice(0, 10) : '—'
     const recibe = ri?.recibeNombre || '—'
-    const totalRetiro = parseFloat(ri?.total || 0)
-    const itemsCount = ri?.DetalleBitacora?.length || items.length
+    const totalRetiro = items.reduce((sum, d) => parseFloat((sum + parseFloat(d.subtotal || 0)).toFixed(2)), 0)
+    const itemsCount = items.length
 
     // Cabecera del retiro
     html += `<tr style="background:rgba(74,144,226,0.08);border-top:2px solid rgba(74,144,226,0.3);">
