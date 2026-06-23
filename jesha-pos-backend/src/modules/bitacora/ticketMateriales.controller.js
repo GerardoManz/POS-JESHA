@@ -159,6 +159,7 @@ const generarTicketRetiro = async (req, res) => {
     const bitacora = await prisma.bitacora.findUnique({
       where: { id: parseInt(id) },
       select: { id: true, folio: true, titulo: true, estado: true, empresaId: true,
+        totalMateriales: true, totalAbonado: true, saldoPendiente: true,
         Cliente: { select: { nombre: true } }
       }
     })
@@ -192,13 +193,13 @@ const generarTicketRetiro = async (req, res) => {
       subt: parseFloat(d.subtotal || 0)
     }))
 
-    const totalRetiro = parseFloat(retiro.total || 0)
-    const deudaAnterior = parseFloat(retiro.saldoAnterior || 0)
-    const nuevaDeuda = parseFloat(retiro.saldoDespues || 0)
+    const totalRetiro = parseFloat(filas.reduce((s, f) => parseFloat((s + f.subt).toFixed(2)), 0))
+    const deudaAnterior = parseFloat((parseFloat(bitacora.saldoPendiente || 0) - totalRetiro).toFixed(2))
+    const nuevaDeuda = parseFloat(bitacora.saldoPendiente || 0)
     const recibeNombre = retiro.recibeNombre || '—'
     const responsable = retiro.Responsable || null
     const fechaStr = formatearFechaTicket(retiro.fechaManual || retiro.creadoEn)
-    const totalAbonado = 0
+    const totalAbonado = parseFloat(bitacora.totalAbonado || 0)
 
     const html = generarHTML(filas, totalRetiro, deudaAnterior, nuevaDeuda, totalAbonado, bitacora, recibeNombre, responsable, fechaStr)
     res.setHeader('Content-Type', 'text/html; charset=utf-8')
