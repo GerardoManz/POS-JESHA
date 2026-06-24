@@ -10,6 +10,7 @@ const multer  = require('multer')
 const { requireRole } = require('../../middlewares/auth.middleware')
 
 const productosController   = require('./productos.controller')
+const productosRapidoController = require('./productos.rapido.controller')
 const importacionController = require('./importacion.controller')
 const { subirImagenProducto } = require('../../lib/cloudinary')
 
@@ -72,6 +73,9 @@ router.post('/importar/datos-fiscales', requireRole('SUPERADMIN', 'ADMIN_SUCURSA
 // ═══════════════════════════════════════════════════════════════════
 
 router.get('/',                    productosController.listar)
+
+// POST /productos/articulo-rapido — alta rápida desde POS (cualquier usuario autenticado)
+router.post('/articulo-rapido',   productosRapidoController.crearArticuloRapido)
 
 // GET /productos/:id — Venta específica
 router.post('/',                 requireRole('SUPERADMIN', 'ADMIN_SUCURSAL', 'PLATFORM_ADMIN'), productosController.crear)

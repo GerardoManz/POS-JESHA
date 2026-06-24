@@ -77,6 +77,33 @@ const btnCancelVenta           = document.getElementById('btn-cancelar-venta')
 const btnConfirmarVenta        = document.getElementById('btn-confirmar-venta')
 const btnModalConfirmacionClose = document.getElementById('modal-confirmacion-close')
 const fechaActual              = document.getElementById('fecha-actual')
+
+// ── ARTÍCULO RÁPIDO ──
+const btnArticuloRapido        = document.getElementById('btn-articulo-rapido')
+const modalArticuloRapido      = document.getElementById('modal-articulo-rapido')
+const arForm                   = document.getElementById('articulo-rapido-form')
+const arNombre                 = document.getElementById('ar-nombre')
+const arCodigo                 = document.getElementById('ar-codigo')
+const arCodigoBarras           = document.getElementById('ar-codigoBarras')
+const arCategoria              = document.getElementById('ar-categoria')
+const arPrecio                 = document.getElementById('ar-precio')
+const arUnidad                 = document.getElementById('ar-unidad')
+const arStock                  = document.getElementById('ar-stock')
+const arCantidad               = document.getElementById('ar-cantidad')
+const arEsGranel               = document.getElementById('ar-esGranel')
+const arError                  = document.getElementById('ar-error')
+const arSubmit                 = document.getElementById('ar-submit')
+const arCancel                 = document.getElementById('ar-cancel')
+const arClose                  = document.getElementById('ar-close')
+const arPreview                = document.getElementById('ar-preview')
+const arPreviewText            = document.getElementById('ar-preview-text')
+const arBtnAvanzadas           = document.getElementById('ar-btn-avanzadas')
+const arAvanzadas              = document.getElementById('ar-avanzadas')
+
+let _arCategoriasCache  = null
+let _arAvanzadasAbierto  = false
+const AR_CAT_KEY        = 'jesha_categorias_cache_v1'
+const AR_LAST_CAT_KEY   = 'jesha_ar_last_cat'
 const turnoStatus              = document.getElementById('turno-status')
 
 if (fechaActual) {
@@ -2754,7 +2781,319 @@ function configurarEventListeners() {
     if (btn.dataset.accion === 'eliminar') eliminarVentaPausada(btn.dataset.id)
   })
 
+  // ✅ Artículo rápido
+  btnArticuloRapido?.addEventListener('click', abrirModalArticuloRapido)
+  arClose?.addEventListener('click', cerrarModalArticuloRapido)
+  arCancel?.addEventListener('click', cerrarModalArticuloRapido)
+  arForm?.addEventListener('submit', enviarArticuloRapido)
+  arNombre?.addEventListener('input', _arActualizarPreview)
+  arPrecio?.addEventListener('input', _arActualizarPreview)
+  arCantidad?.addEventListener('input', _arActualizarPreview)
+  arStock?.addEventListener('input', function() {
+    if (!_arAvanzadasAbierto && arCantidad) {
+      arCantidad.value = arStock.value
+    }
+    _arActualizarPreview()
+  })
+  modalArticuloRapido?.addEventListener('click', function(e) {
+    if (e.target === modalArticuloRapido) cerrarModalArticuloRapido()
+  })
+
   console.log('✅ Event listeners configurados')
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  ARTÍCULO RÁPIDO — alta de producto + inventario desde POS
+//  Backend: POST /productos/articulo-rapido
+//  Cualquier usuario autenticado puede crear. La venta posterior pasa
+//  por /ventas con su propia transacción (no toca MovimientoCaja aquí).
+// ══════════════════════════════════════════════════════════════════
+
+async function cargarCategoriasParaArticuloRapido(forceReload = false) {
+  if (!forceReload && _arCategoriasCache && _arCategoriasCache.length) {
+    return _arCategoriasCache
+  }
+  if (!forceReload) {
+    try {
+      const raw = localStorage.getItem(AR_CAT_KEY)
+      if (raw) {
+        const cached = JSON.parse(raw)
+        if (Array.isArray(cached) && cached.length) {
+          _arCategoriasCache = cached
+          return cached
+        }
+      }
+    } catch (_) { /* ignorar */ }
+  }
+  const res = await fetch(`${API_URL}/productos/categorias`, {
+    headers: { 'Authorization': `Bearer ${TOKEN}` }
+  })
+  if (!res.ok) throw new Error('No se pudieron cargar las categorías')
+  const data = await res.json()
+  const lista = Array.isArray(data) ? data : (data.data || [])
+  _arCategoriasCache = lista
+  try { localStorage.setItem(AR_CAT_KEY, JSON.stringify(lista)) } catch (_) {}
+  return lista
+}
+
+function renderCategoriasEnArticuloRapido(categorias) {
+  if (!arCategoria) return
+  if (!categorias || categorias.length === 0) {
+    arCategoria.innerHTML = '<option value="">Sin categorías — crea una primero</option>'
+    return
+  }
+  const opts = ['<option value="">Seleccionar…</option>']
+  categorias.forEach(c => {
+    const depto = c.Departamento?.nombre || ''
+    const label = depto ? `${c.nombre} — ${depto}` : c.nombre
+    opts.push(`<option value="${c.id}">${escaparHtml(label)}</option>`)
+  })
+  arCategoria.innerHTML = opts.join('')
+}
+
+function resolverSucursalParaArticuloRapido() {
+  return (
+    turnoActivo?.sucursalId ||
+    turnoActivo?.sucursal?.id ||
+    USUARIO?.sucursalId ||
+    USUARIO?.sucursal ||
+    null
+  )
+}
+
+function _arActualizarPreview() {
+  if (!arPreview || !arPreviewText) return
+  const nombre  = (arNombre?.value || '').trim()
+  const precio  = parseFloat(arPrecio?.value)
+  const cant    = parseFloat(arCantidad?.value)
+
+  if (!nombre && (!precio || isNaN(precio) || precio <= 0)) {
+    arPreviewText.textContent = 'Completa los campos para ver el detalle'
+    arPreview.classList.add('muted')
+    return
+  }
+  arPreview.classList.remove('muted')
+
+  const nombreCorto = nombre.length > 32 ? nombre.slice(0, 29) + '\u2026' : nombre
+  const qtyFmt = Number.isInteger(cant) && isFinite(cant) ? cant.toString() : (isFinite(cant) ? cant.toFixed(3).replace(/\.?0+$/, '') : '?')
+  const precioFmt = isFinite(precio) && precio > 0 ? '$' + precio.toFixed(2) : '?'
+  const subtotal = isFinite(precio) && isFinite(cant) && precio > 0 && cant > 0 ? '$' + (precio * cant).toFixed(2) : ''
+
+  if (nombre && subtotal) {
+    arPreviewText.innerHTML = 'Se agregar\u00e1 al carrito: <strong>' + escaparHtml(qtyFmt) + ' \u00d7 ' + escaparHtml(nombreCorto) + '</strong> = <strong>' + subtotal + '</strong>'
+    return
+  }
+  if (nombre) {
+    arPreviewText.innerHTML = '<strong>' + escaparHtml(nombreCorto) + '</strong> \u2014 ingres\u00e1 precio y cantidad'
+    return
+  }
+}
+
+window.toggleArAvanzadas = function() {
+  _arAvanzadasAbierto = !_arAvanzadasAbierto
+  if (arAvanzadas) arAvanzadas.classList.toggle('abierto', _arAvanzadasAbierto)
+  if (arBtnAvanzadas) arBtnAvanzadas.classList.toggle('abierto', _arAvanzadasAbierto)
+  var icon = document.getElementById('ar-toggle-icon')
+  if (icon) icon.innerHTML = _arAvanzadasAbierto ? '\u25bc' : '\u25b6'
+  if (arBtnAvanzadas) {
+    var children = arBtnAvanzadas.childNodes
+    if (children.length) {
+      children[children.length - 1].textContent = _arAvanzadasAbierto ? ' Menos opciones' : ' M\u00e1s opciones'
+    }
+  }
+  // Si se cierra el panel, sincronizar stock = cantidad
+  if (!_arAvanzadasAbierto && arStock && arCantidad) {
+    arStock.value = arCantidad.value
+  }
+}
+
+async function abrirModalArticuloRapido() {
+  if (!modalArticuloRapido) return
+  if (!turnoActivo?.id) {
+    mostrarToast('Necesitas un turno abierto para crear artículos', 'warning')
+    return
+  }
+
+  // Cerrar panel avanzadas
+  _arAvanzadasAbierto = false
+  if (arAvanzadas) arAvanzadas.classList.remove('abierto')
+  if (arBtnAvanzadas) arBtnAvanzadas.classList.remove('abierto')
+  var icon = document.getElementById('ar-toggle-icon')
+  if (icon) icon.innerHTML = '\u25b6'
+
+  if (arNombre)         arNombre.value = (searchProductos?.value || '').trim()
+  if (arCodigo)         arCodigo.value = ''
+  if (arCodigoBarras)   arCodigoBarras.value = ''
+  if (arPrecio)         arPrecio.value = ''
+  if (arStock)          arStock.value = '1'
+  if (arCantidad)       arCantidad.value = '1'
+  if (arUnidad)         arUnidad.value = 'pza'
+  if (arEsGranel)       arEsGranel.checked = false
+  if (arError)         { arError.style.display = 'none'; arError.textContent = '' }
+  _arActualizarPreview()
+
+  if (arCategoria) {
+    arCategoria.innerHTML = '<option value="">Cargando categor\u00edas\u2026</option>'
+  }
+  try {
+    var cats = await cargarCategoriasParaArticuloRapido()
+    renderCategoriasEnArticuloRapido(cats)
+    try {
+      var lastCat = localStorage.getItem(AR_LAST_CAT_KEY)
+      if (lastCat && arCategoria) {
+        var opt = arCategoria.querySelector('option[value="' + lastCat + '"]')
+        if (opt) arCategoria.value = lastCat
+      }
+    } catch (_) {}
+  } catch (_) {
+    if (arCategoria) arCategoria.innerHTML = '<option value="">Error al cargar</option>'
+  }
+
+  modalArticuloRapido.style.display = 'flex'
+  setTimeout(function() { if (arNombre) arNombre.focus() }, 80)
+}
+
+function cerrarModalArticuloRapido() {
+  if (!modalArticuloRapido) return
+  modalArticuloRapido.style.display = 'none'
+}
+
+function _arMostrarError(msg) {
+  if (!arError) { mostrarToast(msg, 'error'); return }
+  arError.textContent = msg
+  arError.style.display = 'block'
+}
+
+function _arValidar(data) {
+  if (!data.nombre)                                  return 'El nombre es requerido'
+  if (!data.precioVenta || data.precioVenta <= 0)   return 'El precio de venta debe ser mayor a 0'
+  if (data.stockInicial < 0)                         return 'La existencia inicial debe ser >= 0'
+  if (!data.cantidadVenta || data.cantidadVenta <= 0) return 'La cantidad a vender debe ser mayor a 0'
+  if (data.cantidadVenta > data.stockInicial)        return 'La cantidad a vender no puede ser mayor a la existencia inicial'
+  if (!data.categoriaId)                             return 'Selecciona una categoría'
+  return null
+}
+
+async function enviarArticuloRapido(e) {
+  e.preventDefault()
+
+  const data = {
+    nombre:        (arNombre?.value || '').trim(),
+    codigoInterno: (arCodigo?.value || '').trim(),
+    codigoBarras:  (arCodigoBarras?.value || '').trim(),
+    categoriaId:   parseInt(arCategoria?.value),
+    precioVenta:   parseFloat(arPrecio?.value),
+    stockInicial:  parseFloat(arStock?.value),
+    cantidadVenta: parseFloat(arCantidad?.value),
+    unidadVenta:   arUnidad?.value || 'pza',
+    esGranel:      !!arEsGranel?.checked,
+    sucursalId:    resolverSucursalParaArticuloRapido(),
+    turnoId:       turnoActivo?.id || null,
+    claveSat:      null,
+    unidadSat:     'H87'
+  }
+
+  // Si el panel avanzadas está cerrado, stockInicial = cantidadVenta
+  if (!_arAvanzadasAbierto) {
+    data.stockInicial = data.cantidadVenta
+  }
+
+  const error = _arValidar(data)
+  if (error) { _arMostrarError(error); return }
+
+  if (!arSubmit) return
+  const textoOriginal = arSubmit.innerHTML
+  arSubmit.disabled    = true
+  arSubmit.innerHTML   = '⟳ Creando…'
+
+  try {
+    const res  = await fetch(`${API_URL}/productos/articulo-rapido`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
+      body:    JSON.stringify(data)
+    })
+    const json = await res.json().catch(() => null)
+    if (!res.ok) {
+      const msg = (json && json.error) || `Error ${res.status} al crear artículo`
+      _arMostrarError(msg)
+      return
+    }
+    const prod = (json && json.data) || json
+
+    const idParsed = parseInt(prod.id, 10)
+    const precio = parseFloat(prod.precioVenta || prod.precioBase || 0)
+    productoCache.set(idParsed, {
+      id:               idParsed,
+      nombre:           prod.nombre,
+      precioVenta:      precio,
+      precioBase:       parseFloat(prod.precioBase || prod.precioVenta || 0),
+      stock:            parseFloat(prod.stock ?? prod.inventario?.stockActual ?? 0),
+      codigoInterno:    prod.codigoInterno || '',
+      codigoBarras:     prod.codigoBarras || null,
+      esGranel:         !!prod.esGranel,
+      unidadVenta:      prod.unidadVenta || data.unidadVenta,
+      unidadCompra:     prod.unidadCompra || prod.unidadVenta || data.unidadVenta,
+      factorConversion: parseFloat(prod.factorConversion || 1)
+    })
+
+    const enCarrito = carrito.find(i => i.id === idParsed)
+    const cantidadFinal = parseFloat(data.cantidadVenta.toFixed(3))
+    if (data.esGranel) {
+      abrirModalGranel(
+        idParsed,
+        prod.nombre,
+        precio,
+        prod.unidadVenta || data.unidadVenta,
+        cantidadFinal,
+        parseFloat(prod.factorConversion || 1),
+        prod.unidadCompra || prod.unidadVenta || data.unidadVenta
+      )
+    } else {
+      if (enCarrito) {
+        enCarrito.cantidad = parseFloat(((parseFloat(enCarrito.cantidad) || 0) + cantidadFinal).toFixed(3))
+      } else {
+        carrito.push({
+          id:               idParsed,
+          nombre:           prod.nombre,
+          precio:           precio,
+          precioOriginal:   precio,
+          cantidad:         cantidadFinal,
+          esGranel:         false,
+          unidadVenta:      prod.unidadVenta || data.unidadVenta,
+          unidadCompra:     prod.unidadCompra || prod.unidadVenta || data.unidadVenta,
+          factorConversion: parseFloat(prod.factorConversion || 1),
+          unidadElegida:    'base'
+        })
+      }
+      actualizarCarrito({ scrollAlFinal: true })
+    }
+
+    if (searchProductos) {
+      searchProductos.value = ''
+      buscarProductos('')
+    }
+    cerrarModalArticuloRapido()
+
+    // Recordar última categoría para la próxima
+    try {
+      if (data.categoriaId) localStorage.setItem(AR_LAST_CAT_KEY, String(data.categoriaId))
+    } catch (_) {}
+
+    const quedan = data.stockInicial - data.cantidadVenta
+    const sufijo = quedan > 0 ? ` — quedan ${quedan.toString()}` : ''
+    mostrarToast(
+      `✓ ${prod.nombre} creado (${data.cantidadVenta.toString()} ${prod.unidadVenta || data.unidadVenta})${sufijo}`,
+      'success'
+    )
+  } catch (err) {
+    console.error('❌ Error artículo rápido:', err)
+    _arMostrarError(err.message || 'Error de red al crear artículo')
+  } finally {
+    if (arSubmit) {
+      arSubmit.disabled  = false
+      arSubmit.innerHTML = textoOriginal
+    }
+  }
 }
 
 console.log('✅ punto-venta.js completamente cargado')

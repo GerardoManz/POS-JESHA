@@ -40,13 +40,17 @@
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
           </svg>
-          <input 
-            type="text" 
-            id="search-productos" 
-            placeholder="Buscar por nombre, código o categoría..." 
+          <input
+            type="text"
+            id="search-productos"
+            placeholder="Buscar por nombre, código o categoría..."
             class="search-input pos-search-input"
           />
           <span id="search-indicator" class="search-indicator"></span>
+          <button type="button" id="btn-articulo-rapido" class="btn-articulo-rapido" title="Crear artículo rápido">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            <span>Artículo rápido</span>
+          </button>
         </div>
 
         <!-- GRID DE PRODUCTOS -->
@@ -752,6 +756,120 @@
         Guardar
       </button>
     </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<!--  MODAL: ARTÍCULO RÁPIDO                                            -->
+<!--  Alta de producto + inventario desde POS en un solo paso.          -->
+<!--  Backend: POST /productos/articulo-rapido                          -->
+<!-- ════════════════════════════════════════════════════════════════ -->
+<div id="modal-articulo-rapido" class="modal-ar-overlay" style="display:none;">
+  <div class="modal-ar-card">
+
+    <!-- Icono y encabezado -->
+    <div class="modal-ar-header">
+      <div class="modal-ar-icon">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#6b9de8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+          <line x1="12" y1="5" x2="12" y2="19"/>
+          <line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
+      </div>
+      <div>
+        <h3 class="modal-ar-titulo">Art&iacute;culo r&aacute;pido</h3>
+        <p class="modal-ar-sub">Producto e inventario en un paso</p>
+      </div>
+      <button class="modal-ar-close" id="ar-close" type="button">&times;</button>
+    </div>
+
+    <div class="modal-ar-divider"></div>
+
+    <form id="articulo-rapido-form" autocomplete="off" novalidate>
+
+      <div class="modal-ar-body">
+        <!-- ── Nombre ── -->
+        <div class="modal-ar-field">
+          <label class="modal-ar-label" for="ar-nombre">Nombre *</label>
+          <input type="text" id="ar-nombre" maxlength="120" placeholder="Ej. LAMPARA COLGANTE LED" class="modal-ar-input" required />
+        </div>
+
+        <!-- ── Precio + Cantidad a vender ── -->
+        <div class="modal-ar-row">
+          <div class="modal-ar-field" style="flex:1;">
+            <label class="modal-ar-label" for="ar-precio">Precio de venta *</label>
+            <input type="number" id="ar-precio" min="0.01" step="0.01" placeholder="0.00" class="modal-ar-input" required />
+          </div>
+          <div class="modal-ar-field" style="flex:1;">
+            <label class="modal-ar-label" for="ar-cantidad">Cantidad a vender *</label>
+            <input type="number" id="ar-cantidad" min="0.001" step="0.001" value="1" class="modal-ar-input" required />
+          </div>
+        </div>
+
+        <!-- ── Categoría ── -->
+        <div class="modal-ar-field">
+          <label class="modal-ar-label" for="ar-categoria">Categor&iacute;a *</label>
+          <select id="ar-categoria" class="modal-ar-input" required>
+            <option value="">Cargando categor&iacute;as&hellip;</option>
+          </select>
+        </div>
+
+        <!-- ── Unidad ── -->
+        <div class="modal-ar-field">
+          <label class="modal-ar-label" for="ar-unidad">Unidad</label>
+          <select id="ar-unidad" class="modal-ar-input">
+            <option value="pza">Pieza (pza)</option>
+            <option value="kg">Kilogramo (kg)</option>
+            <option value="l">Litro (l)</option>
+            <option value="m">Metro (m)</option>
+            <option value="cj">Caja (cj)</option>
+          </select>
+        </div>
+
+        <!-- ── Toggle: opciones avanzadas ── -->
+        <button type="button" id="ar-btn-avanzadas" class="modal-ar-toggle" onclick="toggleArAvanzadas()">
+          <span id="ar-toggle-icon">&#9654;</span> M&aacute;s opciones
+        </button>
+
+        <div id="ar-avanzadas" class="modal-ar-avanzadas">
+          <div class="modal-ar-field">
+            <label class="modal-ar-label" for="ar-codigo">C&oacute;digo interno</label>
+            <input type="text" id="ar-codigo" maxlength="40" placeholder="Auto si se deja vac&iacute;o" class="modal-ar-input" />
+          </div>
+          <div class="modal-ar-field">
+            <label class="modal-ar-label" for="ar-codigoBarras">C&oacute;digo de barras</label>
+            <input type="text" id="ar-codigoBarras" maxlength="40" placeholder="Opcional" class="modal-ar-input" />
+          </div>
+          <div class="modal-ar-field">
+            <label class="modal-ar-label" for="ar-stock">Existencia inicial</label>
+            <input type="number" id="ar-stock" min="0" step="0.001" value="1" class="modal-ar-input" />
+          </div>
+          <label class="modal-ar-check" style="display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;">
+            <input type="checkbox" id="ar-esGranel" style="width:16px;height:16px;accent-color:#6b9de8;" />
+            <span>Producto a granel (kg, l, m)</span>
+          </label>
+        </div>
+
+        <!-- ── Preview en vivo ── -->
+        <div id="ar-preview" class="modal-ar-preview">
+          <span id="ar-preview-text">Complet&aacute; los campos para ver el detalle</span>
+        </div>
+
+        <!-- ── Error inline ── -->
+        <div id="ar-error" class="modal-ar-error" style="display:none;"></div>
+      </div>
+
+      <div class="modal-ar-divider"></div>
+
+      <!-- Acciones -->
+      <div class="modal-ar-actions">
+        <button type="button" class="modal-ar-btn-cancel" id="ar-cancel">Cancelar</button>
+        <button type="submit" class="modal-ar-btn-confirm" id="ar-submit">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-right:5px;"><polyline points="20 6 9 17 4 12"/></svg>
+          Crear y agregar
+        </button>
+      </div>
+    </form>
   </div>
 </div>
 
