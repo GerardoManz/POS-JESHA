@@ -2,6 +2,7 @@
 // APP.JS
 // ════════════════════════════════════════════════════════════════════
 require('dotenv').config()
+require('./lib/facturapi').assertFacturapiSeguro()
 const { requireAuth, requireRole } = require('./middlewares/auth.middleware')
 const express = require('express')
 const cors    = require('cors')
