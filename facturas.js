@@ -71,6 +71,7 @@ async function cargarFacturas() {
       document.getElementById('stat-pendientes').textContent = data.stats.pendientes || 0
       document.getElementById('stat-timbradas').textContent  = data.stats.timbradas || 0
       document.getElementById('stat-canceladas').textContent = data.stats.canceladas || 0
+      document.getElementById('stat-inciertas').textContent  = data.stats.inciertas || 0
     }
 
     const lista = data.data || []
@@ -80,7 +81,14 @@ async function cargarFacturas() {
       return
     }
 
-    tbody.innerHTML = lista.map(f => `
+    tbody.innerHTML = lista.map(f => {
+      const incierto = f.estado === 'PENDIENTE_TIMBRADO' && f.procesandoTimbrado
+      const esPendiente = f.estado === 'PENDIENTE_TIMBRADO'
+      const rolFiscal = ['ADMIN_SUCURSAL','SUPERADMIN','PLATFORM_ADMIN'].includes(USUARIO.rol)
+      const badgeEstado = incierto
+        ? '<span class="fact-badge badge-incierto">⚠ INCIERTO</span>'
+        : estadoBadge(f.estado)
+      return `
       <tr onclick="verDetalle(${f.id})">
         <td><strong style="font-size:0.82rem">${f.Venta?.folio || '—'}</strong></td>
         <td style="font-size:0.82rem;color:var(--muted)">${fmtFecha(f.creadaEn)}</td>
@@ -90,18 +98,19 @@ async function cargarFacturas() {
         </td>
         <td style="font-size:0.82rem;color:var(--muted)">${f.usoCfdi || '—'}</td>
         <td><strong>${fmt(f.total)}</strong></td>
-        <td>${estadoBadge(f.estado)}</td>
+        <td>${badgeEstado}</td>
         <td style="font-size:0.78rem;color:var(--muted)">${f.folioFiscal ? f.folioFiscal.substring(0, 18) + '...' : '—'}</td>
         <td>
           <div class="actions-cell" onclick="event.stopPropagation()">
             <button class="btn-icon" onclick="verDetalle(${f.id})" title="Ver detalle">👁</button>
             ${f.facturapiId ? `<button class="btn-icon" onclick="descargarFactura(${f.id},'pdf')" title="Descargar PDF">🖨️</button>` : ''}
             ${f.facturapiId ? `<button class="btn-icon" onclick="descargarFactura(${f.id},'xml')" title="Descargar XML">📄</button>` : ''}
-            ${f.estado === 'PENDIENTE_TIMBRADO' ? `<button class="btn-icon btn-timbrar" onclick="timbrarManual(${f.id})" title="Timbrar ahora">⚡</button>` : ''}
+            ${esPendiente && !f.facturapiId ? `<button class="btn-icon btn-timbrar" onclick="timbrarManual(${f.id})" title="Timbrar ahora">⚡</button>` : ''}
+            ${esPendiente && rolFiscal ? `<button class="btn-icon" onclick="event.stopPropagation();verCandidatos(${f.id})" title="Buscar CFDIs en Facturapi">🔍</button>` : ''}
           </div>
         </td>
       </tr>
-    `).join('')
+    ` }).join('')
 
     const totalPags = data.paginacion?.totalPaginas || Math.ceil(data.total / LIMIT)
     if (totalPags > 1) {
@@ -161,20 +170,28 @@ window.verDetalle = async function(id) {
     document.getElementById('det-timbrado').textContent = f.timbradaEn ? fmtFecha(f.timbradaEn) : '—'
 
     // Botones de acción
-    const btnTimbrar  = document.getElementById('det-btn-timbrar')
-    const btnCancelar = document.getElementById('det-btn-cancelar')
-    const btnXml      = document.getElementById('det-btn-xml')
-    const btnPdf      = document.getElementById('det-btn-pdf')
+    const btnTimbrar     = document.getElementById('det-btn-timbrar')
+    const btnCancelar    = document.getElementById('det-btn-cancelar')
+    const btnXml         = document.getElementById('det-btn-xml')
+    const btnPdf         = document.getElementById('det-btn-pdf')
+    const btnCandidatos  = document.getElementById('det-btn-candidatos')
+    const btnDescartar   = document.getElementById('det-btn-descartar')
+    const rolFiscal = ['ADMIN_SUCURSAL','SUPERADMIN','PLATFORM_ADMIN'].includes(USUARIO.rol)
+    const incierto = esPendiente && f.procesandoTimbrado
 
-    btnTimbrar.style.display  = f.estado === 'PENDIENTE_TIMBRADO' ? 'flex' : 'none'
-    btnCancelar.style.display = ['TIMBRADA','FACTURADA','PENDIENTE_TIMBRADO'].includes(f.estado) ? 'flex' : 'none'
-    btnXml.style.display      = f.facturapiId ? 'flex' : 'none'
-    btnPdf.style.display      = f.facturapiId ? 'flex' : 'none'
+    btnTimbrar.style.display   = esPendiente && !f.facturapiId ? 'flex' : 'none'
+    btnCancelar.style.display  = ['TIMBRADA','FACTURADA','PENDIENTE_TIMBRADO'].includes(f.estado) ? 'flex' : 'none'
+    btnXml.style.display       = f.facturapiId ? 'flex' : 'none'
+    btnPdf.style.display       = f.facturapiId ? 'flex' : 'none'
+    btnCandidatos.style.display = esPendiente && rolFiscal ? 'flex' : 'none'
+    btnDescartar.style.display  = incierto && rolFiscal ? 'flex' : 'none'
 
-    btnTimbrar.onclick  = () => timbrarManual(f.id)
-    btnCancelar.onclick = () => cancelarFactura(f.id)
-    btnXml.onclick      = () => descargarFactura(f.id, 'xml')
-    btnPdf.onclick      = () => descargarFactura(f.id, 'pdf')
+    btnTimbrar.onclick     = () => timbrarManual(f.id)
+    btnCancelar.onclick    = () => cancelarFactura(f.id)
+    btnXml.onclick         = () => descargarFactura(f.id, 'xml')
+    btnPdf.onclick         = () => descargarFactura(f.id, 'pdf')
+    btnCandidatos.onclick  = () => verCandidatos(f.id)
+    btnDescartar.onclick   = () => descartarTimbradoIncierto(f.id)
 
     // Botón enviar email (si existe)
     const btnEmail = document.getElementById('det-btn-email')
@@ -226,6 +243,13 @@ window.verDetalle = async function(id) {
     } else {
       pdfPreview.style.display = 'none'
     }
+
+    // Resetear panel de candidatos al abrir
+    document.getElementById('candidatos-panel').style.display = 'none'
+    document.getElementById('cand-lista').innerHTML = ''
+    document.getElementById('cand-aviso').style.display = 'none'
+    document.getElementById('cand-error').style.display = 'none'
+    document.getElementById('cand-atajo').style.display = 'none'
 
     document.getElementById('modal-detalle').classList.add('active')
   } catch (err) {
@@ -290,24 +314,216 @@ window.timbrarManual = async function(id) {
 // ════════════════════════════════════════════════════════════════════
 //  CANCELAR FACTURA
 // ════════════════════════════════════════════════════════════════════
-async function cancelarFactura(id) {
-  const ok = await jeshaConfirm({
-    title: 'Cancelar factura',
-    message: '¿Cancelar esta factura ante el SAT? <strong>Esta acción no se puede deshacer.</strong>',
-    confirmText: 'Sí, cancelar', type: 'danger'
-  })
-  if (!ok) return
+async function cancelarFactura(id, confirmacionManual = null) {
+  if (!confirmacionManual) {
+    const ok = await jeshaConfirm({
+      title: 'Cancelar factura',
+      message: '¿Cancelar esta factura ante el SAT? <strong>Esta acción no se puede deshacer.</strong>',
+      confirmText: 'Sí, cancelar', type: 'danger'
+    })
+    if (!ok) return
+  }
   try {
-    const res  = await fetch(`${API_URL}/facturas/${id}/cancelar`, {
-      method:  'PATCH',
-      headers: { 'Authorization': `Bearer ${TOKEN}` }
+    const res = await fetch(`${API_URL}/facturas/${id}/cancelar`, {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `Bearer ${TOKEN}`,
+        ...(confirmacionManual ? { 'Content-Type': 'application/json' } : {})
+      },
+      ...(confirmacionManual ? { body: JSON.stringify({ confirmacionManual }) } : {})
     })
     const data = await res.json()
+
+    if (res.status === 409 && data.requiereConfirmacionManual) {
+      const texto = window.prompt('El CFDI no se encontró en Facturapi. Verifica en el portal del SAT que no exista o ya esté cancelado, y describe lo que verificaste:')
+      if (!texto || !texto.trim()) {
+        jeshaToast('Cancelación abortada: se requiere la confirmación manual', 'warning')
+        return
+      }
+      return cancelarFactura(id, texto.trim())
+    }
+
     if (!res.ok) throw new Error(data.error)
+
+    if (res.status === 202 || data.pendiente) {
+      jeshaToast(data.mensaje || 'Cancelación pendiente de confirmación del SAT', 'warning')
+      cargarFacturas()
+      return
+    }
+
     document.getElementById('modal-detalle').classList.remove('active')
     limpiarPdfPreview()
     cargarFacturas()
-    jeshaToast('Factura cancelada', 'success')
+    jeshaToast(data.warning ? `Factura cancelada. ${data.warning}` : 'Factura cancelada',
+               data.warning ? 'warning' : 'success')
+  } catch (err) {
+    jeshaToast('Error: ' + err.message, 'error')
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  RESOLVER TIMBRADO — helpers
+// ════════════════════════════════════════════════════════════════════
+function esIncierto(f) {
+  return f.estado === 'PENDIENTE_TIMBRADO' && f.procesandoTimbrado
+}
+
+function candBadgeHtml(match) {
+  if (match) {
+    return '<span class="cand-badge-exact">✅ Coincidencia exacta (idempotency_key)</span>'
+  }
+  return '<span class="cand-badge-approx">⚠ Por monto / fecha</span>'
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  VER CANDIDATOS CFDI
+// ════════════════════════════════════════════════════════════════════
+window.verCandidatos = async function(facturaId) {
+  const panel   = document.getElementById('candidatos-panel')
+  const lista   = document.getElementById('cand-lista')
+  const aviso   = document.getElementById('cand-aviso')
+  const error   = document.getElementById('cand-error')
+  const atajo   = document.getElementById('cand-atajo')
+  const titulo  = document.getElementById('cand-titulo')
+  const btnClose = document.getElementById('cand-close')
+
+  lista.innerHTML = '<p style="color:var(--muted);font-size:0.82rem;text-align:center;padding:20px;">Buscando CFDIs en Facturapi...</p>'
+  aviso.style.display = 'none'
+  error.style.display = 'none'
+  atajo.style.display = 'none'
+  titulo.textContent = 'CFDIs encontrados en Facturapi'
+  panel.style.display = 'block'
+
+  btnClose.onclick = () => { panel.style.display = 'none' }
+
+  try {
+    const res  = await fetch(`${API_URL}/facturas/${facturaId}/timbrado-candidatos`, {
+      headers: { 'Authorization': `Bearer ${TOKEN}` }
+    })
+    const data = await res.json()
+
+    if (res.status === 502 || (res.status >= 500 && !res.ok)) {
+      error.textContent = 'La búsqueda en Facturapi falló. Reintenta en unos segundos.'
+      error.style.display = 'block'
+      lista.innerHTML = ''
+      return
+    }
+
+    if (!res.ok) {
+      error.textContent = data.error || 'Error buscando candidatos'
+      error.style.display = 'block'
+      lista.innerHTML = ''
+      return
+    }
+
+    // Aviso RFC genérico
+    if (data.aviso) {
+      aviso.textContent = data.aviso
+      aviso.style.display = 'block'
+    } else {
+      aviso.style.display = 'none'
+    }
+
+    // Atajo: ya tiene facturapiId vinculado localmente
+    if (data.facturapiIdConocido) {
+      atajo.innerHTML = `<span>CFDI ya vinculado localmente: <strong>${data.facturapiIdConocido}</strong></span>
+        <button class="btn-reconciliar" onclick="reconciliarTimbrado(${facturaId},'${data.facturapiIdConocido}')">✅ Reconciliar</button>`
+      atajo.style.display = 'flex'
+      lista.innerHTML = ''
+      return
+    }
+
+    if (data.categoria === 'NO_CANDIDATES') {
+      lista.innerHTML = '<p style="color:var(--muted);font-size:0.82rem;text-align:center;padding:16px;">No se encontraron CFDIs en Facturapi. Verifica en el portal del SAT.</p>'
+      return
+    }
+
+    // Renderizar candidatos
+    lista.innerHTML = data.candidatos.map(c => {
+      const exact = !!c.matchIdempotency
+      const cls   = exact ? 'cand-item exact' : 'cand-item approx'
+      const badge = candBadgeHtml(c.matchIdempotency)
+      return `
+      <div class="${cls}">
+        <div class="cand-info">
+          <span class="cand-info-id">${c.facturapiId}</span>
+          <span class="cand-info-uuid">${(c.uuid || '').substring(0, 36)}</span>
+          <span class="cand-info-total">${fmt(c.total)} MXN</span>
+          ${badge}
+        </div>
+        <button class="btn-reconciliar" onclick="reconciliarTimbrado(${facturaId},'${c.facturapiId}')">✅ Reconciliar</button>
+      </div>`
+    }).join('')
+
+  } catch (err) {
+    error.textContent = 'Error de conexión: ' + err.message
+    error.style.display = 'block'
+    lista.innerHTML = ''
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  RECONCILIAR TIMBRADO
+// ════════════════════════════════════════════════════════════════════
+window.reconciliarTimbrado = async function(facturaId, facturapiId) {
+  try {
+    const res  = await fetch(`${API_URL}/facturas/${facturaId}/reconciliar-timbrado`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
+      body:    JSON.stringify({ facturapiId })
+    })
+    const data = await res.json()
+
+    if (res.status === 422) {
+      jeshaToast('El CFDI no coincide: ' + (data.detalles?.join('; ') || data.error), 'error')
+      return
+    }
+    if (res.status === 409) {
+      jeshaToast(data.error || 'La factura cambió de estado; recarga y reintenta.', 'warning')
+      return
+    }
+    if (!res.ok) throw new Error(data.error)
+
+    jeshaToast('CFDI reconciliado correctamente — UUID: ' + (data.uuid || '').substring(0, 8) + '...', 'success')
+    document.getElementById('candidatos-panel').style.display = 'none'
+    document.getElementById('modal-detalle').classList.remove('active')
+    cargarFacturas()
+  } catch (err) {
+    jeshaToast('Error: ' + err.message, 'error')
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  DESCARTAR INCERTIDUMBRE
+// ════════════════════════════════════════════════════════════════════
+window.descartarTimbradoIncierto = async function(facturaId) {
+  const texto = await jeshaPrompt({
+    title:       'Descartar incertidumbre',
+    label:       'Describe lo que verificaste en el portal del SAT (mínimo 10 caracteres):',
+    placeholder: 'Ej: El CFDI con estos datos no existe en el portal del SAT...',
+    confirmText: 'Descartar',
+    cancelText:  'Cancelar'
+  })
+  if (!texto || texto.length < 10) {
+    if (texto !== null) jeshaToast('Se requiere texto de al menos 10 caracteres.', 'warning')
+    return
+  }
+  try {
+    const res  = await fetch(`${API_URL}/facturas/${facturaId}/descartar-timbrado-incierto`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
+      body:    JSON.stringify({ confirmacionManual: texto })
+    })
+    const data = await res.json()
+    if (res.status === 409) {
+      jeshaToast(data.error || 'La factura cambió de estado; recarga y reintenta.', 'warning')
+      return
+    }
+    if (!res.ok) throw new Error(data.error)
+    jeshaToast('Incertidumbre descartada. La factura queda pendiente de timbrar.', 'success')
+    document.getElementById('candidatos-panel').style.display = 'none'
+    document.getElementById('modal-detalle').classList.remove('active')
+    cargarFacturas()
   } catch (err) {
     jeshaToast('Error: ' + err.message, 'error')
   }
@@ -374,120 +590,6 @@ async function reenviarEmail(facturaId) {
 //  FACTURACIÓN MANUAL — buscar venta y timbrar desde el panel admin
 // ════════════════════════════════════════════════════════════════════
 let ventaParaFacturar = null
-
-async function buscarVentaParaFactura() {
-  const folio = document.getElementById('m-folio').value.trim()
-  const resultDiv = document.getElementById('venta-result')
-  if (!folio) { resultDiv.className = 'venta-search-result error show'; resultDiv.textContent = 'Ingresa un folio de venta'; return }
-
-  resultDiv.className = 'venta-search-result show'
-  resultDiv.textContent = 'Buscando...'
-  document.getElementById('manual-fiscal-fields').style.display = 'none'
-  ventaParaFacturar = null
-
-  try {
-    // Buscar por folio en el listado de ventas
-    const res = await fetch(`${API_URL}/ventas?q=${encodeURIComponent(folio)}&take=5`, {
-      headers: { 'Authorization': `Bearer ${TOKEN}` }
-    })
-    const data = await res.json()
-    const ventas = data.data || []
-
-    if (ventas.length === 0) {
-      resultDiv.className = 'venta-search-result error show'
-      resultDiv.textContent = 'No se encontró venta con ese folio'
-      return
-    }
-
-    // Tomar la primera coincidencia y cargar detalle completo
-    const v = ventas[0]
-    const res2 = await fetch(`${API_URL}/ventas/${v.id}`, {
-      headers: { 'Authorization': `Bearer ${TOKEN}` }
-    })
-    const d2 = await res2.json()
-    const venta = d2.data
-
-    // Validaciones
-    if (venta.facturaEstado === 'FACTURADA') {
-      resultDiv.className = 'venta-search-result error show'
-      resultDiv.textContent = 'Esta venta ya fue facturada'
-      return
-    }
-    if (venta.facturaEstado === 'BLOQUEADA') {
-      resultDiv.className = 'venta-search-result error show'
-      resultDiv.textContent = 'Venta bloqueada — efectivo mayor a $2,000'
-      return
-    }
-
-    ventaParaFacturar = venta
-    resultDiv.className = 'venta-search-result show'
-    resultDiv.innerHTML = `
-      <div style="display:flex;justify-content:space-between;align-items:center;">
-        <div>
-          <strong>${venta.folio}</strong> · ${fmt(venta.total)} · ${venta.metodoPago}
-          <br><span style="font-size:0.78rem;color:var(--muted)">Cliente: ${venta.cliente?.nombre || 'Público general'} · ${venta.estado}</span>
-        </div>
-        <span style="color:#60d080;font-size:0.8rem;font-weight:600;">✓ Disponible</span>
-      </div>
-    `
-
-    // Mostrar campos fiscales
-    document.getElementById('manual-fiscal-fields').style.display = 'block'
-    llenarCatalogosManual()
-
-    // Limpiar campos previos
-    document.getElementById('m-rfc').value = ''
-    document.getElementById('m-razon').value = ''
-    document.getElementById('m-regimen').value = ''
-    document.getElementById('m-cp').value = ''
-    document.getElementById('m-uso').value = ''
-    document.getElementById('m-email').value = ''
-    document.getElementById('manual-error').style.display = 'none'
-
-    // Autocompletar solo si el cliente tiene RFC registrado.
-    // RFC es el indicador mínimo de "este cliente tiene datos fiscales".
-    // Sin RFC, el usuario ingresa todo manualmente para evitar datos no fiscales
-    // (nombre regular) en campos fiscales (razón social).
-    if (venta.cliente && venta.cliente.rfc) {
-      document.getElementById('m-rfc').value   = venta.cliente.rfc || ''
-      document.getElementById('m-razon').value = venta.cliente.razonSocial || venta.cliente.nombre || ''
-      document.getElementById('m-cp').value    = venta.cliente.codigoPostalFiscal || ''
-      document.getElementById('m-email').value = venta.cliente.email || ''
-
-      const selRegimen = document.getElementById('m-regimen')
-      const selUso     = document.getElementById('m-uso')
-
-      if (venta.cliente.regimenFiscal) {
-        selRegimen.value = venta.cliente.regimenFiscal
-        if (selRegimen.value !== venta.cliente.regimenFiscal) {
-          console.warn('Régimen no encontrado en catálogo:', venta.cliente.regimenFiscal)
-          selRegimen.value = ''
-        }
-      }
-
-      if (venta.cliente.usoCfdi) {
-        selUso.value = venta.cliente.usoCfdi
-        if (selUso.value !== venta.cliente.usoCfdi) {
-          console.warn('Uso CFDI no encontrado en catálogo:', venta.cliente.usoCfdi)
-          selUso.value = ''
-        }
-      }
-
-      // Filtrar usos CFDI según régimen autocompletado. El listener 'change'
-      // del régimen no se dispara con asignación programática (.value =),
-      // por lo que el filtro debe llamarse explícitamente.
-      // Mismo patrón usado en verDetalle líneas 149-151.
-      filtrarUsosPorRegimen(selRegimen, selUso)
-    }
-
-    // Focus al RFC
-    setTimeout(() => document.getElementById('m-rfc')?.focus(), 100)
-
-  } catch (e) {
-    resultDiv.className = 'venta-search-result error show'
-    resultDiv.textContent = 'Error: ' + e.message
-  }
-}
 
 function llenarCatalogosManual() {
   poblarSelectSAT(document.getElementById('m-regimen'), CATALOGO_REGIMENES)
@@ -688,6 +790,171 @@ function limpiarPdfPreview() {
 }
 
 // ════════════════════════════════════════════════════════════════════
+//  FACTURA GLOBAL — helpers
+// ════════════════════════════════════════════════════════════════════
+let globalPreviewData = null
+
+window.abrirFacturaGlobal = function() {
+  document.getElementById('g-desde').value = ''
+  document.getElementById('g-hasta').value = ''
+  document.getElementById('g-metodo').value = ''
+  document.getElementById('g-periodicidad').value = '02'
+  document.getElementById('g-resumen').style.display = 'none'
+  document.getElementById('g-preview-table').style.display = 'none'
+  document.getElementById('g-preview-table').innerHTML = ''
+  document.getElementById('g-error').style.display = 'none'
+  document.getElementById('g-mixto-info').style.display = 'none'
+  document.getElementById('btn-global-timbrar').disabled = true
+  globalPreviewData = null
+  document.getElementById('modal-global').classList.add('active')
+}
+
+window.previsualizarGlobal = async function() {
+  const desde = document.getElementById('g-desde').value
+  const hasta = document.getElementById('g-hasta').value
+  const metodoPago = document.getElementById('g-metodo').value
+  const errorDiv = document.getElementById('g-error')
+  const mixtoDiv = document.getElementById('g-mixto-info')
+  const resumenDiv = document.getElementById('g-resumen')
+  const previewDiv = document.getElementById('g-preview-table')
+  const btnTimbrar = document.getElementById('btn-global-timbrar')
+
+  errorDiv.style.display = 'none'
+  errorDiv.textContent = ''
+  resumenDiv.style.display = 'none'
+  previewDiv.style.display = 'none'
+  previewDiv.innerHTML = ''
+  mixtoDiv.style.display = 'none'
+  btnTimbrar.disabled = true
+  btnTimbrar.textContent = '⚡ Timbrar Factura Global'
+  globalPreviewData = null
+
+  if (!desde || !hasta) {
+    errorDiv.textContent = 'Selecciona ambas fechas.'
+    errorDiv.style.display = 'block'
+    return
+  }
+  if (!metodoPago) {
+    errorDiv.textContent = 'Selecciona el método de pago.'
+    errorDiv.style.display = 'block'
+    return
+  }
+  if (desde > hasta) {
+    errorDiv.textContent = 'La fecha "Desde" no puede ser mayor que "Hasta".'
+    errorDiv.style.display = 'block'
+    return
+  }
+  if (desde.slice(0, 7) !== hasta.slice(0, 7)) {
+    errorDiv.textContent = 'El rango no puede cruzar meses ni años.'
+    errorDiv.style.display = 'block'
+    return
+  }
+
+  try {
+    const res = await fetch(`${API_URL}/facturas/global/preview?desde=${desde}&hasta=${hasta}&metodoPago=${encodeURIComponent(metodoPago)}`, {
+      headers: { 'Authorization': `Bearer ${TOKEN}` }
+    })
+    const data = await res.json()
+
+    if (!res.ok) {
+      errorDiv.textContent = data.error || 'Error al previsualizar'
+      errorDiv.style.display = 'block'
+      return
+    }
+
+    if (data.ventas.length === 0) {
+      errorDiv.textContent = 'No hay ventas DISPONIBLE para este método y rango.'
+      errorDiv.style.display = 'block'
+      return
+    }
+
+    if (data.mixto && data.mixto.count > 0) {
+      mixtoDiv.innerHTML = `<strong>⚠️ ${data.mixto.count} venta(s) MIXTO</strong> (${fmt(data.mixto.total)}) no incluidas en esta global — requieren factura individual o decisión del contador.`
+      mixtoDiv.className = 'venta-search-result show'
+      mixtoDiv.style.display = 'flex'
+    }
+
+    document.getElementById('g-count').textContent = data.resumen.count
+    document.getElementById('g-subtotal').textContent = fmt(data.resumen.subtotal)
+    document.getElementById('g-iva').textContent = fmt(data.resumen.iva)
+    document.getElementById('g-total').textContent = fmt(data.resumen.total)
+    resumenDiv.style.display = 'grid'
+
+    previewDiv.innerHTML = `
+      <table>
+        <thead>
+          <tr>
+            <th>Folio</th>
+            <th>Fecha</th>
+            <th>Método</th>
+            <th>Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${data.ventas.map(v => `
+          <tr>
+            <td>${v.folio}</td>
+            <td style="color:var(--muted)">${fmtFecha(v.creadaEn)}</td>
+            <td>${v.metodoPago}</td>
+            <td><strong>${fmt(v.total)}</strong></td>
+          </tr>`).join('')}
+        </tbody>
+      </table>`
+    previewDiv.style.display = 'block'
+
+    btnTimbrar.disabled = false
+    globalPreviewData = { desde, hasta, metodoPago, periodicidad: '02', resumen: data.resumen }
+
+  } catch (err) {
+    errorDiv.textContent = 'Error de conexión: ' + err.message
+    errorDiv.style.display = 'block'
+  }
+}
+
+window.timbrarGlobal = async function() {
+  if (!globalPreviewData) return
+
+  const { desde, hasta, metodoPago, periodicidad, resumen } = globalPreviewData
+  const btn = document.getElementById('btn-global-timbrar')
+  const errorDiv = document.getElementById('g-error')
+
+  const ok = await jeshaConfirm({
+    title: 'Timbrar Factura Global',
+    message: `Se emitirá una factura global (${metodoPago}) con ${resumen.count} ventas por un total de ${fmt(resumen.total)}. Esta acción no se puede deshacer.`,
+    confirmText: 'Sí, timbrar', type: 'primary'
+  })
+  if (!ok) return
+
+  btn.disabled = true
+  btn.textContent = '⟳ Timbrando...'
+
+  try {
+    const res = await fetch(`${API_URL}/facturas/global/timbrar`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
+      body: JSON.stringify({ desde, hasta, metodoPago, periodicidad })
+    })
+    const data = await res.json()
+
+    if (!res.ok) throw new Error(data.error || 'Error al timbrar')
+
+    document.getElementById('modal-global').classList.remove('active')
+    cargarFacturas()
+
+    if (data.requiereRevision) {
+      jeshaToast(data.mensaje || 'Factura marcada para revisión.', 'warning')
+    } else {
+      jeshaToast(`✅ Factura Global timbrada — UUID: ${data.uuid}`, 'success')
+    }
+
+  } catch (err) {
+    jeshaToast('Error: ' + err.message, 'error')
+    btn.disabled = false
+    btn.textContent = '⚡ Timbrar Factura Global'
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════
 //  INICIALIZACIÓN
 // ════════════════════════════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', () => {
@@ -696,6 +963,13 @@ document.addEventListener('DOMContentLoaded', () => {
     fechaEl.textContent = new Date().toLocaleDateString('es-MX', {
       weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
     })
+  }
+
+  // Mostrar botón Factura Global solo para roles fiscales
+  const rolFiscal = ['ADMIN_SUCURSAL','SUPERADMIN','PLATFORM_ADMIN'].includes(USUARIO.rol)
+  if (rolFiscal) {
+    const btn = document.getElementById('btn-factura-global')
+    if (btn) btn.style.display = 'inline-flex'
   }
 
   cargarFacturas()
@@ -762,11 +1036,24 @@ document.addEventListener('DOMContentLoaded', () => {
   })
 
   // Modal manual — buscar venta
-  document.getElementById('btn-buscar-venta')?.addEventListener('click', buscarVentaParaFactura)
+  document.getElementById('btn-buscar-venta')?.addEventListener('click', () => {
+    const folio = document.getElementById('m-folio').value.trim()
+    if (!folio) {
+      const resultDiv = document.getElementById('venta-result')
+      resultDiv.className = 'venta-search-result error show'
+      resultDiv.textContent = 'Ingresa un folio de venta'
+      return
+    }
+    buscarVentaExactaParaFactura(folio)
+  })
 
   // Modal manual — Enter en folio dispara búsqueda
   document.getElementById('m-folio')?.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { e.preventDefault(); buscarVentaParaFactura() }
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      const folio = document.getElementById('m-folio').value.trim()
+      if (folio) buscarVentaExactaParaFactura(folio)
+    }
   })
 
   // Modal manual — solo números en CP
@@ -782,8 +1069,37 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.key === 'Escape') {
       document.getElementById('modal-detalle')?.classList.remove('active')
       document.getElementById('modal-manual')?.classList.remove('active')
+      document.getElementById('modal-global')?.classList.remove('active')
+      document.getElementById('candidatos-panel').style.display = 'none'
       limpiarPdfPreview()
     }
+  })
+
+  // Modal global — abrir
+  document.getElementById('btn-factura-global')?.addEventListener('click', abrirFacturaGlobal)
+
+  // Modal global — cerrar
+  document.getElementById('global-close')?.addEventListener('click', () => {
+    document.getElementById('modal-global').classList.remove('active')
+  })
+
+  // Modal global — previsualizar
+  document.getElementById('btn-global-preview')?.addEventListener('click', previsualizarGlobal)
+
+  // Modal global — timbrar
+  document.getElementById('btn-global-timbrar')?.addEventListener('click', timbrarGlobal)
+
+  // Modal global — al cambiar fechas o método reiniciar preview
+  ;['g-desde','g-hasta','g-metodo'].forEach(id => {
+    document.getElementById(id)?.addEventListener('change', () => {
+      document.getElementById('g-resumen').style.display = 'none'
+      document.getElementById('g-preview-table').style.display = 'none'
+      document.getElementById('g-preview-table').innerHTML = ''
+      document.getElementById('g-error').style.display = 'none'
+      document.getElementById('g-mixto-info').style.display = 'none'
+      document.getElementById('btn-global-timbrar').disabled = true
+      globalPreviewData = null
+    })
   })
 
   // ── Auto-facturar desde historial ──
