@@ -3,26 +3,24 @@
 //  src/modules/facturacion/facturacion.controller.js
 //  Rutas públicas — sin requireAuth (portal de autofactura)
 //  + función de timbrado interno via Facturapi
+//
+//  Fase 2 — Hardening de timbrado individual:
+//  - Se crea FacturaCfdi PENDIENTE_TIMBRADO + FacturaVenta ANTES de llamar a
+//    Facturapi (cierra la ventana de crash "sellado sin registro local").
+//  - Dual-write: ventaId (guard legacy/índice parcial) + FacturaVenta (fuente de verdad).
+//  - idempotency_key = jesha-factura-{id} en cada create (anti doble-sellado).
+//  - timbrarManual toma un CAS local (procesandoTimbrado) anti doble-clic concurrente.
+//  - Clasificación de error: VALIDACION (4xx, no sellado, reintentable) vs
+//    INCIERTO (timeout/5xx/409/sin status → pudo sellarse → revisión manual).
 // ════════════════════════════════════════════════════════════════════
 
 const prisma = require('../../lib/prisma')
 const resolverEmpresaScope = require('../../helpers/resolverEmpresaScope')
+const resolverDatosEmisor = require('../../helpers/resolverDatosEmisor')
+const { getFacturapi } = require('../../lib/facturapi')
 
 const TASA_IVA   = parseFloat(process.env.TASA_IVA || '0.16')
 const IVA_FACTOR = 1 + TASA_IVA
-
-let facturapi = null
-function getFacturapi() {
-  if (facturapi) return facturapi
-  const key = process.env.FACTURAPI_KEY
-  if (!key) {
-    console.warn('⚠️  FACTURAPI_KEY no configurada — timbrado desactivado')
-    return null
-  }
-  const Facturapi = require('facturapi').default
-  facturapi = new Facturapi(key)
-  return facturapi
-}
 
 const FORMA_PAGO_SAT = {
   EFECTIVO:      '01',
@@ -30,6 +28,16 @@ const FORMA_PAGO_SAT = {
   CREDITO:       '04',
   TRANSFERENCIA: '03'
 }
+
+const PERIODICIDAD_FACTURAPI = {
+  '01': 'day',
+  '02': 'week',
+  '03': 'fortnight',
+  '04': 'month',
+  '05': 'two_months'
+}
+
+const METODOS_GLOBALES = ['EFECTIVO', 'DEBITO', 'CREDITO', 'TRANSFERENCIA']
 
 // ════════════════════════════════════════════════════════════════════
 //  RFC PÚBLICO EN GENERAL — reglas del SAT para CFDI 4.0
@@ -43,6 +51,10 @@ const FORMA_PAGO_SAT = {
 //  Solución: cuando el RFC es genérico, forzar que el nombre NO sea
 //  exactamente "PUBLICO EN GENERAL" para que sea factura individual.
 //  También forzar régimen 616, uso S01, y CP del emisor.
+//
+//  NOTA Fase 4: este builder NO sirve para factura GLOBAL real (renombra
+//  "PUBLICO EN GENERAL" → "VENTA AL PUBLICO" y no agrega el nodo global).
+//  La global usará un builder separado.
 // ════════════════════════════════════════════════════════════════════
 const RFC_PUBLICO_GENERAL = 'XAXX010101000'
 
@@ -52,9 +64,10 @@ function esRfcGenerico(rfc) {
 
 // ════════════════════════════════════════════════════════════════════
 //  Construir objeto de invoice para Facturapi (DRY)
-//  Usado tanto en solicitarFactura como en timbrarManual
+//  Usado tanto en solicitarFactura como en timbrarManual.
+//  El idempotency_key se agrega en el call site (es campo top-level).
 // ════════════════════════════════════════════════════════════════════
-function buildInvoicePayload({ rfc, razonSocial, regimenFiscal, codigoPostal, usoCfdi, email, metodoPago, detalles }) {
+function buildInvoicePayload({ rfc, razonSocial, regimenFiscal, codigoPostal, usoCfdi, email, metodoPago, detalles, datosEmisor }) {
   const rfcUpper = rfc.trim().toUpperCase()
 
   const items = detalles.map(d => {
@@ -89,7 +102,7 @@ function buildInvoicePayload({ rfc, razonSocial, regimenFiscal, codigoPostal, us
     // Forzar datos correctos del SAT para RFC genérico
     regimenFiscal = '616'
     usoCfdi       = 'S01'
-    codigoPostal  = process.env.JESHA_CP_EMISOR || '98660'
+    codigoPostal  = datosEmisor.cp
     console.log(`📋 RFC genérico detectado — nombre: "${nombreFinal}", régimen: 616, uso: S01`)
   }
 
@@ -108,6 +121,107 @@ function buildInvoicePayload({ rfc, razonSocial, regimenFiscal, codigoPostal, us
   }
 
   return payload
+}
+
+function buildGlobalInvoicePayload({ ventas, metodoPago, periodicidad, mes, anio, datosEmisor }) {
+  const paymentForm = FORMA_PAGO_SAT[metodoPago]
+  if (!paymentForm) {
+    throw new Error(`metodoPago inválido para global: "${metodoPago}". Use uno de: ${METODOS_GLOBALES.join(', ')}`)
+  }
+
+  const totalRaw = ventas.reduce((sum, v) => sum + parseFloat(v.total), 0)
+  const total    = parseFloat(totalRaw.toFixed(2))
+  const subtotal = parseFloat((total / IVA_FACTOR).toFixed(2))
+  const iva      = parseFloat((total - subtotal).toFixed(2))
+
+  const items = ventas.map(v => ({
+    quantity: 1,
+    product: {
+      description: `Venta ${v.folio}`,
+      product_key: '01010101',
+      unit_key:    'ACT',
+      price:       parseFloat(v.total),
+      tax_included: true,
+      taxes: [{ type: 'IVA', rate: TASA_IVA, factor: 'Tasa', withholding: false }]
+    }
+  }))
+
+  const periodicityValue = PERIODICIDAD_FACTURAPI[periodicidad]
+  if (!periodicityValue) {
+    throw new Error(`periodicidad inválida: "${periodicidad}". Use 01-05.`)
+  }
+
+  return {
+    customer: {
+      legal_name: 'PUBLICO EN GENERAL',
+      tax_id:     RFC_PUBLICO_GENERAL,
+      tax_system: '616',
+      email:      undefined,
+      address:    { zip: datosEmisor.cp }
+    },
+    use:            'S01',
+    payment_form:   paymentForm,
+    payment_method: 'PUE',
+    items,
+    global: {
+      periodicity: periodicityValue,
+      months:      mes,
+      year:        parseInt(anio, 10)
+    }
+  }
+}
+
+exports.buildGlobalInvoicePayload = buildGlobalInvoicePayload
+exports.METODOS_GLOBALES = METODOS_GLOBALES
+exports.PERIODICIDAD_FACTURAPI = PERIODICIDAD_FACTURAPI
+
+// ════════════════════════════════════════════════════════════════════
+//  Helpers Fase 2
+// ════════════════════════════════════════════════════════════════════
+
+// Ventas asociadas a una factura: FacturaVenta (fuente de verdad) con FALLBACK
+// LEGACY a FacturaCfdi.ventaId para facturas creadas antes del backfill/retrofit.
+async function obtenerVentaIdsDeFactura(facturaId, ventaIdLegacy) {
+  const relaciones = await prisma.facturaVenta.findMany({
+    where: { facturaId },
+    select: { ventaId: true }
+  })
+  if (relaciones.length > 0) return relaciones.map(r => r.ventaId)
+  return ventaIdLegacy != null ? [ventaIdLegacy] : []
+}
+
+// Clasifica un error de Facturapi para decidir si es seguro reintentar.
+//  - VALIDACION: 4xx claro (payload rechazado, NO se selló) → reintentable corrigiendo.
+//  - INCIERTO:   timeout / 5xx / 409 / sin status → pudo sellarse → revisión manual.
+// Conservador a propósito: ante la duda, INCIERTO (nunca re-timbra a ciegas).
+function clasificarErrorTimbrado(err) {
+  const status = err?.status ?? err?.statusCode ?? err?.response?.status
+  const reintentables = [408, 409, 425, 429] // timeout/conflicto/rate-limit → inciertos
+  if (typeof status === 'number' && status >= 400 && status < 500 && !reintentables.includes(status)) {
+    return 'VALIDACION'
+  }
+  // El SDK de Facturapi puede lanzar Error plano sin status en errores 400.
+  // Si el mensaje es claramente de validación de campos, es seguro liberar lock.
+  const msg = (err?.message || '').toLowerCase()
+  if (/campo|obligatorio|inv[aá]lid|v[aá]lid|requerid|required/.test(msg)) {
+    return 'VALIDACION'
+  }
+  return 'INCIERTO'
+}
+
+// Calcula la idempotency_key a usar:
+//  - Sin correcciones: reutiliza la key existente (reconciliación segura por timeout),
+//    o asigna la base si aún no tiene.
+//  - Con correcciones tras un 4xx: NUEVA revisión (-r2, -r3...) para no toparse con
+//    una respuesta cacheada del intento anterior.
+function calcularIdempotencyKey(facturaId, keyActual, huboCorrecciones) {
+  const base = `jesha-factura-${facturaId}`
+  if (!huboCorrecciones) return keyActual || base
+  if (!keyActual) return base
+  const m = /-r(\d+)$/.exec(keyActual)
+  const n = m ? parseInt(m[1], 10) + 1 : 2
+  const raiz = keyActual.replace(/-r\d+$/, '')
+  return `${raiz}-r${n}`
 }
 
 const REGIMENES_FISCALES = [
@@ -222,7 +336,7 @@ exports.obtenerVentaPorToken = async (req, res) => {
 }
 
 // ════════════════════════════════════════════════════════════════════
-//  POST /facturar/api — solicitar + timbrar
+//  POST /facturar/api — solicitar + timbrar (crash-safe)
 // ════════════════════════════════════════════════════════════════════
 exports.solicitarFactura = async (req, res) => {
   try {
@@ -244,22 +358,20 @@ exports.solicitarFactura = async (req, res) => {
       include: { FacturaCfdi: true, DetalleVenta: { include: { Producto: true } } }
     })
 
-    if (!venta)        return res.status(404).json({ error: 'Venta no encontrada' })
+    if (!venta) return res.status(404).json({ error: 'Venta no encontrada' })
 
-    // venta.FacturaCfdi ahora es un array (relación 1-a-muchos). Si existe una
-    // factura viva (no cancelada), la venta ya está facturada y se bloquea.
-    const facturaActiva243 = venta.FacturaCfdi.find(f => f.estado !== 'CANCELADA')
-    if (facturaActiva243) return res.status(409).json({ error: 'Esta venta ya fue facturada.' })
-
-    // NOTA: Ya NO se borra el registro CANCELADA. El índice parcial en BD
-    // (FacturaCfdi_ventaId_viva_key WHERE estado <> 'CANCELADA') permite que
-    // coexistan N facturas canceladas históricas + 1 viva por venta. La nueva
-    // factura se crea sin conflicto y el historial fiscal se conserva íntegro.
+    // Factura viva (no cancelada) → ya facturada
+    const facturaActiva = venta.FacturaCfdi.find(f => f.estado !== 'CANCELADA')
+    if (facturaActiva) return res.status(409).json({ error: 'Esta venta ya fue facturada.' })
 
     const empresaId = venta.empresaId
     if (venta.estado === 'CANCELADA') return res.status(400).json({ error: 'Venta cancelada.' })
     if (venta.facturaEstado === 'BLOQUEADA') return res.status(400).json({ error: 'Venta no facturable en línea.' })
     if (new Date() > new Date(venta.facturaLimite)) return res.status(400).json({ error: 'Plazo de facturación vencido.' })
+    // Defensa adicional al check de factura viva: solo se factura si está DISPONIBLE.
+    if (venta.facturaEstado !== 'DISPONIBLE') {
+      return res.status(409).json({ error: 'Esta venta tiene un proceso de factura en curso. Intenta más tarde.' })
+    }
 
     const total        = parseFloat(venta.total)
     const subtotal     = parseFloat((total / IVA_FACTOR).toFixed(2))
@@ -267,91 +379,157 @@ exports.solicitarFactura = async (req, res) => {
     const rfcUpper     = rfc.trim().toUpperCase()
     const emailTrimmed = email.trim()
 
+    const datosFactura = {
+      empresaId,
+      ventaId: venta.id, clienteId: venta.clienteId || null,
+      rfcReceptor: rfcUpper, nombreReceptor: razonSocial.trim(),
+      cpReceptor: codigoPostal.trim(), regimenFiscal, usoCfdi,
+      emailReceptor: emailTrimmed,
+      lugarExpedicion: process.env.JESHA_CP_EMISOR || '98660',
+      subtotal, iva, total
+    }
+
+    // ── 1) Crear PENDIENTE + FacturaVenta + bloquear venta (transacción corta) ──
+    // El índice parcial sobre ventaId garantiza una sola factura viva por venta:
+    // si otra solicitud ganó la carrera, el create lanza P2002 → 409.
+    let factura
+    try {
+      factura = await prisma.$transaction(async (tx) => {
+        const f = await tx.facturaCfdi.create({
+          data: {
+            ...datosFactura,
+            estado: 'PENDIENTE_TIMBRADO',
+            tipoFactura: 'INDIVIDUAL',
+            procesandoTimbrado: true,
+            procesandoTimbradoEn: new Date(),
+            idempotencyKey: null
+          }
+        })
+        await tx.facturaVenta.create({ data: { facturaId: f.id, ventaId: venta.id } })
+        await tx.venta.update({
+          where: { id: venta.id },
+          data: { facturaEstado: 'PENDIENTE_TIMBRADO', procesoFacturaId: f.id }
+        })
+        // idempotencyKey determinística a partir del id
+        return tx.facturaCfdi.update({
+          where: { id: f.id },
+          data: { idempotencyKey: `jesha-factura-${f.id}` }
+        })
+      })
+    } catch (e) {
+      if (e?.code === 'P2002') {
+        return res.status(409).json({ error: 'Esta venta ya tiene una factura en proceso o emitida.' })
+      }
+      throw e
+    }
+
     const fp = getFacturapi()
 
-    if (fp) {
-      try {
-        // ── Usar helper centralizado que incluye global_information si aplica ──
-        const invoicePayload = buildInvoicePayload({
-          rfc: rfcUpper,
-          razonSocial,
-          regimenFiscal,
-          codigoPostal,
-          usoCfdi,
-          email: emailTrimmed,
-          metodoPago: venta.metodoPago,
-          detalles: venta.DetalleVenta
-        })
+    // Sin Facturapi: queda PENDIENTE_TIMBRADO para timbrado manual.
+    if (!fp) {
+      await prisma.facturaCfdi.update({
+        where: { id: factura.id },
+        data: { procesandoTimbrado: false, procesandoTimbradoEn: null }
+      })
+      console.log(`📋 Factura PENDIENTE_TIMBRADO creada (sin Facturapi): ${factura.id} | ${venta.folio} | ${rfcUpper}`)
+      return res.status(202).json({
+        success: true, timbrado: false,
+        mensaje: `Solicitud de factura recibida. Te enviaremos la factura a ${emailTrimmed} cuando sea procesada.`,
+        facturaId: factura.id
+      })
+    }
 
-        const invoice = await fp.invoices.create(invoicePayload)
+    // ── 2) Timbrar con idempotency_key (fuera de transacción) ──
+    const idempotencyKey = `jesha-factura-${factura.id}`
+    let invoice = null
+    let selladoOk = false
+    const datosEmisor = resolverDatosEmisor(empresaId)
+    try {
+      invoice = await fp.invoices.create({
+        ...buildInvoicePayload({
+          rfc: rfcUpper, razonSocial, regimenFiscal, codigoPostal,
+          usoCfdi, email: emailTrimmed, metodoPago: venta.metodoPago,
+          detalles: venta.DetalleVenta, datosEmisor
+        }),
+        idempotency_key: idempotencyKey
+      })
+      selladoOk = true
 
-        const factura = await prisma.facturaCfdi.create({
+      // ── 3) Éxito → TIMBRADA + venta FACTURADA ──
+      await prisma.$transaction([
+        prisma.facturaCfdi.update({
+          where: { id: factura.id },
           data: {
-            empresaId,
-            ventaId: venta.id, clienteId: venta.clienteId || null,
-            rfcReceptor: rfcUpper, nombreReceptor: razonSocial.trim(),
-            cpReceptor: codigoPostal.trim(), regimenFiscal, usoCfdi,
-            emailReceptor: emailTrimmed,
-            lugarExpedicion: process.env.JESHA_CP_EMISOR || '98660',
-            subtotal, iva, total,
-            folioFiscal: invoice.uuid,
-            facturapiId: invoice.id,
-            estado: 'TIMBRADA', timbradaEn: new Date()
+            folioFiscal: invoice.uuid, facturapiId: invoice.id,
+            estado: 'TIMBRADA', timbradaEn: new Date(),
+            procesandoTimbrado: false, procesandoTimbradoEn: null, ultimoErrorTimbrado: null
           }
+        }),
+        prisma.venta.update({
+          where: { id: venta.id },
+          data: { facturaEstado: 'FACTURADA', procesoFacturaId: null }
         })
+      ])
 
-        await prisma.venta.update({ where: { id: venta.id }, data: { facturaEstado: 'FACTURADA' } })
+      try { await fp.invoices.sendByEmail(invoice.id) } catch (e) { console.warn('⚠️  No se pudo enviar email:', e.message) }
 
-        // Enviar email con PDF+XML automáticamente
-        try { await fp.invoices.sendByEmail(invoice.id) } catch (e) { console.warn('⚠️  No se pudo enviar email:', e.message) }
+      console.log(`✅ CFDI timbrado: ${invoice.uuid} | ${venta.folio} | ${rfcUpper}`)
+      return res.json({
+        success: true, timbrado: true,
+        mensaje: `Tu factura fue emitida exitosamente. Te enviaremos el XML y PDF a ${emailTrimmed}.`,
+        uuid: invoice.uuid, facturaId: factura.id
+      })
 
-        console.log(`✅ CFDI timbrado: ${invoice.uuid} | ${venta.folio} | ${rfcUpper}`)
+    } catch (fpErr) {
+      console.error('❌ Error Facturapi (solicitarFactura):', fpErr.message)
 
-        return res.json({
-          success: true, timbrado: true,
-          mensaje: `Tu factura fue emitida exitosamente. Te enviaremos el XML y PDF a ${emailTrimmed}.`,
-          uuid: invoice.uuid, facturaId: factura.id
-        })
-
-      } catch (fpErr) {
-        console.error('❌ Error Facturapi:', fpErr.message)
-        await prisma.facturaCfdi.create({
+      if (selladoOk) {
+        // Selló pero falló el guardado local → NO liberar el flag; queda para reconciliación.
+        await prisma.facturaCfdi.update({
+          where: { id: factura.id },
           data: {
-            empresaId,
-            ventaId: venta.id, clienteId: venta.clienteId || null,
-            rfcReceptor: rfcUpper, nombreReceptor: razonSocial.trim(),
-            cpReceptor: codigoPostal.trim(), regimenFiscal, usoCfdi,
-            emailReceptor: emailTrimmed,
-            lugarExpedicion: process.env.JESHA_CP_EMISOR || '98660',
-            subtotal, iva, total, estado: 'PENDIENTE_TIMBRADO'
+            folioFiscal: invoice?.uuid ?? undefined,
+            facturapiId: invoice?.id ?? undefined,
+            ultimoErrorTimbrado: ('Sellado OK, falló persistencia local: ' + (fpErr.message || '')).slice(0, 500)
           }
+        }).catch(() => {})
+        return res.status(202).json({
+          success: true, timbrado: false, requiereRevision: true,
+          mensaje: `Tu factura se está procesando. Te la enviaremos a ${emailTrimmed} en breve.`,
+          facturaId: factura.id
         })
+      }
+
+      const tipo = clasificarErrorTimbrado(fpErr)
+      if (tipo === 'VALIDACION') {
+        // No se selló → queda PENDIENTE, se libera el flag; la venta sigue bloqueada
+        // (PENDIENTE_TIMBRADO + procesoFacturaId) para corrección/reintento manual.
+        await prisma.facturaCfdi.update({
+          where: { id: factura.id },
+          data: { procesandoTimbrado: false, procesandoTimbradoEn: null, ultimoErrorTimbrado: (fpErr.message || '').slice(0, 500) }
+        }).catch(() => {})
         return res.status(202).json({
           success: true, timbrado: false,
           mensaje: `Solicitud recibida. Hubo un problema al timbrar — procesaremos tu factura manualmente y te la enviaremos a ${emailTrimmed} a la brevedad.`,
-          error_tecnico: fpErr.message
+          error_tecnico: fpErr.message, facturaId: factura.id
         })
       }
+
+      // INCIERTO → NO liberar el flag (procesandoTimbrado sigue true) → revisión manual.
+      await prisma.facturaCfdi.update({
+        where: { id: factura.id },
+        data: { ultimoErrorTimbrado: (fpErr.message || '').slice(0, 500) }
+      }).catch(() => {})
+      return res.status(202).json({
+        success: true, timbrado: false, requiereRevision: true,
+        mensaje: `Solicitud recibida. Estamos verificando el timbrado y te enviaremos la factura a ${emailTrimmed}.`,
+        facturaId: factura.id
+      })
     }
 
-    // Sin Facturapi configurada
-    const factura = await prisma.facturaCfdi.create({
-      data: {
-        empresaId,
-        ventaId: venta.id, clienteId: venta.clienteId || null,
-        rfcReceptor: rfcUpper, nombreReceptor: razonSocial.trim(),
-        cpReceptor: codigoPostal.trim(), regimenFiscal, usoCfdi,
-        emailReceptor: emailTrimmed,
-        lugarExpedicion: process.env.JESHA_CP_EMISOR || '98660',
-        subtotal, iva, total, estado: 'PENDIENTE_TIMBRADO'
-      }
-    })
-    console.log(`📋 Factura PENDIENTE_TIMBRADO creada: ${factura.id} | ${venta.folio} | ${rfcUpper}`)
-    res.json({ success: true, timbrado: false, mensaje: `Solicitud de factura recibida. Te enviaremos la factura a ${emailTrimmed} cuando sea procesada.`, facturaId: factura.id })
   } catch (err) {
     console.error('❌ Error solicitarFactura:', err)
-    // Portal público: 500 fijo intencional. No usa resolverEmpresaScope; los
-    // errores de Facturapi del happy path se manejan en su propio try/catch.
+    // Portal público: 500 fijo intencional.
     res.status(500).json({ error: 'Error al procesar la solicitud: ' + err.message })
   }
 }
@@ -365,10 +543,7 @@ exports.timbrarManual = async (req, res) => {
     const whereScope = scope.modo === 'GLOBAL' ? {} : { empresaId: scope.empresaId }
 
     const id = parseInt(req.params.id)
-    const factura = await prisma.facturaCfdi.findFirst({
-      where: { id, ...whereScope },
-      include: { Venta: { include: { DetalleVenta: { include: { Producto: true } } } } }
-    })
+    const factura = await prisma.facturaCfdi.findFirst({ where: { id, ...whereScope } })
 
     if (!factura) return res.status(404).json({ error: 'Factura no encontrada' })
     if (factura.estado !== 'PENDIENTE_TIMBRADO') return res.status(400).json({ error: `Estado actual: ${factura.estado}. Solo PENDIENTE_TIMBRADO.` })
@@ -376,71 +551,149 @@ exports.timbrarManual = async (req, res) => {
     const fp = getFacturapi()
     if (!fp) return res.status(503).json({ error: 'Facturapi no configurada. Agrega FACTURAPI_KEY al .env' })
 
-    // ── Aceptar datos corregidos del body (opcional) ──
-    const {
-      rfc:           nuevoRfc,
-      razonSocial:   nuevaRazonSocial,
-      regimenFiscal: nuevoRegimen,
-      codigoPostal:  nuevoCp,
-      usoCfdi:       nuevoUso,
-      email:         nuevoEmail
-    } = req.body || {}
-
-    const updates = {}
-    if (nuevoRfc?.trim())          updates.rfcReceptor   = nuevoRfc.trim().toUpperCase()
-    if (nuevaRazonSocial?.trim())  updates.nombreReceptor = nuevaRazonSocial.trim()
-    if (nuevoRegimen)              updates.regimenFiscal  = nuevoRegimen
-    if (nuevoCp?.trim())           updates.cpReceptor     = nuevoCp.trim()
-    if (nuevoUso)                  updates.usoCfdi        = nuevoUso
-    if (nuevoEmail?.trim())        updates.emailReceptor  = nuevoEmail.trim()
-
-    if (Object.keys(updates).length > 0) {
-      await prisma.facturaCfdi.update({ where: { id, ...whereScope }, data: updates })
-      console.log(`📝 Factura ${id}: datos corregidos antes de timbrar`)
+    // ── CAS local: tomar el lock de timbrado (anti doble-clic concurrente) ──
+    // updateMany con where restrictivo es atómico: solo un request gana.
+    const lock = await prisma.facturaCfdi.updateMany({
+      where: { id, ...whereScope, estado: 'PENDIENTE_TIMBRADO', procesandoTimbrado: false },
+      data: { procesandoTimbrado: true, procesandoTimbradoEn: new Date(), ultimoErrorTimbrado: null }
+    })
+    if (lock.count !== 1) {
+      return res.status(409).json({ error: 'La factura ya se está timbrando o quedó marcada para revisión manual de un intento previo.' })
     }
 
-    // Refrescar datos (ya corregidos si hubo cambios)
-    const facturaActualizada = await prisma.facturaCfdi.findFirst({
-      where: { id, ...whereScope },
-      include: { Venta: { include: { DetalleVenta: { include: { Producto: true } } } } }
-    })
+    let invoice = null
+    let selladoOk = false
+    try {
+      // ── Correcciones opcionales del body ──
+      const {
+        rfc:           nuevoRfc,
+        razonSocial:   nuevaRazonSocial,
+        regimenFiscal: nuevoRegimen,
+        codigoPostal:  nuevoCp,
+        usoCfdi:       nuevoUso,
+        email:         nuevoEmail
+      } = req.body || {}
 
-    const venta = facturaActualizada.Venta
+      const updates = {}
+      if (nuevoRfc?.trim())          updates.rfcReceptor    = nuevoRfc.trim().toUpperCase()
+      if (nuevaRazonSocial?.trim())  updates.nombreReceptor = nuevaRazonSocial.trim()
+      if (nuevoRegimen)              updates.regimenFiscal  = nuevoRegimen
+      if (nuevoCp?.trim())           updates.cpReceptor     = nuevoCp.trim()
+      if (nuevoUso)                  updates.usoCfdi        = nuevoUso
+      if (nuevoEmail?.trim())        updates.emailReceptor  = nuevoEmail.trim()
+      const huboCorrecciones = Object.keys(updates).length > 0
 
-    // ── Usar helper centralizado que incluye global_information si aplica ──
-    const invoicePayload = buildInvoicePayload({
-      rfc:           facturaActualizada.rfcReceptor,
-      razonSocial:   facturaActualizada.nombreReceptor,
-      regimenFiscal: facturaActualizada.regimenFiscal,
-      codigoPostal:  facturaActualizada.cpReceptor,
-      usoCfdi:       facturaActualizada.usoCfdi,
-      email:         facturaActualizada.emailReceptor,
-      metodoPago:    venta.metodoPago,
-      detalles:      venta.DetalleVenta
-    })
+      // idempotency_key: reusa por timeout; nueva revisión (-r2...) si hay correcciones.
+      // NOTA: una pendiente legacy (idempotencyKey NULL) pudo haberse sellado SIN key
+      // en un timeout viejo; no es reconciliable por key. Hoy hay 0 de estas, pero el
+      // endurecimiento (exigir confirmación explícita) queda pendiente.
+      const nuevaKey = calcularIdempotencyKey(factura.id, factura.idempotencyKey, huboCorrecciones)
+      if (nuevaKey !== factura.idempotencyKey) updates.idempotencyKey = nuevaKey
 
-    const invoice = await fp.invoices.create(invoicePayload)
-
-    const actualizada = await prisma.facturaCfdi.update({
-      where: { id, ...whereScope },
-      data: {
-        folioFiscal: invoice.uuid, facturapiId: invoice.id,
-        estado: 'TIMBRADA', timbradaEn: new Date()
+      if (Object.keys(updates).length > 0) {
+        await prisma.facturaCfdi.update({ where: { id, ...whereScope }, data: updates })
+        if (huboCorrecciones) console.log(`📝 Factura ${id}: datos corregidos antes de timbrar`)
       }
-    })
-    // Defensa en profundidad: la venta se actualiza con el mismo scope.
-    await prisma.venta.updateMany({
-      where: { id: venta.id, ...whereScope },
-      data: { facturaEstado: 'FACTURADA' }
-    })
 
-    // Enviar email
-    try { await fp.invoices.sendByEmail(invoice.id) } catch (e) { console.warn('⚠️  No se pudo enviar email:', e.message) }
+      // Releer factura (ya con correcciones / key definitiva)
+      const f = await prisma.facturaCfdi.findFirst({ where: { id, ...whereScope } })
 
-    console.log(`✅ Timbrado manual: ${invoice.uuid} | factura ${id}`)
-    res.json({ success: true, uuid: invoice.uuid, data: actualizada })
+      // ── Resolver venta(s) vía FacturaVenta (+ fallback legacy) ──
+      const ventaIds = await obtenerVentaIdsDeFactura(f.id, f.ventaId)
+      if (ventaIds.length === 0) {
+        await prisma.facturaCfdi.update({ where: { id, ...whereScope }, data: { procesandoTimbrado: false, procesandoTimbradoEn: null } }).catch(() => {})
+        return res.status(409).json({ error: 'La factura no tiene ventas asociadas.' })
+      }
+      if (ventaIds.length > 1) {
+        // Fase 2 = individual. El retimbrado de conjunta llega en Fase 3 (service).
+        await prisma.facturaCfdi.update({ where: { id, ...whereScope }, data: { procesandoTimbrado: false, procesandoTimbradoEn: null } }).catch(() => {})
+        return res.status(400).json({ error: 'Retimbrado de factura conjunta no disponible en esta fase.' })
+      }
+
+      const venta = await prisma.venta.findUnique({
+        where: { id: ventaIds[0] },
+        include: { DetalleVenta: { include: { Producto: true } } }
+      })
+      if (!venta) {
+        await prisma.facturaCfdi.update({ where: { id, ...whereScope }, data: { procesandoTimbrado: false, procesandoTimbradoEn: null } }).catch(() => {})
+        return res.status(409).json({ error: 'La venta asociada no existe.' })
+      }
+
+      // ── Timbrar con idempotency_key ──
+      const datosEmisor = resolverDatosEmisor(scope.empresaId)
+      invoice = await fp.invoices.create({
+        ...buildInvoicePayload({
+          rfc: f.rfcReceptor, razonSocial: f.nombreReceptor, regimenFiscal: f.regimenFiscal,
+          codigoPostal: f.cpReceptor, usoCfdi: f.usoCfdi, email: f.emailReceptor,
+          metodoPago: venta.metodoPago, detalles: venta.DetalleVenta, datosEmisor
+        }),
+        idempotency_key: f.idempotencyKey
+      })
+      selladoOk = true
+
+      // ── Éxito ──
+      const [actualizada] = await prisma.$transaction([
+        prisma.facturaCfdi.update({
+          where: { id, ...whereScope },
+          data: {
+            folioFiscal: invoice.uuid, facturapiId: invoice.id,
+            estado: 'TIMBRADA', timbradaEn: new Date(),
+            procesandoTimbrado: false, procesandoTimbradoEn: null, ultimoErrorTimbrado: null
+          }
+        }),
+        prisma.venta.update({
+          where: { id: venta.id },
+          data: { facturaEstado: 'FACTURADA', procesoFacturaId: null }
+        })
+      ])
+
+      try { await fp.invoices.sendByEmail(invoice.id) } catch (e) { console.warn('⚠️  No se pudo enviar email:', e.message) }
+
+      console.log(`✅ Timbrado manual: ${invoice.uuid} | factura ${id}`)
+      return res.json({ success: true, uuid: invoice.uuid, data: actualizada, cfdi: invoice })
+
+    } catch (fpErr) {
+      console.error('❌ Error timbrarManual:', fpErr.message)
+
+      if (selladoOk) {
+        // Selló pero falló el guardado local → NO liberar el lock; revisión manual.
+        await prisma.facturaCfdi.update({
+          where: { id, ...whereScope },
+          data: {
+            folioFiscal: invoice?.uuid ?? undefined,
+            facturapiId: invoice?.id ?? undefined,
+            ultimoErrorTimbrado: ('Sellado OK, falló persistencia local: ' + (fpErr.message || '')).slice(0, 500)
+          }
+        }).catch(() => {})
+        return res.status(502).json({
+          error: 'El CFDI se selló pero falló el guardado local. Quedó marcada para revisión; verifícala en Facturapi antes de reintentar.',
+          requiereRevision: true
+        })
+      }
+
+      const tipo = clasificarErrorTimbrado(fpErr)
+      if (tipo === 'VALIDACION') {
+        // No se selló → liberar lock; queda PENDIENTE para corregir y reintentar.
+        await prisma.facturaCfdi.update({
+          where: { id, ...whereScope },
+          data: { procesandoTimbrado: false, procesandoTimbradoEn: null, ultimoErrorTimbrado: (fpErr.message || '').slice(0, 500) }
+        }).catch(() => {})
+        return res.status(422).json({ error: 'Error de validación al timbrar: ' + fpErr.message, requiereCorreccion: true })
+      }
+
+      // INCIERTO → NO liberar lock (procesandoTimbrado sigue true) → revisión manual.
+      await prisma.facturaCfdi.update({
+        where: { id, ...whereScope },
+        data: { ultimoErrorTimbrado: (fpErr.message || '').slice(0, 500) }
+      }).catch(() => {})
+      return res.status(502).json({
+        error: 'Resultado de timbrado desconocido. La factura quedó marcada para revisión manual; no reintentes hasta verificar en Facturapi.',
+        requiereRevision: true
+      })
+    }
+
   } catch (err) {
-    console.error('❌ Error timbrarManual:', err)
+    console.error('❌ Error timbrarManual (externo):', err)
     res.status(err.expose ? (err.status || 500) : 500).json({ error: 'Error al timbrar: ' + err.message })
   }
 }
