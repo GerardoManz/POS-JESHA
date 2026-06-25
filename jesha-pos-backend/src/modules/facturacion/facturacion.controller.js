@@ -362,7 +362,12 @@ exports.solicitarFactura = async (req, res) => {
 
     // Factura viva (no cancelada) → ya facturada
     const facturaActiva = venta.FacturaCfdi.find(f => f.estado !== 'CANCELADA')
-    if (facturaActiva) return res.status(409).json({ error: 'Esta venta ya fue facturada.' })
+    if (facturaActiva) {
+      return res.status(409).json({
+        error: 'Esta venta ya fue facturada.',
+        uuid: facturaActiva.folioFiscal || null
+      })
+    }
 
     const empresaId = venta.empresaId
     if (venta.estado === 'CANCELADA') return res.status(400).json({ error: 'Venta cancelada.' })

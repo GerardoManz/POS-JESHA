@@ -429,10 +429,11 @@ function mostrar(id) {
 }
 
 function mostrarError(razon, mensaje) {
-  const iconos = { YA_FACTURADA:'🧾', TIEMPO_EXPIRADO:'⏰', MONTO_EFECTIVO:'💵' }
+  const iconos = { YA_FACTURADA:'🧾', EN_PROCESO:'⏳', TIEMPO_EXPIRADO:'⏰', MONTO_EFECTIVO:'💵' }
   document.getElementById('error-icono').textContent = iconos[razon] || '⚠️'
   document.getElementById('error-titulo').textContent = {
     YA_FACTURADA:    'Ya facturada',
+    EN_PROCESO:      'Factura en proceso',
     TIEMPO_EXPIRADO: 'Plazo vencido',
     MONTO_EFECTIVO:  'No aplica facturación en línea'
   }[razon] || 'No disponible'
@@ -578,6 +579,15 @@ document.getElementById('fact-form').addEventListener('submit', async function(e
       body: JSON.stringify(body)
     })
     const d = await r.json()
+    if (r.status === 409) {
+      const yaFacturada = !!d.uuid
+      const msg = yaFacturada
+        ? `${d.error || 'Esta venta ya fue facturada.'}\nFolio fiscal: ${d.uuid}`
+        : (d.error || 'Esta venta ya tiene una factura en proceso. Revisa tu correo o acude a mostrador.')
+      mostrarError(yaFacturada ? 'YA_FACTURADA' : 'EN_PROCESO', msg)
+      return
+    }
+
     if (!r.ok) throw new Error(d.error || 'Error al procesar la solicitud')
     document.getElementById('exito-desc').textContent = d.mensaje
     mostrar('estado-exito')

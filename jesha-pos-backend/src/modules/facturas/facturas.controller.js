@@ -489,7 +489,7 @@ exports.timbrarGlobal = async (req, res) => {
       const subtotal = parseFloat((total / 1.16).toFixed(2))
       const iva      = parseFloat((total - subtotal).toFixed(2))
 
-      const [, ...ventaUpdates] = [
+      await prisma.$transaction([
         prisma.facturaCfdi.update({
           where: { id: factura.id },
           data: {
@@ -505,8 +505,7 @@ exports.timbrarGlobal = async (req, res) => {
             data: { facturaEstado: 'FACTURADA', procesoFacturaId: null }
           })
         )
-      ]
-      await prisma.$transaction(ventaUpdates)
+      ])
 
       if (datosEmisor.email) {
         try { await fp.invoices.sendByEmail(invoice.id, { email: datosEmisor.email }) } catch (e) { console.warn('⚠️  Email global:', e.message) }
