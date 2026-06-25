@@ -25,7 +25,7 @@ Ferreteria JESHA/
 ├── dashboard.js, dashboard.css                           # Main dashboard
 ├── jesha-pos-backend/
 │   ├── src/
-│   │   ├── app.js                                        # Express routes (public + protected)
+│   │   ├── app.js                                        # Express routes (public + protected) + /health + /health/db
 │   │   ├── server.js                                      # Server entry point
 │   │   ├── helpers/
 │   │   │   └── getEmpresaId.js                           # Tenant extraction from JWT (all creates)
@@ -457,7 +457,9 @@ FRONTEND_URL=...
 | File | Purpose |
 |------|---------|
 | `jesha-pos-backend/prisma/schema.prisma` | Complete DB schema with all models/enums + multi-tenant |
-| `jesha-pos-backend/src/app.js` | Express app — all API routes |
+| `jesha-pos-backend/src/lib/prisma.js` | Prisma client con pool config (max, connectionTimeoutMillis, idleTimeoutMillis, maxLifetimeSeconds) |
+| `jesha-pos-backend/src/server.js` | Server entry point con crash handlers (unhandledRejection, uncaughtException) + HTTP timeouts |
+| `jesha-pos-backend/src/app.js` | Express routes (public + protected) + /health + /health/db |
 | `jesha-pos-backend/src/helpers/getEmpresaId.js` | Tenant extraction from JWT (all creates use it) |
 | `jesha-pos-backend/src/middlewares/auth.middleware.js` | JWT validation + user active check + role guards |
 | `jesha-pos-backend/src/utils/roles.js` | Role hierarchy (`JERARQUIA_ROLES`, `puedeGestionar`) |
@@ -689,6 +691,92 @@ const resolverSucursalId = require('../sucursal/sucursal.helper')
 
 ---
 
+## Connection Pool & Stability (2026-06-25)
+
+### Problema: Congelamiento diario a las 4:30 PM
+
+El sistema se congelaba todos los días ~4:30 PM (16:30). UptimeRobot no lo detectaba porque el endpoint `/health` nunca tocaba la base de datos. La causa raíz era un **leak del pool de conexiones de PostgreSQL**: conexiones se acumulaban gradualmente durante ~8 horas de operación hasta agotar las 10 disponibles (default de `pg-pool`). Sin `connectionTimeoutMillis`, las nuevas requests esperaban **indefinidamente** por una conexión, provocando el freeze total.
+
+### Fix A: Pool de Prisma (`src/lib/prisma.js`)
+
+```js
+const adapter = new PrismaPg({
+  connectionString: process.env.DATABASE_URL,
+  max: 10,                        // explícito (default)
+  connectionTimeoutMillis: 10000, // 10s máx esperando conexión → error en vez de freeze
+  idleTimeoutMillis: 30000,       // 30s inactiva → se cierra (default era 10s, muy agresivo)
+  maxLifetimeSeconds: 3600,       // 1h máx por conexión → reciclado forzado
+})
+```
+
+| Parámetro | Default antiguo | Valor nuevo | Efecto |
+|-----------|----------------|-------------|--------|
+| `connectionTimeoutMillis` | `0` (infinito) | `10000` (10s) | Si el pool está lleno, error en 10s en vez de colgarse para siempre |
+| `idleTimeoutMillis` | `10000` (10s) | `30000` (30s) | Conexiones inactivas sobreviven 30s (evita crear/destruir constantemente) |
+| `maxLifetimeSeconds` | `0` (sin límite) | `3600` (1h) | Cada conexión se recicla cada hora → previene acumulación de leaks |
+
+### Fix B: Crash handlers + HTTP timeouts (`src/server.js`)
+
+```js
+const server = app.listen(PORT, '0.0.0.0', () => { ... })
+
+server.keepAliveTimeout = 65000    // > que el timeout de Render (55s)
+server.headersTimeout = 66000      // > que keepAliveTimeout
+
+process.on('unhandledRejection', (reason) => {
+  console.error('UNHANDLED REJECTION:', reason)
+})
+
+process.on('uncaughtException', (err) => {
+  console.error('UNCAUGHT EXCEPTION:', err)
+})
+```
+
+- **`keepAliveTimeout`/`headersTimeout`**: evitan que el proxy de Render cierre la conexión antes que el servidor, causando `ECONNRESET`.
+- **`unhandledRejection`**: promesa rechazada sin `.catch()` → antes crash silencioso, ahora loguea y sigue vivo.
+- **`uncaughtException`**: excepción no capturada → antes mataba el proceso, ahora loguea y mantiene el proceso (el event loop puede quedar inestable, pero es preferible a perder todo el servicio sin diagnóstico).
+
+### Fix C: Health check con BD (`src/app.js`)
+
+```js
+app.get('/health/db', async (req, res) => {
+  try {
+    const prisma = require('./lib/prisma')
+    await prisma.$queryRaw`SELECT 1`
+    res.json({ status: 'ok', db: 'connected', timestamp: new Date().toISOString() })
+  } catch (err) {
+    console.error('Health/DB error:', err.message)
+    res.status(503).json({ status: 'error', db: 'disconnected', error: err.message })
+  }
+})
+```
+
+- **`GET /health`**: sin cambios, no toca BD (útil para saber si el proceso Node vive).
+- **`GET /health/db`**: hace un `SELECT 1` real. Si la BD no responde → `503`. **Configurar UptimeRobot para monitorear este endpoint**, no `/health`.
+
+### Fix D: Timeouts a nivel PostgreSQL (pgAdmin + DBeaver)
+
+Ejecutar **una sola vez** en local (pgAdmin) y producción (DBeaver):
+
+```sql
+ALTER DATABASE jesha_db SET statement_timeout = '30s';
+ALTER DATABASE jesha_db SET idle_in_transaction_session_timeout = '60s';
+```
+
+Verificación:
+
+```sql
+SELECT d.datname, s.setconfig
+FROM pg_db_role_setting s
+JOIN pg_database d ON d.oid = s.setdatabase
+WHERE d.datname = 'jesha_db';
+```
+
+- **`statement_timeout = 30s`**: PostgreSQL mata cualquier query que exceda 30 segundos. Previene que una consulta mal optimizada bloquee una conexión del pool indefinidamente.
+- **`idle_in_transaction_session_timeout = 60s`**: mata conexiones con transacción abierta inactiva por más de 60s. Previene el leak causado por `BEGIN` sin `COMMIT`/`ROLLBACK`.
+
+---
+
 ## Files Fixed (Prisma 7.4 compatibility)
 
 **2026-05-14 - PascalCase en data: de controllers**:
@@ -723,6 +811,11 @@ const resolverSucursalId = require('../sucursal/sucursal.helper')
 - `sucursal/sucursal.routes.js` — nuevo: router con `GET /` → `listar`
 - `app.js` — montada ruta `/sucursales` entre devoluciones y precios
 - `sidebar.js` — `apiFetch`: `res.json().catch(() => null)` antes de validar `res.ok` (evita `Unexpected token '<'` con respuestas HTML)
+
+**2026-06-25 - Connection pool + stability guards**:
+- `src/lib/prisma.js` — pool config: connectionTimeoutMillis=10s, idleTimeoutMillis=30s, maxLifetimeSeconds=1h
+- `src/server.js` — crash handlers (unhandledRejection, uncaughtException) + HTTP timeouts (keepAliveTimeout=65s, headersTimeout=66s)
+- `src/app.js` — nuevo endpoint GET /health/db (SELECT 1 real, responde 503 si BD no accesible)
 
 ### Notes
 - **dashboard.js**: `producto.InventarioSucursal` (PascalCase), NOT `producto.inventarios`
@@ -773,6 +866,12 @@ const resolverSucursalId = require('../sucursal/sucursal.helper')
 ### punto-venta — Turno default
 - **Bug**: Valor default del turno era 0 en lugar de 2000
 - **Fix**: `punto-venta.html:210` y `punto-venta.js:257` → `value="2000"`
+
+### prisma.js + server.js + app.js — Connection pool exhaust diario (freeze 4:30 PM)
+- **Bug**: Pool de `pg-pool` sin `connectionTimeoutMillis` → leaks graduales durante ~8h agotan las 10 conexiones → requests esperan infinitamente → freeze total
+- **Bug 2**: `/health` no tocaba BD → UptimeRobot nunca detectaba el colapso
+- **Bug 3**: Sin `unhandledRejection`/`uncaughtException` → crash silencioso en producción
+- **Fix**: Pool con timeouts explícitos + crash handlers + `/health/db` + `statement_timeout` a nivel PostgreSQL
 
 ## API Endpoints Testeados (2026-05-13)
 

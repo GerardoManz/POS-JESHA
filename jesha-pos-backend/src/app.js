@@ -88,8 +88,19 @@ app.use('/precios',     requireAuth, requireRole('PRECIOS', 'ADMIN_SUCURSAL', 'S
 // ── Imágenes de productos ──
 app.use('/imagenes', express.static(path.join(__dirname, 'public/imagenes')))
 
-// ── Health check ──
+// ── Health checks ──
 app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }))
+
+app.get('/health/db', async (req, res) => {
+  try {
+    const prisma = require('./lib/prisma')
+    await prisma.$queryRaw`SELECT 1`
+    res.json({ status: 'ok', db: 'connected', timestamp: new Date().toISOString() })
+  } catch (err) {
+    console.error('Health/DB error:', err.message)
+    res.status(503).json({ status: 'error', db: 'disconnected', error: err.message })
+  }
+})
 
 // ── Error handler ──
 app.use((err, req, res, next) => {
