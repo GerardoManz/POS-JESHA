@@ -119,7 +119,7 @@ async function cargarSidebar(paginaActual) {
 
 function aplicarPermisosMenu() {
   const rol = getRol()
-  if (rol === 'SUPERADMIN') return
+  if (rol === 'SUPERADMIN' || rol === 'PLATFORM_ADMIN') return
 
   const bloqueadas = ROL_BLOQUEADO[rol] || []
 
