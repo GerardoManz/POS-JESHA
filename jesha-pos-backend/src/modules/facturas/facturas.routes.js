@@ -19,6 +19,9 @@ const ROLES_FISCAL = ['ADMIN_SUCURSAL', 'SUPERADMIN', 'PLATFORM_ADMIN']
 router.get ('/global/preview',    requireRole(ROLES_FISCAL), ctrl.previewGlobal)
 router.post ('/global/timbrar',   requireRole(ROLES_FISCAL), ctrl.timbrarGlobal)
 
+// ── Facturado manual desde mostrador (mismo solicitarFactura, canal INTERNO: sin gate de 72h) ──
+router.post('/manual', requireRole(ROLES_FISCAL), (req, res, next) => { req.canalFacturacion = 'INTERNO'; next() }, facCtrl.solicitarFactura)
+
 // ── Lectura (abierta a cualquier usuario autenticado) ──
 router.get('/',    ctrl.listar)
 router.get('/:id', ctrl.obtener)

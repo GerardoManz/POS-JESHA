@@ -750,9 +750,9 @@ async function facturarManualDesdeModal() {
   errDiv.style.display = 'none'
 
   try {
-    const res = await fetch(`${API_URL}/facturar/api`, {
+    const res = await fetch(`${API_URL}/facturas/manual`, {
       method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
       body:    JSON.stringify(body)
     })
     const data = await res.json()

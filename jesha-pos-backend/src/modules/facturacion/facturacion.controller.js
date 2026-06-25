@@ -39,6 +39,10 @@ const PERIODICIDAD_FACTURAPI = {
 
 const METODOS_GLOBALES = ['EFECTIVO', 'DEBITO', 'CREDITO', 'TRANSFERENCIA']
 
+// Plazo de autofacturación en línea por QR público: 72h desde la venta.
+// El canal interno de mostrador NO usa este límite (conserva facturaLimite = mes fiscal).
+const HORAS_LIMITE_QR = 72
+
 // ════════════════════════════════════════════════════════════════════
 //  RFC PÚBLICO EN GENERAL — reglas del SAT para CFDI 4.0
 //
@@ -60,6 +64,14 @@ const RFC_PUBLICO_GENERAL = 'XAXX010101000'
 
 function esRfcGenerico(rfc) {
   return rfc && rfc.trim().toUpperCase() === RFC_PUBLICO_GENERAL
+}
+
+function obtenerFacturaActivaDeVenta(venta) {
+  const directas = Array.isArray(venta.FacturaCfdi) ? venta.FacturaCfdi : []
+  const vinculadas = Array.isArray(venta.FacturaVenta)
+    ? venta.FacturaVenta.map(fv => fv.FacturaCfdi).filter(Boolean)
+    : []
+  return [...directas, ...vinculadas].find(f => f.estado !== 'CANCELADA')
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -290,7 +302,8 @@ exports.obtenerVentaPorToken = async (req, res) => {
           }
         },
         DetalleVenta: { include: { Producto: { select: { nombre: true } } } },
-        FacturaCfdi:  true
+        FacturaCfdi:  true,
+        FacturaVenta: { include: { FacturaCfdi: true } }
       }
     })
 
@@ -302,10 +315,17 @@ exports.obtenerVentaPorToken = async (req, res) => {
 
     // venta.FacturaCfdi ahora es un array (relación 1-a-muchos). La "factura viva"
     // es la única no cancelada; el índice parcial en BD garantiza que haya máximo una.
-    const facturaActiva189 = venta.FacturaCfdi.find(f => f.estado !== 'CANCELADA')
-    if (facturaActiva189) return res.status(409).json({ error: 'Esta venta ya fue facturada.', uuid: facturaActiva189.folioFiscal || null })
+    const facturaActiva = obtenerFacturaActivaDeVenta(venta)
+    if (facturaActiva) {
+      const uuid = facturaActiva.folioFiscal || null
+      return res.status(409).json({
+        error: uuid ? 'Esta venta ya fue facturada.' : 'Esta venta tiene un proceso de factura en curso. Intenta más tarde.',
+        uuid
+      })
+    }
     if (venta.estado === 'CANCELADA') return res.status(400).json({ error: 'Esta venta fue cancelada y no puede facturarse.' })
     if (venta.facturaEstado === 'BLOQUEADA') return res.status(400).json({ error: 'Esta venta no puede facturarse en línea (efectivo mayor a $2,000). Solicita tu factura directamente en sucursal.' })
+    if (horas > HORAS_LIMITE_QR) return res.status(400).json({ razon: 'TIEMPO_EXPIRADO', error: 'El plazo de autofacturación en línea (3 días) venció. Solicita tu factura directamente en sucursal.' })
     if (venta.facturaEstado === 'VENCIDA' || ahora > new Date(venta.facturaLimite)) return res.status(400).json({ error: 'El plazo para solicitar factura venció. Contacta a la sucursal si necesitas ayuda.' })
 
     res.json({
@@ -355,16 +375,20 @@ exports.solicitarFactura = async (req, res) => {
 
     const venta = await prisma.venta.findFirst({
       where: { tokenQr: token },
-      include: { FacturaCfdi: true, DetalleVenta: { include: { Producto: true } } }
+      include: {
+        FacturaCfdi: true,
+        FacturaVenta: { include: { FacturaCfdi: true } },
+        DetalleVenta: { include: { Producto: true } }
+      }
     })
 
     if (!venta) return res.status(404).json({ error: 'Venta no encontrada' })
 
     // Factura viva (no cancelada) → ya facturada
-    const facturaActiva = venta.FacturaCfdi.find(f => f.estado !== 'CANCELADA')
+    const facturaActiva = obtenerFacturaActivaDeVenta(venta)
     if (facturaActiva) {
       return res.status(409).json({
-        error: 'Esta venta ya fue facturada.',
+        error: facturaActiva.folioFiscal ? 'Esta venta ya fue facturada.' : 'Esta venta tiene un proceso de factura en curso. Intenta más tarde.',
         uuid: facturaActiva.folioFiscal || null
       })
     }
@@ -372,7 +396,17 @@ exports.solicitarFactura = async (req, res) => {
     const empresaId = venta.empresaId
     if (venta.estado === 'CANCELADA') return res.status(400).json({ error: 'Venta cancelada.' })
     if (venta.facturaEstado === 'BLOQUEADA') return res.status(400).json({ error: 'Venta no facturable en línea.' })
-    if (new Date() > new Date(venta.facturaLimite)) return res.status(400).json({ error: 'Plazo de facturación vencido.' })
+    // Gate por canal: QR público = 72h desde la venta; interno (mostrador) = mes fiscal (facturaLimite).
+    // Fail-safe: cualquier valor que no sea 'INTERNO' explícito se trata como QR (canal restrictivo).
+    const esCanalQr = req.canalFacturacion !== 'INTERNO'
+    if (esCanalQr) {
+      const horasQr = (new Date() - new Date(venta.creadaEn)) / 36e5
+      if (horasQr > HORAS_LIMITE_QR) {
+        return res.status(400).json({ error: 'El plazo de autofacturación en línea (3 días) venció. Solicita tu factura en sucursal.' })
+      }
+    } else if (new Date() > new Date(venta.facturaLimite)) {
+      return res.status(400).json({ error: 'Plazo de facturación vencido.' })
+    }
     // Defensa adicional al check de factura viva: solo se factura si está DISPONIBLE.
     if (venta.facturaEstado !== 'DISPONIBLE') {
       return res.status(409).json({ error: 'Esta venta tiene un proceso de factura en curso. Intenta más tarde.' })

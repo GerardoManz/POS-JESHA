@@ -441,6 +441,14 @@ function mostrarError(razon, mensaje) {
   mostrar('estado-error')
 }
 
+function mostrarEstadoFactura409(d) {
+  const yaFacturada = !!d.uuid
+  const msg = yaFacturada
+    ? `${d.error || 'Esta venta ya fue facturada.'}\nFolio fiscal: ${d.uuid}`
+    : (d.error || 'Esta venta ya tiene una factura en proceso. Revisa tu correo o acude a mostrador.')
+  mostrarError(yaFacturada ? 'YA_FACTURADA' : 'EN_PROCESO', msg)
+}
+
 async function cargarDatos() {
   if (!TOKEN) { mostrarError('SIN_TOKEN', 'El enlace no es válido. Escanea el código QR de tu ticket.'); return }
   mostrar('estado-loading')
@@ -450,6 +458,10 @@ async function cargarDatos() {
   try {
     const r = await fetch(`${API}/facturar/api?token=${TOKEN}`)
     const d = await r.json()
+    if (r.status === 409) {
+      mostrarEstadoFactura409(d)
+      return
+    }
     if (!r.ok || (!d.valida && !d.success)) {
       mostrarError(d.razon || 'ERROR', d.mensaje || d.error || 'Error desconocido')
       return
@@ -580,11 +592,7 @@ document.getElementById('fact-form').addEventListener('submit', async function(e
     })
     const d = await r.json()
     if (r.status === 409) {
-      const yaFacturada = !!d.uuid
-      const msg = yaFacturada
-        ? `${d.error || 'Esta venta ya fue facturada.'}\nFolio fiscal: ${d.uuid}`
-        : (d.error || 'Esta venta ya tiene una factura en proceso. Revisa tu correo o acude a mostrador.')
-      mostrarError(yaFacturada ? 'YA_FACTURADA' : 'EN_PROCESO', msg)
+      mostrarEstadoFactura409(d)
       return
     }
 

@@ -12,6 +12,6 @@ const ctrl    = require('./facturacion.controller')
 router.get('/',         ctrl.obtenerVentaPorToken)
 
 // POST /facturar/api — solicitar + timbrar (o guardar pendiente)
-router.post('/',        ctrl.solicitarFactura)
+router.post('/',        (req, res, next) => { req.canalFacturacion = 'QR'; next() }, ctrl.solicitarFactura)
 
 module.exports = router
