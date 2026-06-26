@@ -69,6 +69,16 @@
 .fin-monto { font-family:'Barlow Condensed',sans-serif; font-size:1.1rem; font-weight:700; color:var(--text); }
 .fin-verde  { color:#60d080; }
 .fin-naranja{ color:var(--orange); }
+.fin-descuento-control { align-items:flex-start; gap:8px; }
+.fin-descuento-inputs { display:flex; align-items:center; gap:6px; flex-shrink:0; }
+.fin-descuento-inputs select,
+.fin-descuento-inputs input { padding:5px 7px; background:rgba(255,255,255,0.04); border:1px solid var(--panel-border); border-radius:6px; color:var(--text); font-family:'Barlow',sans-serif; font-size:0.78rem; outline:none; color-scheme:var(--color-scheme); }
+.fin-descuento-inputs select { width:54px; cursor:pointer; }
+.fin-descuento-inputs input { width:74px; text-align:right; }
+.fin-descuento-inputs select:focus,
+.fin-descuento-inputs input:focus { border-color:var(--accent); }
+.fin-descuento-inputs select:disabled,
+.fin-descuento-inputs input:disabled { opacity:0.55; cursor:not-allowed; }
 
 /* ── ABONOS ── */
 .lista-abonos { display:flex; flex-direction:column; gap:6px; max-height:200px; overflow-y:auto; }

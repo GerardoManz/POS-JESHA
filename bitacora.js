@@ -14,6 +14,7 @@ let responsablesBitacora = []   // [{ id, nombre }] activos de la empresa, fuent
 let trabajadoresActivos  = []   // [{ id, nombre }] activos de la empresa, para dropdown Recibe
 let borrador             = []   // productos en borrador local (no persistidos) — se guardan en lote vía batch
 let borradorSeq          = 0    // id temporal incremental para identificar filas del borrador
+let descuentoGuardando   = false
 let paginaActual       = 1
 const LIMIT = 25
 
@@ -279,9 +280,7 @@ function renderDetalle() {
   else notasP.style.display = 'none'
 
   // Financiero
-  document.getElementById('fin-materiales').textContent = formatMoney(b.totalMateriales)
-  document.getElementById('fin-abonado').textContent    = formatMoney(b.totalAbonado)
-  document.getElementById('fin-saldo').textContent      = formatMoney(b.saldoPendiente)
+  renderResumenFinanciero(b)
 
   // Crédito del cliente
   const cardCredito = document.getElementById('card-credito-cliente')
@@ -345,6 +344,92 @@ function renderDetalle() {
 
   // Acciones (botones de cierre/reapertura)
   renderAcciones()
+}
+
+function puedeEditarDescuentoBitacora(b) {
+  const rolPermitido = ['SUPERADMIN', 'ADMIN_SUCURSAL', 'PLATFORM_ADMIN'].includes(usuario.rol)
+  return rolPermitido && ['ABIERTA', 'PAUSADA'].includes(b?.estado)
+}
+
+function renderResumenFinanciero(b) {
+  const totalMateriales = parseFloat(b.totalMateriales || 0)
+  const totalAbonado = parseFloat(b.totalAbonado || 0)
+  const saldoPendiente = parseFloat(b.saldoPendiente || 0)
+  const descuentoMonto = parseFloat(b.descuentoMonto || 0)
+  const descuentoValor = parseFloat(b.descuentoValor || 0)
+  const subtotalConDesc = parseFloat((totalMateriales - descuentoMonto).toFixed(2))
+  const puedeEditar = puedeEditarDescuentoBitacora(b)
+
+  document.getElementById('fin-materiales').textContent = formatMoney(totalMateriales)
+  document.getElementById('fin-abonado').textContent    = formatMoney(totalAbonado)
+  document.getElementById('fin-saldo').textContent      = formatMoney(saldoPendiente)
+
+  const rowControl = document.getElementById('fin-row-descuento-control')
+  const rowMonto = document.getElementById('fin-row-descuento-monto')
+  const rowSubtotal = document.getElementById('fin-row-subtotal-desc')
+  const selTipo = document.getElementById('fin-descuento-tipo')
+  const inputValor = document.getElementById('fin-descuento-valor')
+
+  rowControl.style.display = puedeEditar ? 'flex' : 'none'
+  rowMonto.style.display = (puedeEditar || descuentoMonto > 0) ? 'flex' : 'none'
+  rowSubtotal.style.display = descuentoMonto > 0 ? 'flex' : 'none'
+
+  selTipo.value = b.descuentoTipo || ''
+  inputValor.value = descuentoValor > 0 ? String(descuentoValor) : ''
+  selTipo.disabled = !puedeEditar || descuentoGuardando
+  inputValor.disabled = !puedeEditar || descuentoGuardando
+
+  document.getElementById('fin-descuento-monto').textContent = '-' + formatMoney(descuentoMonto)
+  document.getElementById('fin-subtotal-desc').textContent = formatMoney(subtotalConDesc)
+}
+
+async function aplicarDescuentoGlobal() {
+  const b = bitacoraActual
+  if (!b || !puedeEditarDescuentoBitacora(b) || descuentoGuardando) return
+
+  const selTipo = document.getElementById('fin-descuento-tipo')
+  const inputValor = document.getElementById('fin-descuento-valor')
+  let tipo = selTipo.value || null
+  let valor = parseFloat(inputValor.value || 0)
+
+  if (!tipo || !valor || valor <= 0) {
+    tipo = null
+    valor = 0
+  }
+
+  const tipoActual = b.descuentoTipo || null
+  const valorActual = parseFloat(b.descuentoValor || 0)
+  if (tipo === tipoActual && Math.abs(valor - valorActual) < 0.005) return
+
+  if (tipo === 'PORCENTAJE' && valor > 10) {
+    toast('El porcentaje no puede ser mayor a 10%', 'warning')
+    renderResumenFinanciero(b)
+    return
+  }
+  if (tipo === 'MONTO' && valor > parseFloat(b.totalMateriales || 0)) {
+    toast('El descuento no puede exceder el total de materiales', 'warning')
+    renderResumenFinanciero(b)
+    return
+  }
+
+  descuentoGuardando = true
+  renderResumenFinanciero(b)
+  try {
+    const res = await apiFetch(`/bitacoras/${b.id}/descuento`, {
+      method: 'PATCH',
+      body: JSON.stringify({ descuentoTipo: tipo, descuentoValor: valor })
+    })
+    bitacoraActual = res.data
+    renderDetalle()
+    cargarBitacoras(paginaActual)
+    toast(res.mensaje || 'Descuento actualizado', 'success')
+  } catch (e) {
+    toast('Error: ' + e.message, 'error')
+    renderResumenFinanciero(b)
+  } finally {
+    descuentoGuardando = false
+    if (bitacoraActual) renderResumenFinanciero(bitacoraActual)
+  }
 }
 
 function renderDetalleItems(detalles) {
@@ -719,10 +804,22 @@ function renderAbonos(abonos) {
   })
 }
 
+function abrirReporteCompleto() {
+  const b = bitacoraActual
+  if (!b) return
+  const base = (typeof API_URL !== 'undefined' ? API_URL : window.__JESHA_API_URL__ || '').replace(/\/$/, '')
+  const TOKEN = localStorage.getItem('jesha_token')
+  const url = `${base}/bitacoras/${b.id}/reporte`
+  window.open(`${url}?token=${TOKEN}`, '_blank', 'width=1100,height=800')
+}
+
 function renderAcciones() {
   const cont = document.getElementById('det-acciones')
   const b = bitacoraActual
   const acciones = []
+
+  // Siempre mostrar botón de reporte completo
+  acciones.push(`<button class="btn-secondary" id="btn-reporte-completo">📄 Reporte completo</button>`)
 
   // ABIERTA o PAUSADA → botón "Cerrar manualmente"
   if (b.estado === 'ABIERTA' || b.estado === 'PAUSADA') {
@@ -764,6 +861,9 @@ function renderAcciones() {
 
   const btnBorrar = document.getElementById('btn-borrar-bitacora')
   if (btnBorrar) btnBorrar.addEventListener('click', borrarBitacora)
+
+  const btnReporte = document.getElementById('btn-reporte-completo')
+  if (btnReporte) btnReporte.addEventListener('click', abrirReporteCompleto)
 }
 
 async function abrirModalCancelar() {
@@ -1363,6 +1463,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   // ── Detalle ──
   document.getElementById('det-close').addEventListener('click', cerrarDetalle)
   document.getElementById('btn-editar-titulo')?.addEventListener('click', activarEdicionTitulo)
+  document.getElementById('fin-descuento-tipo')?.addEventListener('change', aplicarDescuentoGlobal)
+  document.getElementById('fin-descuento-valor')?.addEventListener('blur', aplicarDescuentoGlobal)
+  document.getElementById('fin-descuento-valor')?.addEventListener('keydown', ev => {
+    if (ev.key === 'Enter') { ev.preventDefault(); aplicarDescuentoGlobal() }
+  })
 
   // ── Abono ──
   document.getElementById('btn-abonar').addEventListener('click', registrarAbono)

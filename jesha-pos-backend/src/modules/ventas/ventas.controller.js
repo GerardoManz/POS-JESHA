@@ -426,6 +426,9 @@ exports.crearVenta = async (req, res) => {
               totalMateriales: totalEsperado,
               totalAbonado:    0,
               saldoPendiente:  totalEsperado,
+              descuentoTipo:   null,
+              descuentoValor:  0,
+              descuentoMonto:  0,
               notas:           'Cuenta corriente — crédito a cliente'
             }
           })

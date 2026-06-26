@@ -117,6 +117,9 @@ model Bitacora {
   totalMateriales Decimal           @default(0) @db.Decimal(12, 2)
   totalAbonado    Decimal           @default(0) @db.Decimal(12, 2)
   saldoPendiente  Decimal           @default(0) @db.Decimal(12, 2)
+  descuentoTipo   String?
+  descuentoValor  Decimal           @default(0) @db.Decimal(10, 2)
+  descuentoMonto  Decimal           @default(0) @db.Decimal(12, 2)
   notas           String?
   creadaEn        DateTime          @default(now())
   actualizadoEn   DateTime          @default(now()) @updatedAt

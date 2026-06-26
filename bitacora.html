@@ -162,6 +162,19 @@
         <div class="det-card det-card-financiero">
           <div class="det-card-header">💰 Resumen financiero</div>
           <div class="fin-row"><span>Total materiales</span><span id="fin-materiales" class="fin-monto">$0.00</span></div>
+          <div class="fin-row fin-descuento-control" id="fin-row-descuento-control" style="display:none;">
+            <span>Descuento Global</span>
+            <span class="fin-descuento-inputs">
+              <select id="fin-descuento-tipo" aria-label="Tipo de descuento global">
+                <option value="">—</option>
+                <option value="PORCENTAJE">%</option>
+                <option value="MONTO">$</option>
+              </select>
+              <input type="number" id="fin-descuento-valor" min="0" step="0.01" placeholder="0" aria-label="Valor de descuento global" />
+            </span>
+          </div>
+          <div class="fin-row" id="fin-row-descuento-monto" style="display:none;"><span>Descuento</span><span id="fin-descuento-monto" class="fin-monto fin-naranja">-$0.00</span></div>
+          <div class="fin-row" id="fin-row-subtotal-desc" style="display:none;"><span>Subtotal con Desc.</span><span id="fin-subtotal-desc" class="fin-monto">$0.00</span></div>
           <div class="fin-row"><span>Total abonado</span><span id="fin-abonado" class="fin-monto fin-verde">$0.00</span></div>
           <div class="fin-row fin-saldo"><span>Saldo pendiente</span><span id="fin-saldo" class="fin-monto fin-naranja">$0.00</span></div>
         </div>

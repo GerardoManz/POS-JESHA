@@ -37,6 +37,7 @@ const generarTicketAbono = async (req, res) => {
           select: {
             id: true, folio: true, titulo: true, estado: true,
             totalMateriales: true, totalAbonado: true, saldoPendiente: true,
+            descuentoTipo: true, descuentoValor: true, descuentoMonto: true,
             Cliente: { select: { nombre: true, telefono: true, saldoPendiente: true } }
           }
         }
@@ -74,6 +75,12 @@ function generarHTMLTicketAbono(abono, fechaStr, horaStr) {
 
   const bitacoraLiquidada = bitacora.estado === 'CERRADA_VENTA'
   const saldoCliente      = bitacora.Cliente ? parseFloat(bitacora.Cliente.saldoPendiente || 0) : null
+  const descuentoMonto    = parseFloat(bitacora.descuentoMonto || 0)
+  const descuentoValor    = parseFloat(bitacora.descuentoValor || 0)
+  const subtotalConDesc   = parseFloat((parseFloat(bitacora.totalMateriales || 0) - descuentoMonto).toFixed(2))
+  const descuentoLabel    = bitacora.descuentoTipo === 'PORCENTAJE' && descuentoValor > 0
+    ? ` (${descuentoValor}%)`
+    : ''
 
   const logoHTML = `<img src="${LOGO_URL}" alt="JESHA" class="logo" />`
 
@@ -180,6 +187,8 @@ ${bitacora.Cliente ? `
 <div class="resumen">
   <table class="info-tbl">
     <tr><td class="lbl">Total materiales:</td><td class="val">${fmt(bitacora.totalMateriales)}</td></tr>
+    ${descuentoMonto > 0 ? `<tr><td class="lbl">Descuento${descuentoLabel}:</td><td class="val">-${fmt(descuentoMonto)}</td></tr>` : ''}
+    ${descuentoMonto > 0 ? `<tr><td class="lbl">Subtotal c/desc.:</td><td class="val">${fmt(subtotalConDesc)}</td></tr>` : ''}
     <tr><td class="lbl">Total abonado:</td><td class="val">${fmt(bitacora.totalAbonado)}</td></tr>
     <tr class="saldo-final">
       <td class="lbl">${bitacoraLiquidada ? 'SALDO:' : 'RESTA:'}</td>

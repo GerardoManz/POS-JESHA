@@ -40,6 +40,27 @@ function nombreTrabajador(t) {
   return t.apodo ? `${t.apodo} (${t.nombre})` : t.nombre
 }
 
+function puedeAplicarDescuento(rol) {
+  return ['SUPERADMIN', 'ADMIN_SUCURSAL', 'PLATFORM_ADMIN'].includes(rol)
+}
+
+function calcularDescuentoGlobal(totalMateriales, descuentoTipo, descuentoValor) {
+  const total = parseFloat(totalMateriales || 0)
+  const valor = parseFloat(descuentoValor || 0)
+
+  if (!descuentoTipo || valor <= 0) {
+    return { descuentoTipo: null, descuentoValor: 0, descuentoMonto: 0 }
+  }
+
+  if (descuentoTipo === 'PORCENTAJE') {
+    const monto = parseFloat((total * (valor / 100)).toFixed(2))
+    return { descuentoTipo, descuentoValor: valor, descuentoMonto: monto }
+  }
+
+  const monto = parseFloat(valor.toFixed(2))
+  return { descuentoTipo, descuentoValor: valor, descuentoMonto: monto }
+}
+
 // ── Generar folio BIT ──
 async function generarFolioBitacora(tx) {
   const fecha  = new Date()
@@ -52,6 +73,7 @@ async function generarFolioBitacora(tx) {
 const BITACORA_SELECT = {
   id: true, folio: true, titulo: true, descripcion: true, origen: true, estado: true,
   totalMateriales: true, totalAbonado: true, saldoPendiente: true, saldoAlCerrar: true,
+  descuentoTipo: true, descuentoValor: true, descuentoMonto: true,
   notas: true, creadaEn: true, actualizadoEn: true, cerradaEn: true,
   clienteId: true, sucursalId: true, usuarioId: true,
   Cliente:  { select: { id: true, nombre: true, telefono: true, limiteCredito: true, saldoPendiente: true } },
@@ -179,6 +201,9 @@ const crear = async (req, res) => {
           totalMateriales: 0,
           totalAbonado:    0,
           saldoPendiente:  0,
+          descuentoTipo:   null,
+          descuentoValor:  0,
+          descuentoMonto:  0,
           notas:           notas?.trim() || null,
           actualizadoEn:   new Date()
         },
@@ -240,6 +265,101 @@ const editar = async (req, res) => {
 }
 
 // ════════════════════════════════════════════════════════════════════
+//  PATCH /bitacoras/:id/descuento — Descuento global de bitácora
+// ════════════════════════════════════════════════════════════════════
+const aplicarDescuento = async (req, res) => {
+  try {
+    const { id } = req.params
+    const { descuentoTipo, descuentoValor } = req.body
+    const { id: usuarioId, sucursalId, rol } = req.usuario
+    const empresaId = getEmpresaId(req)
+
+    if (!puedeAplicarDescuento(rol)) {
+      return res.status(403).json({ success: false, error: 'Sin permiso para aplicar descuentos', codigo: 'SIN_PERMISO_DESCUENTO' })
+    }
+
+    const bitacora = await prisma.bitacora.findUnique({
+      where: { id: parseInt(id) },
+      select: {
+        id: true, empresaId: true, folio: true, estado: true, totalMateriales: true,
+        totalAbonado: true, saldoPendiente: true, clienteId: true, descuentoMonto: true
+      }
+    })
+    if (!bitacora || bitacora.empresaId !== empresaId) {
+      return res.status(404).json({ success: false, error: 'Bitácora no encontrada' })
+    }
+    if (!['ABIERTA', 'PAUSADA'].includes(bitacora.estado)) {
+      return res.status(400).json({ success: false, error: `No se puede aplicar descuento en estado ${bitacora.estado}`, codigo: 'ESTADO_INVALIDO' })
+    }
+
+    const tipo = descuentoTipo || null
+    const valor = parseFloat(descuentoValor || 0)
+    const totalMateriales = parseFloat(bitacora.totalMateriales || 0)
+    const totalAbonado = parseFloat(bitacora.totalAbonado || 0)
+    const saldoAnterior = parseFloat(bitacora.saldoPendiente || 0)
+
+    if (tipo !== null && !['PORCENTAJE', 'MONTO'].includes(tipo)) {
+      return res.status(400).json({ success: false, error: 'Tipo de descuento inválido', codigo: 'DESCUENTO_TIPO_INVALIDO' })
+    }
+    if (isNaN(valor) || valor < 0) {
+      return res.status(400).json({ success: false, error: 'Valor de descuento inválido', codigo: 'DESCUENTO_VALOR_INVALIDO' })
+    }
+    if (tipo === 'PORCENTAJE' && valor > 10) {
+      return res.status(400).json({ success: false, error: 'El porcentaje no puede ser mayor a 10%', codigo: 'DESCUENTO_PORCENTAJE_EXCEDE' })
+    }
+    if (tipo === 'MONTO' && valor > totalMateriales) {
+      return res.status(400).json({ success: false, error: 'El descuento no puede exceder el total de materiales', codigo: 'DESCUENTO_MONTO_EXCEDE' })
+    }
+
+    const descuento = calcularDescuentoGlobal(totalMateriales, tipo, valor)
+    const subtotalConDescuento = parseFloat((totalMateriales - descuento.descuentoMonto).toFixed(2))
+    if (subtotalConDescuento < totalAbonado - 0.005) {
+      return res.status(400).json({
+        success: false,
+        error: `No se puede aplicar ese descuento: el monto abonado (${totalAbonado.toFixed(2)}) excedería el subtotal con descuento (${subtotalConDescuento.toFixed(2)}).`,
+        codigo: 'ABONO_EXCEDE_DESCUENTO'
+      })
+    }
+
+    const nuevoSaldo = parseFloat(Math.max(0, subtotalConDescuento - totalAbonado).toFixed(2))
+    const deltaCliente = parseFloat((nuevoSaldo - saldoAnterior).toFixed(2))
+
+    await prisma.$transaction(async tx => {
+      await tx.bitacora.update({
+        where: { id: parseInt(id) },
+        data: {
+          descuentoTipo:  descuento.descuentoTipo,
+          descuentoValor: descuento.descuentoValor,
+          descuentoMonto: descuento.descuentoMonto,
+          saldoPendiente: nuevoSaldo
+        }
+      })
+
+      if (bitacora.clienteId && Math.abs(deltaCliente) > 0.005) {
+        await tx.cliente.update({
+          where: { id: bitacora.clienteId },
+          data:  { saldoPendiente: { increment: deltaCliente } }
+        })
+      }
+    })
+
+    await audit(usuarioId, sucursalId, 'APLICAR_DESCUENTO_BITACORA', `${bitacora.folio} - descuento:$${descuento.descuentoMonto.toFixed(2)}`, empresaId, {
+      descuentoTipo: descuento.descuentoTipo,
+      descuentoValor: descuento.descuentoValor,
+      descuentoMonto: descuento.descuentoMonto,
+      saldoAnterior,
+      nuevoSaldo
+    })
+
+    const bitacoraActualizada = await prisma.bitacora.findUnique({ where: { id: parseInt(id) }, select: BITACORA_SELECT })
+    res.json({ success: true, data: bitacoraActualizada, mensaje: descuento.descuentoMonto > 0 ? 'Descuento aplicado correctamente' : 'Descuento removido correctamente' })
+  } catch (err) {
+    console.error('❌ aplicar descuento bitacora:', err)
+    res.status(500).json({ success: false, error: err.message })
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════
 //  PATCH /bitacoras/:id/estado
 //  Dos operaciones:
 //    1. Cerrar manualmente (CERRADA_INTERNA) — cualquier usuario con permiso, motivo obligatorio
@@ -264,6 +384,7 @@ const cambiarEstado = async (req, res) => {
       where: { id: parseInt(id) },
       select: {
         id: true, folio: true, estado: true, saldoPendiente: true,
+        descuentoTipo: true, descuentoValor: true, descuentoMonto: true,
         saldoAlCerrar: true, clienteId: true, origen: true,
         cerradaEn: true, notas: true, totalAbonado: true, empresaId: true
       }
@@ -557,7 +678,7 @@ const agregarProducto = async (req, res) => {
     // ── Bitácora ──
     const bitacora = await prisma.bitacora.findUnique({
       where: { id: parseInt(id) },
-      select: { id: true, empresaId: true, folio: true, estado: true, origen: true, totalMateriales: true, saldoPendiente: true, clienteId: true }
+      select: { id: true, empresaId: true, folio: true, estado: true, origen: true, totalMateriales: true, saldoPendiente: true, descuentoMonto: true, clienteId: true }
     })
     if (!bitacora)                          return res.status(404).json({ success: false, error: 'Bitácora no encontrada' })
     if (bitacora.empresaId !== empresaId) {
@@ -746,7 +867,7 @@ const agregarProductosBatch = async (req, res) => {
     // ── Bitácora (validada una sola vez) ──
     const bitacora = await prisma.bitacora.findUnique({
       where: { id: parseInt(id) },
-      select: { id: true, empresaId: true, folio: true, estado: true, origen: true, totalMateriales: true, saldoPendiente: true, clienteId: true }
+      select: { id: true, empresaId: true, folio: true, estado: true, origen: true, totalMateriales: true, saldoPendiente: true, descuentoMonto: true, clienteId: true }
     })
     if (!bitacora)                          return res.status(404).json({ success: false, error: 'Bitácora no encontrada' })
     if (bitacora.empresaId !== empresaId) {
@@ -959,7 +1080,7 @@ const editarDetalle = async (req, res) => {
 
     const bitacora = await prisma.bitacora.findUnique({
       where: { id: parseInt(id) },
-      select: { id: true, empresaId: true, folio: true, estado: true, origen: true, totalMateriales: true, saldoPendiente: true, totalAbonado: true, clienteId: true }
+      select: { id: true, empresaId: true, folio: true, estado: true, origen: true, totalMateriales: true, saldoPendiente: true, totalAbonado: true, descuentoMonto: true, clienteId: true }
     })
     if (!bitacora) return res.status(404).json({ success: false, error: 'Bitácora no encontrada' })
     if (bitacora.empresaId !== empresaId) {
@@ -1003,13 +1124,15 @@ const editarDetalle = async (req, res) => {
     const subtotalOrig   = parseFloat(detalle.subtotal)
     const diferencia     = subtotalNuevo - subtotalOrig
 
-    // Validar que el nuevo total no quede por debajo del total abonado
+    // Validar que el nuevo subtotal neto no quede por debajo del total abonado
     const nuevoTotalMat = parseFloat((parseFloat(bitacora.totalMateriales) + diferencia).toFixed(2))
+    const descuentoMonto = parseFloat(bitacora.descuentoMonto || 0)
+    const nuevoSubtotalNeto = parseFloat((nuevoTotalMat - descuentoMonto).toFixed(2))
     const totalAbonado  = parseFloat(bitacora.totalAbonado)
-    if (nuevoTotalMat < totalAbonado - 0.005) {
+    if (nuevoSubtotalNeto < totalAbonado - 0.005) {
       return res.status(400).json({
         success: false,
-        error: `No se puede reducir tanto: el monto ya abonado ($${totalAbonado.toFixed(2)}) excedería el nuevo total ($${nuevoTotalMat.toFixed(2)}).`,
+        error: `No se puede reducir tanto: el monto ya abonado ($${totalAbonado.toFixed(2)}) excedería el nuevo subtotal con descuento ($${nuevoSubtotalNeto.toFixed(2)}).`,
         codigo: 'ABONO_EXCEDE'
       })
     }
@@ -1131,7 +1254,7 @@ const quitarProducto = async (req, res) => {
 
     const bitacora = await prisma.bitacora.findUnique({
       where: { id: parseInt(id) },
-      select: { id: true, empresaId: true, folio: true, estado: true, origen: true, totalMateriales: true, saldoPendiente: true, totalAbonado: true, clienteId: true }
+      select: { id: true, empresaId: true, folio: true, estado: true, origen: true, totalMateriales: true, saldoPendiente: true, totalAbonado: true, descuentoMonto: true, clienteId: true }
     })
     if (!bitacora)                     return res.status(404).json({ success: false, error: 'Bitácora no encontrada' })
     if (bitacora.empresaId !== empresaId) {
@@ -1152,10 +1275,12 @@ const quitarProducto = async (req, res) => {
     const subtotalDetalle = parseFloat(detalle.subtotal)
     const totalAbonado    = parseFloat(bitacora.totalAbonado)
     const nuevoTotal      = parseFloat(bitacora.totalMateriales) - subtotalDetalle
-    if (nuevoTotal < totalAbonado) {
+    const descuentoMonto  = parseFloat(bitacora.descuentoMonto || 0)
+    const nuevoSubtotalNeto = parseFloat((nuevoTotal - descuentoMonto).toFixed(2))
+    if (nuevoSubtotalNeto < totalAbonado - 0.005) {
       return res.status(400).json({
         success: false,
-        error: `No se puede quitar: el monto ya abonado ($${totalAbonado}) excedería el total restante. Registra devolución de abono primero.`,
+        error: `No se puede quitar: el monto ya abonado ($${totalAbonado.toFixed(2)}) excedería el subtotal con descuento restante ($${nuevoSubtotalNeto.toFixed(2)}). Registra devolución de abono primero.`,
         codigo: 'ABONO_EXCEDE'
       })
     }
@@ -1244,7 +1369,7 @@ const registrarAbono = async (req, res) => {
     // ── Obtener bitácora CON origen ──
     const bitacora = await prisma.bitacora.findUnique({
       where: { id: parseInt(id) },
-      select: { id: true, folio: true, estado: true, origen: true, totalAbonado: true, totalMateriales: true, saldoPendiente: true, clienteId: true }
+      select: { id: true, folio: true, estado: true, origen: true, totalAbonado: true, totalMateriales: true, saldoPendiente: true, descuentoMonto: true, clienteId: true }
     })
     if (!bitacora) return res.status(404).json({ success: false, error: 'Bitácora no encontrada' })
     if (bitacora.estado !== 'ABIERTA') {
@@ -1281,8 +1406,9 @@ const registrarAbono = async (req, res) => {
       })
     }
 
-    const nuevoAbonado = parseFloat((parseFloat(bitacora.totalAbonado) + montoAbono).toFixed(2))
-    const nuevoSaldo   = parseFloat((parseFloat(bitacora.totalMateriales) - nuevoAbonado).toFixed(2))
+    const descuentoMonto = parseFloat(bitacora.descuentoMonto || 0)
+    const nuevoAbonado   = parseFloat((parseFloat(bitacora.totalAbonado) + montoAbono).toFixed(2))
+    const nuevoSaldo     = parseFloat((parseFloat(bitacora.totalMateriales) - descuentoMonto - nuevoAbonado).toFixed(2))
     const cerrar       = nuevoSaldo <= 0.005
 
     await prisma.$transaction(async tx => {
@@ -1354,6 +1480,7 @@ module.exports = {
   obtener,
   crear,
   editar,
+  aplicarDescuento,
   cambiarEstado,
   eliminar,
   agregarProducto,

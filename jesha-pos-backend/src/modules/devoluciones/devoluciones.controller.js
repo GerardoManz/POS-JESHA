@@ -128,7 +128,7 @@ let montoReembolso = 0
     if (venta.metodoPago === 'CREDITO_CLIENTE' && venta.clienteId) {
       bitacoraVenta = await prisma.bitacora.findFirst({
         where: { clienteId: venta.clienteId, estado: 'ABIERTA', origen: 'VENTA' },
-        select: { id: true, folio: true, totalMateriales: true, saldoPendiente: true, totalAbonado: true, notas: true }
+        select: { id: true, folio: true, totalMateriales: true, saldoPendiente: true, totalAbonado: true, descuentoMonto: true, notas: true }
       })
 
       if (bitacoraVenta) {

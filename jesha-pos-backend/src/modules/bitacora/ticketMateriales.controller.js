@@ -49,6 +49,7 @@ const generarTicketMateriales = async (req, res) => {
       select: {
         id: true, folio: true, titulo: true, estado: true, empresaId: true,
         totalMateriales: true, totalAbonado: true, saldoPendiente: true,
+        descuentoTipo: true, descuentoValor: true, descuentoMonto: true,
         Cliente: { select: { nombre: true, telefono: true } },
         Usuario: { select: { nombre: true } }
       }
@@ -160,6 +161,7 @@ const generarTicketRetiro = async (req, res) => {
       where: { id: parseInt(id) },
       select: { id: true, folio: true, titulo: true, estado: true, empresaId: true,
         totalMateriales: true, totalAbonado: true, saldoPendiente: true,
+        descuentoTipo: true, descuentoValor: true, descuentoMonto: true,
         Cliente: { select: { nombre: true } }
       }
     })
@@ -213,6 +215,12 @@ const generarTicketRetiro = async (req, res) => {
 function generarHTML(filas, totalRetiro, deudaAnterior, nuevaDeuda, totalAbonado, bitacora, recibeNombre, responsable, fechaStr) {
   const fmt = v => `$${parseFloat(v || 0).toFixed(2)}`
   const logoHTML = `<img src="${LOGO_URL}" alt="JESHA" class="logo" />`
+  const descuentoMonto = parseFloat(bitacora.descuentoMonto || 0)
+  const descuentoValor = parseFloat(bitacora.descuentoValor || 0)
+  const subtotalConDesc = parseFloat((parseFloat(bitacora.totalMateriales || 0) - descuentoMonto).toFixed(2))
+  const descuentoLabel = bitacora.descuentoTipo === 'PORCENTAJE' && descuentoValor > 0
+    ? ` (${descuentoValor}%)`
+    : ''
 
   const filasHTML = filas.map(f => `
     <tr>
@@ -308,6 +316,8 @@ html, body { width:100%; max-width:100%; margin:0; padding:1mm 3mm; font-family:
   <table class="info-tbl">
     <tr><td class="lbl">Deuda anterior:</td><td class="val">${fmt(deudaAnterior)}</td></tr>
     <tr><td class="lbl">+ Este retiro:</td><td class="val">${fmt(totalRetiro)}</td></tr>
+    ${descuentoMonto > 0 ? `<tr><td class="lbl">Desc. global${descuentoLabel}:</td><td class="val">-${fmt(descuentoMonto)}</td></tr>` : ''}
+    ${descuentoMonto > 0 ? `<tr><td class="lbl">Subtotal c/desc.:</td><td class="val">${fmt(subtotalConDesc)}</td></tr>` : ''}
     <tr><td class="lbl">Nueva deuda:</td><td class="val">${fmt(nuevaDeuda)}</td></tr>
     ${totalAbonado > 0 ? `<tr><td class="lbl">Total abonado:</td><td class="val">${fmt(totalAbonado)}</td></tr>` : ''}
     <tr class="saldo-final">
