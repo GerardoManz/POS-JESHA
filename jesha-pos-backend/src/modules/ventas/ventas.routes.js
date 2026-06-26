@@ -44,7 +44,7 @@ router.get('/:id/ticket', ticketController.generarTicket)
 router.get('/:id/ticket/thermal', ticketController.generarTicketThermal)
 
 // GET /ventas/reporte-resumen — Reporte con top productos pre-calculado
-router.get('/reporte-resumen', requireRole('SUPERADMIN', 'ADMIN_SUCURSAL'), obtenerReporteVentas)
+router.get('/reporte-resumen', requireRole('SUPERADMIN', 'ADMIN_SUCURSAL', 'PLATFORM_ADMIN'), obtenerReporteVentas)
 
 // GET /ventas/dashboard-kpis — KPIs optimizados para dashboard
 router.get('/dashboard-kpis', obtenerDashboardKpis)

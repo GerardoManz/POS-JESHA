@@ -35,7 +35,7 @@ function verificarAutenticacion() {
 
 function verificarAccesoPagina(pagina) {
   const rol = getRol()
-  if (rol === 'SUPERADMIN') return true
+  if (rol === 'SUPERADMIN' || rol === 'PLATFORM_ADMIN') return true
 
   // ── Bloqueo horario para EMPLEADO (8:00 – 18:00 hora CDMX) ──────
   if (rol === 'EMPLEADO') {

@@ -256,8 +256,8 @@ function renderAccionesModal(v) {
   const div = document.getElementById('det-acciones-modal')
   if (!div) return
 
-  const esSuperAdmin  = ['SUPERADMIN', 'ADMIN_SUCURSAL'].includes(USUARIO.rol)
-  const puedeCancelarRol = ['SUPERADMIN', 'ADMIN_SUCURSAL', 'EMPLEADO'].includes(USUARIO.rol)
+  const esSuperAdmin  = ['SUPERADMIN', 'ADMIN_SUCURSAL', 'PLATFORM_ADMIN'].includes(USUARIO.rol)
+  const puedeCancelarRol = ['SUPERADMIN', 'ADMIN_SUCURSAL', 'EMPLEADO', 'PLATFORM_ADMIN'].includes(USUARIO.rol)
   const puedeDevolver = v.estado === 'COMPLETADA' || v.estado === 'DEVOLUCION'
   const puedeCancelar = v.estado === 'COMPLETADA' && puedeCancelarRol
 

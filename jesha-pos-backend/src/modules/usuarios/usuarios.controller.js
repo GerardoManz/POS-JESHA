@@ -256,7 +256,7 @@ const listarVendedores = async (req, res) => {
     const { sucursalId, rol } = req.usuario
     const where = { activo: true }
     // SUPERADMIN ve todos; los demás ven su sucursal + SUPERADMIN
-    if (rol !== 'SUPERADMIN') {
+    if (rol !== 'SUPERADMIN' && rol !== 'PLATFORM_ADMIN') {
       if (sucursalId) {
         where.OR = [
           { sucursalId },
@@ -299,7 +299,23 @@ const listarResponsablesBitacora = async (req, res) => {
 // GET /usuarios/sucursales
 const listarSucursales = async (req, res) => {
   try {
-    const sucursales = await prisma.sucursal.findMany({ select: { id: true, nombre: true }, orderBy: { nombre: 'asc' } })
+    const { rol, empresaId: tokenEmpresaId } = req.usuario || {}
+    const where = { activa: true }
+
+    if (rol === 'PLATFORM_ADMIN') {
+      const reqEmpresaId = req.body?.empresaId ?? req.query?.empresaId
+      if (reqEmpresaId) where.empresaId = parseInt(reqEmpresaId)
+      // sin empresaId = ve TODAS las sucursales de TODAS las empresas
+    } else {
+      const empresaId = getEmpresaId(req)
+      where.empresaId = empresaId
+    }
+
+    const sucursales = await prisma.sucursal.findMany({
+      where,
+      select: { id: true, nombre: true },
+      orderBy: { nombre: 'asc' }
+    })
     res.json(sucursales)
   } catch (err) { res.status(500).json({ error: 'Error al obtener sucursales' }) }
 }

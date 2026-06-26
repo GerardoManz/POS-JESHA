@@ -2,7 +2,7 @@
 ;(function() {
   try {
     const rol = JSON.parse(localStorage.getItem('jesha_usuario') || '{}').rol
-    const ROLES_PERMITIDOS = ['SUPERADMIN', 'ADMIN_SUCURSAL']
+    const ROLES_PERMITIDOS = ['SUPERADMIN', 'ADMIN_SUCURSAL', 'PLATFORM_ADMIN']
     if (!ROLES_PERMITIDOS.includes(rol)) {
       window.location.replace('dashboard.html')
     }

@@ -1845,7 +1845,7 @@ function mostrarModalConfirmacion() {
   if (inputDesc) inputDesc.value = descuentoManual > 0 ? descuentoManual : ''
 
   // Ocultar bloque de descuento manual para EMPLEADO
-  const puedeDescuento = ['SUPERADMIN', 'ADMIN_SUCURSAL'].includes(USUARIO.rol)
+  const puedeDescuento = ['SUPERADMIN', 'ADMIN_SUCURSAL', 'PLATFORM_ADMIN'].includes(USUARIO.rol)
   const wrapDesc = document.getElementById('confirm-descuento-wrap')
   if (wrapDesc) wrapDesc.style.display = puedeDescuento ? '' : 'none'
   if (!puedeDescuento && inputDesc) inputDesc.value = ''
@@ -1853,7 +1853,7 @@ function mostrarModalConfirmacion() {
   const wrapEmpleado = document.getElementById('confirm-venta-empleado-wrap')
   const selEmpReset  = document.getElementById('confirm-empleado-select')
   const badgeEmpReset = document.getElementById('confirm-empleado-badge')
-  const puedeVerDescEmpleado = ['SUPERADMIN', 'ADMIN_SUCURSAL'].includes(USUARIO.rol)
+  const puedeVerDescEmpleado = ['SUPERADMIN', 'ADMIN_SUCURSAL', 'PLATFORM_ADMIN'].includes(USUARIO.rol)
   const hayClienteSeleccionado = !!clienteSeleccionado?.id
 
   if (wrapEmpleado) wrapEmpleado.style.display = puedeVerDescEmpleado ? 'block' : 'none'

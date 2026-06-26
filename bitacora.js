@@ -18,7 +18,7 @@ let paginaActual       = 1
 const LIMIT = 25
 
 const usuario  = JSON.parse(localStorage.getItem('jesha_usuario') || '{}')
-const esSUPER  = usuario.rol === 'SUPERADMIN'
+const esSUPER  = ['SUPERADMIN', 'PLATFORM_ADMIN'].includes(usuario.rol)
 
 // ════════════════════════════════════════════════════════════════════
 //  HELPERS

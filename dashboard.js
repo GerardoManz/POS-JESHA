@@ -60,7 +60,7 @@ function categoriaStock(stock, minimo) {
 //  FILTRO DE SUCURSAL — visible solo para SUPERADMIN
 // ════════════════════════════════════════════════════════════════════
 async function inicializarFiltroSucursal() {
-  if (USUARIO.rol !== 'SUPERADMIN') return
+  if (!['SUPERADMIN', 'PLATFORM_ADMIN'].includes(USUARIO.rol)) return
 
   document.getElementById('sucursal-filter').style.display = 'flex'
 

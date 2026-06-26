@@ -71,7 +71,7 @@ exports.crearVenta = async (req, res) => {
     if (!usuario || !usuario.activo) {
       return res.status(403).json({ error: 'Usuario inválido o inactivo' })
     }
-    const rolesConVenta = ['EMPLEADO', 'ADMIN_SUCURSAL', 'SUPERADMIN']
+    const rolesConVenta = ['EMPLEADO', 'ADMIN_SUCURSAL', 'SUPERADMIN', 'PLATFORM_ADMIN']
     if (!rolesConVenta.includes(usuario.rol)) {
       return res.status(403).json({ error: 'Usuario sin permiso para vender', codigo: 'SIN_PERMISO_VENTA' })
     }
@@ -755,7 +755,7 @@ exports.cancelarVenta = async (req, res) => {
     if (venta.estado === 'DEVOLUCION')
       return res.status(409).json({ error: 'Esta venta tiene devoluciones — cancela las devoluciones primero o usa el módulo de devoluciones.' })
 
-    const rolesPermitidos = ['SUPERADMIN', 'ADMIN_SUCURSAL', 'EMPLEADO']
+    const rolesPermitidos = ['SUPERADMIN', 'ADMIN_SUCURSAL', 'EMPLEADO', 'PLATFORM_ADMIN']
     if (!rolesPermitidos.includes(usuario.rol))
       return res.status(403).json({ error: 'Sin permiso para cancelar ventas' })
 
@@ -961,7 +961,7 @@ exports.actualizarMetodoPago = async (req, res) => {
     }
 
     // ── Solo SUPERADMIN y ADMIN_SUCURSAL pueden cambiar el método ──
-    const rolesPermitidos = ['SUPERADMIN', 'ADMIN_SUCURSAL']
+    const rolesPermitidos = ['SUPERADMIN', 'ADMIN_SUCURSAL', 'PLATFORM_ADMIN']
     if (!rolesPermitidos.includes(usuario.rol)) {
       return res.status(403).json({ error: 'Sin permiso para editar el método de pago' })
     }

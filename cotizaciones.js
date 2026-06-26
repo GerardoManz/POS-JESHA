@@ -1297,7 +1297,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   })
 
   // ── Descuento global: visibilidad por rol ──
-  const puedeDescuento = ['SUPERADMIN', 'ADMIN_SUCURSAL'].includes(USUARIO.rol)
+  const puedeDescuento = ['SUPERADMIN', 'ADMIN_SUCURSAL', 'PLATFORM_ADMIN'].includes(USUARIO.rol)
   const wrapDesc = document.getElementById('cot-descuento-wrap')
   if (wrapDesc) wrapDesc.style.display = puedeDescuento ? '' : 'none'
 

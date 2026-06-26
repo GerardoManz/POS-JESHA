@@ -1863,7 +1863,7 @@ function mostrarErrorImport(msg) {
 // ════════════════════════════════════════════════════════════════════
 
 // Roles que pueden ajustar inventario
-const ROLES_AJUSTE = ['SUPERADMIN', 'ADMIN_SUCURSAL']
+const ROLES_AJUSTE = ['SUPERADMIN', 'ADMIN_SUCURSAL', 'PLATFORM_ADMIN']
 let productoAjuste = null
 
 function initAjusteInventario() {

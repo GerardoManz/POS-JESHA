@@ -68,7 +68,7 @@ const requireRole = (...roles) => {
 // ═══════════════════════════════════════════════════════════════════
 
 const requireSucursalAccess = (req, res, next) => {
-  if (req.usuario.rol === 'SUPERADMIN') return next()
+  if (req.usuario.rol === 'SUPERADMIN' || req.usuario.rol === 'PLATFORM_ADMIN') return next()
   const sucursalSolicitada = parseInt(req.params.sucursalId || req.body.sucursalId)
   if (!sucursalSolicitada) return next()
   if (req.usuario.sucursalId !== sucursalSolicitada) {

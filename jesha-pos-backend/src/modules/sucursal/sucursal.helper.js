@@ -8,7 +8,7 @@
 module.exports = function resolverSucursalId(req) {
   const { rol, sucursalId: sucToken } = req.usuario
 
-  if (rol === 'SUPERADMIN') {
+  if (rol === 'SUPERADMIN' || rol === 'PLATFORM_ADMIN') {
     const raw = req.query.sucursalId ?? req.body?.sucursalId ?? req.params?.sucursalId
     const sucSolicitada = raw !== undefined ? parseInt(raw) : null
 

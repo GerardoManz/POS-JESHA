@@ -301,7 +301,7 @@ const obtenerHistorial = async (req, res) => {
 
     const where = { abierto: false }
 
-    if (rol !== 'SUPERADMIN') {
+    if (rol !== 'SUPERADMIN' && rol !== 'PLATFORM_ADMIN') {
       where.sucursalId = sucursalIdToken || 1
     }
 
@@ -408,7 +408,7 @@ const obtenerResumenContable = async (req, res) => {
     const desde = new Date(fechaDesde + 'T00:00:00.000Z')
     const hasta = new Date(fechaHasta + 'T23:59:59.999Z')
 
-    const whereSucursal = (rol === 'SUPERADMIN' && sucursalId)
+    const whereSucursal = ((rol === 'SUPERADMIN' || rol === 'PLATFORM_ADMIN') && sucursalId)
       ? parseInt(sucursalId)
       : (sucursalIdToken || 1)
 
@@ -449,7 +449,7 @@ const obtenerResumenContable = async (req, res) => {
     const row = Array.isArray(totales) ? totales[0] : totales
 
     const sucursales = await prisma.sucursal.findMany({
-      where: whereSucursal !== 1 && rol === 'SUPERADMIN' ? {} : { id: whereSucursal },
+      where: whereSucursal !== 1 && (rol === 'SUPERADMIN' || rol === 'PLATFORM_ADMIN') ? {} : { id: whereSucursal },
       select: { id: true, nombre: true }
     })
 

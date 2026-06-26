@@ -82,7 +82,7 @@ const listar = async (req, res) => {
     const pageInt  = Math.max(1, parseInt(page) || 1)
     const limitInt = Math.min(100, Math.max(1, parseInt(limit) || 25))
 
-    if (rol !== 'SUPERADMIN' && sucursalId) where.sucursalId = sucursalId
+    if (rol !== 'SUPERADMIN' && rol !== 'PLATFORM_ADMIN' && sucursalId) where.sucursalId = sucursalId
     if (estado)    where.estado    = estado
     if (clienteId) where.clienteId = parseInt(clienteId)
     if (usuarioId) where.usuarioId = parseInt(usuarioId)

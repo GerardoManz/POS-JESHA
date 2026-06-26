@@ -769,7 +769,7 @@ async function ajustarInventario(req, res) {
     const empresaId = getEmpresaId(req)
 
     // ── Validar rol ──
-    const rolesPermitidos = ['SUPERADMIN', 'ADMIN_SUCURSAL']
+    const rolesPermitidos = ['SUPERADMIN', 'ADMIN_SUCURSAL', 'PLATFORM_ADMIN']
     if (!rolesPermitidos.includes(usuario.rol)) {
       return res.status(403).json({
         error: 'No tienes permisos para ajustar inventario. Se requiere SUPERADMIN o ADMIN_SUCURSAL.'

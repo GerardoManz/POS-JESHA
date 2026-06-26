@@ -51,7 +51,7 @@ const listar = async (req, res) => {
     const { sucursalId, rol } = req.usuario
     const where = {}
 
-    if (rol !== 'SUPERADMIN' && sucursalId) where.sucursalId = sucursalId
+    if (rol !== 'SUPERADMIN' && rol !== 'PLATFORM_ADMIN' && sucursalId) where.sucursalId = sucursalId
     if (estado)      where.estado      = estado
     if (proveedorId) where.proveedorId = parseInt(proveedorId)
     if (pagada !== undefined) where.pagada = pagada === 'true'
@@ -95,7 +95,7 @@ const crear = async (req, res) => {
     if (!detalles || detalles.length === 0)
       return res.status(400).json({ success: false, error: 'Agrega al menos un producto' })
 
-    const roles = ['ADMIN_SUCURSAL','SUPERADMIN']
+    const roles = ['ADMIN_SUCURSAL','SUPERADMIN','PLATFORM_ADMIN']
     const usuario = await prisma.usuario.findUnique({ where: { id: usuarioId }, select: { rol: true } })
     if (!roles.includes(usuario.rol))
       return res.status(403).json({ success: false, error: 'Sin permiso para crear compras' })
@@ -244,7 +244,7 @@ const recibir = async (req, res) => {
     if (oc.estado === 'CANCELADO')   return res.status(400).json({ success: false, error: 'Orden cancelada' })
     if (oc.estado === 'RECIBIDO')    return res.status(400).json({ success: false, error: 'Orden ya recibida completamente' })
 
-    const roles = ['ADMIN_SUCURSAL','SUPERADMIN']
+    const roles = ['ADMIN_SUCURSAL','SUPERADMIN','PLATFORM_ADMIN']
     const usuario = await prisma.usuario.findUnique({ where: { id: usuarioId }, select: { rol: true } })
     if (!roles.includes(usuario.rol))
       return res.status(403).json({ success: false, error: 'Sin permiso para recibir mercancía' })

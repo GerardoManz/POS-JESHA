@@ -80,7 +80,7 @@ async function listar({ sucursalId, rol, estado, excluirCanceladas, tipo, buscar
   `
 
   const where = {}
-  if (rol !== 'SUPERADMIN' && sucursalId) where.sucursalId = sucursalId
+  if (rol !== 'SUPERADMIN' && rol !== 'PLATFORM_ADMIN' && sucursalId) where.sucursalId = sucursalId
 
   // Filtro de estado: si viene explícito úsalo, si no excluir CANCELADA
   if (estado) {
