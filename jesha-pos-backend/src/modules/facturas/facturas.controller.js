@@ -476,6 +476,13 @@ exports.timbrarGlobal = async (req, res) => {
       throw e
     }
 
+    // Totales calculados ANTES del try: visibles en el éxito y en el branch selladoOk
+    // del catch (recuperación INCIERTO). Antes vivían dentro del try → invisibles al catch.
+    const totalRaw = ventas.reduce((sum, v) => sum + parseFloat(v.total), 0)
+    const total    = parseFloat(totalRaw.toFixed(2))
+    const subtotal = parseFloat((total / 1.16).toFixed(2))
+    const iva      = parseFloat((total - subtotal).toFixed(2))
+
     const payload = buildGlobalInvoicePayload({ ventas, metodoPago, periodicidad, mes, anio, datosEmisor })
     let invoice = null
     let selladoOk = false
@@ -483,11 +490,6 @@ exports.timbrarGlobal = async (req, res) => {
     try {
       invoice = await fp.invoices.create({ ...payload, idempotency_key: `jesha-global-${factura.id}` })
       selladoOk = true
-
-      const totalRaw = ventas.reduce((sum, v) => sum + parseFloat(v.total), 0)
-      const total    = parseFloat(totalRaw.toFixed(2))
-      const subtotal = parseFloat((total / 1.16).toFixed(2))
-      const iva      = parseFloat((total - subtotal).toFixed(2))
 
       await prisma.$transaction([
         prisma.facturaCfdi.update({
@@ -524,14 +526,15 @@ exports.timbrarGlobal = async (req, res) => {
           data: {
             folioFiscal: invoice?.uuid ?? undefined,
             facturapiId: invoice?.id ?? undefined,
-            procesandoTimbrado: false,
-            procesandoTimbradoEn: null,
+            subtotal, iva, total,
+            procesandoTimbrado: true,
+            procesandoTimbradoEn: factura.procesandoTimbradoEn ?? new Date(),
             ultimoErrorTimbrado: ('Sellado OK, falló persistencia: ' + (fpErr.message || '')).slice(0, 500)
           }
         }).catch(() => {})
         return res.status(202).json({
           success: true, timbrado: false, requiereRevision: true,
-          mensaje: 'La factura se timbró pero falló el guardado local. Quedó marcada para revisión.',
+          mensaje: 'La factura se timbró en el SAT pero falló el guardado local. Quedó marcada para reconciliar.',
           facturaId: factura.id
         })
       }
