@@ -132,9 +132,66 @@
 .form-group { display:flex; flex-direction:column; gap:5px; position:relative; }
 .form-group label { font-size:0.78rem; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:0.05em; }
 .form-actions { display:flex; justify-content:flex-end; gap:10px; padding-top:8px; }
-.dropdown-clientes { position:absolute; top:100%; left:0; right:0; z-index:200; background:var(--sidebar-bg); border:1px solid var(--panel-border); border-radius:8px; overflow:hidden; box-shadow:0 8px 24px rgba(0,0,0,0.4); margin-top:2px; }
-.dropdown-item { padding:9px 14px; cursor:pointer; font-size:0.875rem; color:var(--text); transition:background 0.15s; }
-.dropdown-item:hover { background:rgba(255,255,255,0.05); }
+.dropdown-clientes { position:absolute; top:100%; left:0; right:0; z-index:200; background:var(--sidebar-bg); border:1px solid var(--panel-border); border-radius:10px; overflow:hidden; box-shadow:0 8px 24px rgba(0,0,0,0.4); margin-top:2px; }
+.cliente-meta-full { grid-column:1 / -1; }
+.cliente-selector-wrap { min-width:0; }
+.cliente-selector-input {
+  height:34px;
+  padding:8px 10px;
+  background:rgba(255,255,255,0.04);
+  border:1px solid var(--panel-border);
+  border-radius:7px;
+  color:var(--text);
+  font-family:'Barlow',sans-serif;
+  font-size:0.9rem;
+  outline:none;
+  opacity:1;
+}
+.cliente-selector-input[readonly] {
+  background:rgba(255,255,255,0.04);
+  color:var(--text);
+  opacity:1;
+  -webkit-text-fill-color:var(--text);
+  cursor:pointer;
+}
+.cliente-selector-input:focus {
+  border-color:var(--accent);
+  box-shadow:0 0 0 2px rgba(74,144,226,0.2);
+}
+.btn-lista-clientes { background:transparent; border:none; color:var(--muted); cursor:pointer; padding:4px 7px; border-radius:6px; }
+.btn-lista-clientes:hover { background:rgba(255,255,255,0.06); color:var(--text); }
+.cliente-dropdown-pos {
+  background:var(--sidebar-bg,#0e1014);
+  border:1px solid rgba(255,255,255,0.12);
+  border-radius:12px;
+  box-shadow:0 18px 38px rgba(0,0,0,0.48);
+  max-height:280px;
+  overflow-y:auto;
+  overflow-x:hidden;
+  padding:6px;
+}
+.dropdown-item {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+  min-height:52px;
+  padding:9px 10px;
+  cursor:pointer;
+  color:var(--text);
+  border-radius:9px;
+  transition:background 0.12s, transform 0.12s;
+}
+.dropdown-item:hover { background:rgba(107,157,232,0.11); }
+.dropdown-item:active { transform:scale(0.99); }
+.dropdown-item .item-left { display:flex; flex-direction:column; gap:4px; min-width:0; flex:1; }
+.dropdown-item .item-nombre { font-weight:700; font-size:0.92rem; line-height:1.05; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.dropdown-item .item-sub { display:block; font-size:0.78rem; line-height:1.1; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.dropdown-item .item-right { flex-shrink:0; }
+.dropdown-item .item-saldo { min-width:72px; padding:5px 8px; border-radius:999px; text-align:center; font-size:0.82rem; font-weight:800; font-variant-numeric:tabular-nums; }
+.dropdown-item .item-saldo.activo { color:var(--success); background:rgba(96,208,128,0.10); }
+.dropdown-item .item-saldo.pendiente { color:var(--warning); background:rgba(255,193,7,0.12); }
+.dropdown-item.dropdown-empty { justify-content:center; min-height:44px; color:var(--muted); font-style:italic; padding:10px 12px; font-size:0.86rem; }
 .btn-primary  { display:inline-flex; align-items:center; gap:7px; padding:9px 18px; background:var(--accent); border:none; border-radius:8px; color:#fff; font-family:'Barlow',sans-serif; font-size:0.875rem; font-weight:600; cursor:pointer; transition:background 0.15s; }
 .btn-primary:hover  { background:var(--accent-hover); }
 .btn-secondary{ display:inline-flex; align-items:center; gap:7px; padding:9px 18px; background:transparent; border:1px solid var(--panel-border); border-radius:8px; color:var(--muted); font-family:'Barlow',sans-serif; font-size:0.875rem; font-weight:600; cursor:pointer; transition:all 0.15s; }

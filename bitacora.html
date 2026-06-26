@@ -150,7 +150,13 @@
         <div class="det-card">
           <div class="det-card-header">📋 Información</div>
           <div class="ver-meta" style="grid-template-columns:1fr 1fr;">
-            <div class="meta-item"><span class="meta-label">Cliente</span><span class="meta-valor" id="det-cliente">—</span></div>
+            <div class="meta-item cliente-meta-full"><span class="meta-label">Cliente</span>
+              <div class="cliente-input-wrap cliente-selector-wrap" style="position:relative;">
+                <input type="text" id="det-cliente-input" placeholder="Click para cambiar cliente..." class="control-input cliente-selector-input" style="width:100%;padding-right:28px;cursor:pointer;" autocomplete="off" readonly />
+                <button type="button" id="btn-det-cliente" class="btn-lista-clientes" title="Buscar cliente" style="position:absolute;right:2px;top:50%;transform:translateY(-50%);">&#8964;</button>
+                <input type="hidden" id="det-cliente-id" />
+              </div>
+            </div>
             <div class="meta-item"><span class="meta-label">Teléfono</span><span class="meta-valor" id="det-telefono">—</span></div>
             <div class="meta-item"><span class="meta-label">Inicio</span><span class="meta-valor" id="det-fecha">—</span></div>
             <div class="meta-item"><span class="meta-label">Cajero</span><span class="meta-valor" id="det-usuario">—</span></div>
@@ -158,6 +164,9 @@
           <p id="det-descripcion" class="det-descripcion" style="display:none;"></p>
           <p id="det-notas-p" class="det-notas" style="display:none;"></p>
         </div>
+
+        <!-- Dropdown para cambiar cliente en detalle -->
+        <div id="dd-det-cliente" class="cliente-dropdown-pos" style="display:none;position:fixed;z-index:99999;flex-direction:column;"></div>
 
         <div class="det-card det-card-financiero">
           <div class="det-card-header">💰 Resumen financiero</div>
@@ -381,7 +390,7 @@
   </div>
 </div>
 
-<div id="dd-bit-clientes" style="display:none;position:fixed;z-index:99999;flex-direction:column;"></div>
+<div id="dd-bit-clientes" class="cliente-dropdown-pos" style="display:none;position:fixed;z-index:99999;flex-direction:column;"></div>
 
 <script src="config.js"></script>
 <script src="sidebar.js"></script>

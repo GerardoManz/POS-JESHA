@@ -36,6 +36,36 @@ function formatFecha(iso, corto = false) {
     : d.toLocaleString('es-MX', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
+function posicionarDropdownCliente(inp, dd) {
+  const rect = inp.getBoundingClientRect()
+  const margen = 12
+  const maxWidth = Math.min(380, window.innerWidth - margen * 2)
+  const width = Math.min(maxWidth, Math.max(rect.width, 320))
+  const left = Math.min(Math.max(rect.left, margen), window.innerWidth - width - margen)
+
+  dd.style.left = left + 'px'
+  dd.style.top = (rect.bottom + 6) + 'px'
+  dd.style.width = width + 'px'
+  dd.style.maxHeight = '280px'
+  dd.style.overflowY = 'auto'
+  dd.style.overflowX = 'hidden'
+}
+
+function renderClienteDropdownItem(c) {
+  const saldo = parseFloat(c.saldoPendiente || 0)
+  const saldoClass = saldo > 0 ? 'pendiente' : 'activo'
+  const telefono = c.telefono || 'Sin teléfono'
+  return `<div class="dropdown-item" data-cid="${c.id}">
+    <div class="item-left">
+      <div class="item-nombre">${c.nombre}</div>
+      <div class="item-sub">${telefono}</div>
+    </div>
+    <div class="item-right">
+      <div class="item-saldo ${saldoClass}">${formatMoney(saldo)}</div>
+    </div>
+  </div>`
+}
+
 function toast(msg, tipo = 'info') {
   if (typeof jeshaToast === 'function') return jeshaToast(msg, tipo)
   alert(msg)
@@ -266,7 +296,16 @@ function renderDetalle() {
   }
 
   // Info
-  document.getElementById('det-cliente').textContent   = b.Cliente?.nombre   || '—'
+  const esEditableMeta = b.estado === 'ABIERTA' || b.estado === 'PAUSADA'
+  const elClienteInput = document.getElementById('det-cliente-input')
+  const elClienteId    = document.getElementById('det-cliente-id')
+  elClienteInput.value = b.Cliente?.nombre || ''
+  elClienteId.value    = b.Cliente?.id    || ''
+  elClienteInput.readOnly = !esEditableMeta
+  elClienteInput.style.cursor = esEditableMeta ? 'text' : 'default'
+  elClienteInput.placeholder = esEditableMeta ? 'Click o escribe para filtrar...' : 'Sin cliente'
+  const btnCliente = document.getElementById('btn-det-cliente')
+  if (btnCliente) btnCliente.style.display = esEditableMeta ? '' : 'none'
   document.getElementById('det-telefono').textContent  = b.Cliente?.telefono || '—'
   document.getElementById('det-fecha').textContent     = formatFecha(b.creadaEn)
   document.getElementById('det-usuario').textContent   = b.Usuario?.nombre   || '—'
@@ -344,6 +383,78 @@ function renderDetalle() {
 
   // Acciones (botones de cierre/reapertura)
   renderAcciones()
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  CAMBIO DE CLIENTE EN DETALLE
+// ════════════════════════════════════════════════════════════════════
+function mostrarDropdownClienteDetalle(e) {
+  if (e) e.stopPropagation()
+  const b = bitacoraActual
+  if (!b || !['ABIERTA','PAUSADA'].includes(b.estado)) return
+
+  const inp = document.getElementById('det-cliente-input')
+  const dd  = document.getElementById('dd-det-cliente')
+  if (!inp || !dd) return
+
+  if (!clientesCache.length) {
+    posicionarDropdownCliente(inp, dd)
+    dd.innerHTML = '<div class="dropdown-item dropdown-empty">Cargando clientes...</div>'
+    dd.style.display = 'flex'
+    cargarClientes().then(() => mostrarDropdownClienteDetalle())
+    return
+  }
+
+  posicionarDropdownCliente(inp, dd)
+
+  // Filtro por texto si el usuario escribió algo
+  const filtro = (inp.value || '').toLowerCase().trim()
+  const filtrados = filtro
+    ? clientesCache.filter(c =>
+        c.nombre.toLowerCase().includes(filtro) ||
+        (c.telefono || '').includes(filtro)
+      )
+    : clientesCache
+
+  let html = `<div class="dropdown-item dropdown-empty" data-cid="">— Sin cliente —</div>`
+  if (filtrados.length === 0) {
+    html += `<div class="dropdown-item dropdown-empty">Sin coincidencias</div>`
+  } else {
+    html += filtrados.map(renderClienteDropdownItem).join('')
+  }
+  dd.innerHTML = html
+  dd.style.display = 'flex'
+
+  dd.querySelectorAll('.dropdown-item').forEach(it => {
+    it.addEventListener('click', ev => {
+      ev.stopPropagation()
+      const cid = it.dataset.cid ? parseInt(it.dataset.cid) : null
+      dd.style.display = 'none'
+      cambiarClienteBitacora(cid)
+    })
+  })
+}
+
+async function cambiarClienteBitacora(clienteId) {
+  const b = bitacoraActual
+  if (!b) return
+  try {
+    const res = await apiFetch(`/bitacoras/${b.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ clienteId: clienteId || '' })
+    })
+    bitacoraActual = res.data
+    renderDetalle()
+    cargarBitacoras(paginaActual)
+    toast(res.mensaje || 'Cliente actualizado', 'success')
+  } catch (e) {
+    toast('Error: ' + e.message, 'error')
+  }
+}
+
+function cerrarDropdownClienteDetalle() {
+  const dd = document.getElementById('dd-det-cliente')
+  if (dd) dd.style.display = 'none'
 }
 
 function puedeEditarDescuentoBitacora(b) {
@@ -1361,21 +1472,14 @@ function mostrarDropdownClientes(e) {
 
   // Si no hay clientes cacheados, intentar cargarlos
   if (!clientesCache.length) {
-    dd.innerHTML = '<div class="dropdown-item" style="color:var(--muted);">Cargando clientes...</div>'
+    posicionarDropdownCliente(inp, dd)
+    dd.innerHTML = '<div class="dropdown-item dropdown-empty">Cargando clientes...</div>'
+    dd.style.display = 'flex'
     cargarClientes().then(() => mostrarDropdownClientes())
     return
   }
 
-  const rect = inp.getBoundingClientRect()
-  dd.style.left  = rect.left + 'px'
-  dd.style.top   = (rect.bottom + 2) + 'px'
-  dd.style.width = rect.width + 'px'
-  dd.style.maxHeight = '260px'
-  dd.style.overflowY = 'auto'
-  dd.style.background = 'var(--sidebar-bg, #1a1a1a)'
-  dd.style.border = '1px solid var(--panel-border)'
-  dd.style.borderRadius = '8px'
-  dd.style.boxShadow = '0 8px 24px rgba(0,0,0,0.4)'
+  posicionarDropdownCliente(inp, dd)
 
   // Filtro por texto si el usuario escribió algo
   const filtro = (inp.value || '').toLowerCase().trim()
@@ -1386,13 +1490,11 @@ function mostrarDropdownClientes(e) {
       )
     : clientesCache
 
-  let html = '<div class="dropdown-item" data-cid="">— Sin cliente —</div>'
+  let html = `<div class="dropdown-item dropdown-empty" data-cid="">— Sin cliente —</div>`
   if (filtrados.length === 0) {
-    html += '<div class="dropdown-item" style="color:var(--muted);">Sin coincidencias</div>'
+    html += `<div class="dropdown-item dropdown-empty">Sin coincidencias</div>`
   } else {
-    html += filtrados.map(c =>
-      `<div class="dropdown-item" data-cid="${c.id}">${c.nombre}${c.telefono ? ' · ' + c.telefono : ''}</div>`
-    ).join('')
+    html += filtrados.map(renderClienteDropdownItem).join('')
   }
   dd.innerHTML = html
   dd.style.display = 'flex'
@@ -1402,7 +1504,8 @@ function mostrarDropdownClientes(e) {
       ev.stopPropagation()
       const cid = it.dataset.cid
       document.getElementById('bit-cliente-id').value = cid
-      document.getElementById('bit-cliente-buscar').value = cid ? it.textContent : ''
+      const nombreEl = it.querySelector('.item-nombre')
+      document.getElementById('bit-cliente-buscar').value = cid && nombreEl ? nombreEl.textContent : ''
       dd.style.display = 'none'
     })
   })
@@ -1410,11 +1513,16 @@ function mostrarDropdownClientes(e) {
 
 document.addEventListener('click', e => {
   const dd = document.getElementById('dd-bit-clientes')
-  if (!dd) return
-  if (!e.target.closest('#btn-lista-bit-clientes')
+  if (dd && !e.target.closest('#btn-lista-bit-clientes')
       && !e.target.closest('#bit-cliente-buscar')
       && !e.target.closest('#dd-bit-clientes')) {
     dd.style.display = 'none'
+  }
+  const ddDet = document.getElementById('dd-det-cliente')
+  if (ddDet && !e.target.closest('#det-cliente-input')
+      && !e.target.closest('#btn-det-cliente')
+      && !e.target.closest('#dd-det-cliente')) {
+    ddDet.style.display = 'none'
   }
 })
 
@@ -1468,6 +1576,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('fin-descuento-valor')?.addEventListener('keydown', ev => {
     if (ev.key === 'Enter') { ev.preventDefault(); aplicarDescuentoGlobal() }
   })
+
+  // ── Cliente editable en detalle ──
+  document.getElementById('det-cliente-input')?.addEventListener('focus', mostrarDropdownClienteDetalle)
+  document.getElementById('det-cliente-input')?.addEventListener('click', mostrarDropdownClienteDetalle)
+  document.getElementById('det-cliente-input')?.addEventListener('input', mostrarDropdownClienteDetalle)
+  document.getElementById('btn-det-cliente')?.addEventListener('click', mostrarDropdownClienteDetalle)
 
   // ── Abono ──
   document.getElementById('btn-abonar').addEventListener('click', registrarAbono)
