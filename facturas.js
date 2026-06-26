@@ -141,7 +141,7 @@ window.verDetalle = async function(id) {
     llenarCatalogosDetalle()
 
     const esPendiente = f.estado === 'PENDIENTE_TIMBRADO'
-    ;['det-rfc','det-nombre','det-regimen','det-cp','det-uso','det-email'].forEach(id => {
+    ;['det-rfc','det-nombre','det-regimen','det-cp','det-uso','det-email','det-email-sec1','det-email-sec2'].forEach(id => {
       const el = document.getElementById(id)
       if (!el) return
       if (esPendiente) {
@@ -159,7 +159,9 @@ window.verDetalle = async function(id) {
     filtrarUsosPorRegimen(document.getElementById('det-regimen'), document.getElementById('det-uso'))
     document.getElementById('det-uso').value     = f.usoCfdi || ''
     document.getElementById('det-cp').value      = f.cpReceptor || ''
-    document.getElementById('det-email').value   = f.emailReceptor || ''
+    document.getElementById('det-email').value      = f.emailReceptor || ''
+    document.getElementById('det-email-sec1').value = f.emailSecundario1 || ''
+    document.getElementById('det-email-sec2').value = f.emailSecundario2 || ''
     document.getElementById('det-venta').textContent    = f.Venta?.folio || '—'
     document.getElementById('det-fecha').textContent    = fmtFecha(f.creadaEn)
     document.getElementById('det-subtotal').textContent = fmt(f.subtotal)
@@ -277,8 +279,10 @@ window.timbrarManual = async function(id) {
       razonSocial:   document.getElementById('det-nombre').value.trim(),
       regimenFiscal: document.getElementById('det-regimen').value,
       codigoPostal:  document.getElementById('det-cp').value.trim(),
-      usoCfdi:       document.getElementById('det-uso').value,
-      email:         document.getElementById('det-email').value.trim()
+      usoCfdi:           document.getElementById('det-uso').value,
+      email:             document.getElementById('det-email').value.trim(),
+      emailSecundario1:  document.getElementById('det-email-sec1').value.trim() || null,
+      emailSecundario2:  document.getElementById('det-email-sec2').value.trim() || null
     }
 
     const res  = await fetch(`${API_URL}/facturas/${id}/timbrar`, {
@@ -609,6 +613,8 @@ async function buscarVentaExactaParaFactura(folio) {
   document.getElementById('m-cp').value      = ''
   document.getElementById('m-uso').value     = ''
   document.getElementById('m-email').value   = ''
+  document.getElementById('m-email-sec1').value = ''
+  document.getElementById('m-email-sec2').value = ''
   document.getElementById('manual-error').style.display = 'none'
   ventaParaFacturar = null
   document.getElementById('modal-manual').classList.add('active')
@@ -720,7 +726,9 @@ async function facturarManualDesdeModal() {
     regimenFiscal: document.getElementById('m-regimen').value,
     codigoPostal:  document.getElementById('m-cp').value.trim(),
     usoCfdi:       document.getElementById('m-uso').value,
-    email:         document.getElementById('m-email').value.trim()
+    email:             document.getElementById('m-email').value.trim(),
+    emailSecundario1:  document.getElementById('m-email-sec1').value.trim() || undefined,
+    emailSecundario2:  document.getElementById('m-email-sec2').value.trim() || undefined
   }
 
   // Validar campos
@@ -965,12 +973,12 @@ document.addEventListener('DOMContentLoaded', () => {
     })
   }
 
-  // Mostrar botón Factura Global solo para roles fiscales
+  // 🔒 Factura Global oculta hasta: conciliación junio completa + recuperación INCIERTO lista
   const rolFiscal = ['ADMIN_SUCURSAL','SUPERADMIN','PLATFORM_ADMIN'].includes(USUARIO.rol)
-  if (rolFiscal) {
-    const btn = document.getElementById('btn-factura-global')
-    if (btn) btn.style.display = 'inline-flex'
-  }
+  // if (rolFiscal) {
+  //   const btn = document.getElementById('btn-factura-global')
+  //   if (btn) btn.style.display = 'inline-flex'
+  // }
 
   cargarFacturas()
 

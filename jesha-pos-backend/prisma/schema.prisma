@@ -236,6 +236,8 @@ model FacturaCfdi {
   regimenFiscal        String
   usoCfdi              String
   emailReceptor        String?
+  emailSecundario1     String?
+  emailSecundario2     String?
   lugarExpedicion      String
   subtotal             Decimal       @db.Decimal(10, 2)
   iva                  Decimal       @db.Decimal(10, 2)

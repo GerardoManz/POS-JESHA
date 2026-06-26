@@ -2,6 +2,19 @@ const prisma  = require('../../lib/prisma')
 const QRCode  = require('qrcode')
 const fs      = require('fs')
 const path    = require('path')
+const os      = require('os')
+
+function getLanIp() {
+  const interfaces = os.networkInterfaces()
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name]) {
+      if (iface.family === 'IPv4' && !iface.internal) {
+        return iface.address
+      }
+    }
+  }
+  return '192.168.0.190'
+}
 
 // ── Datos fijos de JESHA ──
 const EMPRESA = {
@@ -36,10 +49,15 @@ const generarTicket = async (req, res) => {
 
     if (!venta) return res.status(404).json({ error: 'Venta no encontrada' })
 
-    const isProduction    = process.env.NODE_ENV === 'production'
+    const isProduction = process.env.NODE_ENV === 'production'
+    const rawHost      = req.get('host')
+    const lanIp        = getLanIp()
+    const host         = (!isProduction && /^(localhost|127\.0\.0\.1)/.test(rawHost))
+      ? rawHost.replace(/^(localhost|127\.0\.0\.1)/, lanIp)
+      : rawHost
     const FACTURACION_URL = isProduction
-      ? `https://${req.get('host')}`
-      : `${req.protocol}://${req.get('host')}`
+      ? `https://${host}`
+      : `${req.protocol}://${host}`
     const facturarPath    = isProduction ? '/facturar.html' : '/facturar'
     const urlFacturacion  = `${FACTURACION_URL}${facturarPath}?token=${venta.tokenQr}`
 

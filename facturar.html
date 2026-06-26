@@ -366,6 +366,18 @@
             <span style="font-size:0.75rem;color:var(--muted);margin-top:2px;">Te enviaremos el XML y PDF de tu factura aquí</span>
           </div>
 
+          <!-- Email secundario 1 (opcional) -->
+          <div class="fact-field">
+            <label class="fact-label">Correo adicional 1</label>
+            <input type="email" id="f-email-sec1" class="fact-input" placeholder="contador@correo.com" />
+          </div>
+
+          <!-- Email secundario 2 (opcional) -->
+          <div class="fact-field">
+            <label class="fact-label">Correo adicional 2</label>
+            <input type="email" id="f-email-sec2" class="fact-input" placeholder="admin@correo.com" />
+          </div>
+
           <div class="error-inline" id="form-error"></div>
 
           <button type="submit" class="fact-btn" id="btn-facturar">
@@ -562,6 +574,8 @@ document.getElementById('fact-form').addEventListener('submit', async function(e
     codigoPostal: document.getElementById('f-cp').value.trim(),
     usoCfdi:      document.getElementById('f-uso').value,
     email:        document.getElementById('f-email').value.trim(),
+    emailSecundario1: document.getElementById('f-email-sec1').value.trim() || undefined,
+    emailSecundario2: document.getElementById('f-email-sec2').value.trim() || undefined,
   }
 
   // Validar campos

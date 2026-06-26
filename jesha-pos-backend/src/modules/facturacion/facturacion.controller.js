@@ -360,7 +360,7 @@ exports.obtenerVentaPorToken = async (req, res) => {
 // ════════════════════════════════════════════════════════════════════
 exports.solicitarFactura = async (req, res) => {
   try {
-    const { token, rfc, razonSocial, regimenFiscal, codigoPostal, usoCfdi, email } = req.body
+    const { token, rfc, razonSocial, regimenFiscal, codigoPostal, usoCfdi, email, emailSecundario1, emailSecundario2 } = req.body
 
     if (!token)         return res.status(400).json({ error: 'Token requerido' })
     if (!rfc)           return res.status(400).json({ error: 'RFC requerido' })
@@ -372,6 +372,12 @@ exports.solicitarFactura = async (req, res) => {
 
     if (!/^[A-ZÑ&]{3,4}\d{6}[A-Z0-9]{3}$/i.test(rfc.trim())) return res.status(400).json({ error: 'RFC inválido.' })
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return res.status(400).json({ error: 'Email inválido.' })
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    const sec1 = (emailSecundario1 || '').trim()
+    const sec2 = (emailSecundario2 || '').trim()
+    if (sec1 && !emailRegex.test(sec1)) return res.status(400).json({ error: 'Email secundario 1 inválido.' })
+    if (sec2 && !emailRegex.test(sec2)) return res.status(400).json({ error: 'Email secundario 2 inválido.' })
 
     const venta = await prisma.venta.findFirst({
       where: { tokenQr: token },
@@ -424,6 +430,8 @@ exports.solicitarFactura = async (req, res) => {
       rfcReceptor: rfcUpper, nombreReceptor: razonSocial.trim(),
       cpReceptor: codigoPostal.trim(), regimenFiscal, usoCfdi,
       emailReceptor: emailTrimmed,
+      emailSecundario1: sec1 || null,
+      emailSecundario2: sec2 || null,
       lugarExpedicion: process.env.JESHA_CP_EMISOR || '98660',
       subtotal, iva, total
     }
@@ -510,12 +518,13 @@ exports.solicitarFactura = async (req, res) => {
         })
       ])
 
-      try { await fp.invoices.sendByEmail(invoice.id) } catch (e) { console.warn('⚠️  No se pudo enviar email:', e.message) }
+      const emailsEnvio = [emailTrimmed, sec1, sec2].filter(Boolean)
+      try { await fp.invoices.sendByEmail(invoice.id, { email: emailsEnvio }) } catch (e) { console.warn('⚠️  No se pudo enviar email:', e.message) }
 
       console.log(`✅ CFDI timbrado: ${invoice.uuid} | ${venta.folio} | ${rfcUpper}`)
       return res.json({
         success: true, timbrado: true,
-        mensaje: `Tu factura fue emitida exitosamente. Te enviaremos el XML y PDF a ${emailTrimmed}.`,
+        mensaje: `Tu factura fue emitida exitosamente. Te enviaremos el XML y PDF a ${emailsEnvio.join(', ')}.`,
         uuid: invoice.uuid, facturaId: factura.id
       })
 
@@ -610,7 +619,9 @@ exports.timbrarManual = async (req, res) => {
         regimenFiscal: nuevoRegimen,
         codigoPostal:  nuevoCp,
         usoCfdi:       nuevoUso,
-        email:         nuevoEmail
+        email:         nuevoEmail,
+        emailSecundario1: nuevoEmailSec1,
+        emailSecundario2: nuevoEmailSec2
       } = req.body || {}
 
       const updates = {}
@@ -620,6 +631,8 @@ exports.timbrarManual = async (req, res) => {
       if (nuevoCp?.trim())           updates.cpReceptor     = nuevoCp.trim()
       if (nuevoUso)                  updates.usoCfdi        = nuevoUso
       if (nuevoEmail?.trim())        updates.emailReceptor  = nuevoEmail.trim()
+      if (nuevoEmailSec1 !== undefined) updates.emailSecundario1 = nuevoEmailSec1?.trim() || null
+      if (nuevoEmailSec2 !== undefined) updates.emailSecundario2 = nuevoEmailSec2?.trim() || null
       const huboCorrecciones = Object.keys(updates).length > 0
 
       // idempotency_key: reusa por timeout; nueva revisión (-r2...) si hay correcciones.
@@ -686,7 +699,8 @@ exports.timbrarManual = async (req, res) => {
         })
       ])
 
-      try { await fp.invoices.sendByEmail(invoice.id) } catch (e) { console.warn('⚠️  No se pudo enviar email:', e.message) }
+      const emailsManual = [f.emailReceptor, f.emailSecundario1, f.emailSecundario2].filter(Boolean)
+      try { await fp.invoices.sendByEmail(invoice.id, { email: emailsManual }) } catch (e) { console.warn('⚠️  No se pudo enviar email:', e.message) }
 
       console.log(`✅ Timbrado manual: ${invoice.uuid} | factura ${id}`)
       return res.json({ success: true, uuid: invoice.uuid, data: actualizada, cfdi: invoice })
@@ -808,9 +822,10 @@ exports.enviarEmail = async (req, res) => {
     const fp = getFacturapi()
     if (!fp) return res.status(503).json({ error: 'Facturapi no configurada' })
 
-    await fp.invoices.sendByEmail(factura.facturapiId)
-    console.log(`📧 Email reenviado: factura ${factura.id} → ${factura.emailReceptor}`)
-    res.json({ success: true, mensaje: `Email enviado a ${factura.emailReceptor || 'el correo registrado'}` })
+    const emailsReenvio = [factura.emailReceptor, factura.emailSecundario1, factura.emailSecundario2].filter(Boolean)
+    await fp.invoices.sendByEmail(factura.facturapiId, { email: emailsReenvio })
+    console.log(`📧 Email reenviado: factura ${factura.id} → ${emailsReenvio.join(', ')}`)
+    res.json({ success: true, mensaje: `Email enviado a ${emailsReenvio.join(', ')}` })
   } catch (err) {
     console.error('❌ Error enviar email:', err)
     res.status(err.expose ? (err.status || 500) : 500).json({ error: 'Error al enviar email: ' + err.message })
