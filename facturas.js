@@ -18,6 +18,7 @@ const fmtFecha = iso => iso ? new Date(iso).toLocaleString('es-MX', { day: '2-di
 let paginaActual = 1
 const LIMIT      = 20
 let debounce
+let clientesCache = []
 
 function llenarCatalogosDetalle() {
   poblarSelectSAT(document.getElementById('det-regimen'), CATALOGO_REGIMENES)
@@ -595,6 +596,105 @@ async function reenviarEmail(facturaId) {
 // ════════════════════════════════════════════════════════════════════
 let ventaParaFacturar = null
 
+// ── Dropdown cliente fiscal ──
+async function cargarClientesCache() {
+  if (clientesCache.length) return clientesCache
+  try {
+    const res = await fetch(`${API_URL}/clientes?limit=500`, { headers: { 'Authorization': `Bearer ${TOKEN}` } })
+    const data = await res.json()
+    const lista = Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : [])
+    clientesCache = lista.filter(c => c.activo && c.tipo === 'FISCAL')
+  } catch (e) {
+    clientesCache = []
+  }
+  return clientesCache
+}
+
+function renderClienteFiscalItem(c) {
+  const saldo = parseFloat(c.saldoPendiente || 0)
+  const saldoClass = saldo > 0 ? 'pendiente' : 'activo'
+  return `<div class="dropdown-item" data-cid="${c.id}">
+    <div class="item-left">
+      <div class="item-nombre">${c.nombre}</div>
+      <div class="item-sub">${c.rfc || ''}${c.telefono ? ' · ' + c.telefono : ''}</div>
+    </div>
+    <div class="item-right">
+      <div class="item-saldo ${saldoClass}">${fmt(saldo)}</div>
+    </div>
+  </div>`
+}
+
+async function mostrarDropdownClienteFiscal(e) {
+  if (e) e.stopPropagation()
+  const inp = document.getElementById('m-cliente-buscar')
+  const dd  = document.getElementById('dd-m-clientes')
+  if (!inp || !dd) return
+
+  await cargarClientesCache()
+
+  if (!clientesCache.length) {
+    dd.innerHTML = '<div class="dropdown-empty">No hay clientes fiscales</div>'
+    dd.style.display = 'flex'
+    return
+  }
+
+  const rect = inp.getBoundingClientRect()
+  dd.style.left  = Math.min(Math.max(rect.left, 12), window.innerWidth - 380 - 12) + 'px'
+  dd.style.top   = (rect.bottom + 6) + 'px'
+  dd.style.width = Math.min(380, Math.max(rect.width, 320)) + 'px'
+  dd.style.maxHeight = '280px'
+  dd.style.overflowY = 'auto'
+  dd.style.overflowX = 'hidden'
+
+  const filtro = (inp.value || '').toLowerCase().trim()
+  const filtrados = filtro
+    ? clientesCache.filter(c =>
+        c.nombre.toLowerCase().includes(filtro) ||
+        (c.rfc || '').toLowerCase().includes(filtro) ||
+        (c.telefono || '').includes(filtro)
+      )
+    : clientesCache
+
+  let html = ''
+  if (filtrados.length === 0) {
+    html += '<div class="dropdown-empty">Sin coincidencias</div>'
+  } else {
+    html += filtrados.map(renderClienteFiscalItem).join('')
+  }
+  dd.innerHTML = html
+  dd.style.display = 'flex'
+
+  dd.querySelectorAll('.dropdown-item').forEach(it => {
+    it.addEventListener('click', ev => {
+      ev.stopPropagation()
+      const cid = parseInt(it.dataset.cid)
+      dd.style.display = 'none'
+      seleccionarClienteFiscal(cid)
+    })
+  })
+}
+
+function seleccionarClienteFiscal(clienteId) {
+  const c = clientesCache.find(x => x.id === clienteId)
+  if (!c) return
+
+  document.getElementById('m-cliente-id').value = c.id
+  document.getElementById('m-cliente-buscar').value = c.nombre
+  document.getElementById('m-rfc').value = c.rfc || ''
+  document.getElementById('m-razon').value = c.razonSocial || c.nombre || ''
+  document.getElementById('m-cp').value = c.codigoPostalFiscal || ''
+  document.getElementById('m-email').value = c.email || ''
+  document.getElementById('m-email-sec1').value = c.emailSecundario1 || ''
+  document.getElementById('m-email-sec2').value = c.emailSecundario2 || ''
+  document.getElementById('m-regimen').value = c.regimenFiscal || ''
+  document.getElementById('m-uso').value = c.usoCfdi || ''
+}
+
+function limpiarClienteFiscal() {
+  document.getElementById('m-cliente-id').value = ''
+  document.getElementById('m-cliente-buscar').value = ''
+}
+
 function llenarCatalogosManual() {
   poblarSelectSAT(document.getElementById('m-regimen'), CATALOGO_REGIMENES)
   poblarSelectSAT(document.getElementById('m-uso'), CATALOGO_USOS)
@@ -677,6 +777,8 @@ async function buscarVentaExactaParaFactura(folio) {
       document.getElementById('m-razon').value = venta.cliente.razonSocial || venta.cliente.nombre || ''
       document.getElementById('m-cp').value    = venta.cliente.codigoPostalFiscal || ''
       document.getElementById('m-email').value = venta.cliente.email || ''
+      document.getElementById('m-email-sec1').value = venta.cliente.emailSecundario1 || ''
+      document.getElementById('m-email-sec2').value = venta.cliente.emailSecundario2 || ''
 
       const selRegimen = document.getElementById('m-regimen')
       const selUso     = document.getElementById('m-uso')
@@ -1032,6 +1134,10 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('m-cp').value      = ''
     document.getElementById('m-uso').value     = ''
     document.getElementById('m-email').value   = ''
+    document.getElementById('m-email-sec1').value = ''
+    document.getElementById('m-email-sec2').value = ''
+    document.getElementById('m-cliente-id').value = ''
+    document.getElementById('m-cliente-buscar').value = ''
     document.getElementById('manual-error').style.display = 'none'
     ventaParaFacturar = null
     document.getElementById('modal-manual').classList.add('active')
@@ -1113,6 +1219,13 @@ document.addEventListener('DOMContentLoaded', () => {
   // ── Auto-facturar desde historial ──
   const urlParams = new URLSearchParams(window.location.search)
   const folioAutoFacturar = urlParams.get('facturar')
+
+  // ── Dropdown cliente fiscal ──
+  document.getElementById('m-cliente-buscar')?.addEventListener('focus', mostrarDropdownClienteFiscal)
+  document.getElementById('m-cliente-buscar')?.addEventListener('click', mostrarDropdownClienteFiscal)
+  document.getElementById('m-cliente-buscar')?.addEventListener('input', mostrarDropdownClienteFiscal)
+  document.getElementById('btn-lista-m-clientes')?.addEventListener('click', mostrarDropdownClienteFiscal)
+
   if (folioAutoFacturar) {
     // Limpiar URL para que un refresh no re-dispare
     window.history.replaceState({}, '', 'facturas.html')
@@ -1126,6 +1239,17 @@ document.addEventListener('DOMContentLoaded', () => {
     // Llenar folio y disparar búsqueda
     document.getElementById('m-folio').value = folioAutoFacturar
     setTimeout(() => buscarVentaExactaParaFactura(folioAutoFacturar), 300)
+  }
+})
+
+// ── Dropdown cliente fiscal ──
+document.addEventListener('click', e => {
+  const dd = document.getElementById('dd-m-clientes')
+  if (dd && dd.style.display !== 'none'
+      && !e.target.closest('#m-cliente-buscar')
+      && !e.target.closest('#btn-lista-m-clientes')
+      && !e.target.closest('#dd-m-clientes')) {
+    dd.style.display = 'none'
   }
 })
 

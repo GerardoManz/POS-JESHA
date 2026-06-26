@@ -298,7 +298,8 @@ exports.obtenerVentaPorToken = async (req, res) => {
         Cliente: {
           select: {
             id: true, nombre: true, rfc: true, razonSocial: true,
-            regimenFiscal: true, codigoPostalFiscal: true, usoCfdi: true, email: true
+            regimenFiscal: true, codigoPostalFiscal: true, usoCfdi: true, email: true,
+            emailSecundario1: true, emailSecundario2: true
           }
         },
         DetalleVenta: { include: { Producto: { select: { nombre: true } } } },
@@ -344,6 +345,8 @@ exports.obtenerVentaPorToken = async (req, res) => {
         rfc: venta.Cliente.rfc || '', razonSocial: venta.Cliente.razonSocial || venta.Cliente.nombre || '',
         regimenFiscal: venta.Cliente.regimenFiscal || '', codigoPostal: venta.Cliente.codigoPostalFiscal || '',
         usoCfdi: venta.Cliente.usoCfdi || 'G03', email: venta.Cliente.email || '',
+        emailSecundario1: venta.Cliente.emailSecundario1 || '',
+        emailSecundario2: venta.Cliente.emailSecundario2 || '',
       } : null,
       catalogos: { regimenes: REGIMENES_FISCALES, usosCfdi: USOS_CFDI }
     })

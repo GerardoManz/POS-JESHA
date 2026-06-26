@@ -15,6 +15,8 @@ const CLIENTE_SELECT = {
   rfc: true,
   telefono: true,
   email: true,
+  emailSecundario1: true,
+  emailSecundario2: true,
   tipo: true,
   razonSocial: true,
   codigoPostalFiscal: true,
@@ -104,7 +106,7 @@ const obtener = async (req, res) => {
 const crear = async (req, res) => {
   try {
     const {
-      nombre, apodo, tipo, telefono, email, rfc,
+      nombre, apodo, tipo, telefono, email, emailSecundario1, emailSecundario2, rfc,
       razonSocial, codigoPostalFiscal, regimenFiscal, usoCfdi,
       limiteCredito, notas
     } = req.body
@@ -132,6 +134,8 @@ const crear = async (req, res) => {
         tipo,
         telefono:          telefono          || null,
         email:             email             || null,
+        emailSecundario1:  emailSecundario1  || null,
+        emailSecundario2:  emailSecundario2  || null,
         rfc:               rfc               || null,
         razonSocial:       razonSocial       || null,
         codigoPostalFiscal: codigoPostalFiscal || null,
@@ -171,7 +175,7 @@ const editar = async (req, res) => {
   try {
     const { id } = req.params
     const {
-      nombre, apodo, tipo, telefono, email, rfc,
+      nombre, apodo, tipo, telefono, email, emailSecundario1, emailSecundario2, rfc,
       razonSocial, codigoPostalFiscal, regimenFiscal, usoCfdi,
       limiteCredito, notas
     } = req.body
@@ -195,6 +199,8 @@ const editar = async (req, res) => {
         tipo:              tipo              !== undefined ? tipo                          : cliente.tipo,
         telefono:          telefono          !== undefined ? telefono                      : cliente.telefono,
         email:             email             !== undefined ? email                         : cliente.email,
+        emailSecundario1:  emailSecundario1  !== undefined ? emailSecundario1              : cliente.emailSecundario1,
+        emailSecundario2:  emailSecundario2  !== undefined ? emailSecundario2              : cliente.emailSecundario2,
         rfc:               rfc               !== undefined ? rfc                           : cliente.rfc,
         razonSocial:       razonSocial       !== undefined ? razonSocial                  : cliente.razonSocial,
         codigoPostalFiscal: codigoPostalFiscal !== undefined ? codigoPostalFiscal          : cliente.codigoPostalFiscal,

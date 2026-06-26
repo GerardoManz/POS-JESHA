@@ -194,6 +194,8 @@ window.editarCliente = function(clienteId) {
   document.getElementById('cliente-tipo').value = clienteActual.tipo || ''
   document.getElementById('cliente-telefono').value = clienteActual.telefono || ''
   document.getElementById('cliente-email').value = clienteActual.email || ''
+  document.getElementById('cliente-emailSecundario1').value = clienteActual.emailSecundario1 || ''
+  document.getElementById('cliente-emailSecundario2').value = clienteActual.emailSecundario2 || ''
   document.getElementById('cliente-rfc').value = clienteActual.rfc || ''
   document.getElementById('cliente-razonSocial').value = clienteActual.razonSocial || ''
   document.getElementById('cliente-codigoPostalFiscal').value = clienteActual.codigoPostalFiscal || ''
@@ -359,6 +361,8 @@ if (clienteForm) {
       tipo: document.getElementById('cliente-tipo').value,
       telefono: document.getElementById('cliente-telefono').value.trim() || null,
       email: document.getElementById('cliente-email').value.trim() || null,
+      emailSecundario1: document.getElementById('cliente-emailSecundario1').value.trim() || null,
+      emailSecundario2: document.getElementById('cliente-emailSecundario2').value.trim() || null,
       rfc: document.getElementById('cliente-rfc').value.trim() || null,
       razonSocial: document.getElementById('cliente-razonSocial').value.trim() || null,
       codigoPostalFiscal: document.getElementById('cliente-codigoPostalFiscal').value.trim() || null,

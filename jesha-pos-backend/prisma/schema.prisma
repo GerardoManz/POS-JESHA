@@ -152,6 +152,8 @@ model Cliente {
   rfc                String?
   telefono           String?
   email              String?
+  emailSecundario1   String?
+  emailSecundario2   String?
   codigoPostalFiscal String?
   regimenFiscal      String?
   razonSocial        String?

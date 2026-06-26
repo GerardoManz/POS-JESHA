@@ -396,3 +396,37 @@ select.det-field option { background: #1a1d22; color: var(--text); }
   font-size: 0.82rem; color: #fbbf24; line-height: 1.4;
 }
 #g-mixto-info.show { display: flex; }
+
+/* ── Dropdown cliente fiscal ── */
+.cliente-dropdown-pos {
+  background: var(--sidebar-bg, #0e1014);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 12px;
+  box-shadow: 0 18px 38px rgba(0,0,0,0.48);
+  max-height: 280px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 6px;
+}
+.cliente-dropdown-pos .dropdown-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  min-height: 52px;
+  padding: 9px 10px;
+  cursor: pointer;
+  color: var(--text);
+  border-radius: 9px;
+  transition: background 0.12s, transform 0.12s;
+}
+.cliente-dropdown-pos .dropdown-item:hover { background: rgba(107,157,232,0.11); }
+.cliente-dropdown-pos .dropdown-item:active { transform: scale(0.99); }
+.cliente-dropdown-pos .item-left { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1; }
+.cliente-dropdown-pos .item-nombre { font-weight: 700; font-size: 0.92rem; line-height: 1.05; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cliente-dropdown-pos .item-sub { display: block; font-size: 0.78rem; line-height: 1.1; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cliente-dropdown-pos .item-right { flex-shrink: 0; }
+.cliente-dropdown-pos .item-saldo { min-width: 72px; padding: 5px 8px; border-radius: 999px; text-align: center; font-size: 0.82rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+.cliente-dropdown-pos .item-saldo.activo { color: var(--success, #60d080); background: rgba(96,208,128,0.10); }
+.cliente-dropdown-pos .item-saldo.pendiente { color: var(--warning, #ffc107); background: rgba(255,193,7,0.12); }
+.cliente-dropdown-pos .dropdown-empty { justify-content: center; min-height: 44px; color: var(--muted); font-style: italic; padding: 10px 12px; font-size: 0.86rem; }

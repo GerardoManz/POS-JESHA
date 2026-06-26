@@ -609,7 +609,9 @@ exports.obtenerVenta = async (req, res) => {
           regimenFiscal:      venta.Cliente.regimenFiscal,
           codigoPostalFiscal: venta.Cliente.codigoPostalFiscal,
           usoCfdi:            venta.Cliente.usoCfdi,
-          email:              venta.Cliente.email
+          email:              venta.Cliente.email,
+          emailSecundario1:  venta.Cliente.emailSecundario1,
+          emailSecundario2:  venta.Cliente.emailSecundario2
         } : null,
         sucursal:      venta.Sucursal.nombre,
         metodoPago:    venta.metodoPago,
@@ -672,7 +674,9 @@ exports.obtenerVentaPorFolio = async (req, res) => {
           regimenFiscal:      venta.Cliente.regimenFiscal,
           codigoPostalFiscal: venta.Cliente.codigoPostalFiscal,
           usoCfdi:            venta.Cliente.usoCfdi,
-          email:              venta.Cliente.email
+          email:              venta.Cliente.email,
+          emailSecundario1:  venta.Cliente.emailSecundario1,
+          emailSecundario2:  venta.Cliente.emailSecundario2
         } : null,
         sucursal:      venta.Sucursal.nombre,
         metodoPago:    venta.metodoPago,

@@ -524,7 +524,9 @@ function renderFormulario(d) {
     if (df.regimenFiscal) document.getElementById('f-regimen').value = df.regimenFiscal
     if (df.codigoPostal)  document.getElementById('f-cp').value      = df.codigoPostal
     if (df.usoCfdi)       document.getElementById('f-uso').value     = df.usoCfdi
-    if (df.email)         document.getElementById('f-email').value   = df.email
+    if (df.email)           document.getElementById('f-email').value      = df.email
+    if (df.emailSecundario1) document.getElementById('f-email-sec1').value = df.emailSecundario1
+    if (df.emailSecundario2) document.getElementById('f-email-sec2').value = df.emailSecundario2
     document.getElementById('autocomplete-aviso').style.display = 'flex'
   }
 

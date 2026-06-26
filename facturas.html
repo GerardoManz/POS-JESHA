@@ -185,6 +185,16 @@
     </div>
     <div class="fact-manual-form" id="manual-form">
 
+      <!-- Buscar cliente fiscal -->
+      <div class="fact-field">
+        <label>Cliente fiscal</label>
+        <div style="position:relative;">
+          <input type="text" id="m-cliente-buscar" placeholder="Click para elegir o escribe para filtrar..." class="search-input" style="width:100%;padding-right:36px;cursor:pointer;" autocomplete="off" />
+          <button type="button" id="btn-lista-m-clientes" title="Buscar cliente" style="position:absolute;right:4px;top:50%;transform:translateY(-50%);background:transparent;border:none;cursor:pointer;color:var(--muted);padding:4px 7px;border-radius:6px;">&#8964;</button>
+          <input type="hidden" id="m-cliente-id" />
+        </div>
+      </div>
+
       <!-- Buscar venta -->
       <div class="fact-field">
         <label>Buscar venta por folio <span>*</span></label>
@@ -255,6 +265,8 @@
     </div>
   </div>
 </div>
+
+<div id="dd-m-clientes" class="cliente-dropdown-pos" style="display:none;position:fixed;z-index:99999;flex-direction:column;"></div>
 
 <!-- ══ MODAL FACTURA GLOBAL ══ -->
 <div id="modal-global" class="modal">
