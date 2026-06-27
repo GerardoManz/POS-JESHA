@@ -335,6 +335,7 @@ exports.previewGlobal = async (req, res) => {
         where: {
           ...whereScope,
           facturaEstado: 'DISPONIBLE',
+          estado: 'COMPLETADA',
           metodoPago,
           creadaEn: { gte: desdeDate, lte: hastaDate }
         },
@@ -345,6 +346,7 @@ exports.previewGlobal = async (req, res) => {
         where: {
           ...whereScope,
           facturaEstado: 'DISPONIBLE',
+          estado: 'COMPLETADA',
           metodoPago: 'MIXTO',
           creadaEn: { gte: desdeDate, lte: hastaDate }
         },
@@ -410,6 +412,7 @@ exports.timbrarGlobal = async (req, res) => {
       where: {
         ...whereScope,
         facturaEstado: 'DISPONIBLE',
+        estado: 'COMPLETADA',
         metodoPago,
         creadaEn: { gte: desdeDate, lte: hastaDate }
       },
@@ -455,7 +458,7 @@ exports.timbrarGlobal = async (req, res) => {
 
         const ventaIds = ventas.map(v => v.id)
         const locked = await tx.venta.updateMany({
-          where: { id: { in: ventaIds }, facturaEstado: 'DISPONIBLE', metodoPago, ...whereScope },
+          where: { id: { in: ventaIds }, facturaEstado: 'DISPONIBLE', estado: 'COMPLETADA', metodoPago, ...whereScope },
           data: { facturaEstado: 'PENDIENTE_TIMBRADO', procesoFacturaId: f.id }
         })
         if (locked.count !== ventaIds.length) {
