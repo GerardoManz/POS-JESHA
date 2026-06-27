@@ -220,18 +220,18 @@ const crear = async (req, res) => {
 }
 
 // ════════════════════════════════════════════════════════════════════
-//  PATCH /bitacoras/:id — Editar cabecera (título, descripción, notas)
+//  PATCH /bitacoras/:id — Editar cabecera (título, descripción, notas, clienteId)
 // ════════════════════════════════════════════════════════════════════
 const editar = async (req, res) => {
   try {
     const { id } = req.params
-    const { titulo, descripcion, notas } = req.body
+    const { titulo, descripcion, notas, clienteId: clienteIdRaw } = req.body
     const { id: usuarioId, sucursalId } = req.usuario
     const empresaId = getEmpresaId(req)
 
     const existente = await prisma.bitacora.findUnique({
       where: { id: parseInt(id) },
-      select: { id: true, empresaId: true, folio: true, estado: true, origen: true }
+      select: { id: true, empresaId: true, folio: true, estado: true, origen: true, clienteId: true, saldoPendiente: true }
     })
     if (!existente) return res.status(404).json({ success: false, error: 'Bitácora no encontrada' })
     if (existente.empresaId !== empresaId) {
@@ -251,13 +251,64 @@ const editar = async (req, res) => {
     if (descripcion !== undefined) data.descripcion = descripcion?.trim() || null
     if (notas !== undefined)       data.notas       = notas?.trim() || null
 
-    const b = await prisma.bitacora.update({
-      where: { id: parseInt(id) },
-      data,
-      select: BITACORA_SELECT
-    })
-    await audit(usuarioId, sucursalId, 'EDITAR_BITACORA', existente.folio, empresaId)
-    res.json({ success: true, data: b })
+    // ── Cambio de cliente ──
+    let clienteNuevoId = null
+    const tieneClienteId = clienteIdRaw !== undefined && clienteIdRaw !== null
+    if (tieneClienteId) {
+      const cid = parseInt(clienteIdRaw)
+      if (!cid || isNaN(cid)) {
+        // clienteId vacío o inválido → quitar cliente
+        clienteNuevoId = null
+      } else {
+        const cliente = await prisma.cliente.findUnique({ where: { id: cid }, select: { id: true, empresaId: true, activo: true } })
+        if (!cliente || cliente.empresaId !== empresaId || !cliente.activo) {
+          return res.status(400).json({ success: false, error: 'Cliente no encontrado, de otra empresa o inactivo', codigo: 'CLIENTE_INVALIDO' })
+        }
+        clienteNuevoId = cid
+      }
+      data.clienteId = clienteNuevoId
+    }
+
+    const clienteIdAnterior = existente.clienteId || null
+    const cambioCliente = tieneClienteId && clienteNuevoId !== clienteIdAnterior
+
+    if (cambioCliente) {
+      const saldoActual = parseFloat(existente.saldoPendiente || 0)
+
+      await prisma.$transaction(async tx => {
+        // Liberar saldo del cliente anterior
+        if (clienteIdAnterior && saldoActual > 0) {
+          await tx.cliente.update({
+            where: { id: clienteIdAnterior },
+            data:  { saldoPendiente: { decrement: saldoActual } }
+          })
+        }
+        // Asignar saldo al cliente nuevo
+        if (clienteNuevoId && saldoActual > 0) {
+          await tx.cliente.update({
+            where: { id: clienteNuevoId },
+            data:  { saldoPendiente: { increment: saldoActual } }
+          })
+        }
+        // Actualizar bitácora
+        await tx.bitacora.update({
+          where: { id: parseInt(id) },
+          data
+        })
+      })
+    } else if (Object.keys(data).length > 0) {
+      // Sin cambio de cliente — update normal
+      await prisma.bitacora.update({
+        where: { id: parseInt(id) },
+        data
+      })
+    }
+
+    const b = await prisma.bitacora.findUnique({ where: { id: parseInt(id) }, select: BITACORA_SELECT })
+    await audit(usuarioId, sucursalId, cambioCliente ? 'EDITAR_BITACORA_CLIENTE' : 'EDITAR_BITACORA',
+      cambioCliente ? `${existente.folio} — cliente:${clienteIdAnterior || 'ninguno'} → ${clienteNuevoId || 'ninguno'}` : existente.folio,
+      empresaId)
+    res.json({ success: true, data: b, mensaje: cambioCliente ? 'Cliente actualizado correctamente' : undefined })
   } catch (err) {
     console.error('❌ editar bitacora:', err)
     res.status(500).json({ success: false, error: err.message })
