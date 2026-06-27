@@ -961,7 +961,9 @@ window.previsualizarGlobal = async function() {
   }
 
   try {
-    const res = await fetch(`${API_URL}/facturas/global/preview?desde=${desde}&hasta=${hasta}&metodoPago=${encodeURIComponent(metodoPago)}`, {
+    const params = new URLSearchParams({ desde, hasta, metodoPago })
+    if (USUARIO.empresaId) params.set('empresaId', USUARIO.empresaId)
+    const res = await fetch(`${API_URL}/facturas/global/preview?${params.toString()}`, {
       headers: { 'Authorization': `Bearer ${TOKEN}` }
     })
     const data = await res.json()
@@ -1039,10 +1041,12 @@ window.timbrarGlobal = async function() {
   btn.textContent = '⟳ Timbrando...'
 
   try {
+    const bodyTimbrar = { desde, hasta, metodoPago, periodicidad }
+    if (USUARIO.empresaId) bodyTimbrar.empresaId = USUARIO.empresaId
     const res = await fetch(`${API_URL}/facturas/global/timbrar`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
-      body: JSON.stringify({ desde, hasta, metodoPago, periodicidad })
+      body: JSON.stringify(bodyTimbrar)
     })
     const data = await res.json()
 

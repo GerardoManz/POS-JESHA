@@ -14,6 +14,7 @@
 const prisma = require('../../lib/prisma')
 const resolverEmpresaScope = require('../../helpers/resolverEmpresaScope')
 const resolverDatosEmisor = require('../../helpers/resolverDatosEmisor')
+const getEmpresaId = require('../../helpers/getEmpresaId')
 const { getFacturapi, modoActivo } = require('../../lib/facturapi')
 const { buildGlobalInvoicePayload, METODOS_GLOBALES, PERIODICIDAD_FACTURAPI } = require('../facturacion/facturacion.controller')
 
@@ -313,8 +314,8 @@ function clasificarErrorTimbradoGlobal(err) {
 
 exports.previewGlobal = async (req, res) => {
   try {
-    const scope = resolverEmpresaScope(req)
-    const whereScope = scope.modo === 'GLOBAL' ? {} : { empresaId: scope.empresaId }
+    const empresaId = getEmpresaId(req)
+    const whereScope = { empresaId }
 
     const { desde, hasta, metodoPago } = req.query
     if (!desde || !hasta) return res.status(400).json({ error: 'desde y hasta son requeridos' })
@@ -379,8 +380,8 @@ exports.previewGlobal = async (req, res) => {
 
 exports.timbrarGlobal = async (req, res) => {
   try {
-    const scope = resolverEmpresaScope(req)
-    const whereScope = scope.modo === 'GLOBAL' ? {} : { empresaId: scope.empresaId }
+    const empresaId = getEmpresaId(req)
+    const whereScope = { empresaId }
 
     const { desde, hasta, metodoPago, periodicidad } = req.body
     if (!desde || !hasta) return res.status(400).json({ error: 'desde y hasta son requeridos' })
@@ -405,7 +406,7 @@ exports.timbrarGlobal = async (req, res) => {
     const fp = getFacturapi()
     if (!fp) return res.status(503).json({ error: 'Facturapi no configurada' })
 
-    const datosEmisor = resolverDatosEmisor(scope.empresaId)
+    const datosEmisor = resolverDatosEmisor(empresaId)
 
     // Re-query con el mismo filtro que previewGlobal — fuente de verdad en el momento del timbre (TOCTOU)
     const ventas = await prisma.venta.findMany({
@@ -433,7 +434,7 @@ exports.timbrarGlobal = async (req, res) => {
       factura = await prisma.$transaction(async (tx) => {
         const f = await tx.facturaCfdi.create({
           data: {
-            empresaId:        scope.empresaId,
+            empresaId:        empresaId,
             ventaId:          null,
             clienteId:        null,
             rfcReceptor:      'XAXX010101000',
