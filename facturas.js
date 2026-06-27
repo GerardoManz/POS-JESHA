@@ -1075,12 +1075,11 @@ document.addEventListener('DOMContentLoaded', () => {
     })
   }
 
-  // 🔒 Factura Global oculta hasta: conciliación junio completa + recuperación INCIERTO lista
   const rolFiscal = ['ADMIN_SUCURSAL','SUPERADMIN','PLATFORM_ADMIN'].includes(USUARIO.rol)
-  // if (rolFiscal) {
-  //   const btn = document.getElementById('btn-factura-global')
-  //   if (btn) btn.style.display = 'inline-flex'
-  // }
+  if (rolFiscal) {
+    const btn = document.getElementById('btn-factura-global')
+    if (btn) btn.style.display = 'inline-flex'
+  }
 
   cargarFacturas()
 
