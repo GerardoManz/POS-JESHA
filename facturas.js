@@ -19,6 +19,15 @@ let paginaActual = 1
 const LIMIT      = 20
 let debounce
 let clientesCache = []
+const ACENTOS_RAZON_SOCIAL = /[ÁÉÍÓÚÜáéíóúü]/
+
+function validarRazonSocialSat(razonSocial) {
+  const razon = String(razonSocial || '').trim().normalize('NFC')
+  if (!razon) return ''
+  if (ACENTOS_RAZON_SOCIAL.test(razon)) return 'La razón social debe ir sin acentos.'
+  if (razon !== razon.toUpperCase()) return 'La razón social debe ir en MAYÚSCULAS.'
+  return ''
+}
 
 function llenarCatalogosDetalle() {
   poblarSelectSAT(document.getElementById('det-regimen'), CATALOGO_REGIMENES)
@@ -284,6 +293,13 @@ window.timbrarManual = async function(id) {
       email:             document.getElementById('det-email').value.trim(),
       emailSecundario1:  document.getElementById('det-email-sec1').value.trim() || null,
       emailSecundario2:  document.getElementById('det-email-sec2').value.trim() || null
+    }
+
+    const errorRazon = validarRazonSocialSat(body.razonSocial)
+    if (errorRazon) {
+      jeshaToast(errorRazon, 'error')
+      if (btn) { btn.disabled = false; btn.textContent = '⚡ Timbrar ahora' }
+      return
     }
 
     const res  = await fetch(`${API_URL}/facturas/${id}/timbrar`, {
@@ -681,7 +697,7 @@ function seleccionarClienteFiscal(clienteId) {
   document.getElementById('m-cliente-id').value = c.id
   document.getElementById('m-cliente-buscar').value = c.nombre
   document.getElementById('m-rfc').value = c.rfc || ''
-  document.getElementById('m-razon').value = c.razonSocial || c.nombre || ''
+  document.getElementById('m-razon').value = String(c.razonSocial || c.nombre || '').toUpperCase()
   document.getElementById('m-cp').value = c.codigoPostalFiscal || ''
   document.getElementById('m-email').value = c.email || ''
   document.getElementById('m-email-sec1').value = c.emailSecundario1 || ''
@@ -774,7 +790,7 @@ async function buscarVentaExactaParaFactura(folio) {
     // (nombre regular) en campos fiscales (razón social).
     if (venta.cliente && venta.cliente.rfc) {
       document.getElementById('m-rfc').value   = venta.cliente.rfc || ''
-      document.getElementById('m-razon').value = venta.cliente.razonSocial || venta.cliente.nombre || ''
+      document.getElementById('m-razon').value = String(venta.cliente.razonSocial || venta.cliente.nombre || '').toUpperCase()
       document.getElementById('m-cp').value    = venta.cliente.codigoPostalFiscal || ''
       document.getElementById('m-email').value = venta.cliente.email || ''
       document.getElementById('m-email-sec1').value = venta.cliente.emailSecundario1 || ''
@@ -848,6 +864,12 @@ async function facturarManualDesdeModal() {
       errDiv.textContent = msg
       return
     }
+  }
+  const errorRazon = validarRazonSocialSat(body.razonSocial)
+  if (errorRazon) {
+    errDiv.style.display = 'block'
+    errDiv.textContent = errorRazon
+    return
   }
   if (body.codigoPostal.length !== 5) {
     errDiv.style.display = 'block'
@@ -1176,6 +1198,26 @@ document.addEventListener('DOMContentLoaded', () => {
   // Modal manual — solo números en CP
   document.getElementById('m-cp')?.addEventListener('input', function() {
     this.value = this.value.replace(/\D/g, '').substring(0, 5)
+  })
+
+  // Modal manual — mayúsculas automáticas en razón social
+  document.getElementById('m-razon')?.addEventListener('input', function() {
+    const pos = this.selectionStart
+    const upper = this.value.toUpperCase()
+    if (this.value !== upper) {
+      this.value = upper
+      if (typeof pos === 'number') this.setSelectionRange(pos, pos)
+    }
+  })
+
+  // Modal detalle — mayúsculas automáticas en nombre (corrección al timbrar pendiente)
+  document.getElementById('det-nombre')?.addEventListener('input', function() {
+    const pos = this.selectionStart
+    const upper = this.value.toUpperCase()
+    if (this.value !== upper) {
+      this.value = upper
+      if (typeof pos === 'number') this.setSelectionRange(pos, pos)
+    }
   })
 
   // Modal manual — timbrar

@@ -155,6 +155,16 @@
     .rfc-hint.ok   { color: var(--green); }
     .rfc-hint.err  { color: var(--red); }
 
+    .fact-razon-aviso {
+      font-size: 0.76rem;
+      line-height: 1.35;
+      color: #f5b66b;
+      background: rgba(232,113,10,0.08);
+      border: 1px solid rgba(232,113,10,0.18);
+      border-radius: 8px;
+      padding: 8px 10px;
+    }
+
     /* ── AVISO AUTOCOMPLETE ── */
     .fact-autocomplete-aviso {
       display: flex;
@@ -334,7 +344,10 @@
           <!-- Razón social -->
           <div class="fact-field">
             <label class="fact-label">Nombre / Razón Social <span>*</span></label>
-            <input type="text" id="f-razon" class="fact-input" placeholder="Como aparece en tu constancia fiscal" />
+            <input type="text" id="f-razon" class="fact-input" placeholder="Como aparece en tu constancia fiscal"
+                   autocapitalize="characters" spellcheck="false" style="text-transform:uppercase;" />
+            <span class="fact-razon-aviso">IMPORTANTE: escribe tu razón social en MAYÚSCULAS y sin acentos, tal como aparece en tu Constancia de Situación Fiscal. Si lleva acentos, no se podrá generar la factura.</span>
+            <span class="rfc-hint" id="razon-hint"></span>
           </div>
 
           <!-- Régimen + CP -->
@@ -433,6 +446,7 @@ const TOKEN  = params.get('token')
 const fmt = v => `$${parseFloat(v||0).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})}`
 const fmtFecha = iso => new Date(iso).toLocaleDateString('es-MX',{day:'2-digit',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'})
 const metodoLabel = { EFECTIVO:'💵 Efectivo', CREDITO:'💳 Tarjeta crédito', DEBITO:'💳 Tarjeta débito', TRANSFERENCIA:'🔄 Transferencia' }
+const ACENTOS_RAZON_SOCIAL = /[ÁÉÍÓÚÜáéíóúü]/
 
 function mostrar(id) {
   ['estado-loading','estado-error','estado-form','estado-exito'].forEach(s => {
@@ -459,6 +473,38 @@ function mostrarEstadoFactura409(d) {
     ? `${d.error || 'Esta venta ya fue facturada.'}\nFolio fiscal: ${d.uuid}`
     : (d.error || 'Esta venta ya tiene una factura en proceso. Revisa tu correo o acude a mostrador.')
   mostrarError(yaFacturada ? 'YA_FACTURADA' : 'EN_PROCESO', msg)
+}
+
+function validarRazonSocialSat(razonSocial) {
+  const razon = (razonSocial || '').trim().normalize('NFC')
+  if (!razon) return ''
+  if (ACENTOS_RAZON_SOCIAL.test(razon)) return 'La razón social debe ir sin acentos. Ejemplo: FERRETERIA, no FERRETERÍA.'
+  if (razon !== razon.toUpperCase()) return 'La razón social debe ir en MAYÚSCULAS.'
+  return ''
+}
+
+function actualizarRazonSocialUI() {
+  const input = document.getElementById('f-razon')
+  const hint = document.getElementById('razon-hint')
+  const error = validarRazonSocialSat(input.value)
+
+  if (!input.value.trim()) {
+    hint.textContent = ''
+    hint.className = 'rfc-hint'
+    input.className = 'fact-input'
+    return
+  }
+
+  if (error) {
+    hint.textContent = error
+    hint.className = 'rfc-hint show err'
+    input.className = 'fact-input invalido'
+    return
+  }
+
+  hint.textContent = '✓ Formato correcto para SAT'
+  hint.className = 'rfc-hint show ok'
+  input.className = 'fact-input valido'
 }
 
 async function cargarDatos() {
@@ -520,7 +566,7 @@ function renderFormulario(d) {
   if (d.datosFiscales) {
     const df = d.datosFiscales
     if (df.rfc)           document.getElementById('f-rfc').value     = df.rfc
-    if (df.razonSocial)   document.getElementById('f-razon').value   = df.razonSocial
+    if (df.razonSocial)   document.getElementById('f-razon').value   = String(df.razonSocial).toUpperCase()
     if (df.regimenFiscal) document.getElementById('f-regimen').value = df.regimenFiscal
     if (df.codigoPostal)  document.getElementById('f-cp').value      = df.codigoPostal
     if (df.usoCfdi)       document.getElementById('f-uso').value     = df.usoCfdi
@@ -529,6 +575,8 @@ function renderFormulario(d) {
     if (df.emailSecundario2) document.getElementById('f-email-sec2').value = df.emailSecundario2
     document.getElementById('autocomplete-aviso').style.display = 'flex'
   }
+
+  actualizarRazonSocialUI()
 
   filtrarUsosPorRegimen(document.getElementById('f-regimen'), document.getElementById('f-uso'))
 
@@ -554,6 +602,17 @@ document.getElementById('f-rfc').addEventListener('input', function() {
     hint.className = 'rfc-hint show err'
     this.className = 'fact-input invalido'
   }
+})
+
+// Mayúsculas automáticas y validación de acentos en razón social
+document.getElementById('f-razon').addEventListener('input', function() {
+  const pos = this.selectionStart
+  const upper = this.value.toUpperCase()
+  if (this.value !== upper) {
+    this.value = upper
+    if (typeof pos === 'number') this.setSelectionRange(pos, pos)
+  }
+  actualizarRazonSocialUI()
 })
 
 // Solo números en CP
@@ -591,6 +650,14 @@ document.getElementById('fact-form').addEventListener('submit', async function(e
   ]
   for (const [val, msg] of campos) {
     if (!val) { errorDiv.textContent = msg; errorDiv.className = 'error-inline show'; return }
+  }
+  const errorRazonSocial = validarRazonSocialSat(body.razonSocial)
+  if (errorRazonSocial) {
+    errorDiv.textContent = errorRazonSocial
+    errorDiv.className = 'error-inline show'
+    document.getElementById('f-razon').focus()
+    actualizarRazonSocialUI()
+    return
   }
   if (body.codigoPostal.length !== 5) {
     errorDiv.textContent = 'El código postal debe tener 5 dígitos'

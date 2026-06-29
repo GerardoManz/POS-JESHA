@@ -61,9 +61,18 @@ const HORAS_LIMITE_QR = 72
 //  La global usará un builder separado.
 // ════════════════════════════════════════════════════════════════════
 const RFC_PUBLICO_GENERAL = 'XAXX010101000'
+const ACENTOS_RAZON_SOCIAL = /[ÁÉÍÓÚÜáéíóúü]/
 
 function esRfcGenerico(rfc) {
   return rfc && rfc.trim().toUpperCase() === RFC_PUBLICO_GENERAL
+}
+
+function validarRazonSocialSat(razonSocial) {
+  const razon = String(razonSocial || '').trim().normalize('NFC')
+  if (!razon) return 'Nombre o razón social requerida'
+  if (ACENTOS_RAZON_SOCIAL.test(razon)) return 'La razón social debe escribirse sin acentos. Ejemplo: FERRETERIA, no FERRETERÍA.'
+  if (razon !== razon.toUpperCase()) return 'La razón social debe escribirse en MAYÚSCULAS.'
+  return null
 }
 
 function obtenerFacturaActivaDeVenta(venta) {
@@ -374,6 +383,8 @@ exports.solicitarFactura = async (req, res) => {
     if (!email)         return res.status(400).json({ error: 'Email requerido' })
 
     if (!/^[A-ZÑ&]{3,4}\d{6}[A-Z0-9]{3}$/i.test(rfc.trim())) return res.status(400).json({ error: 'RFC inválido.' })
+    const errorRazonSocial = validarRazonSocialSat(razonSocial)
+    if (errorRazonSocial) return res.status(400).json({ error: errorRazonSocial })
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return res.status(400).json({ error: 'Email inválido.' })
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -425,12 +436,13 @@ exports.solicitarFactura = async (req, res) => {
     const subtotal     = parseFloat((total / IVA_FACTOR).toFixed(2))
     const iva          = parseFloat((total - subtotal).toFixed(2))
     const rfcUpper     = rfc.trim().toUpperCase()
+    const nombreReceptor = razonSocial.trim()
     const emailTrimmed = email.trim()
 
     const datosFactura = {
       empresaId,
       ventaId: venta.id, clienteId: venta.clienteId || null,
-      rfcReceptor: rfcUpper, nombreReceptor: razonSocial.trim(),
+      rfcReceptor: rfcUpper, nombreReceptor,
       cpReceptor: codigoPostal.trim(), regimenFiscal, usoCfdi,
       emailReceptor: emailTrimmed,
       emailSecundario1: sec1 || null,
@@ -497,7 +509,7 @@ exports.solicitarFactura = async (req, res) => {
     try {
       invoice = await fp.invoices.create({
         ...buildInvoicePayload({
-          rfc: rfcUpper, razonSocial, regimenFiscal, codigoPostal,
+          rfc: rfcUpper, razonSocial: nombreReceptor, regimenFiscal, codigoPostal,
           usoCfdi, email: emailTrimmed, metodoPago: venta.metodoPago,
           detalles: venta.DetalleVenta, datosEmisor
         }),
@@ -626,6 +638,11 @@ exports.timbrarManual = async (req, res) => {
         emailSecundario1: nuevoEmailSec1,
         emailSecundario2: nuevoEmailSec2
       } = req.body || {}
+
+      if (nuevaRazonSocial?.trim()) {
+        const errorRazon = validarRazonSocialSat(nuevaRazonSocial)
+        if (errorRazon) return res.status(400).json({ error: errorRazon })
+      }
 
       const updates = {}
       if (nuevoRfc?.trim())          updates.rfcReceptor    = nuevoRfc.trim().toUpperCase()
