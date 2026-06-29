@@ -236,8 +236,8 @@ html, body {
 .no-print{display:block;margin:10px auto 5px;padding:10px 24px;background:#1f3a66;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;}
 @media print{
   .no-print{display:none!important;}
-  html{width:58mm;max-width:58mm;margin:0;padding:0;}
-  body{width:58mm;max-width:58mm;margin:0;padding:0mm 3mm 0mm 1mm;font-weight:800;}
+  html{width:100%;max-width:100%;margin:0;padding:0;}
+  body{width:100%;max-width:100%;margin:0;padding:0mm 2mm;font-weight:800;}
   *{color:#000!important;}
   .logo{filter:contrast(2) brightness(0);}
 }
