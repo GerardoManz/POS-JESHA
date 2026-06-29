@@ -237,7 +237,8 @@ html, body {
 @media print{
   .no-print{display:none!important;}
   html{width:100%;max-width:100%;margin:0;padding:0;}
-  body{width:100%;max-width:100%;margin:0;padding:0mm 2mm;font-weight:800;}
+  body{width:48mm;max-width:100%;margin:0 auto;padding:0;font-weight:800;overflow:visible;}
+  .info-tbl .val,.col-imp,.tbl .td-imp{padding-right:0.8mm;}
   *{color:#000!important;}
   .logo{filter:contrast(2) brightness(0);}
 }
