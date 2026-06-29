@@ -269,7 +269,10 @@ html, body { width:100%; max-width:100%; margin:0; padding:1mm 3mm; font-family:
 
 @media print {
   .no-print { display:none !important; }
-  html, body { width:100%; max-width:100%; padding:0mm 2mm; font-weight:900; }
+  html { width:100%; max-width:100%; margin:0; padding:0; }
+  body { width:45mm; max-width:45mm; margin:0 auto; padding:0; font-weight:800; overflow:visible; }
+  .info-tbl .val,.tbl .td-imp { padding-right:3mm; }
+  .pie,.pie-legal { max-width:41mm; margin-left:auto; margin-right:auto; overflow-wrap:break-word; }
   * { color:#000 !important; }
   .doc-tipo, .doc-tipo * { color:#fff !important; background:#000 !important; }
   .logo { filter:contrast(2) brightness(0); }

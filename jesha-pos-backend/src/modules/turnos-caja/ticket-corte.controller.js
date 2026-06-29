@@ -127,7 +127,7 @@ html, body {
 .pie { text-align: center; font-size: 8px; font-weight: 900; margin-top: 1mm; line-height: 1.3; }
 .notas { font-size: 7px; font-weight: 700; text-align: left; margin: 0.5mm 0; white-space: pre-wrap; word-break: break-word; }
 .no-print { display: block; margin: 6px auto; padding: 8px 20px; background: #1f3a66; color: #fff; border: none; border-radius: 6px; font-size: 12px; font-weight: 700; cursor: pointer; }
-@media print { .no-print { display: none !important; } html,body { width: 58mm; margin: auto; padding: 0mm 2mm; font-weight: 900; } * { color: #000 !important; } .logo { filter: contrast(2) brightness(0); } }
+@media print { .no-print { display: none !important; } html { width: 100%; max-width: 100%; margin: 0; padding: 0; } body { width: 45mm; max-width: 45mm; margin: 0 auto; padding: 0; font-weight: 800; overflow: visible; } .tbl .val { padding-right: 3mm; } .pie,.notas { max-width: 41mm; margin-left: auto; margin-right: auto; overflow-wrap: break-word; } * { color: #000 !important; } .logo { filter: contrast(2) brightness(0); } }
 @media screen { html,body { width: 58mm; margin: 0 auto; padding: 2mm 3mm; box-shadow: 0 0 10px rgba(0,0,0,0.15); } }
 </style>
 </head>
