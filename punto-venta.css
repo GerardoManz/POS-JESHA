@@ -454,11 +454,17 @@
   overflow-y: auto;
   background:
     radial-gradient(circle at 88% 8%, rgba(47, 126, 255, 0.12), transparent 30%),
-    linear-gradient(180deg, rgba(8, 17, 32, 0.96), rgba(12, 17, 26, 0.98));
-  border: 1px solid rgba(93, 132, 184, 0.34);
+    var(--panel-bg);
+  border: 1px solid var(--panel-border);
   border-radius: 18px;
   padding: 0;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), 0 18px 48px rgba(0, 0, 0, 0.22);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), var(--shadow-lg);
+}
+
+[data-theme="dark"] .carrito-section {
+  background:
+    radial-gradient(circle at 88% 8%, rgba(47, 126, 255, 0.12), transparent 30%),
+    linear-gradient(180deg, rgba(8, 17, 32, 0.96), rgba(12, 17, 26, 0.98));
 }
 
 .carrito-title {
@@ -529,7 +535,7 @@
 .carrito-table thead {
   position: sticky;
   top: 0;
-  background: rgba(8, 17, 32, 0.96);
+  background: var(--panel-bg);
   z-index: 2;
 }
 
@@ -538,7 +544,7 @@
   text-align: left;
   border-bottom: 1px solid rgba(93, 132, 184, 0.24);
   font-weight: 800;
-  color: #9fb7dc;
+  color: var(--muted);
   font-size: 0.72rem;
   text-transform: uppercase;
   letter-spacing: 0.03em;
@@ -561,7 +567,7 @@
 }
 
 .carrito-table input[type="number"] {
-  background: rgba(12, 24, 42, 0.72);
+  background: var(--input-bg);
   border: 1px solid rgba(96, 149, 232, 0.34);
   border-radius: 12px;
   color: var(--text, #fff);
@@ -584,7 +590,7 @@
 .cart-product-title {
   font-size: 0.86rem;
   font-weight: 700;
-  color: #f7fbff;
+  color: var(--text);
   text-transform: uppercase;
 }
 
@@ -626,7 +632,7 @@
   overflow: hidden;
   border: 1px solid rgba(47, 130, 255, 0.58);
   border-radius: 13px;
-  background: rgba(10, 24, 45, 0.74);
+  background: var(--input-bg);
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
 }
 
@@ -828,7 +834,7 @@
 
 .resumen-linea .monto {
   font-weight: 600;
-  color: #fff;
+  color: var(--text);
 }
 
 .resumen-total {
@@ -839,7 +845,7 @@
   border: 1px solid rgba(74, 144, 226, 0.45);
   border-radius: 12px;
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.05);
-  color: #eaf3ff;
+  color: var(--text);
 }
 
 .resumen-total-label {
@@ -1151,7 +1157,7 @@
   left: 0;
   width: 100%;
   height: 100%;
-  background: rgba(0, 0, 0, 0.6);
+  background: var(--overlay-bg);
   z-index: 1000;
   display: flex;
   align-items: center;
@@ -1166,7 +1172,7 @@
   display: none;
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.72);
+  background: var(--overlay-bg);
   backdrop-filter: blur(4px);
   z-index: 2000;
   align-items: center;
@@ -1181,12 +1187,12 @@
 }
 
 .modal-turno-card {
-  background: #16191e;
-  border: 1px solid rgba(255,255,255,0.09);
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
   border-radius: 16px;
   width: 100%;
   max-width: 420px;
-  box-shadow: 0 32px 80px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.04);
+  box-shadow: var(--shadow-lg), 0 0 0 1px rgba(255,255,255,0.04);
   animation: turnoSlideUp 0.22s cubic-bezier(0.16, 1, 0.3, 1);
   overflow: hidden;
 }
@@ -1221,14 +1227,14 @@
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: #e9edf4;
+  color: var(--text);
   line-height: 1.1;
   margin: 0;
 }
 
 .modal-turno-sub {
   font-size: 0.78rem;
-  color: #7a8599;
+  color: var(--muted);
   margin: 3px 0 0;
   letter-spacing: 0.02em;
 }
@@ -1246,7 +1252,7 @@
 
 .modal-turno-desc {
   font-size: 0.875rem;
-  color: #7a8599;
+  color: var(--muted);
   margin: 0 0 20px;
   line-height: 1.5;
 }
@@ -1260,7 +1266,7 @@
 .modal-turno-label {
   font-size: 0.78rem;
   font-weight: 700;
-  color: #7a8599;
+  color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.07em;
 }
@@ -1286,7 +1292,7 @@
   font-family: 'Barlow Condensed', sans-serif;
   font-size: 1rem;
   font-weight: 600;
-  color: #7a8599;
+  color: var(--muted);
   white-space: nowrap;
   background: rgba(255,255,255,0.03);
   height: 100%;
@@ -1303,7 +1309,7 @@
   background: transparent;
   border: none;
   outline: none;
-  color: #e9edf4;
+  color: var(--text);
   font-family: 'Barlow Condensed', sans-serif;
   font-size: 1.5rem;
   font-weight: 600;
@@ -1351,16 +1357,16 @@
 .modal-turno-btn-cancel {
   background: transparent;
   border: 1px solid rgba(255,255,255,0.1);
-  color: #7a8599;
+  color: var(--muted);
 }
 .modal-turno-btn-cancel:hover {
   background: rgba(255,255,255,0.05);
-  color: #e9edf4;
+  color: var(--text);
   border-color: rgba(255,255,255,0.2);
 }
 
 .modal-turno-btn-confirm {
-  background: #1f3a66;
+  background: var(--accent);
   border: 1px solid rgba(107,157,232,0.3);
   color: #fff;
 }
@@ -1394,10 +1400,10 @@
   position:absolute;
   top:calc(100% + 4px);
   left:0; right:0;
-  background:#16191e;
-  border:1px solid rgba(255,255,255,0.1);
+  background:var(--panel-bg);
+  border:1px solid var(--panel-border);
   border-radius:10px;
-  box-shadow:0 12px 32px rgba(0,0,0,0.5);
+  box-shadow:var(--shadow-lg);
   z-index:500;
   overflow:hidden;
   max-height:260px;
@@ -1460,7 +1466,7 @@
   color:#6b9de8;
 }
 .btn-limpiar-cliente {
-  background:none; border:none; color:#7a8599;
+  background:none; border:none; color:var(--muted);
   cursor:pointer; font-size:1rem; line-height:1;
   padding:0 2px; transition:color 0.15s;
 }
@@ -1475,7 +1481,7 @@
   display: none;
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.72);
+  background: var(--overlay-bg);
   backdrop-filter: blur(4px);
   z-index: 2000;
   align-items: center;
@@ -1484,13 +1490,13 @@
 }
 
 .modal-confirm-card {
-  background: #16191e;
-  border: 1px solid rgba(255,255,255,0.09);
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
   border-radius: 16px;
   width: 100%;
   max-width: 460px;
   max-height: min(92vh, 760px);
-  box-shadow: 0 32px 80px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.04);
+  box-shadow: var(--shadow-lg), 0 0 0 1px rgba(255,255,255,0.04);
   animation: confirmSlideUp 0.22s cubic-bezier(0.16, 1, 0.3, 1);
   overflow: hidden;
   display: flex;
@@ -1527,14 +1533,14 @@
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: #e9edf4;
+  color: var(--text);
   line-height: 1.1;
   margin: 0;
 }
 
 .modal-confirm-sub {
   font-size: 0.78rem;
-  color: #7a8599;
+  color: var(--muted);
   margin: 3px 0 0;
   letter-spacing: 0.02em;
 }
@@ -1542,7 +1548,7 @@
 .modal-confirm-close {
   background: none;
   border: none;
-  color: #7a8599;
+  color: var(--muted);
   font-size: 1.4rem;
   cursor: pointer;
   padding: 4px 8px;
@@ -1551,7 +1557,7 @@
   transition: all 0.15s;
   line-height: 1;
 }
-.modal-confirm-close:hover { background: rgba(255,255,255,0.06); color: #e9edf4; }
+.modal-confirm-close:hover { background: rgba(255,255,255,0.06); color: var(--text); }
 
 .modal-confirm-divider {
   height: 1px;
@@ -1592,7 +1598,7 @@
 }
 
 .modal-confirm-total-label {
-  color: #eaf3ff;
+  color: var(--text);
   font-size: 0.74rem;
   font-weight: 800;
   letter-spacing: 0.09em;
@@ -1601,7 +1607,7 @@
 
 .modal-confirm-total-monto {
   font-family: 'Barlow Condensed', sans-serif;
-  color: #e9edf4;
+  color: var(--text);
   font-size: clamp(1.5rem, 4.5vw, 1.9rem);
   font-weight: 700;
   line-height: 1;
@@ -1609,7 +1615,7 @@
 }
 
 .modal-confirm-total-nota {
-  color: #7a8599;
+  color: var(--muted);
   font-size: 0.74rem;
   font-weight: 500;
 }
@@ -1640,7 +1646,7 @@
 
 .modal-confirm-label {
   font-size: 0.82rem;
-  color: #7a8599;
+  color: var(--muted);
   font-weight: 500;
 }
 
@@ -1648,7 +1654,7 @@
   font-family: 'Barlow Condensed', sans-serif;
   font-size: 1rem;
   font-weight: 600;
-  color: #e9edf4;
+  color: var(--text);
   text-align: right;
 }
 
@@ -1662,7 +1668,7 @@
 .modal-confirm-valor.exito-total-secundario {
   font-size: 1.05rem;
   font-weight: 600;
-  color: #e9edf4;
+  color: var(--text);
 }
 
 .modal-confirm-valor.cambio {
@@ -1688,7 +1694,7 @@
   font-weight: 800;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: #eaf3ff;
+  color: var(--text);
   margin-bottom: 7px;
 }
 
@@ -1725,7 +1731,7 @@
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: #7a8599;
+  color: var(--muted);
   margin-bottom: 6px;
 }
 
@@ -1761,7 +1767,7 @@
   display: grid;
   place-items: center;
   flex-shrink: 0;
-  color: #7a8599;
+  color: var(--muted);
   font-size: 0.95rem;
   font-weight: 700;
 }
@@ -1770,13 +1776,13 @@
   font-family: 'Barlow', sans-serif;
   font-size: 0.88rem;
   font-weight: 700;
-  color: #e9edf4;
+  color: var(--text);
   letter-spacing: 0.02em;
 }
 
 .pago-exacto-sub {
   font-size: 0.74rem;
-  color: #7a8599;
+  color: var(--muted);
   margin-top: 1px;
 }
 
@@ -1809,12 +1815,12 @@
 .modal-confirm-btn-cancel {
   background: transparent;
   border: 1px solid rgba(255,255,255,0.1);
-  color: #7a8599;
+  color: var(--muted);
   flex: 0.72;
 }
 .modal-confirm-btn-cancel:hover {
   background: rgba(255,255,255,0.05);
-  color: #e9edf4;
+  color: var(--text);
   border-color: rgba(255,255,255,0.2);
 }
 
@@ -1926,7 +1932,7 @@
   display: none;
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.72);
+  background: var(--overlay-bg);
   backdrop-filter: blur(4px);
   z-index: 2000;
   align-items: center;
@@ -1935,12 +1941,12 @@
 }
 
 .modal-cotizar-card {
-  background: #16191e;
-  border: 1px solid rgba(255,255,255,0.09);
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
   border-radius: 16px;
   width: 100%;
   max-width: 420px;
-  box-shadow: 0 32px 80px rgba(0,0,0,0.7);
+  box-shadow: var(--shadow-lg);
   animation: cotizarSlide 0.22s cubic-bezier(0.16,1,0.3,1);
   overflow: hidden;
 }
@@ -1967,23 +1973,23 @@
   font-family: 'Barlow Condensed', sans-serif;
   font-size: 1.15rem; font-weight: 700;
   letter-spacing: 0.04em; text-transform: uppercase;
-  color: #e9edf4; margin: 0; line-height: 1.1;
+  color: var(--text); margin: 0; line-height: 1.1;
 }
 .modal-cotizar-sub {
-  font-size: 0.78rem; color: #7a8599; margin: 3px 0 0;
+  font-size: 0.78rem; color: var(--muted); margin: 3px 0 0;
 }
 .modal-cotizar-close {
-  background: none; border: none; color: #7a8599;
+  background: none; border: none; color: var(--muted);
   font-size: 1.4rem; cursor: pointer; padding: 4px 8px;
   border-radius: 6px; margin-left: auto; transition: all 0.15s; line-height: 1;
 }
-.modal-cotizar-close:hover { background: rgba(255,255,255,0.06); color: #e9edf4; }
+.modal-cotizar-close:hover { background: rgba(255,255,255,0.06); color: var(--text); }
 .modal-cotizar-divider { height:1px; background:rgba(255,255,255,0.06); margin:0 22px; }
 
 .modal-cotizar-body { padding: 18px 22px; display: flex; flex-direction: column; gap: 14px; }
 .modal-cotizar-field { display: flex; flex-direction: column; gap: 7px; }
 .modal-cotizar-label {
-  font-size: 0.78rem; font-weight: 700; color: #7a8599;
+  font-size: 0.78rem; font-weight: 700; color: var(--muted);
   text-transform: uppercase; letter-spacing: 0.07em;
 }
 
@@ -1994,7 +2000,7 @@
   background: rgba(255,255,255,0.04);
   border: 1px solid rgba(255,255,255,0.1);
   border-radius: 9px;
-  color: #e9edf4;
+  color: var(--text);
   font-family: 'Barlow', sans-serif;
   font-size: 0.9rem;
   outline: none;
@@ -2025,9 +2031,9 @@
   font-size: 0.875rem; font-weight: 700; cursor: pointer; transition: all 0.15s;
 }
 .modal-cotizar-btn-cancel {
-  background: transparent; border: 1px solid rgba(255,255,255,0.1); color: #7a8599;
+  background: transparent; border: 1px solid rgba(255,255,255,0.1); color: var(--muted);
 }
-.modal-cotizar-btn-cancel:hover { background: rgba(255,255,255,0.05); color: #e9edf4; border-color: rgba(255,255,255,0.2); }
+.modal-cotizar-btn-cancel:hover { background: rgba(255,255,255,0.05); color: var(--text); border-color: rgba(255,255,255,0.2); }
 .modal-cotizar-btn-confirm {
   background: rgba(107,157,232,0.12);
   border: 1px solid rgba(107,157,232,0.3); color: #6b9de8;
@@ -2055,7 +2061,7 @@
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.09);
   border-radius: 8px;
-  color: #7a8599;
+  color: var(--muted);
   font-family: 'Barlow', sans-serif;
   font-size: 0.82rem;
   font-weight: 700;
@@ -2066,7 +2072,7 @@
 
 .granel-modo-tab:hover:not(.active) {
   border-color: rgba(255, 255, 255, 0.2);
-  color: #e9edf4;
+  color: var(--text);
 }
 
 .granel-modo-tab.active {
@@ -2145,7 +2151,7 @@
   display: none;
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.72);
+  background: var(--overlay-bg);
   backdrop-filter: blur(4px);
   z-index: 3100;
   align-items: center;
@@ -2160,12 +2166,12 @@
 
 /* ── Card ── */
 .modal-ar-card {
-  background: #16191e;
-  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
   border-radius: 16px;
   width: 100%;
   max-width: 460px;
-  box-shadow: 0 32px 80px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.04);
+  box-shadow: var(--shadow-lg), 0 0 0 1px rgba(255,255,255,0.04);
   animation: arSlideUp 0.22s cubic-bezier(0.16, 1, 0.3, 1);
   overflow: hidden;
 }
@@ -2200,14 +2206,14 @@
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: #e9edf4;
+  color: var(--text);
   line-height: 1.1;
   margin: 0;
 }
 
 .modal-ar-sub {
   font-size: 0.78rem;
-  color: #7a8599;
+  color: var(--muted);
   margin: 3px 0 0;
   letter-spacing: 0.02em;
 }
@@ -2216,7 +2222,7 @@
   margin-left: auto;
   background: none;
   border: none;
-  color: #7a8599;
+  color: var(--muted);
   font-size: 1.5rem;
   cursor: pointer;
   padding: 0;
@@ -2226,7 +2232,7 @@
 }
 
 .modal-ar-close:hover {
-  color: #e9edf4;
+  color: var(--text);
 }
 
 /* ── Divider ── */
@@ -2265,7 +2271,7 @@
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.10);
   border-radius: 8px;
-  color: #e9edf4;
+  color: var(--text);
   font-family: 'Barlow', sans-serif;
   font-size: 0.95rem;
   outline: none;
@@ -2350,7 +2356,7 @@
 
 .modal-ar-check {
   font-size: 0.82rem;
-  color: #cbd3e1;
+  color: var(--text);
   margin-top: 2px;
 }
 
@@ -2410,13 +2416,13 @@
 .modal-ar-btn-cancel {
   background: transparent;
   border: 1px solid rgba(255, 255, 255, 0.10);
-  color: #7a8599;
+  color: var(--muted);
 }
 
 .modal-ar-btn-cancel:hover {
   background: rgba(255, 255, 255, 0.04);
   border-color: rgba(255, 255, 255, 0.18);
-  color: #cbd3e1;
+  color: var(--text);
 }
 
 .modal-ar-btn-confirm {

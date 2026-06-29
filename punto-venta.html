@@ -301,7 +301,7 @@
         </label>
         <input type="number" id="confirm-descuento-input" min="0" max="10" step="0.5"
           placeholder="0"
-          style="width:100%;padding:8px 12px;background:rgba(255,255,255,0.04);border:1px solid var(--panel-border);border-radius:8px;color:var(--text);font-family:'Barlow',sans-serif;font-size:0.9rem;outline:none;" />
+          style="width:100%;padding:8px 12px;background:var(--input-bg);border:1px solid var(--panel-border);border-radius:8px;color:var(--text);font-family:'Barlow',sans-serif;font-size:0.9rem;outline:none;" />
         <p id="descuento-limite-aviso" style="display:none;font-size:0.72rem;color:#e8710a;margin:4px 0 0;">Máximo permitido: 10%</p>
       </div>
 
@@ -339,7 +339,7 @@
         <input type="text" id="confirm-referencia-tarjeta" inputmode="numeric" pattern="[0-9]*"
           minlength="4" maxlength="6" placeholder="Ej. 123456"
           autocomplete="off"
-          style="width:100%;padding:8px 12px;background:rgba(255,255,255,0.04);border:1px solid var(--panel-border);border-radius:8px;color:var(--text);font-family:'Barlow',sans-serif;font-size:0.9rem;outline:none;letter-spacing:0.1em;" />
+          style="width:100%;padding:8px 12px;background:var(--input-bg);border:1px solid var(--panel-border);border-radius:8px;color:var(--text);font-family:'Barlow',sans-serif;font-size:0.9rem;outline:none;letter-spacing:0.1em;" />
         <div id="ref-tarjeta-feedback" style="font-size:0.72rem;margin:4px 0 0;min-height:16px;color:var(--muted);">
           Solo dígitos — 6 dígitos del voucher Move/2500
         </div>
@@ -373,7 +373,7 @@
           Monto recibido
         </label>
         <input type="number" id="confirm-monto-recibido" min="0" step="0.01" placeholder="0.00"
-          style="width:100%;padding:8px 12px;background:rgba(255,255,255,0.04);border:1px solid var(--panel-border);border-radius:8px;color:var(--text);font-family:'Barlow',sans-serif;font-size:0.9rem;outline:none;" />
+          style="width:100%;padding:8px 12px;background:var(--input-bg);border:1px solid var(--panel-border);border-radius:8px;color:var(--text);font-family:'Barlow',sans-serif;font-size:0.9rem;outline:none;" />
         <!-- Cambio destacado -->
         <div id="confirm-cambio-wrap" class="cambio-destacado-confirm" style="display:none;">
           <div class="cambio-destacado-label">Cambio a entregar</div>
@@ -411,7 +411,7 @@
             Vendedor que realizó la venta
           </label>
           <select id="confirm-vendedor-select"
-            style="width:100%;padding:8px 12px;background:rgba(255,255,255,0.04);border:1px solid var(--panel-border);border-radius:8px;color:var(--text);font-family:'Barlow',sans-serif;font-size:0.875rem;outline:none;cursor:pointer;">
+            style="width:100%;padding:8px 12px;background:var(--input-bg);border:1px solid var(--panel-border);border-radius:8px;color:var(--text);font-family:'Barlow',sans-serif;font-size:0.875rem;outline:none;cursor:pointer;">
           </select>
         </div>
       </div>
@@ -486,7 +486,7 @@
 </div>
 
 <!-- ══ MODAL: VENTA EXITOSA ══ -->
-<div id="modal-venta-exitosa" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.72); backdrop-filter:blur(4px); z-index:3000; align-items:center; justify-content:center; padding:20px;">
+<div id="modal-venta-exitosa" style="display:none; position:fixed; inset:0; background:var(--overlay-bg); backdrop-filter:blur(4px); z-index:3000; align-items:center; justify-content:center; padding:20px;">
   <div class="modal-confirm-card" style="max-width:400px;">
 
     <!-- Header -->
@@ -498,7 +498,7 @@
       </div>
       <div>
         <h3 style="font-family:'Barlow Condensed',sans-serif; font-size:1.4rem; font-weight:700; letter-spacing:0.05em; text-transform:uppercase; color:#60d080; margin:0 0 4px;">¡Venta Exitosa!</h3>
-        <p id="exito-folio" style="font-size:0.8rem; color:#7a8599; margin:0;">Folio: —</p>
+        <p id="exito-folio" style="font-size:0.8rem; color:var(--muted); margin:0;">Folio: —</p>
       </div>
     </div>
 
@@ -550,8 +550,8 @@
 </div>
 
 <!-- ══ MODAL: CANTIDAD GRANEL ══ -->
-<div id="modal-cantidad-granel" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.72);backdrop-filter:blur(4px);z-index:3000;align-items:center;justify-content:center;padding:20px;">
-  <div style="background:#16191e;border:1px solid rgba(255,255,255,0.09);border-radius:16px;width:100%;max-width:360px;overflow:hidden;box-shadow:0 32px 80px rgba(0,0,0,0.7);animation:granelModalIn 0.2s cubic-bezier(0.16,1,0.3,1);">
+<div id="modal-cantidad-granel" style="display:none;position:fixed;inset:0;background:var(--overlay-bg);backdrop-filter:blur(4px);z-index:3000;align-items:center;justify-content:center;padding:20px;">
+  <div style="background:var(--panel-bg);border:1px solid var(--panel-border);border-radius:16px;width:100%;max-width:360px;overflow:hidden;box-shadow:var(--shadow-lg);animation:granelModalIn 0.2s cubic-bezier(0.16,1,0.3,1);">
     <style>
       @keyframes granelModalIn {
         from{opacity:0;transform:translateY(16px) scale(0.97)}
@@ -567,17 +567,17 @@
         </svg>
       </div>
       <div style="flex:1;min-width:0;">
-        <div style="font-family:'Barlow Condensed',sans-serif;font-size:1.05rem;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:#e9edf4;line-height:1.1;">
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:1.05rem;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--text);line-height:1.1;">
           Venta a granel
         </div>
-        <div id="granel-modal-producto-nombre" style="font-size:0.78rem;color:#7a8599;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+        <div id="granel-modal-producto-nombre" style="font-size:0.78rem;color:var(--muted);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
           —
         </div>
       </div>
-      <button id="granel-modal-close" style="background:none;border:none;color:#7a8599;font-size:1.4rem;cursor:pointer;padding:0;line-height:1;">&times;</button>
+      <button id="granel-modal-close" style="background:none;border:none;color:var(--muted);font-size:1.4rem;cursor:pointer;padding:0;line-height:1;">&times;</button>
     </div>
 
-    <div style="height:1px;background:rgba(255,255,255,0.06);margin:0 22px;"></div>
+    <div style="height:1px;background:var(--panel-border);margin:0 22px;"></div>
 
     <!-- Body -->
     <div style="padding:18px 22px;">
@@ -601,7 +601,7 @@
             <span style="font-size:0.7rem;opacity:0.7;">Pieza suelta</span>
           </button>
           <button type="button" id="granel-modal-btn-empaque" class="granel-unidad-btn"
-            style="padding:12px 10px;background:rgba(255,255,255,0.04);border:2px solid rgba(255,255,255,0.09);border-radius:10px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;font-family:'Barlow',sans-serif;color:#7a8599;transition:all 0.2s;">
+            style="padding:12px 10px;background:var(--input-bg);border:2px solid var(--panel-border);border-radius:10px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;font-family:'Barlow',sans-serif;color:var(--muted);transition:all 0.2s;">
             <span style="font-size:1.2rem;">📦</span>
             <span id="granel-btn-empaque-label" style="font-size:0.85rem;font-weight:700;letter-spacing:0.04em;">CAJA</span>
             <span id="granel-btn-empaque-sub" style="font-size:0.7rem;opacity:0.7;">12 pza c/u</span>
@@ -615,7 +615,7 @@
           Cantidad <span id="granel-modal-unidad-label" style="font-weight:400;color:#6b9de8;">(unidades)</span>
         </label>
         <input type="number" id="granel-modal-cantidad" min="0.001" step="1" placeholder="Ej: 2.500"
-          style="width:100%;padding:12px 14px;background:rgba(255,255,255,0.04);border:1px solid var(--panel-border,rgba(255,255,255,0.09));border-radius:8px;color:#e9edf4;font-family:'Barlow',sans-serif;font-size:1.1rem;outline:none;text-align:center;letter-spacing:0.05em;" 
+          style="width:100%;padding:12px 14px;background:var(--input-bg);border:1px solid var(--panel-border,rgba(255,255,255,0.09));border-radius:8px;color:var(--text);font-family:'Barlow',sans-serif;font-size:1.1rem;outline:none;text-align:center;letter-spacing:0.05em;"
           autocomplete="off" />
       </div>
 
@@ -625,21 +625,21 @@
           Importe <span style="font-weight:400;color:#6b9de8;">($ pesos)</span>
         </label>
         <input type="number" id="granel-modal-importe" min="0.01" step="0.01" placeholder="Ej: 20.00" inputmode="decimal"
-          style="width:100%;padding:12px 14px;background:rgba(255,255,255,0.04);border:1px solid var(--panel-border,rgba(255,255,255,0.09));border-radius:8px;color:#e9edf4;font-family:'Barlow',sans-serif;font-size:1.1rem;outline:none;text-align:center;letter-spacing:0.05em;" 
+          style="width:100%;padding:12px 14px;background:var(--input-bg);border:1px solid var(--panel-border,rgba(255,255,255,0.09));border-radius:8px;color:var(--text);font-family:'Barlow',sans-serif;font-size:1.1rem;outline:none;text-align:center;letter-spacing:0.05em;"
           autocomplete="off" />
-        <div style="font-size:0.72rem;color:#7a8599;margin-top:5px;text-align:center;">Se calculará la cantidad equivalente</div>
+        <div style="font-size:0.72rem;color:var(--muted);margin-top:5px;text-align:center;">Se calculará la cantidad equivalente</div>
       </div>
 
-      <div id="granel-modal-stock-info" style="font-size:0.75rem;color:#7a8599;margin-top:6px;text-align:center;">—</div>
+      <div id="granel-modal-stock-info" style="font-size:0.75rem;color:var(--muted);margin-top:6px;text-align:center;">—</div>
       <div id="granel-modal-error" style="display:none;font-size:0.78rem;color:#ff6b6b;margin-top:6px;text-align:center;"></div>
       <div id="granel-modal-conversion" style="display:none;font-size:0.78rem;color:#6b9de8;margin-top:6px;text-align:center;background:rgba(107,157,232,0.08);padding:6px 10px;border-radius:6px;border:1px solid rgba(107,157,232,0.15);"></div>
     </div>
 
-    <div style="height:1px;background:rgba(255,255,255,0.06);margin:0 22px;"></div>
+    <div style="height:1px;background:var(--panel-border);margin:0 22px;"></div>
 
     <!-- Acciones -->
     <div style="display:flex;gap:10px;padding:14px 22px 20px;">
-      <button id="granel-modal-cancel" style="flex:1;padding:11px 18px;background:transparent;border:1px solid rgba(255,255,255,0.1);border-radius:10px;color:#7a8599;font-family:'Barlow',sans-serif;font-size:0.875rem;font-weight:700;cursor:pointer;">Cancelar</button>
+      <button id="granel-modal-cancel" style="flex:1;padding:11px 18px;background:transparent;border:1px solid rgba(255,255,255,0.1);border-radius:10px;color:var(--muted);font-family:'Barlow',sans-serif;font-size:0.875rem;font-weight:700;cursor:pointer;">Cancelar</button>
       <button id="granel-modal-confirm" style="flex:1;padding:11px 18px;background:rgba(107,157,232,0.12);border:1px solid rgba(107,157,232,0.3);border-radius:10px;color:#6b9de8;font-family:'Barlow',sans-serif;font-size:0.875rem;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:7px;">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
         Agregar
@@ -652,22 +652,22 @@
 <!-- ════════════════════════════════════════════════════════════════ -->
 <!--  MODAL: PAUSAR VENTA (nombre opcional con default)                 -->
 <!-- ════════════════════════════════════════════════════════════════ -->
-<div id="modal-pausar-venta" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.72);backdrop-filter:blur(4px);z-index:3000;align-items:center;justify-content:center;padding:20px;">
-  <div style="background:#16191e;border:1px solid rgba(255,255,255,0.09);border-radius:16px;width:100%;max-width:360px;overflow:hidden;box-shadow:0 32px 80px rgba(0,0,0,0.7);animation:granelModalIn 0.2s cubic-bezier(0.16,1,0.3,1);">
+<div id="modal-pausar-venta" style="display:none;position:fixed;inset:0;background:var(--overlay-bg);backdrop-filter:blur(4px);z-index:3000;align-items:center;justify-content:center;padding:20px;">
+  <div style="background:var(--panel-bg);border:1px solid var(--panel-border);border-radius:16px;width:100%;max-width:360px;overflow:hidden;box-shadow:var(--shadow-lg);animation:granelModalIn 0.2s cubic-bezier(0.16,1,0.3,1);">
 
     <!-- Header -->
     <div style="display:flex;align-items:center;gap:14px;padding:20px 22px 16px;">
       <div style="width:46px;height:46px;border-radius:11px;flex-shrink:0;background:rgba(232,161,60,0.12);border:1px solid rgba(232,161,60,0.25);display:grid;place-items:center;font-size:1.2rem;">⏸️</div>
       <div style="flex:1;min-width:0;">
-        <div style="font-family:'Barlow Condensed',sans-serif;font-size:1.05rem;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:#e9edf4;line-height:1.1;">
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:1.05rem;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--text);line-height:1.1;">
           Pausar venta
         </div>
-        <div id="pausar-resumen" style="font-size:0.78rem;color:#7a8599;margin-top:3px;">—</div>
+        <div id="pausar-resumen" style="font-size:0.78rem;color:var(--muted);margin-top:3px;">—</div>
       </div>
-      <button id="pausar-modal-close" style="background:none;border:none;color:#7a8599;font-size:1.4rem;cursor:pointer;padding:0;line-height:1;">&times;</button>
+      <button id="pausar-modal-close" style="background:none;border:none;color:var(--muted);font-size:1.4rem;cursor:pointer;padding:0;line-height:1;">&times;</button>
     </div>
 
-    <div style="height:1px;background:rgba(255,255,255,0.06);margin:0 22px;"></div>
+    <div style="height:1px;background:var(--panel-border);margin:0 22px;"></div>
 
     <!-- Body -->
     <div style="padding:18px 22px;">
@@ -675,16 +675,16 @@
         Nombre <span style="font-weight:400;color:#6b9de8;">(opcional)</span>
       </label>
       <input type="text" id="pausar-nombre-input" maxlength="60"
-        style="width:100%;padding:12px 14px;background:rgba(255,255,255,0.04);border:1px solid var(--panel-border,rgba(255,255,255,0.09));border-radius:8px;color:#e9edf4;font-family:'Barlow',sans-serif;font-size:0.95rem;outline:none;"
+        style="width:100%;padding:12px 14px;background:var(--input-bg);border:1px solid var(--panel-border,rgba(255,255,255,0.09));border-radius:8px;color:var(--text);font-family:'Barlow',sans-serif;font-size:0.95rem;outline:none;"
         autocomplete="off" />
-      <div style="font-size:0.72rem;color:#7a8599;margin-top:5px;">Si lo dejas vacío se usará el nombre sugerido</div>
+      <div style="font-size:0.72rem;color:var(--muted);margin-top:5px;">Si lo dejas vacío se usará el nombre sugerido</div>
     </div>
 
-    <div style="height:1px;background:rgba(255,255,255,0.06);margin:0 22px;"></div>
+    <div style="height:1px;background:var(--panel-border);margin:0 22px;"></div>
 
     <!-- Acciones -->
     <div style="display:flex;gap:10px;padding:14px 22px 20px;">
-      <button id="pausar-modal-cancel" style="flex:1;padding:11px 18px;background:transparent;border:1px solid rgba(255,255,255,0.1);border-radius:10px;color:#7a8599;font-family:'Barlow',sans-serif;font-size:0.875rem;font-weight:700;cursor:pointer;">Cancelar</button>
+      <button id="pausar-modal-cancel" style="flex:1;padding:11px 18px;background:transparent;border:1px solid rgba(255,255,255,0.1);border-radius:10px;color:var(--muted);font-family:'Barlow',sans-serif;font-size:0.875rem;font-weight:700;cursor:pointer;">Cancelar</button>
       <button id="pausar-modal-confirm" style="flex:1;padding:11px 18px;background:rgba(232,161,60,0.12);border:1px solid rgba(232,161,60,0.3);border-radius:10px;color:#e8a13c;font-family:'Barlow',sans-serif;font-size:0.875rem;font-weight:700;cursor:pointer;">
         ⏸️ Pausar
       </button>
@@ -695,22 +695,22 @@
 <!-- ════════════════════════════════════════════════════════════════ -->
 <!--  MODAL: VENTAS EN ESPERA (lista de pausadas del usuario/turno)     -->
 <!-- ════════════════════════════════════════════════════════════════ -->
-<div id="modal-pausadas" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.72);backdrop-filter:blur(4px);z-index:3000;align-items:center;justify-content:center;padding:20px;">
-  <div style="background:#16191e;border:1px solid rgba(255,255,255,0.09);border-radius:16px;width:100%;max-width:440px;overflow:hidden;box-shadow:0 32px 80px rgba(0,0,0,0.7);animation:granelModalIn 0.2s cubic-bezier(0.16,1,0.3,1);">
+<div id="modal-pausadas" style="display:none;position:fixed;inset:0;background:var(--overlay-bg);backdrop-filter:blur(4px);z-index:3000;align-items:center;justify-content:center;padding:20px;">
+  <div style="background:var(--panel-bg);border:1px solid var(--panel-border);border-radius:16px;width:100%;max-width:440px;overflow:hidden;box-shadow:var(--shadow-lg);animation:granelModalIn 0.2s cubic-bezier(0.16,1,0.3,1);">
 
     <!-- Header -->
     <div style="display:flex;align-items:center;gap:14px;padding:20px 22px 16px;">
       <div style="width:46px;height:46px;border-radius:11px;flex-shrink:0;background:rgba(107,157,232,0.12);border:1px solid rgba(107,157,232,0.25);display:grid;place-items:center;font-size:1.2rem;">📂</div>
       <div style="flex:1;min-width:0;">
-        <div style="font-family:'Barlow Condensed',sans-serif;font-size:1.05rem;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:#e9edf4;line-height:1.1;">
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:1.05rem;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--text);line-height:1.1;">
           Ventas en espera
         </div>
-        <div style="font-size:0.78rem;color:#7a8599;margin-top:3px;">Se eliminan al cerrar el turno</div>
+        <div style="font-size:0.78rem;color:var(--muted);margin-top:3px;">Se eliminan al cerrar el turno</div>
       </div>
-      <button id="pausadas-modal-close" style="background:none;border:none;color:#7a8599;font-size:1.4rem;cursor:pointer;padding:0;line-height:1;">&times;</button>
+      <button id="pausadas-modal-close" style="background:none;border:none;color:var(--muted);font-size:1.4rem;cursor:pointer;padding:0;line-height:1;">&times;</button>
     </div>
 
-    <div style="height:1px;background:rgba(255,255,255,0.06);margin:0 22px;"></div>
+    <div style="height:1px;background:var(--panel-border);margin:0 22px;"></div>
 
     <!-- Lista -->
     <div id="lista-pausadas" style="padding:16px 22px;max-height:55vh;overflow-y:auto;"></div>
@@ -723,24 +723,24 @@
 <!--  Insertar en punto-venta.html ANTES de <script src="config.js">   -->
 <!--  Si ya pegaste el modal anterior, BÓRRALO y reemplaza con éste.   -->
 <!-- ════════════════════════════════════════════════════════════════ -->
-<div id="modal-ajuste-rapido" style="display:none;align-items:center;justify-content:center;position:fixed;inset:0;background:rgba(0,0,0,0.55);backdrop-filter:blur(3px);z-index:9999;">
-  <div style="width:min(440px,92vw);background:#0f1420;border:1px solid rgba(255,255,255,0.06);border-radius:14px;box-shadow:0 24px 60px rgba(0,0,0,0.6);overflow:hidden;font-family:'Barlow',sans-serif;padding:28px 32px;">
+<div id="modal-ajuste-rapido" style="display:none;align-items:center;justify-content:center;position:fixed;inset:0;background:var(--overlay-bg);backdrop-filter:blur(3px);z-index:9999;">
+  <div style="width:min(440px,92vw);background:var(--panel-bg);border:1px solid var(--panel-border);border-radius:14px;box-shadow:var(--shadow-lg);overflow:hidden;font-family:'Barlow',sans-serif;padding:28px 32px;">
 
     <!-- Título -->
-    <h3 style="margin:0 0 22px;color:#ffffff;font-size:1.15rem;font-weight:700;letter-spacing:0.01em;">Ajustar inventario</h3>
+    <h3 style="margin:0 0 22px;color:var(--text);font-size:1.15rem;font-weight:700;letter-spacing:0.01em;">Ajustar inventario</h3>
 
     <!-- Stock actual inline -->
-    <p id="ajuste-rapido-actual-label" style="margin:0 0 10px;color:#9aa3b2;font-size:0.92rem;font-weight:400;">Stock actual: <span id="ajuste-rapido-actual">0</span></p>
+    <p id="ajuste-rapido-actual-label" style="margin:0 0 10px;color:var(--muted);font-size:0.92rem;font-weight:400;">Stock actual: <span id="ajuste-rapido-actual">0</span></p>
 
     <!-- Input nuevo stock -->
     <input id="ajuste-rapido-nuevo" type="number" min="0" step="1" placeholder="0"
-      style="width:100%;padding:12px 14px;background:#1a1f2e;border:2px solid #4f7fff;border-radius:8px;color:#ffffff;font-family:'Barlow',sans-serif;font-size:1rem;font-weight:600;outline:none;box-sizing:border-box;margin-bottom:14px;" />
+      style="width:100%;padding:12px 14px;background:var(--input-bg);border:2px solid var(--accent-strong);border-radius:8px;color:var(--text);font-family:'Barlow',sans-serif;font-size:1rem;font-weight:600;outline:none;box-sizing:border-box;margin-bottom:14px;" />
 
     <!-- Diferencia (preview) -->
-    <p id="ajuste-rapido-dif-label" style="margin:0 0 4px;font-size:0.88rem;font-weight:600;color:#9aa3b2;min-height:1.2em;">&nbsp;</p>
+    <p id="ajuste-rapido-dif-label" style="margin:0 0 4px;font-size:0.88rem;font-weight:600;color:var(--muted);min-height:1.2em;">&nbsp;</p>
 
     <!-- Aviso secundario -->
-    <p id="ajuste-rapido-aviso" style="margin:0 0 22px;color:#7a8599;font-size:0.78rem;min-height:1em;">&nbsp;</p>
+    <p id="ajuste-rapido-aviso" style="margin:0 0 22px;color:var(--muted);font-size:0.78rem;min-height:1em;">&nbsp;</p>
 
     <!-- Error inline (oculto por defecto) -->
     <div id="ajuste-rapido-error" style="display:none;margin:0 0 14px;padding:8px 12px;border-radius:6px;background:rgba(232,107,107,0.1);border:1px solid rgba(232,107,107,0.25);color:#e86b6b;font-size:0.8rem;font-weight:600;"></div>
