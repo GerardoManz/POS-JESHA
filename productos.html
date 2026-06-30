@@ -391,6 +391,35 @@
         </div>
       </div>
 
+      <!-- Sugerencia SAT -->
+      <div class="form-group full-width" id="sat-sugerencia-wrap">
+        <button type="button" class="btn-secondary" id="btn-sugerir-sat">Sugerir SAT</button>
+
+        <div class="sat-panel" id="sat-panel" style="display:none;">
+          <div class="sat-status" id="sat-status" style="display:none;"></div>
+
+          <div class="sat-head">
+            <span class="sat-badge" id="sat-badge"></span>
+            <span class="sat-conf" id="sat-confianza"></span>
+          </div>
+
+          <div class="sat-section">
+            <div class="sat-label">Clave SAT - elige una</div>
+            <div class="sat-chips" id="sat-claves"></div>
+          </div>
+
+          <div class="sat-section">
+            <div class="sat-label">Unidad SAT</div>
+            <div class="sat-chips" id="sat-unidades"></div>
+          </div>
+
+          <button type="button" class="sat-razones-toggle" id="sat-razones-toggle" style="display:none;">
+            Por qué <span class="sat-caret">⌄</span>
+          </button>
+          <div class="sat-razones" id="sat-razones" style="display:none;"></div>
+        </div>
+      </div>
+
       <!-- Error message -->
       <div id="producto-error" class="error-message"></div>
 

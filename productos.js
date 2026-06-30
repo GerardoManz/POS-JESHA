@@ -121,6 +121,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Inicializar modal básico (rol EMPLEADO)
   initModalBasico()
+
+  // Inicializar sugerencia SAT en modal de producto
+  initSugerirSat()
 })
 
 // ═══════════════════════════════════════════════════════════════════
@@ -491,6 +494,205 @@ function renderizarTabla(productos) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// SUGERENCIA SAT — Modal de producto
+// ═══════════════════════════════════════════════════════════════════
+
+const UNIDAD_LABEL_SAT = {
+  H87: 'pieza', MTR: 'metro', KGM: 'kilo', LTR: 'litro',
+  XPK: 'paquete', PR: 'par', KT: 'kit', SET: 'juego',
+}
+
+function initSugerirSat() {
+  const btn = document.getElementById('btn-sugerir-sat')
+  if (!btn) return
+
+  const panel      = document.getElementById('sat-panel')
+  const badgeEl    = document.getElementById('sat-badge')
+  const confEl     = document.getElementById('sat-confianza')
+  const clavesEl   = document.getElementById('sat-claves')
+  const unidadesEl = document.getElementById('sat-unidades')
+  const razonesEl  = document.getElementById('sat-razones')
+  const razonesTgl = document.getElementById('sat-razones-toggle')
+  const statusEl   = document.getElementById('sat-status')
+
+  const inputNombre    = document.getElementById('producto-nombre')
+  const inputDesc      = document.getElementById('producto-descripcion')
+  const inputUnidadV   = document.getElementById('producto-unidadVenta')
+  const inputGranel    = document.getElementById('producto-esGranel')
+  const inputClaveSat  = document.getElementById('producto-claveSat')
+  const inputUnidadSat = document.getElementById('producto-unidadSat')
+
+  if (razonesTgl && razonesEl) {
+    razonesTgl.addEventListener('click', () => {
+      const abierto = razonesEl.style.display !== 'none'
+      razonesEl.style.display = abierto ? 'none' : 'block'
+      const caret = razonesTgl.querySelector('.sat-caret')
+      if (caret) caret.classList.toggle('abierto', !abierto)
+    })
+  }
+
+  btn.addEventListener('click', async () => {
+    const nombre = (inputNombre?.value || '').trim()
+    if (panel) panel.style.display = 'block'
+
+    if (nombre === '') {
+      mostrarEstadoSat('vacio')
+      return
+    }
+
+    btn.disabled = true
+    mostrarEstadoSat('cargando')
+
+    try {
+      const resultado = await apiFetch('/productos/sat/sugerir', {
+        method: 'POST',
+        body: JSON.stringify({
+          nombre,
+          descripcion: (inputDesc?.value || '').trim(),
+          unidadVenta: (inputUnidadV?.value || '').trim(),
+          esGranel: inputGranel?.checked || false,
+        }),
+      })
+      if (resultado && resultado.success === false) {
+        throw new Error(resultado.error || 'No se pudo obtener la sugerencia')
+      }
+      const data = (resultado && resultado.data) ? resultado.data : resultado
+      pintarSugerencia(data)
+    } catch (err) {
+      console.error('Sugerir SAT:', err)
+      mostrarEstadoSat('error', err.message)
+    } finally {
+      btn.disabled = false
+    }
+  })
+
+  function mostrarEstadoSat(tipo, msg) {
+    if (clavesEl) clavesEl.innerHTML = ''
+    if (unidadesEl) unidadesEl.innerHTML = ''
+    if (razonesEl) razonesEl.innerHTML = ''
+    if (badgeEl) { badgeEl.className = 'sat-badge'; badgeEl.textContent = '' }
+    if (confEl) confEl.textContent = ''
+    if (razonesTgl) razonesTgl.style.display = 'none'
+
+    if (!statusEl) return
+    if (tipo === 'vacio') {
+      statusEl.textContent = 'Escribe el nombre del producto primero.'
+      statusEl.style.display = 'flex'
+    } else if (tipo === 'cargando') {
+      statusEl.innerHTML = '<span class="spinner"></span> Consultando catálogo.'
+      statusEl.style.display = 'flex'
+    } else if (tipo === 'error') {
+      statusEl.textContent = msg || 'No se pudo obtener la sugerencia.'
+      statusEl.style.display = 'flex'
+    }
+  }
+
+  function pintarSugerencia(data) {
+    if (statusEl) { statusEl.style.display = 'none'; statusEl.innerHTML = '' }
+
+    const estado     = (data && data.estado) || 'MANUAL'
+    const conf       = Number.isFinite(data?.confianza) ? data.confianza : null
+    const unidadSat  = (data?.unidadSat || '').trim()
+    const razones    = Array.isArray(data?.razones) ? data.razones : []
+    let candidatos   = Array.isArray(data?.candidatos) ? data.candidatos : []
+
+    if (candidatos.length === 0 && data?.claveSat) {
+      candidatos = [{ claveSat: data.claveSat, descripcion: data.descripcionSat, score: data.confianza }]
+    }
+
+    const claseEstado = { AUTO: 'auto', SUGERIR: 'sugerir', MANUAL: 'manual' }
+    const textoEstado = { AUTO: 'Alta confianza', SUGERIR: 'Sugerir', MANUAL: 'Captura manual' }
+    if (badgeEl) {
+      badgeEl.className = 'sat-badge sat-badge--' + (claseEstado[estado] || 'manual')
+      badgeEl.textContent = textoEstado[estado] || estado
+    }
+    if (confEl) confEl.textContent = conf !== null ? ('confianza ' + conf) : ''
+
+    if (clavesEl) {
+      clavesEl.innerHTML = ''
+      if (candidatos.length === 0) {
+        clavesEl.innerHTML = '<span class="sat-empty">Sin candidatos - captura la clave manualmente.</span>'
+      } else {
+        candidatos.forEach((c) => {
+          const clave = (c?.claveSat || '').trim()
+          if (!clave) return
+          const chip = document.createElement('button')
+          chip.type = 'button'
+          chip.className = 'sat-chip'
+          chip.innerHTML =
+            '<span class="sat-mono">' + escaparHtml(clave) + '</span>' +
+            (c.descripcion ? ' - ' + escaparHtml(c.descripcion) : '') +
+            (Number.isFinite(c.score) ? ' <span class="sat-score">' + c.score + '</span>' : '')
+          chip.addEventListener('click', () => {
+            if (inputClaveSat) inputClaveSat.value = clave
+            marcarSeleccion(clavesEl, chip)
+          })
+          clavesEl.appendChild(chip)
+        })
+      }
+    }
+
+    if (unidadesEl) {
+      unidadesEl.innerHTML = ''
+      if (unidadSat) {
+        const chip = document.createElement('button')
+        chip.type = 'button'
+        chip.className = 'sat-chip'
+        const lbl = UNIDAD_LABEL_SAT[unidadSat]
+        chip.innerHTML = '<span class="sat-mono">' + escaparHtml(unidadSat) + '</span>' + (lbl ? ' - ' + lbl : '')
+        chip.addEventListener('click', () => {
+          if (inputUnidadSat) inputUnidadSat.value = unidadSat
+          marcarSeleccion(unidadesEl, chip)
+        })
+        unidadesEl.appendChild(chip)
+      } else {
+        unidadesEl.innerHTML = '<span class="sat-empty">No se resolvió la unidad - captúrala manualmente.</span>'
+      }
+    }
+
+    if (razonesEl) razonesEl.innerHTML = ''
+    if (razones.length > 0 && razonesEl && razonesTgl) {
+      razonesTgl.style.display = 'inline-flex'
+      razonesEl.style.display = 'none'
+      razonesEl.innerHTML = '<ul>' + razones.map((r) => '<li>' + escaparHtml(r) + '</li>').join('') + '</ul>'
+    } else if (razonesTgl) {
+      razonesTgl.style.display = 'none'
+    }
+  }
+}
+
+function resetSugerenciaSat() {
+  const panel      = document.getElementById('sat-panel')
+  const statusEl   = document.getElementById('sat-status')
+  const badgeEl    = document.getElementById('sat-badge')
+  const confEl     = document.getElementById('sat-confianza')
+  const clavesEl   = document.getElementById('sat-claves')
+  const unidadesEl = document.getElementById('sat-unidades')
+  const razonesEl  = document.getElementById('sat-razones')
+  const razonesTgl = document.getElementById('sat-razones-toggle')
+
+  if (panel) panel.style.display = 'none'
+  if (statusEl) { statusEl.style.display = 'none'; statusEl.innerHTML = '' }
+  if (badgeEl) { badgeEl.className = 'sat-badge'; badgeEl.textContent = '' }
+  if (confEl) confEl.textContent = ''
+  if (clavesEl) clavesEl.innerHTML = ''
+  if (unidadesEl) unidadesEl.innerHTML = ''
+  if (razonesEl) { razonesEl.innerHTML = ''; razonesEl.style.display = 'none' }
+  if (razonesTgl) razonesTgl.style.display = 'none'
+}
+
+function marcarSeleccion(contenedor, chip) {
+  contenedor.querySelectorAll('.sat-chip').forEach((c) => c.classList.remove('sat-chip--sel'))
+  chip.classList.add('sat-chip--sel')
+}
+
+function escaparHtml(s) {
+  return String(s).replace(/[&<>"']/g, (m) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]
+  ))
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // MODAL PRODUCTO — ABRIR / CERRAR / GUARDAR
 // ═══════════════════════════════════════════════════════════════════
 
@@ -602,6 +804,7 @@ window.editarProducto = async function(id) {
   calcularPrecioBase()
   calcularMargen()
   
+  resetSugerenciaSat()
   ocultarError()
   if (modal) modal.classList.add('active')
 }
@@ -631,6 +834,7 @@ function abrirModalNuevo() {
   // Resetear granel
   const granelCheck = document.getElementById('producto-esGranel')
   if (granelCheck) { granelCheck.checked = false; actualizarVisualGranel(false) }
+  resetSugerenciaSat()
   ocultarError()
   if (modal) modal.classList.add('active')
 }
@@ -639,6 +843,7 @@ function cerrarModal() {
   if (modal) modal.classList.remove('active')
   if (formulario) formulario.reset()
   if (imagenPreviewContainer) imagenPreviewContainer.style.display = 'none'
+  resetSugerenciaSat()
   productoActual = null
 }
 
