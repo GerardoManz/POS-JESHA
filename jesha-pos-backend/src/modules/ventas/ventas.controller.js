@@ -632,7 +632,9 @@ exports.obtenerVenta = async (req, res) => {
           codigo:         d.Producto.codigoInterno,
           cantidad:       d.cantidad,
           precioUnitario: d.precioUnitario,
-          subtotal:       d.subtotal
+          subtotal:       d.subtotal,
+          esGranel:       d.Producto.esGranel || false,
+          unidadVenta:    d.Producto.unidadVenta || ''
         }))
       }
     })
