@@ -203,10 +203,14 @@ window.verDetalle = async function(id) {
       EFECTIVO:'💵 Efectivo', CREDITO:'💳 Tarjeta crédito', DEBITO:'💳 Tarjeta débito',
       TRANSFERENCIA:'🔄 Transferencia', CREDITO_CLIENTE:'🏦 Crédito cliente', MIXTO:'🔀 Mixto'
     }[v.metodoPago] || v.metodoPago
-    document.getElementById('det-factura').textContent  = {
-      DISPONIBLE:'Disponible', BLOQUEADA:'Bloqueada', FACTURADA:'Facturada',
-      TIMBRADA:'Timbrada', VENCIDA:'Vencida', CANCELADA:'Cancelada'
-    }[v.facturaEstado] || v.facturaEstado
+    const esEmpleado = USUARIO.rol === 'EMPLEADO'
+    document.getElementById('det-factura').parentElement.style.display = esEmpleado ? 'none' : ''
+    if (!esEmpleado) {
+      document.getElementById('det-factura').textContent = {
+        DISPONIBLE:'Disponible', BLOQUEADA:'Bloqueada', FACTURADA:'Facturada',
+        TIMBRADA:'Timbrada', VENCIDA:'Vencida', CANCELADA:'Cancelada'
+      }[v.facturaEstado] || v.facturaEstado
+    }
 
     const badge       = document.getElementById('det-estado-badge')
     const estadoLabel = { COMPLETADA: 'Completada', CANCELADA: 'Cancelada', DEVOLUCION: 'Devolución' }
@@ -290,7 +294,7 @@ function renderAccionesModal(v) {
       ✏️ Editar método de pago
     </button>` : ''
 
-  const puedeFacturar = v.estado === 'COMPLETADA' && v.facturaEstado === 'DISPONIBLE'
+  const puedeFacturar = v.estado === 'COMPLETADA' && v.facturaEstado === 'DISPONIBLE' && USUARIO.rol !== 'EMPLEADO'
   const btnFacturar = puedeFacturar ? `
     <button class="btn-facturar-hist" onclick="event.stopPropagation();window.open('facturas.html?facturar=${encodeURIComponent(v.folio)}','_blank')">
       🧾 Facturar
@@ -452,6 +456,11 @@ function renderTablaDevolucion() {
     const disponible    = d.cantidad - yaDevuelto
     const deshabilitado = disponible <= 0
 
+    const esGranel   = d.esGranel === true
+    const unidad     = d.unidadVenta || ''
+    const pasoInput  = esGranel ? '0.001' : '1'
+    const anchoInput = esGranel ? '74px' : '60px'
+
     return `
       <tr id="dev-row-${d.productoId}" class="${deshabilitado ? 'dev-row-disabled' : ''}">
         <td style="text-align:center;">
@@ -465,16 +474,16 @@ function renderTablaDevolucion() {
         <td>${d.nombre}</td>
         <td style="text-align:center;color:var(--muted)">${d.cantidad}</td>
         <td style="text-align:center;color:var(--muted)">${yaDevuelto > 0 ? yaDevuelto : '—'}</td>
-        <td style="text-align:center;color:${disponible > 0 ? 'var(--text)' : '#ff6b6b'};font-weight:600">${disponible}</td>
+        <td style="text-align:center;color:${disponible > 0 ? 'var(--text)' : '#ff6b6b'};font-weight:600">${disponible}${unidad ? ' ' + unidad : ''}</td>
         <td style="text-align:center;">
           <input type="number" class="dev-cantidad"
             id="dev-cant-${d.productoId}"
             data-id="${d.productoId}"
             data-precio="${d.precioUnitario}"
             data-disponible="${disponible}"
-            min="1" max="${disponible}" value="1"
+            min="${pasoInput}" max="${disponible}" step="${pasoInput}" value="${pasoInput}"
             disabled
-            style="width:60px;padding:4px 6px;background:rgba(255,255,255,0.04);border:1px solid var(--panel-border);border-radius:6px;color:var(--text);font-family:'Barlow',sans-serif;font-size:0.875rem;text-align:center;"
+            style="width:${anchoInput};padding:4px 6px;background:rgba(255,255,255,0.04);border:1px solid var(--panel-border);border-radius:6px;color:var(--text);font-family:'Barlow',sans-serif;font-size:0.875rem;text-align:center;"
             onchange="recalcularMontoDevolucion()" />
         </td>
         <td style="text-align:right;" id="dev-sub-${d.productoId}">—</td>
