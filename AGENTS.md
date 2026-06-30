@@ -84,6 +84,99 @@ Esperado: `## main...origin/main` sin `ahead`/`behind`.
    ```
    `status` debe mostrar SOLO los archivos esperados. Si aparece algo más, **PARAR** y revisar antes de hacer stage.
 
+### 2.1. Protocolo de pruebas locales (entrada al sistema + endpoints)
+
+Este proyecto no se valida solo con `node --check`: cada cambio funcional debe probarse contra el sistema local cuando sea factible.
+
+#### Levantar backend local
+
+```powershell
+cd jesha-pos-backend
+npm run dev
+```
+
+Si necesitas arrancar sin nodemon:
+
+```powershell
+cd jesha-pos-backend
+node src/server.js
+```
+
+Verificar proceso y base de datos:
+
+```powershell
+curl.exe -sS http://localhost:3000/health
+curl.exe -sS http://localhost:3000/health/db
+```
+
+Resultado esperado:
+- `/health` responde `status: ok` (proceso Node vivo).
+- `/health/db` responde `db: connected` (Prisma + PostgreSQL funcionando).
+
+Si arrancaste el backend con `Start-Process` o en segundo plano, detén el proceso al terminar la prueba.
+
+#### Levantar frontend local
+
+Desde la raíz del repo:
+
+```powershell
+npx serve .
+```
+
+También se puede usar Live Server en VS Code. Abrir `login.html` en `localhost`. `config.js` detecta `localhost` / `127.0.0.1` / LAN local y apunta a `http://localhost:3000`.
+
+#### Entrar al sistema local
+
+Ruta normal:
+1. Abrir `login.html` desde el servidor local.
+2. Iniciar sesión con un usuario existente de la BD local.
+3. Confirmar que `localStorage` contiene `jesha_token` y `jesha_usuario`.
+4. Navegar a la página que se quiere probar (`dashboard.html`, `punto-venta.html`, `productos.html`, etc.).
+
+Si la BD local no tiene contraseña conocida, NO inventar credenciales ni tocar producción. Para pruebas locales de endpoints protegidos se permite generar un JWT temporal con `JWT_SECRET` y un usuario activo de la BD local. Reglas:
+- Solo contra `localhost`.
+- No imprimir el token en respuestas finales.
+- No pegar tokens en el chat.
+- No guardar tokens en archivos del repo.
+- No usar este método para producción.
+
+Ejemplo de prueba HTTP directa con token temporal en memoria (sin frontend):
+
+```powershell
+cd jesha-pos-backend
+node -e 'require("dotenv").config(); const jwt=require("jsonwebtoken"); const prisma=require("./src/lib/prisma"); (async()=>{ const u=await prisma.usuario.findFirst({where:{activo:true,empresaId:1},select:{id:true,username:true,nombre:true,rol:true,sucursalId:true,empresaId:true}}); if(!u) throw new Error("No hay usuario local activo"); const token=jwt.sign(u,process.env.JWT_SECRET,{expiresIn:"15m"}); const res=await fetch("http://localhost:3000/productos/sat/sugerir",{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+token},body:JSON.stringify({nombre:"disco corte 7",unidadVenta:"pza",esGranel:false})}); console.log(await res.text()); await prisma.$disconnect(); })().catch(async e=>{ console.error(e.message); try{await prisma.$disconnect()}catch{}; process.exit(1); })'
+```
+
+#### Cómo probar cualquier cambio
+
+Backend:
+- Probar al menos un caso exitoso del endpoint o flujo tocado.
+- Probar al menos un error esperado (400/401/404/409 según aplique).
+- Confirmar que no responde 500.
+- Si el endpoint escribe en BD, verificar persistencia recargando o consultando el dato por API.
+
+Frontend:
+- Abrir la página local real en Brave.
+- Usar DevTools Network para confirmar que las llamadas van a `localhost:3000`.
+- Confirmar comportamiento visible y persistencia al recargar cuando aplique.
+- Revisar consola por errores JS.
+
+Endpoints protegidos:
+- Preferir login real local.
+- Si no hay login local, usar JWT temporal local como arriba.
+- Nunca reutilizar token de producción.
+
+#### Checks finales antes de stage
+
+```powershell
+node --check <cada-js-tocado>
+git --no-pager diff --check
+git --no-pager diff
+git status --short
+```
+
+Si existe `.gitattributes` con `eol=lf`, avisos como `CRLF will be replaced by LF` son normales en Windows. `git diff --check` debe terminar con código 0; si reporta whitespace errors, corregir antes de commitear.
+
 ### 3. Commit y push
 
 ```powershell

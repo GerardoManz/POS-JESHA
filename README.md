@@ -96,14 +96,124 @@ FRONTEND_URL=...
 cd jesha-pos-backend
 
 npm install
-npm run build     # Generar cliente Prisma + migrar
 npm run dev       # Iniciar con nodemon (desarrollo local)
 npm start         # Produccion
 npm run seed      # Poblar base de datos
 npm run studio    # Prisma Studio
+npx prisma generate  # Regenerar cliente Prisma tras cambios de schema ya aplicados
 
 # Frontend: servir con npx serve . o Live Server en VS Code
 ```
+
+> Importante: no usar manualmente `npm run migrate`, `prisma migrate` ni `prisma db push` en este proyecto. Los cambios de schema se aplican con SQL manual y después se ejecuta `npx prisma generate`. Si un script `build` ejecuta migraciones, no usarlo manualmente hasta revisar el `package.json`.
+
+## Pruebas Locales
+
+### 1. Levantar backend
+
+Desde la carpeta del backend:
+
+```powershell
+cd jesha-pos-backend
+npm run dev
+```
+
+Si necesitas arrancar sin nodemon:
+
+```powershell
+cd jesha-pos-backend
+node src/server.js
+```
+
+Validar que el proceso y la base de datos respondan:
+
+```powershell
+curl.exe -sS http://localhost:3000/health
+curl.exe -sS http://localhost:3000/health/db
+```
+
+Resultado esperado:
+- `/health` devuelve `status: ok`.
+- `/health/db` devuelve `db: connected`.
+
+Si arrancaste el backend con `Start-Process` o en segundo plano, detenlo al terminar la prueba.
+
+### 2. Levantar frontend
+
+Desde la raíz del repo:
+
+```powershell
+npx serve .
+```
+
+También se puede usar Live Server en VS Code. Abrir `login.html` desde `localhost`, no desde archivo directo. `config.js` detecta `localhost`, `127.0.0.1` y LAN local para apuntar la API a `http://localhost:3000`.
+
+### 3. Entrar al sistema local
+
+Flujo normal:
+1. Abrir `login.html` desde el servidor local.
+2. Iniciar sesión con un usuario existente de la BD local.
+3. Confirmar en DevTools que `localStorage` contiene `jesha_token` y `jesha_usuario`.
+4. Navegar al módulo a probar: `dashboard.html`, `punto-venta.html`, `productos.html`, `clientes.html`, etc.
+
+Si la BD local no tiene contraseña conocida, no inventar credenciales ni tocar producción. Para pruebas locales de endpoints protegidos se permite generar un JWT temporal con `JWT_SECRET` y un usuario activo de la BD local. Reglas:
+- Solo contra `localhost`.
+- No imprimir el token en documentación, commits ni chats.
+- No guardar tokens en archivos del repo.
+- No reutilizar tokens de producción.
+
+Ejemplo de prueba HTTP directa con token temporal en memoria:
+
+```powershell
+cd jesha-pos-backend
+node -e 'require("dotenv").config(); const jwt=require("jsonwebtoken"); const prisma=require("./src/lib/prisma"); (async()=>{ const u=await prisma.usuario.findFirst({where:{activo:true,empresaId:1},select:{id:true,username:true,nombre:true,rol:true,sucursalId:true,empresaId:true}}); if(!u) throw new Error("No hay usuario local activo"); const token=jwt.sign(u,process.env.JWT_SECRET,{expiresIn:"15m"}); const res=await fetch("http://localhost:3000/productos/sat/sugerir",{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+token},body:JSON.stringify({nombre:"disco corte 7",unidadVenta:"pza",esGranel:false})}); console.log(await res.text()); await prisma.$disconnect(); })().catch(async e=>{ console.error(e.message); try{await prisma.$disconnect()}catch{}; process.exit(1); })'
+```
+
+### 4. Cómo probar cualquier cambio
+
+Backend:
+- Ejecutar `node --check <archivo.js>` en cada archivo JS tocado.
+- Probar al menos un caso exitoso del endpoint o flujo modificado.
+- Probar al menos un error esperado: 400, 401, 404 o 409 según aplique.
+- Confirmar que no responde 500.
+- Si escribe en BD, verificar persistencia recargando la UI o consultando por API.
+
+Frontend:
+- Abrir la página local real en Brave.
+- Revisar DevTools Console por errores JS.
+- Revisar DevTools Network y confirmar que las llamadas van a `localhost:3000`.
+- Confirmar comportamiento visible y persistencia al recargar cuando aplique.
+
+Endpoints protegidos:
+- Preferir login local real.
+- Si no hay contraseña local disponible, usar JWT temporal local como en el ejemplo.
+- Nunca usar tokens de producción.
+
+### 5. Ejemplo de matriz de pruebas: SAT
+
+Endpoint:
+
+```http
+POST /productos/sat/sugerir
+```
+
+Casos mínimos:
+- `disco corte 7` -> `AUTO` o candidato claro `27112838`, con `unidadSat` resuelta.
+- `silicon transparente` -> `SUGERIR` si no hay corroboración suficiente.
+- `llave` -> `MANUAL` por ambigüedad.
+- `xyzabc` -> `MANUAL` sin candidatos fuertes.
+- Body sin `nombre` -> `400 { "success": false }`.
+
+### 6. Checklist antes de commit
+
+```powershell
+node --check <cada-js-tocado>
+git --no-pager diff --check
+git --no-pager diff
+git status --short
+```
+
+Si existe `.gitattributes` con `eol=lf`, avisos como `CRLF will be replaced by LF` son normales en Windows. `git diff --check` debe terminar con código 0; si reporta whitespace errors, corregirlos antes de commitear.
 
 ## Deploy Frontend - Cloudflare Workers
 
