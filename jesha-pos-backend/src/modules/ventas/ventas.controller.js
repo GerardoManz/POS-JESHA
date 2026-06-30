@@ -5,6 +5,22 @@
 
 const prisma = require('../../lib/prisma')
 const getEmpresaId = require('../../helpers/getEmpresaId')
+const os = require('os')
+const { buildVentaSnapshot, formatFechaTicket } = require('../impresion/impresion.snapshot')
+const { encolarImpresion } = require('../impresion/impresion.service')
+const { EMPRESA, LOGO_URL } = require('../../../config/empresa')
+
+function getLanIp() {
+  const interfaces = os.networkInterfaces()
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name]) {
+      if (iface.family === 'IPv4' && !iface.internal) {
+        return iface.address
+      }
+    }
+  }
+  return '192.168.0.190'
+}
 
 function construirWhereScopeVentas(req) {
   const { rol, empresaId, sucursalId } = req.usuario || {}
@@ -482,6 +498,72 @@ exports.crearVenta = async (req, res) => {
           console.warn('⚠️ No se pudo convertir cotización:', e.message)
         }
       }
+
+      // ═══ Impresión: encolar ticket de venta (atómico con la venta) ═══
+      const empresaRow = await tx.empresa.findUnique({
+        where: { id: empresaId },
+        select: { rfc: true }
+      })
+
+      const clienteNombre = clienteId
+        ? ((await tx.cliente.findUnique({ where: { id: clienteId }, select: { nombre: true } }))?.nombre || null)
+        : null
+
+      const metodoLabel = {
+        EFECTIVO:        'Efectivo',
+        CREDITO:         'T. Crédito',
+        DEBITO:          'T. Débito',
+        TRANSFERENCIA:   'Transferencia',
+        CREDITO_CLIENTE: 'Crédito cliente',
+        MIXTO:           'Pago Mixto'
+      }[metodoPago] || metodoPago
+
+      const abrirCajon = metodoPago === 'EFECTIVO'
+        || (metodoPago === 'MIXTO' && Array.isArray(desglosePagos)
+            && desglosePagos.some((p) => p.metodo === 'EFECTIVO'))
+
+      const isProduction = process.env.NODE_ENV === 'production'
+      const rawHost = req.get('host')
+      const host = (!isProduction && /^(localhost|127\.0\.0\.1)/.test(rawHost))
+        ? rawHost.replace(/^(localhost|127\.0\.0\.1)/, getLanIp())
+        : rawHost
+      const baseUrl = isProduction ? `https://${host}` : `${req.protocol}://${host}`
+      const facturarPath = isProduction ? '/facturar.html' : '/facturar'
+      const urlFacturacion = `${baseUrl}${facturarPath}?token=${ventaCreada.tokenQr}`
+
+      const snapshot = buildVentaSnapshot({
+        empresa: { ...EMPRESA, telefono: EMPRESA.tel1, rfc: empresaRow?.rfc },
+        folio,
+        fecha: formatFechaTicket(),
+        subtotal,
+        descuento,
+        total,
+        productos: (ventaCreada.DetalleVenta || []).map((d) => ({
+          nombre:         d.Producto?.nombre,
+          cantidad:       d.cantidad,
+          precioUnitario: d.precioUnitario,
+          subtotal:       d.subtotal
+        })),
+        metodoPago,
+        metodoLabel,
+        montoPagado: montoPagadoFinal,
+        cambio:      cambioFinal,
+        cajero:  req.usuario?.nombre || req.usuario?.username || null,
+        cliente: clienteNombre,
+        qrUrl:   urlFacturacion,
+        logoUrl: LOGO_URL,
+        abrirCajon
+      })
+
+      await encolarImpresion(tx, {
+        empresaId,
+        tipo:      'VENTA',
+        modo:      'ORIGINAL',
+        entidadId: ventaCreada.id,
+        ventaId:   ventaCreada.id,
+        payload:   snapshot
+      })
+      // ═══ fin impresión ═══
 
       return ventaCreada
     })
