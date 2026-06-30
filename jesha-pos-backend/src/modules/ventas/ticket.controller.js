@@ -207,7 +207,7 @@ html, body {
 .hdr{text-align:center;padding-bottom:1.5mm;}
 .logo{display:block;margin:0 auto 1mm;width:20mm;height:auto;image-rendering:crisp-edges;}
 .logo-text{font-size:16px;font-weight:900;letter-spacing:3px;}
-.emp{font-size:8px;font-weight:900;text-transform:uppercase;letter-spacing:0.2px;}
+.emp{font-size:7px;font-weight:900;text-transform:uppercase;letter-spacing:0;line-height:1.15;max-width:41mm;margin:0 auto;}
 .slg{font-size:7px;font-weight:700;margin-top:0.5mm;}
 .dir{font-size:7px;font-weight:700;margin-top:0.3mm;}
 .tel{font-size:8px;font-weight:900;margin-top:0.5mm;letter-spacing:0.3px;}
@@ -252,7 +252,7 @@ html, body {
 
 <div class="hdr">
   ${logoHTML}
-  <div class="emp">${EMPRESA.nombre}</div>
+  <div class="emp">${EMPRESA.nombre.replace(' JESHA', '<br/>JESHA')}</div>
   <div class="slg">${EMPRESA.slogan}</div>
   <div class="dir">${EMPRESA.direccion}</div>
   <div class="dir">${EMPRESA.ciudad}</div>
