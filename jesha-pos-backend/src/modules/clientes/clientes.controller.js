@@ -117,8 +117,17 @@ const crear = async (req, res) => {
       return res.status(400).json({ error: 'Nombre y tipo son requeridos' })
     }
 
-    if (tipo === 'FISCAL' && !razonSocial) {
-      return res.status(400).json({ error: 'Razón social requerida para clientes FISCAL' })
+    if (tipo === 'FISCAL') {
+      const errores = []
+      if (!rfc)               errores.push({ campo: 'rfc',               mensaje: 'El RFC es obligatorio para clientes FISCAL' })
+      if (!email)             errores.push({ campo: 'email',             mensaje: 'El Email es obligatorio para clientes FISCAL' })
+      if (!razonSocial)       errores.push({ campo: 'razonSocial',       mensaje: 'La Razón Social es obligatoria para clientes FISCAL' })
+      if (!codigoPostalFiscal) errores.push({ campo: 'codigoPostalFiscal', mensaje: 'El Código Postal Fiscal es obligatorio para clientes FISCAL' })
+      if (!regimenFiscal)     errores.push({ campo: 'regimenFiscal',     mensaje: 'El Régimen Fiscal es obligatorio para clientes FISCAL' })
+      if (!usoCfdi)           errores.push({ campo: 'usoCfdi',           mensaje: 'El Uso CFDI es obligatorio para clientes FISCAL' })
+      if (errores.length) {
+        return res.status(400).json({ error: 'Faltan datos fiscales obligatorios', errores })
+      }
     }
 
     if (rfc) {
@@ -189,6 +198,28 @@ const editar = async (req, res) => {
     if (rfc && rfc !== cliente.rfc) {
       const existe = await prisma.cliente.findUnique({ where: { empresaId_rfc: { empresaId, rfc } } })
       if (existe) return res.status(409).json({ error: 'El RFC ya está registrado' })
+    }
+
+    // Validar campos fiscales si el tipo es o será FISCAL
+    const tipoFinal = tipo !== undefined ? tipo : cliente.tipo
+    if (tipoFinal === 'FISCAL') {
+      const errores = []
+      const rfcVal = rfc !== undefined ? rfc : cliente.rfc
+      const emailVal = email !== undefined ? email : cliente.email
+      const razonVal = razonSocial !== undefined ? razonSocial : cliente.razonSocial
+      const cpVal = codigoPostalFiscal !== undefined ? codigoPostalFiscal : cliente.codigoPostalFiscal
+      const regimenVal = regimenFiscal !== undefined ? regimenFiscal : cliente.regimenFiscal
+      const usoVal = usoCfdi !== undefined ? usoCfdi : cliente.usoCfdi
+
+      if (!rfcVal)     errores.push({ campo: 'rfc',               mensaje: 'El RFC es obligatorio para clientes FISCAL' })
+      if (!emailVal)   errores.push({ campo: 'email',             mensaje: 'El Email es obligatorio para clientes FISCAL' })
+      if (!razonVal)   errores.push({ campo: 'razonSocial',       mensaje: 'La Razón Social es obligatoria para clientes FISCAL' })
+      if (!cpVal)      errores.push({ campo: 'codigoPostalFiscal', mensaje: 'El Código Postal Fiscal es obligatorio para clientes FISCAL' })
+      if (!regimenVal) errores.push({ campo: 'regimenFiscal',     mensaje: 'El Régimen Fiscal es obligatorio para clientes FISCAL' })
+      if (!usoVal)     errores.push({ campo: 'usoCfdi',           mensaje: 'El Uso CFDI es obligatorio para clientes FISCAL' })
+      if (errores.length) {
+        return res.status(400).json({ error: 'Faltan datos fiscales obligatorios', errores })
+      }
     }
 
     const clienteActualizado = await prisma.cliente.update({

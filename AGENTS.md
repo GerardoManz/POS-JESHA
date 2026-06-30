@@ -944,6 +944,14 @@ WHERE d.datname = 'jesha_db';
 - **Bug**: Usaba `cliente.saldoCredito` que no existe en el modelo
 - **Fix**: Cambio a `cliente.saldoPendiente`
 
+### clientes.controller.js + clientes.js + clientes.css — Validación campos fiscales obligatorios
+- **Feature**: Al crear/editar cliente FISCAL ahora son obligatorios RFC, Email, Razón Social, CP Fiscal, Régimen Fiscal y Uso CFDI
+- **Backend** (`crear` y `editar`): validan los 6 campos y devuelven `{ error, errores: [{ campo, mensaje }] }` con mensaje individual por campo faltante
+- **Frontend** (`actualizarCamposDinamicos`): `required` dinámico + limpieza de clase `input-error` al cambiar tipo
+- **Frontend** (submit): validación client-side con `jeshaToast` por campo + borde rojo. Si hay error, no se envía al servidor
+- **Frontend** (fetch): manejo de respuesta `errores[]` del backend — resalta campos y muestra toasts
+- **CSS** (`clientes.css`): nueva clase `.input-error` (borde rojo + sombra)
+
 ### cotizaciones.js — Doble codificación UTF-8
 - **Bug**: Archivo con doble codificación UTF-8: acentos, emojis, em dashes, símbolos todos corruptos
 - **Fix**: 1,833 caracteres corregidos con script Node.js. Acentos (`áéíóúñ`), símbolos (`¿·→`), separadores (`═─`), emojis normalizados.

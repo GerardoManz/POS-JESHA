@@ -422,6 +422,11 @@
   display: block;
 }
 
+.input-error {
+  border-color: #e74c3c !important;
+  box-shadow: 0 0 0 2px rgba(231, 76, 60, 0.25);
+}
+
 .form-actions {
   grid-column: 1 / -1;
   display: flex;

@@ -215,18 +215,25 @@ window.editarCliente = function(clienteId) {
 
 function actualizarCamposDinamicos() {
   const tipo = document.getElementById('cliente-tipo').value
+  const esFiscal = tipo === 'FISCAL'
   
   if (camposFiscales) {
-    camposFiscales.style.display = tipo === 'FISCAL' ? 'block' : 'none'
+    camposFiscales.style.display = esFiscal ? 'block' : 'none'
   }
   if (campoCredito) {
-    campoCredito.style.display = (tipo === 'REGISTRADO' || tipo === 'FISCAL') ? 'block' : 'none'
+    campoCredito.style.display = (tipo === 'REGISTRADO' || esFiscal) ? 'block' : 'none'
   }
   
-  const razonSocialInput = document.getElementById('cliente-razonSocial')
-  if (razonSocialInput) {
-    razonSocialInput.required = tipo === 'FISCAL'
-  }
+  // Campos obligatorios para clientes FISCAL
+  const fiscalesRequeridos = ['cliente-rfc', 'cliente-email', 'cliente-razonSocial',
+    'cliente-codigoPostalFiscal', 'cliente-regimenFiscal', 'cliente-usoCfdi']
+  fiscalesRequeridos.forEach(function(id) {
+    var el = document.getElementById(id)
+    if (el) {
+      el.required = esFiscal
+      el.classList.remove('input-error')
+    }
+  })
 }
 
 function cerrarModalCliente() {
@@ -372,6 +379,29 @@ if (clienteForm) {
       notas: document.getElementById('cliente-notas').value.trim() || null
     }
 
+    if (datos.tipo === 'FISCAL') {
+      var camposRequeridos = [
+        { valor: datos.rfc,               id: 'cliente-rfc',               mensaje: 'El RFC es obligatorio para clientes FISCAL' },
+        { valor: datos.email,             id: 'cliente-email',             mensaje: 'El Email es obligatorio para clientes FISCAL' },
+        { valor: datos.razonSocial,       id: 'cliente-razonSocial',       mensaje: 'La Razón Social es obligatoria para clientes FISCAL' },
+        { valor: datos.codigoPostalFiscal, id: 'cliente-codigoPostalFiscal', mensaje: 'El Código Postal Fiscal es obligatorio para clientes FISCAL' },
+        { valor: datos.regimenFiscal,     id: 'cliente-regimenFiscal',     mensaje: 'El Régimen Fiscal es obligatorio para clientes FISCAL' },
+        { valor: datos.usoCfdi,           id: 'cliente-usoCfdi',           mensaje: 'El Uso CFDI es obligatorio para clientes FISCAL' }
+      ]
+      var hayError = false
+      camposRequeridos.forEach(function(c) {
+        var input = document.getElementById(c.id)
+        if (!c.valor) {
+          hayError = true
+          if (input) input.classList.add('input-error')
+          jeshaToast(c.mensaje, 'error')
+        } else {
+          if (input) input.classList.remove('input-error')
+        }
+      })
+      if (hayError) return
+    }
+
     try {
       const metodo = clienteActual ? 'PUT' : 'POST'
       const url = clienteActual ? `${API_URL}/clientes/${clienteActual.id}` : `${API_URL}/clientes`
@@ -387,8 +417,15 @@ if (clienteForm) {
       if (window.handle401 && window.handle401(response.status)) return
 
       if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Error al guardar cliente')
+        const errData = await response.json()
+        if (errData.errores && Array.isArray(errData.errores)) {
+          errData.errores.forEach(function(e) {
+            var input = document.getElementById('cliente-' + e.campo)
+            if (input) input.classList.add('input-error')
+            jeshaToast(e.mensaje, 'error')
+          })
+        }
+        throw new Error(errData.error || 'Error al guardar cliente')
       }
 
       cargarClientes()
