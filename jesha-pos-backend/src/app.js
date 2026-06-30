@@ -83,6 +83,7 @@ app.use('/compras',      requireAuth, require('./modules/compras/compras.routes'
 app.use('/devoluciones', requireAuth, require('./modules/devoluciones/devoluciones.routes'))
 app.use('/sucursales', requireAuth, require('./modules/sucursal/sucursal.routes'))
 app.use('/trabajadores', requireAuth, require('./modules/trabajadores/trabajadores.routes'))
+app.use('/impresion',    require('./modules/impresion/impresion.routes')) // rutas de agente + frontend, auth interna
 app.use('/precios',     requireAuth, requireRole('PRECIOS', 'ADMIN_SUCURSAL', 'SUPERADMIN', 'PLATFORM_ADMIN'), require('./modules/precios/precios.routes'))
 
 // ── Imágenes de productos ──

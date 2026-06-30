@@ -55,6 +55,7 @@ model Empresa {
   TurnoCaja            TurnoCaja[]
   Usuario              Usuario[]
   Venta                Venta[]
+  PrintJob             PrintJob[]
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -566,6 +567,7 @@ model Venta {
   Sucursal           Sucursal          @relation(fields: [sucursalId], references: [id])
   TurnoCaja          TurnoCaja         @relation(fields: [turnoId], references: [id])
   Usuario            Usuario           @relation(fields: [usuarioId], references: [id])
+  PrintJob           PrintJob[]
 
   @@unique([empresaId, folio])
   @@index([clienteId])
@@ -575,6 +577,36 @@ model Venta {
   @@index([sucursalId])
   @@index([turnoId])
   @@index([usuarioId])
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  PrintJob — Cola de impresión térmica (Fase 1 SaaS)
+// ════════════════════════════════════════════════════════════════════
+
+model PrintJob {
+  id              Int              @id @default(autoincrement())
+  empresaId       Int
+  idempotencyKey  String           @unique
+  tipo            PrintJobTipo
+  modo            PrintJobModo     @default(ORIGINAL)
+  ventaId         Int?
+  turnoId         Int?
+  abonoId         Int?
+  retiroId        Int?
+  queueName       String           @default("printer-principal")
+  estado          PrintJobEstado   @default(PENDIENTE)
+  intentos        Int              @default(0)
+  payload         Json             @default("{}")
+  error           String?
+  creadoEn        DateTime         @default(now())
+  enviadoEn       DateTime?
+  ultimoIntentoEn DateTime?
+
+  Empresa         Empresa          @relation(fields: [empresaId], references: [id])
+  Venta           Venta?           @relation(fields: [ventaId], references: [id])
+
+  @@index([empresaId, estado])
+  @@index([estado, creadoEn])
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -1006,4 +1038,28 @@ enum TipoPromocion {
   BUEN_FIN
   HOT_SALE
   MANUAL
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  Enums — Impresión térmica
+// ════════════════════════════════════════════════════════════════════
+
+enum PrintJobTipo {
+  VENTA
+  CORTE
+  ABONO
+  RETIRO
+}
+
+enum PrintJobModo {
+  ORIGINAL
+  COPIA
+}
+
+enum PrintJobEstado {
+  PENDIENTE
+  EN_PROCESO
+  ENVIADO_A_IMPRESORA
+  FALLIDO
+  CANCELADO
 }

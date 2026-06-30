@@ -28,6 +28,12 @@ const server = app.listen(PORT, '0.0.0.0', () => {
 server.keepAliveTimeout = 65000
 server.headersTimeout = 66000
 
+// ── Cleanup de jobs de impresión huérfanos (cada 60s) ──
+const { cleanupStaleJobs } = require('./modules/impresion/impresion.service')
+setInterval(() => {
+  cleanupStaleJobs().catch((e) => console.error('[impresion] cleanup:', e))
+}, 60000).unref()
+
 process.on('unhandledRejection', (reason) => {
   console.error('UNHANDLED REJECTION:', reason)
 })
