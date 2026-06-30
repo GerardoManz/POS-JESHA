@@ -12,6 +12,7 @@ const { requireRole } = require('../../middlewares/auth.middleware')
 const productosController   = require('./productos.controller')
 const productosRapidoController = require('./productos.rapido.controller')
 const importacionController = require('./importacion.controller')
+const satController         = require('./productos.sat.controller')
 const { subirImagenProducto } = require('../../lib/cloudinary')
 
 // ═══════════════════════════════════════════════════════════════════
@@ -83,6 +84,12 @@ router.put('/:id',               requireRole('SUPERADMIN', 'ADMIN_SUCURSAL', 'PL
 router.patch('/:id/datos-basicos', requireRole('EMPLEADO', 'ADMIN_SUCURSAL', 'SUPERADMIN', 'PLATFORM_ADMIN'), productosController.editarDatosBasicos)
 router.patch('/:id/estado',      requireRole('SUPERADMIN', 'ADMIN_SUCURSAL', 'PLATFORM_ADMIN'), productosController.cambiarEstado)
 router.patch('/:id/inventario',  requireRole('SUPERADMIN', 'ADMIN_SUCURSAL', 'PLATFORM_ADMIN'), productosController.ajustarInventario)
+
+// ═══════════════════════════════════════════════════════════════════
+// SUGERENCIA SAT (read-only, sin requireRole: cualquier usuario autenticado)
+// ═══════════════════════════════════════════════════════════════════
+
+router.post('/sat/sugerir', satController.sugerirSat)
 
 // ═══════════════════════════════════════════════════════════════════
 // IMAGEN — SUBIR (ahora va a Cloudinary, sin tocar disco)

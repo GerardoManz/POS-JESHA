@@ -61,9 +61,16 @@ const FAMILIAS = [
     claves: ['46171500'],
   },
   {
-    id: 'discos_abrasivos',
-    tokens: { disco: 1, corte: 1, desbaste: 1, diamante: 1, abrasivo: 1 },
+    id: 'discos_corte',
+    tokens: { disco: 1, corte: 2, diamante: 2, segueta: 1 },
+    requiere: ['disco'],
     claves: ['27112838'],
+  },
+  {
+    id: 'discos_desbaste',
+    tokens: { disco: 1, desbaste: 2 },
+    requiere: ['disco', 'desbaste'],
+    claves: ['31191600'],
   },
   {
     id: 'guantes',
@@ -93,6 +100,7 @@ const FAMILIAS = [
   {
     id: 'cables_electricos',
     tokens: { thw: 2, thhn: 2, conductor: 2, cable: 1, alambre: 1, rudo: 1, calibre: 1, cal: 1 },
+    excluye: ['galvanizado', 'recocido', 'puas', 'amarre'],
     claves: ['26121600'],
   },
   {
@@ -233,6 +241,19 @@ function coincide(tokenProducto, base) {
 function detectarFamilias(tokens) {
   const resultados = [];
   for (const familia of FAMILIAS) {
+    // Tokens obligatorios: si la familia los declara, TODOS deben estar
+    // presentes o la familia no activa (evita que un token especializador
+    // como "corte" active la familia sin su ancla "disco").
+    if (Array.isArray(familia.requiere)) {
+      const cumple = familia.requiere.every((req) => tokens.some((t) => coincide(t, req)));
+      if (!cumple) continue;
+    }
+    // Tokens de exclusión: si alguno está presente, la familia no activa
+    // (ej. "alambre galvanizado" no es cable eléctrico).
+    if (Array.isArray(familia.excluye)) {
+      const excluido = familia.excluye.some((ex) => tokens.some((t) => coincide(t, ex)));
+      if (excluido) continue;
+    }
     let puntaje = 0;
     for (const [base, peso] of Object.entries(familia.tokens)) {
       if (peso <= 0) continue;

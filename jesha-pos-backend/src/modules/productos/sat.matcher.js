@@ -74,6 +74,7 @@ const RUTA_INDICE_DEF = path.join(__dirname, '..', '..', 'data', 'sat', 'sat.ind
 let _indice = null;
 let _indiceInvertido = null; // token -> Set(claves)
 let _rutaCargada = null;
+let _cacheNorm = null; // Map<productoId, { tokens, importantes, familias }>
 
 function cargarIndice(rutaIndice) {
   const ruta = rutaIndice || RUTA_INDICE_DEF;
@@ -100,6 +101,29 @@ function claveExiste(claveSat, indice) {
 
 function unidadExiste(unidadSat, indice) {
   return Object.prototype.hasOwnProperty.call(indice.unidades, unidadSat);
+}
+
+/**
+ * Pre-normaliza TODOS los productos de una vez.
+ * Debe llamarse ANTES de evaluar si se usa con datasets grandes (O(n²)).
+ * Devuelve un Map: productoId -> { tokens, importantes, familias }
+ * Se cachea internamente y se reutiliza en todos los llamados a sugerirSat.
+ *
+ * @param {Array} productos - array de { id, nombre, descripcion, claveSat, unidadSat }
+ * @returns {Map} cache de normalización
+ */
+function preNormalizarProductos(productos) {
+  _cacheNorm = new Map();
+  for (const prod of productos) {
+    const clave = typeof prod.claveSat === 'string' ? prod.claveSat.trim() : '';
+    const norm = normalizarTexto(`${prod.nombre || ''} ${prod.descripcion || ''}`);
+    _cacheNorm.set(prod.id, {
+      tokens: norm.tokens,
+      importantes: tokensImportantes(norm.tokens),
+      familias: clave === '' ? [] : dicc.detectarFamilias(norm.tokens),
+    });
+  }
+  return _cacheNorm;
 }
 
 // ---------------------------------------------------------------------------
@@ -218,7 +242,7 @@ function tieneModificadorNoCompartido(tokensNuevo, tokensOtro) {
 // ---------------------------------------------------------------------------
 
 /** Fuente b: productos existentes que SÍ pueden enseñar. */
-function filtrarExistentesValidos(productosExistentes, familiasNuevo, indice) {
+function filtrarExistentesValidos(productosExistentes, familiasNuevo, indice, cacheNorm) {
   const validos = [];
   const idsFamiliasNuevo = new Set(familiasNuevo.map((f) => f.id));
 
@@ -227,8 +251,24 @@ function filtrarExistentesValidos(productosExistentes, familiasNuevo, indice) {
     if (clave === '' || !claveExiste(clave, indice)) continue;
     if (!listas.permiteAprender(clave)) continue;
 
-    const norm = normalizarTexto(`${prod.nombre || ''} ${prod.descripcion || ''}`);
-    const familiasExistente = dicc.detectarFamilias(norm.tokens);
+    // Fast-path: usa la normalización pre-cacheada por empresa si existe.
+    // Else autosuficiente: reconstruye el objeto COMPLETO { tokens,
+    // importantes, familias }. normalizarTexto() solo devuelve tokens, por
+    // eso importantes y familias se calculan aquí — de lo contrario, en
+    // cache-miss (caller sin opciones.cacheNorm, p.ej. evaluar_matcher.js)
+    // familiasExistente quedaría undefined producto por producto.
+    let norm;
+    if (cacheNorm && cacheNorm.has(prod.id)) {
+      norm = cacheNorm.get(prod.id);
+    } else {
+      const n = normalizarTexto(`${prod.nombre || ''} ${prod.descripcion || ''}`);
+      norm = {
+        tokens: n.tokens,
+        importantes: tokensImportantes(n.tokens),
+        familias: dicc.detectarFamilias(n.tokens),
+      };
+    }
+    const familiasExistente = norm.familias;
 
     // Gate de contradicción (estricto): si la clave está mapeada a
     // familias del diccionario, el producto existente debe CONFIRMAR
@@ -249,6 +289,7 @@ function filtrarExistentesValidos(productosExistentes, familiasNuevo, indice) {
     validos.push({
       clave,
       tokens: norm.tokens,
+      importantes: norm.importantes,
       unidadSat: typeof prod.unidadSat === 'string' ? prod.unidadSat.trim().toUpperCase() : '',
     });
   }
@@ -324,7 +365,7 @@ function puntuarCandidato(clave, ctx) {
   for (const ex of existentesValidos) {
     if (ex.clave !== clave) continue;
     existentesConClave += 1;
-    const exImportantes = tokensImportantes(ex.tokens);
+    const exImportantes = ex.importantes || tokensImportantes(ex.tokens);
     const s = solapamiento(importantes, exImportantes);
     if (s > mejorSolape) mejorSolape = s;
     if (unidadResuelta !== null && ex.unidadSat === unidadResuelta) unidadCoincide += 1;
@@ -430,11 +471,13 @@ function sugerirSat(entrada, opciones = {}) {
   const importantes = tokensImportantes(norm.tokens);
   const familiasNuevo = dicc.detectarFamilias(norm.tokens);
   const ambiguedad = dicc.esAmbiguo(norm.tokens);
+  const cacheNorm = opciones.cacheNorm || null;
 
   const existentesValidos = filtrarExistentesValidos(
     Array.isArray(entrada.productosExistentes) ? entrada.productosExistentes : [],
     familiasNuevo,
-    indice
+    indice,
+    cacheNorm
   );
 
   // Universo de candidatos (filtro duro: hard blocklist y existencia)
@@ -559,6 +602,7 @@ function validarUnidadSat(unidadSat, rutaIndice) {
 
 module.exports = {
   sugerirSat,
+  preNormalizarProductos,
   resolverUnidad,
   cargarIndice,
   validarClaveSat,
