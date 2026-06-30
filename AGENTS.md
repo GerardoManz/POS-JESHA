@@ -952,6 +952,10 @@ WHERE d.datname = 'jesha_db';
 - **Frontend** (fetch): manejo de respuesta `errores[]` del backend — resalta campos y muestra toasts
 - **CSS** (`clientes.css`): nueva clase `.input-error` (borde rojo + sombra)
 
+### clientes.css + clientes.html — Fix diseño modal clientes (desbordamiento + cortes)
+- **Bug**: Modal de crear/editar cliente se desbordaba horizontalmente con selects largos (`601 – General de Ley Personas Morales`). Labels cortados. Selectores `.modal-content` genéricos afectaban también al modal de historial.
+- **Fix**: Scoped todos los estilos del modal por ID (`#modal-cliente`, `#modal-historial`). Ancho aumentado a `860px`. Labels con `white-space: normal` y `overflow-wrap: break-word`. Fila SAT asimétrica (`fiscal-row-sat` con CP compacto, régimen ancho). Override scoped de selects globales de `dashboard.css`. Sin cambios en `dashboard.css` ni otros módulos.
+
 ### cotizaciones.js — Doble codificación UTF-8
 - **Bug**: Archivo con doble codificación UTF-8: acentos, emojis, em dashes, símbolos todos corruptos
 - **Fix**: 1,833 caracteres corregidos con script Node.js. Acentos (`áéíóúñ`), símbolos (`¿·→`), separadores (`═─`), emojis normalizados.
