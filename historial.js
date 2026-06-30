@@ -486,7 +486,7 @@ function renderTablaDevolucion() {
 window.onDevCheckChange = function(checkbox) {
   const productoId = checkbox.dataset.id
   const cantInput  = document.getElementById(`dev-cant-${productoId}`)
-  const disponible = parseInt(checkbox.dataset.disponible)
+  const disponible = parseFloat(checkbox.dataset.disponible)
 
   if (checkbox.checked) {
     cantInput.disabled = false
@@ -504,11 +504,11 @@ function recalcularMontoDevolucion() {
   document.querySelectorAll('.dev-check:checked').forEach(chk => {
     const productoId = chk.dataset.id
     const precio     = parseFloat(chk.dataset.precio)
-    const disponible = parseInt(chk.dataset.disponible)
+    const disponible = parseFloat(chk.dataset.disponible)
     const cantInput  = document.getElementById(`dev-cant-${productoId}`)
-    let cantidad     = parseInt(cantInput.value) || 1
+    let cantidad     = parseFloat(cantInput.value) || 1
 
-    if (cantidad < 1) cantidad = 1
+    if (cantidad <= 0) cantidad = 1
     if (cantidad > disponible) { cantidad = disponible; cantInput.value = disponible }
 
     const subtotal = precio * cantidad
@@ -530,7 +530,7 @@ async function confirmarDevolucion() {
   const productos = []
   document.querySelectorAll('.dev-check:checked').forEach(chk => {
     const productoId = parseInt(chk.dataset.id)
-    const cantidad   = parseInt(document.getElementById(`dev-cant-${productoId}`).value) || 1
+    const cantidad   = parseFloat(document.getElementById(`dev-cant-${productoId}`).value) || 1
     productos.push({ productoId, cantidad })
   })
 
@@ -983,7 +983,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.querySelectorAll('.dev-check').forEach(chk => {
           if (chk.disabled) return
           const productoId = chk.dataset.id
-          const disponible = parseInt(chk.dataset.disponible)
+          const disponible = parseFloat(chk.dataset.disponible)
           const cantInput  = document.getElementById(`dev-cant-${productoId}`)
           chk.checked        = true
           cantInput.disabled = false
