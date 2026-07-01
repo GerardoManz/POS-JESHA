@@ -78,7 +78,9 @@ router.get('/',                    productosController.listar)
 // POST /productos/articulo-rapido — alta rápida desde POS (cualquier usuario autenticado)
 router.post('/articulo-rapido',   productosRapidoController.crearArticuloRapido)
 
-// GET /productos/:id — Venta específica
+// GET /productos/:id — Obtener producto individual
+router.get('/:id', productosController.obtener)
+
 router.post('/',                 requireRole('SUPERADMIN', 'ADMIN_SUCURSAL', 'PLATFORM_ADMIN'), productosController.crear)
 router.put('/:id',               requireRole('SUPERADMIN', 'ADMIN_SUCURSAL', 'PLATFORM_ADMIN'), productosController.editar)
 router.patch('/:id/datos-basicos', requireRole('EMPLEADO', 'ADMIN_SUCURSAL', 'SUPERADMIN', 'PLATFORM_ADMIN'), productosController.editarDatosBasicos)

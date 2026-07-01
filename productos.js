@@ -712,17 +712,24 @@ window.editarProducto = async function(id) {
   document.getElementById('producto-precioBase').value        = producto.precioBase
   document.getElementById('producto-precioVenta').value       = producto.precioVenta || ''
 
+  // "Precio Proveedor" = precio de CAJA real del proveedor más reciente
+  // (ProveedorProducto[0], ordenado por actualizadoEn DESC en el backend).
+  // NO se reconstruye desde producto.costo × factor para evitar drift de
+  // redondeo; solo cae a producto.costo si el producto no tiene proveedor.
+  const _pp = (producto.ProveedorProducto && producto.ProveedorProducto[0]) || null
+  const precioProvCaja = (_pp && _pp.precioCosto != null) ? _pp.precioCosto : (producto.costo || '')
+
   // ✅ FIX: Tipo de factura — leer el valor real guardado en BD
   if (producto.tipoFacturaProv === 'DESGLOSE') {
     if (radioFacturaB) radioFacturaB.checked = true
     aplicarTipoFactura('B')
     document.getElementById('producto-costoSinIva').value      = producto.costoSinIvaProveedor || ''
-    document.getElementById('producto-costo-b-display').value  = producto.costo || ''
-    document.getElementById('producto-costo').value            = producto.costo || ''
+    document.getElementById('producto-costo-b-display').value  = precioProvCaja
+    document.getElementById('producto-costo').value            = precioProvCaja
   } else {
     if (radioFacturaA) radioFacturaA.checked = true
     aplicarTipoFactura('A')
-    document.getElementById('producto-costo').value            = producto.costo || ''
+    document.getElementById('producto-costo').value            = precioProvCaja
   }
 
   document.getElementById('producto-unidadCompra').value      = producto.unidadCompra || ''
@@ -1190,7 +1197,7 @@ function calcularPrecioProveedorDesdeB() {
   const display = document.getElementById('producto-costo-b-display')
   const inputCosto = document.getElementById('producto-costo')
 
-  const precioProveedor = sinIva > 0 ? parseFloat((sinIva * 1.16).toFixed(2)) : 0
+  const precioProveedor = sinIva > 0 ? parseFloat((sinIva * IVA_FACTOR).toFixed(2)) : 0
 
   // Mostrar en el readonly del Esc. B
   if (display) display.value = precioProveedor > 0 ? precioProveedor : ''
@@ -1202,19 +1209,26 @@ function calcularPrecioProveedorDesdeB() {
 }
 
 function calcularMargen() {
-  const costo = parseFloat(document.getElementById('producto-costo').value) || 0
+  const costoCaja = parseFloat(document.getElementById('producto-costo').value) || 0
   const precioVenta = parseFloat(document.getElementById('producto-precioVenta').value) || 0
   const wrap = document.getElementById('info-margen-wrap')
-  
+
   if (!wrap) return
-  
+
+  // "Precio Proveedor" es por CAJA; el costo real por unidad de venta (pieza)
+  // es caja / factor — la misma división que hace el backend al guardar. El
+  // margen debe calcularse sobre el costo por pieza, no sobre el de caja.
+  const factorRaw = parseFloat(document.getElementById('producto-factorConversion').value)
+  const factor = (Number.isFinite(factorRaw) && factorRaw > 0) ? factorRaw : 1
+  const costo = costoCaja / factor
+
   if (costo > 0 && precioVenta > 0) {
-    // Utilidad = Precio Venta - Costo
+    // Utilidad = Precio Venta - Costo (ambos por pieza)
     const utilidad = precioVenta - costo
-    
+
     // Margen = ((Precio Venta - Costo) / Costo) × 100
     const margen = (utilidad / costo) * 100
-    
+
     // Mostrar con 2 decimales
     document.getElementById('margen-valor').textContent = margen.toFixed(2) + '%'
     document.getElementById('utilidad-valor').textContent = '$' + utilidad.toFixed(2)
@@ -1598,6 +1612,10 @@ function configurarEventos() {
   if (inputCosto) {
     inputCosto.addEventListener('input', calcularMargen)
   }
+
+  // Recalcular margen en vivo al cambiar el factor de conversión
+  const inputFactor = document.getElementById('producto-factorConversion')
+  if (inputFactor) inputFactor.addEventListener('input', calcularMargen)
 
   // ── FIX: Prevenir que el escáner de código de barras dispare submit del form ──
   const inputCodigoBarras = document.getElementById('producto-codigoBarras')

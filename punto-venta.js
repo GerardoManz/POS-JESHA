@@ -3365,7 +3365,7 @@ async function enviarAjusteRapido() {
 
     const card = productosGrid?.querySelector(`[data-producto-id="${productoId}"]`)
     if (card) {
-      const stockEl = card.querySelector('.producto-stock')
+      const stockEl = card.querySelector('.producto-stock') || card.querySelector('.producto-destacado-stock')
       if (stockEl) {
         const nuevo    = parseFloat(data.data.stockDespues)
         const esGranel = cached?.esGranel || ajusteRapidoEstado.esGranel

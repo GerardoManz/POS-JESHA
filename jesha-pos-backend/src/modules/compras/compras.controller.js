@@ -31,8 +31,8 @@ const OC_SELECT = {
     select: {
       id: true, cantidadPedida: true, cantidadRecibida: true,
       precioCosto: true, subtotalPedido: true, subtotalRecibido: true,
-      costoAnterior: true, precioVentaAnterior: true, precioVentaNuevo: true, facturaDesglosada: true,
-        Producto: { select: { id: true, nombre: true, codigoInterno: true, codigoBarras: true, unidadCompra: true, costo: true, costoPromedio: true, precioVenta: true, precioBase: true, esGranel: true, tipoFacturaProv: true, costoSinIvaProveedor: true, ProveedorProducto: { select: { proveedorId: true, codigoProveedor: true } } } }
+      costoAnterior: true, precioVentaAnterior: true, precioVentaNuevo: true, facturaDesglosada: true, factorConversionSnapshot: true, unidadCompraSnapshot: true, unidadVentaSnapshot: true,
+        Producto: { select: { id: true, nombre: true, codigoInterno: true, codigoBarras: true, unidadCompra: true, costo: true, costoPromedio: true, precioVenta: true, precioBase: true, esGranel: true, factorConversion: true, unidadVenta: true, tipoFacturaProv: true, costoSinIvaProveedor: true, ProveedorProducto: { select: { proveedorId: true, codigoProveedor: true } } } }
     }
   },
   AbonoCompra: {

@@ -177,9 +177,13 @@ function renderDetalle() {
     const rowStyle     = yaCompleto && recibiendo ? 'opacity:0.45;' : ''
     const unidad       = d.Producto?.unidadCompra || 'pza'
     const granel       = d.Producto?.esGranel === true
-    const stepAttr     = '1'
-    const minAttr      = granel ? '0' : '1'
+    const stepAttr     = granel ? '0.001' : '1'
+    const minAttr      = granel ? '0.001' : '1'
     const imAttr       = granel ? 'decimal' : 'numeric'
+    // Factor/unidad de venta: el SNAPSHOT de la OC manda (es lo que el backend
+    // aplicará al recibir); fallback al producto vivo para OCs legacy sin snapshot.
+    const factor       = parseFloat(d.factorConversionSnapshot ?? d.Producto?.factorConversion ?? 1) || 1
+    const unidadVenta  = d.unidadVentaSnapshot || d.Producto?.unidadVenta || 'pza'
 
     const costoOrden    = parseFloat(d.precioCosto)
     const costoAnterior = parseFloat(d.Producto?.costo || costoOrden)
@@ -205,9 +209,11 @@ function renderDetalle() {
           : `<div style="display:flex;flex-direction:column;align-items:center;gap:2px;">
                <input type="number" class="input-recibir" id="rec-${d.id}"
                  min="${minAttr}" max="${pendiente}" step="${stepAttr}" inputmode="${imAttr}" value="${pendiente}"
-                 oninput="recRecalcularResumen()"
-                 style="width:64px;text-align:center;" />
+                 data-factor="${factor}" data-uv="${unidadVenta}"
+                 oninput="recRecalcularResumen(); recEquivalente('${d.id}')"
+                 style="width:${granel ? '76px' : '64px'};text-align:center;" />
                <span style="font-size:0.68rem;color:var(--muted);">máx ${pendiente} ${unidad}</span>
+               ${factor > 1 ? `<span id="equiv-${d.id}" style="font-size:0.66rem;color:var(--accent);">→ ${pendiente} × ${factor} = ${parseFloat((pendiente * factor).toFixed(3))} ${unidadVenta} al inventario</span>` : ''}
              </div>`
         : `<span style="color:${yaCompleto ? '#60d080' : cantRecibida > 0 ? '#ffc107' : 'var(--muted)'}">
              ${cantRecibida} / ${cantPedida}
@@ -1164,6 +1170,25 @@ window.facOnMG = function(id) {
   const mg = document.getElementById('fv-mg-' + id); if (mg) mg.style.color = _mgColor(m)
   const sp = document.getElementById('sumpv-' + id); if (sp) sp.textContent = pv > 0 ? fmt(pv) : '—'
   recRecalcularResumen()
+}
+
+// Actualiza la línea "cajas × factor = piezas al inventario" en vivo mientras
+// el usuario teclea. Lee factor y unidad de venta de los data-attrs del input
+// (ya resueltos con precedencia snapshot ?? producto vivo ?? 1). Solo aplica a
+// productos con factor > 1; en 1:1 el span no existe y sale silencioso.
+window.recEquivalente = function(id) {
+  const input = document.getElementById('rec-' + id)
+  const span  = document.getElementById('equiv-' + id)
+  if (!input || !span) return
+  const factor = parseFloat(input.dataset.factor) || 1
+  const uv     = input.dataset.uv || 'pza'
+  const v      = parseFloat(input.value) || 0
+  if (factor > 1 && v > 0) {
+    const piezas = parseFloat((v * factor).toFixed(3))
+    span.textContent = `→ ${v} × ${factor} = ${piezas} ${uv} al inventario`
+  } else {
+    span.textContent = ''
+  }
 }
 
 window.recRecalcularResumen = function() {

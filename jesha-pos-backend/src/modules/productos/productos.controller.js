@@ -338,6 +338,8 @@ async function obtener(req, res) {
                 Categoria: { include: { Departamento: true } },
                 InventarioSucursal: { where: { sucursalId: 1 }, take: 1 },
                 ProveedorProducto: {
+                    orderBy: { actualizadoEn: 'desc' },
+                    take: 1,
                     include: { Proveedor: true }
                 }
             }
@@ -402,6 +404,15 @@ async function crear(req, res) {
             return res.status(400).json({ success: false, error: 'El código interno ya existe' })
         }
 
+        // Factor de conversión: el form envía precio por caja; Producto.costo es por pieza
+        const factorRaw    = factorConversion ? parseFloat(factorConversion) : 1
+        const safeFactor   = (Number.isFinite(factorRaw) && factorRaw > 0) ? factorRaw : 1
+        const costoUnitVta = costo ? parseFloat((parseFloat(costo) / safeFactor).toFixed(4)) : null
+        const precioVtaNum = precioVenta ? parseFloat(precioVenta) : null
+        const margenProd   = (costoUnitVta && costoUnitVta > 0 && precioVtaNum && precioVtaNum > 0)
+            ? parseFloat(Math.min(((precioVtaNum / costoUnitVta - 1) * 100), 999.99).toFixed(2))
+            : null
+
         const producto = await prisma.producto.create({
             data: {
                 empresaId,
@@ -409,8 +420,9 @@ async function crear(req, res) {
                 codigoInterno,
                 codigoBarras:        codigoBarras     || null,
                 descripcion:         descripcion      || null,
-                costo:               costo            ? parseFloat(costo)            : null,
-                costoPromedio:       costo            ? parseFloat(costo)            : null,
+                costo:               costoUnitVta,
+                costoPromedio:       costoUnitVta,
+                margen:              margenProd,
                 precioBase:          parseFloat(precioBase),
                 precioVenta:         precioVenta ? parseFloat(precioVenta) : null,
                 categoriaId:         parseInt(categoriaId),
@@ -508,6 +520,15 @@ async function editar(req, res) {
             return res.status(404).json({ success: false, error: 'Producto no encontrado' })
         }
 
+        // Factor de conversión: el form envía precio por caja; Producto.costo es por pieza
+        const factorRaw    = factorConversion ? parseFloat(factorConversion) : 1
+        const safeFactor   = (Number.isFinite(factorRaw) && factorRaw > 0) ? factorRaw : 1
+        const costoUnitVta = costo ? parseFloat((parseFloat(costo) / safeFactor).toFixed(4)) : null
+        const precioVtaNum = precioVenta ? parseFloat(precioVenta) : null
+        const margenProd   = (costoUnitVta && costoUnitVta > 0 && precioVtaNum && precioVtaNum > 0)
+            ? parseFloat(Math.min(((precioVtaNum / costoUnitVta - 1) * 100), 999.99).toFixed(2))
+            : null
+
         const producto = await prisma.producto.update({
             where: { id: parseInt(id) },
             data: {
@@ -515,7 +536,8 @@ async function editar(req, res) {
                 codigoInterno,
                 codigoBarras:        codigoBarras     || null,
                 descripcion:         descripcion      || null,
-                costo:               costo            ? parseFloat(costo)            : null,
+                costo:               costoUnitVta,
+                margen:              margenProd,
                 precioBase:          parseFloat(precioBase),
                 precioVenta:         precioVenta ? parseFloat(precioVenta) : null,
                 categoriaId:         parseInt(categoriaId),
@@ -534,21 +556,14 @@ async function editar(req, res) {
             }
         })
 
-        // Gestionar relación con proveedor
-        // 1. Eliminar relaciones anteriores
-        await prisma.proveedorProducto.deleteMany({
-            where: { productoId: parseInt(id) }
-        })
-
-        // 2. Crear nueva relación si se proporcionó un proveedor
+        // Upsert ProveedorProducto: solo toca el proveedor en contexto, sin borrar otros
         if (proveedorId && proveedorId !== '' && proveedorId !== 'null') {
-            await prisma.proveedorProducto.create({
-                data: {
-                    productoId: parseInt(id),
-                    proveedorId: parseInt(proveedorId),
-                    precioCosto: costo ? parseFloat(costo) : 0,
-                    activo: true
-                }
+            const ppProveedorId = parseInt(proveedorId)
+            const ppProductoId  = parseInt(id)
+            await prisma.proveedorProducto.upsert({
+                where:  { proveedorId_productoId: { proveedorId: ppProveedorId, productoId: ppProductoId } },
+                update: { precioCosto: costo ? parseFloat(costo) : 0, activo: true, actualizadoEn: new Date() },
+                create: { proveedorId: ppProveedorId, productoId: ppProductoId, precioCosto: costo ? parseFloat(costo) : 0, activo: true }
             })
             console.log(`✅ Proveedor ${proveedorId} vinculado al producto ${id}`)
         } else {
