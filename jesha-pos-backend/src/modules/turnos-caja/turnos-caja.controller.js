@@ -39,8 +39,8 @@ function calcularEfectivoEnCaja(movimientos) {
   return parseFloat(total.toFixed(2))
 }
 
-function calcularTotalesPorMetodoDesdeMovimientos(movimientos) {
-  const movimientosCaja = movimientos.filter(m => ['VENTA', 'DEVOLUCION'].includes(m.tipo))
+function calcularTotalesPorMetodoDesdeMovimientos(movimientos, tipos = ['VENTA', 'DEVOLUCION']) {
+  const movimientosCaja = movimientos.filter(m => tipos.includes(m.tipo))
   const sumar = (pred) => parseFloat(
     movimientosCaja.filter(pred).reduce((s, m) => s + parseFloat(m.monto), 0).toFixed(2)
   )
@@ -119,6 +119,7 @@ const obtenerResumen = async (req, res) => {
     // Desglose neto por método, derivado del ledger de caja.
     // VENTA suma, DEVOLUCION resta y MIXTO ya viene separado por método.
     const { totalEfectivo, totalTarjeta, totalTransferencia, totalGeneral } = calcularTotalesPorMetodoDesdeMovimientos(movimientos)
+    const { totalEfectivo: abEf, totalTarjeta: abTar, totalTransferencia: abTrans, totalGeneral: totalAbonos } = calcularTotalesPorMetodoDesdeMovimientos(movimientos, ['ABONO_BITACORA'])
     const numVentas = ventasAgg._count.id || 0
 
     // Efectivo esperado = exactamente lo que calculará el cierre.
@@ -140,7 +141,11 @@ const obtenerResumen = async (req, res) => {
           totalTransferencia,
           totalGeneral,
           numVentas,
-          efectivoEsperado
+          efectivoEsperado,
+          totalAbonosEfectivo:       abEf,
+          totalAbonosTarjeta:        abTar,
+          totalAbonosTransferencia:  abTrans,
+          totalAbonos:               totalAbonos
         }
       }
     })
@@ -330,34 +335,68 @@ const obtenerHistorial = async (req, res) => {
       prisma.turnoCaja.count({ where })
     ])
 
-    // Query 3: totales netos por método de pago para cada turno desde MovimientoCaja.
-    // Incluye DEVOLUCION con monto negativo para reflejar cancelaciones/reembolsos.
+    // Query 3: totales netos por método de pago desde MovimientoCaja
+    //   a) VENTA + DEVOLUCION con todos los métodos (incluye EFECTIVO)
+    //   b) ABONO_BITACORA con todos los métodos (para abonos a crédito POS)
     const turnoIds = turnos.map(t => t.id)
-    const movimientosPorTurno = turnoIds.length === 0 ? [] : await prisma.movimientoCaja.groupBy({
-      by: ['turnoId', 'metodoPago'],
-      where: {
-        turnoId: { in: turnoIds },
-        tipo: { in: ['VENTA', 'DEVOLUCION'] },
-        metodoPago: { in: ['DEBITO', 'CREDITO', 'TRANSFERENCIA'] }
-      },
-      _sum: { monto: true }
-    })
+    const [movimientosPorTurno, abonosPorTurno] = turnoIds.length === 0
+      ? [[], []]
+      : await Promise.all([
+          prisma.movimientoCaja.groupBy({
+            by: ['turnoId', 'metodoPago'],
+            where: {
+              turnoId: { in: turnoIds },
+              tipo: { in: ['VENTA', 'DEVOLUCION'] },
+              metodoPago: { in: ['EFECTIVO', 'DEBITO', 'CREDITO', 'TRANSFERENCIA'] }
+            },
+            _sum: { monto: true }
+          }),
+          prisma.movimientoCaja.groupBy({
+            by: ['turnoId', 'metodoPago'],
+            where: {
+              turnoId: { in: turnoIds },
+              tipo: { in: ['ABONO_BITACORA'] }
+            },
+            _sum: { monto: true }
+          })
+        ])
 
     const totalesPorTurno = {}
     for (const m of movimientosPorTurno) {
       if (!totalesPorTurno[m.turnoId]) {
-        totalesPorTurno[m.turnoId] = { totalTarjeta: 0, totalTransferencia: 0 }
+        totalesPorTurno[m.turnoId] = { totalEfectivo: 0, totalTarjeta: 0, totalTransferencia: 0, totalAbonosEfectivo: 0, totalAbonosTarjeta: 0, totalAbonosTransferencia: 0 }
       }
-      if (m.metodoPago === 'DEBITO' || m.metodoPago === 'CREDITO') {
-        totalesPorTurno[m.turnoId].totalTarjeta += parseFloat(m._sum.monto || 0)
+      const val = parseFloat(m._sum.monto || 0)
+      if (m.metodoPago === 'EFECTIVO') {
+        totalesPorTurno[m.turnoId].totalEfectivo += val
+      } else if (m.metodoPago === 'DEBITO' || m.metodoPago === 'CREDITO') {
+        totalesPorTurno[m.turnoId].totalTarjeta += val
       } else if (m.metodoPago === 'TRANSFERENCIA') {
-        totalesPorTurno[m.turnoId].totalTransferencia += parseFloat(m._sum.monto || 0)
+        totalesPorTurno[m.turnoId].totalTransferencia += val
       }
     }
 
-    for (const totales of Object.values(totalesPorTurno)) {
-      totales.totalTarjeta = parseFloat(totales.totalTarjeta.toFixed(2))
-      totales.totalTransferencia = parseFloat(totales.totalTransferencia.toFixed(2))
+    for (const m of abonosPorTurno) {
+      if (!totalesPorTurno[m.turnoId]) {
+        totalesPorTurno[m.turnoId] = { totalEfectivo: 0, totalTarjeta: 0, totalTransferencia: 0, totalAbonosEfectivo: 0, totalAbonosTarjeta: 0, totalAbonosTransferencia: 0 }
+      }
+      const val = parseFloat(m._sum.monto || 0)
+      if (m.metodoPago === 'EFECTIVO') {
+        totalesPorTurno[m.turnoId].totalAbonosEfectivo += val
+      } else if (m.metodoPago === 'DEBITO' || m.metodoPago === 'CREDITO') {
+        totalesPorTurno[m.turnoId].totalAbonosTarjeta += val
+      } else if (m.metodoPago === 'TRANSFERENCIA') {
+        totalesPorTurno[m.turnoId].totalAbonosTransferencia += val
+      }
+    }
+
+    for (const t of Object.values(totalesPorTurno)) {
+      t.totalEfectivo              = parseFloat(t.totalEfectivo.toFixed(2))
+      t.totalTarjeta               = parseFloat(t.totalTarjeta.toFixed(2))
+      t.totalTransferencia         = parseFloat(t.totalTransferencia.toFixed(2))
+      t.totalAbonosEfectivo        = parseFloat(t.totalAbonosEfectivo.toFixed(2))
+      t.totalAbonosTarjeta         = parseFloat(t.totalAbonosTarjeta.toFixed(2))
+      t.totalAbonosTransferencia   = parseFloat(t.totalAbonosTransferencia.toFixed(2))
     }
 
     res.json({
@@ -371,8 +410,12 @@ const obtenerHistorial = async (req, res) => {
           montoFinalDeclarado:    parseFloat(t.montoFinalDeclarado),
           montoCalculado:         parseFloat(t.montoCalculado),
           diferencia:             parseFloat(t.diferencia),
+          totalEfectivo:          totalesPorTurno[t.id]?.totalEfectivo || 0,
           totalTarjeta:           totalesPorTurno[t.id]?.totalTarjeta || 0,
           totalTransferencia:     totalesPorTurno[t.id]?.totalTransferencia || 0,
+          totalAbonosEfectivo:    totalesPorTurno[t.id]?.totalAbonosEfectivo || 0,
+          totalAbonosTarjeta:     totalesPorTurno[t.id]?.totalAbonosTarjeta || 0,
+          totalAbonosTransferencia: totalesPorTurno[t.id]?.totalAbonosTransferencia || 0,
           notasCierre:            t.notasCierre,
           Usuario:                t.Usuario,
           Sucursal:               t.Sucursal

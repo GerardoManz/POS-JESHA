@@ -145,15 +145,12 @@ function renderTabla(turnos) {
       ? `${String(cierre.getDate()).padStart(2,'0')}/${String(cierre.getMonth()+1).padStart(2,'0')} ${String(cierre.getHours()).padStart(2,'0')}:${String(cierre.getMinutes()).padStart(2,'0')}`
       : '—'
 
-    const montoInicial = parseFloat(t.montoInicial) || 0
-    const ventasEfectivo = montoInicial + parseFloat(t.montoFinalDeclarado) - parseFloat(t.montoCalculado)
-
     return `<tr onclick="abrirTicket(${t.id})">
       <td>#${t.id}</td>
       <td>${fechaStr}</td>
       <td>${t.Usuario?.nombre || '—'}</td>
       <td>${t.Sucursal?.nombre || '—'}</td>
-      <td>${fmt(ventasEfectivo > 0 ? ventasEfectivo : 0)}</td>
+      <td>${fmt(t.totalEfectivo || 0)}</td>
       <td>${fmt(t.totalTarjeta || 0)}</td>
       <td>${fmt(t.totalTransferencia || 0)}</td>
       <td>${fmt(t.montoFinalDeclarado)}</td>

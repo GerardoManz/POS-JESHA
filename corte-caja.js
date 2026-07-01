@@ -31,6 +31,8 @@ const montoTransferencia       = document.getElementById('monto-transferencia')
 const montoTotalVentas          = document.getElementById('monto-total-ventas')
 const efInicial                = document.getElementById('ef-inicial')
 const efVentas                 = document.getElementById('ef-ventas')
+const efAbonos                 = document.getElementById('ef-abonos')
+const filaEfAbonos             = document.getElementById('fila-ef-abonos')
 const efTotal                  = document.getElementById('ef-total')
 const turnosCajero             = document.getElementById('turno-cajero')
 const turnoSucursal            = document.getElementById('turno-sucursal')
@@ -123,6 +125,17 @@ async function cargarResumen() {
     efInicial.textContent = fmt(turnoActivo.montoInicial)
     efVentas.textContent  = fmt(totales.totalEfectivo)
     efTotal.textContent   = fmt(efectivoEsperado)
+
+    mostrarFilaAbono(totales.totalAbonosEfectivo, 'fila-abono-efectivo', 'monto-abono-efectivo')
+    mostrarFilaAbono(totales.totalAbonosTarjeta, 'fila-abono-tarjeta', 'monto-abono-tarjeta')
+    mostrarFilaAbono(totales.totalAbonosTransferencia, 'fila-abono-transferencia', 'monto-abono-transferencia')
+
+    if (totales.totalAbonosEfectivo > 0) {
+      filaEfAbonos.style.display = 'flex'
+      efAbonos.textContent = fmt(totales.totalAbonosEfectivo)
+    } else {
+      filaEfAbonos.style.display = 'none'
+    }
   } catch (err) {
     console.error('❌ Error cargando resumen:', err)
   }
@@ -294,6 +307,16 @@ function fmt(valor) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
   })}`
+}
+
+function mostrarFilaAbono(monto, idFila, idMonto) {
+  if (!monto) return
+  const fila = document.getElementById(idFila)
+  const valor = document.getElementById(idMonto)
+  if (fila && valor) {
+    fila.style.display = 'flex'
+    valor.textContent = fmt(monto)
+  }
 }
 
 console.log('✅ corte-caja.js cargado')

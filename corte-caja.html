@@ -117,6 +117,28 @@
             <span id="monto-total-ventas">$0.00</span>
           </div>
 
+          <div class="metodo-row" id="fila-abono-efectivo" style="display:none;">
+            <div class="metodo-info">
+              <span class="metodo-icono efectivo">💵</span>
+              <span class="metodo-nombre">Abono Credito · Efectivo</span>
+            </div>
+            <span class="metodo-monto" id="monto-abono-efectivo">$0.00</span>
+          </div>
+          <div class="metodo-row" id="fila-abono-tarjeta" style="display:none;">
+            <div class="metodo-info">
+              <span class="metodo-icono tarjeta">💳</span>
+              <span class="metodo-nombre">Abono Credito · Tarjeta</span>
+            </div>
+            <span class="metodo-monto" id="monto-abono-tarjeta">$0.00</span>
+          </div>
+          <div class="metodo-row" id="fila-abono-transferencia" style="display:none;">
+            <div class="metodo-info">
+              <span class="metodo-icono transferencia">🔄</span>
+              <span class="metodo-nombre">Abono Credito · Transferencia</span>
+            </div>
+            <span class="metodo-monto" id="monto-abono-transferencia">$0.00</span>
+          </div>
+
           <!-- Efectivo esperado en caja -->
           <div class="efectivo-esperado">
             <div class="efectivo-row">
@@ -126,6 +148,10 @@
             <div class="efectivo-row">
               <span>+ Ventas en efectivo</span>
               <span id="ef-ventas">$0.00</span>
+            </div>
+            <div class="efectivo-row" id="fila-ef-abonos" style="display:none;">
+              <span>+ Abonos en efectivo</span>
+              <span id="ef-abonos">$0.00</span>
             </div>
             <div class="efectivo-row efectivo-resultado">
               <span>= Efectivo esperado en caja</span>
