@@ -222,6 +222,16 @@
   background: rgba(244, 67, 54, 0.1);
 }
 
+.btn-icon.btn-whatsapp {
+  color: var(--muted);
+}
+
+.btn-icon.btn-whatsapp:hover {
+  border-color: #25D366;
+  color: #25D366;
+  background: rgba(37, 211, 102, 0.1);
+}
+
 /* ── MODAL ── */
 .modal {
   display: none;
