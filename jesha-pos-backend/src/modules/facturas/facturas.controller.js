@@ -75,7 +75,7 @@ exports.listar = async (req, res) => {
     const scope = resolverEmpresaScope(req)
     const whereScope = scope.modo === 'GLOBAL' ? {} : { empresaId: scope.empresaId }
 
-    const { q, desde, hasta, estado, page = 1, take = 20 } = req.query
+    const { q, desde, hasta, estado, metodoPago, page = 1, take = 20 } = req.query
     const skip = (parseInt(page) - 1) * parseInt(take)
 
     const where = { ...whereScope }
@@ -88,15 +88,28 @@ exports.listar = async (req, res) => {
       if (hasta) where.creadaEn.lte = new Date(hasta + 'T23:59:59')
     }
 
-    if (q) {
-      where.OR = [
-        { rfcReceptor:    { contains: q, mode: 'insensitive' } },
-        { nombreReceptor: { contains: q, mode: 'insensitive' } },
-        // Folio de la venta directa (individual legacy)
-        { Venta: { folio: { contains: q, mode: 'insensitive' } } },
-        // Folio de cualquier venta asociada vía FacturaVenta (conjunta/global)
-        { FacturaVenta: { some: { Venta: { folio: { contains: q, mode: 'insensitive' } } } } }
-      ]
+    if (q || metodoPago) {
+      where.AND = []
+      if (q) {
+        where.AND.push({
+          OR: [
+            { rfcReceptor:    { contains: q, mode: 'insensitive' } },
+            { nombreReceptor: { contains: q, mode: 'insensitive' } },
+            // Folio de la venta directa (individual legacy)
+            { Venta: { folio: { contains: q, mode: 'insensitive' } } },
+            // Folio de cualquier venta asociada vía FacturaVenta (conjunta/global)
+            { FacturaVenta: { some: { Venta: { folio: { contains: q, mode: 'insensitive' } } } } }
+          ]
+        })
+      }
+      if (metodoPago) {
+        where.AND.push({
+          OR: [
+            { Venta: { metodoPago } },
+            { FacturaVenta: { some: { Venta: { metodoPago } } } }
+          ]
+        })
+      }
     }
 
     const [data, total] = await Promise.all([
@@ -107,6 +120,10 @@ exports.listar = async (req, res) => {
         orderBy: { creadaEn: 'desc' },
         include: {
           Venta:  { select: { folio: true, total: true, metodoPago: true } },
+          FacturaVenta: {
+            take: 1,
+            include: { Venta: { select: { metodoPago: true } } }
+          },
           _count: { select: { FacturaVenta: true } }
         }
       }),
@@ -114,9 +131,10 @@ exports.listar = async (req, res) => {
     ])
 
     const dataConConteo = data.map(f => {
-      const { _count, ...rest } = f
+      const { _count, FacturaVenta: fv, ...rest } = f
       const ventasCount = (_count?.FacturaVenta || 0) || (f.ventaId != null ? 1 : 0)
-      return { ...rest, ventasCount }
+      const metodoPagoCalculado = f.Venta?.metodoPago || fv?.[0]?.Venta?.metodoPago || null
+      return { ...rest, ventasCount, metodoPago: metodoPagoCalculado }
     })
 
     const [pendientes, timbradas, canceladas, inciertas] = await Promise.all([

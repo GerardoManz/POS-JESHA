@@ -56,18 +56,20 @@ function estadoBadge(estado) {
 async function cargarFacturas() {
   const tbody  = document.getElementById('fact-tbody')
   const pagDiv = document.getElementById('pagination')
-  tbody.innerHTML = `<tr><td colspan="8" class="loading-cell"><div class="spinner"></div><p>Cargando...</p></td></tr>`
+  tbody.innerHTML = `<tr><td colspan="9" class="loading-cell"><div class="spinner"></div><p>Cargando...</p></td></tr>`
 
   const q      = document.getElementById('search-input')?.value.trim() || ''
   const estado = document.getElementById('filtro-estado')?.value || ''
   const desde  = document.getElementById('filtro-desde')?.value || ''
   const hasta  = document.getElementById('filtro-hasta')?.value || ''
+  const metodo = document.getElementById('filtro-metodo')?.value || ''
 
   const params = new URLSearchParams({ page: paginaActual, take: LIMIT })
   if (q)      params.set('q', q)
   if (estado) params.set('estado', estado)
   if (desde)  params.set('desde', desde)
   if (hasta)  params.set('hasta', hasta)
+  if (metodo) params.set('metodoPago', metodo)
 
   try {
     const res  = await fetch(`${API_URL}/facturas?${params}`, { headers: { 'Authorization': `Bearer ${TOKEN}` } })
@@ -86,7 +88,7 @@ async function cargarFacturas() {
 
     const lista = data.data || []
     if (lista.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="8" class="loading-cell"><p>No se encontraron facturas con los filtros aplicados</p></td></tr>`
+      tbody.innerHTML = `<tr><td colspan="9" class="loading-cell"><p>No se encontraron facturas con los filtros aplicados</p></td></tr>`
       pagDiv.style.display = 'none'
       return
     }
@@ -102,6 +104,7 @@ async function cargarFacturas() {
       <tr onclick="verDetalle(${f.id})">
         <td><strong style="font-size:0.82rem">${f.Venta?.folio || '—'}</strong></td>
         <td style="font-size:0.82rem;color:var(--muted)">${fmtFecha(f.creadaEn)}</td>
+        <td style="font-size:0.82rem">${f.metodoPago || '—'}</td>
         <td>
           <div style="font-weight:600;font-size:0.875rem">${f.nombreReceptor}</div>
           <div style="font-size:0.75rem;color:var(--muted)">${f.rfcReceptor}</div>
@@ -133,7 +136,7 @@ async function cargarFacturas() {
     }
 
   } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="8" class="loading-cell"><p style="color:#f44336">Error: ${err.message}</p></td></tr>`
+    tbody.innerHTML = `<tr><td colspan="9" class="loading-cell"><p style="color:#f44336">Error: ${err.message}</p></td></tr>`
   }
 }
 
@@ -1115,7 +1118,7 @@ document.addEventListener('DOMContentLoaded', () => {
     debounce = setTimeout(() => { paginaActual = 1; cargarFacturas() }, 400)
   })
 
-  ;['filtro-estado','filtro-desde','filtro-hasta'].forEach(id => {
+  ;['filtro-estado','filtro-desde','filtro-hasta','filtro-metodo'].forEach(id => {
     document.getElementById(id)?.addEventListener('change', () => { paginaActual = 1; cargarFacturas() })
   })
 
@@ -1124,6 +1127,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('filtro-estado').value = ''
     document.getElementById('filtro-desde').value  = ''
     document.getElementById('filtro-hasta').value  = ''
+    document.getElementById('filtro-metodo').value = ''
     paginaActual = 1
     cargarFacturas()
   })

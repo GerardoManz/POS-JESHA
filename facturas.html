@@ -59,6 +59,15 @@
         <option value="TIMBRADA">Timbrada</option>
         <option value="CANCELADA">Cancelada</option>
       </select>
+      <select id="filtro-metodo" class="filter-select">
+        <option value="">Todos los métodos</option>
+        <option value="EFECTIVO">💵 Efectivo</option>
+        <option value="CREDITO">💳 Tarjeta crédito</option>
+        <option value="DEBITO">💳 Tarjeta débito</option>
+        <option value="TRANSFERENCIA">🔄 Transferencia</option>
+        <option value="CREDITO_CLIENTE">🏦 Crédito cliente</option>
+        <option value="MIXTO">🔀 Mixto</option>
+      </select>
       <input type="date" id="filtro-desde" class="filter-select" />
       <input type="date" id="filtro-hasta" class="filter-select" />
       <button id="btn-limpiar" class="btn-secondary">✕ Limpiar</button>
@@ -74,6 +83,7 @@
             <tr>
               <th>Venta</th>
               <th>Fecha</th>
+              <th>Método</th>
               <th>Receptor</th>
               <th>Uso CFDI</th>
               <th>Total</th>
@@ -83,7 +93,7 @@
             </tr>
           </thead>
           <tbody id="fact-tbody">
-            <tr><td colspan="8" class="loading-cell"><div class="spinner"></div><p>Cargando facturas...</p></td></tr>
+            <tr><td colspan="9" class="loading-cell"><div class="spinner"></div><p>Cargando facturas...</p></td></tr>
           </tbody>
         </table>
       </div>
