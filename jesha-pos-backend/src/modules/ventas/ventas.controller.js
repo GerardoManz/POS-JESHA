@@ -1343,8 +1343,15 @@ exports.obtenerDashboardKpis = async (req, res) => {
     // Query 2: Ventas históricas (sin rango de fechas)
     const whereHistorico = { ...whereBase }
 
+    // Query 5: Abonos hoy (cobranza a crédito)
+    const whereAbonosHoy = {
+      tipo: 'ABONO_BITACORA',
+      creadoEn: { gte: desdeDate, lte: hastaDate }
+    }
+    if (filterSucursalId) whereAbonosHoy.TurnoCaja = { sucursalId: parseInt(filterSucursalId) }
+
     // Queries en paralelo
-    const [resHoy, resHistorico, resRecientes, resDevoluciones] = await Promise.all([
+    const [resHoy, resHistorico, resRecientes, resDevoluciones, resAbonos] = await Promise.all([
       prisma.venta.aggregate({
         where: whereHoy,
         _sum: { total: true },
@@ -1369,6 +1376,11 @@ exports.obtenerDashboardKpis = async (req, res) => {
           tipoReembolso: { in: ['REEMBOLSO', 'CAMBIO_PARCIAL'] }
         },
         _sum: { montoReembolso: true }
+      }),
+      prisma.movimientoCaja.aggregate({
+        where: whereAbonosHoy,
+        _sum: { monto: true },
+        _count: { id: true }
       })
     ])
 
@@ -1395,7 +1407,11 @@ exports.obtenerDashboardKpis = async (req, res) => {
         metodoPago: v.metodoPago,
         total: v.total,
         estado: v.estado
-      }))
+      })),
+      cobranzaHoy: {
+        total: parseFloat(resAbonos._sum.monto || 0),
+        count: resAbonos._count.id
+      }
     })
 
   } catch (error) {

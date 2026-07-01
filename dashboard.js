@@ -121,6 +121,11 @@ async function cargarKPIs() {
       elVentasHoy.querySelector('.kpi-value').textContent = fmt(kpis.ventasHoy.total)
       elVentasHoy.querySelector('.kpi-sub').textContent = `${kpis.ventasHoy.count} transaccion${kpis.ventasHoy.count !== 1 ? 'es' : ''}`
 
+      // Cobranza hoy (abonos a crédito)
+      const elCobranzaHoy = document.getElementById('kpi-cobranza-hoy')
+      elCobranzaHoy.querySelector('.kpi-value').textContent = fmt(kpis.cobranzaHoy?.total || 0)
+      elCobranzaHoy.querySelector('.kpi-sub').textContent = `${kpis.cobranzaHoy?.count || 0} abono${(kpis.cobranzaHoy?.count || 0) !== 1 ? 's' : ''}`
+
       // Total histórico
       const elTotalVentas = document.getElementById('kpi-total-ventas')
       elTotalVentas.querySelector('.kpi-value').textContent = fmt(kpis.ventasHistorico.total)

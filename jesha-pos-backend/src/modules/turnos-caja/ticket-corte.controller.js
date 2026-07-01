@@ -35,13 +35,21 @@ const generarTicketCorte = async (req, res) => {
       return res.status(400).json({ error: 'El turno aún está abierto' })
     }
 
-    const [totalesRaw, ventasAgg] = await Promise.all([
+    const [totalesRaw, abonosRaw, ventasAgg] = await Promise.all([
       prisma.movimientoCaja.groupBy({
         by: ['metodoPago'],
         where: {
           turnoId: turno.id,
           tipo: { in: ['VENTA', 'DEVOLUCION'] },
           metodoPago: { in: ['EFECTIVO', 'DEBITO', 'CREDITO', 'TRANSFERENCIA'] }
+        },
+        _sum: { monto: true }
+      }),
+      prisma.movimientoCaja.groupBy({
+        by: ['metodoPago'],
+        where: {
+          turnoId: turno.id,
+          tipo: { in: ['ABONO_BITACORA'] }
         },
         _sum: { monto: true }
       }),
@@ -57,8 +65,17 @@ const generarTicketCorte = async (req, res) => {
     const totalGeneral       = parseFloat((totalEfectivo + totalTarjeta + totalTransferencia).toFixed(2))
     const numVentas          = ventasAgg || 0
 
+    const abonosPorMetodo = Object.fromEntries(
+      abonosRaw.map(t => [t.metodoPago, parseFloat(t._sum.monto || 0)])
+    )
+    const abonosEfectivo      = parseFloat((abonosPorMetodo.EFECTIVO || 0).toFixed(2))
+    const abonosTarjeta       = parseFloat(((abonosPorMetodo.DEBITO || 0) + (abonosPorMetodo.CREDITO || 0)).toFixed(2))
+    const abonosTransferencia = parseFloat((abonosPorMetodo.TRANSFERENCIA || 0).toFixed(2))
+    const abonosTotal         = parseFloat((abonosEfectivo + abonosTarjeta + abonosTransferencia).toFixed(2))
+
     const html = generarHTMLCorte({
-      turno, numVentas, totalEfectivo, totalTarjeta, totalTransferencia, totalGeneral
+      turno, numVentas, totalEfectivo, totalTarjeta, totalTransferencia, totalGeneral,
+      abonosEfectivo, abonosTarjeta, abonosTransferencia, abonosTotal
     })
     res.setHeader('Content-Type', 'text/html; charset=utf-8')
     res.send(html)
@@ -68,7 +85,7 @@ const generarTicketCorte = async (req, res) => {
   }
 }
 
-function generarHTMLCorte({ turno, numVentas, totalEfectivo, totalTarjeta, totalTransferencia, totalGeneral }) {
+function generarHTMLCorte({ turno, numVentas, totalEfectivo, totalTarjeta, totalTransferencia, totalGeneral, abonosEfectivo, abonosTarjeta, abonosTransferencia, abonosTotal }) {
   const fmt = v => `$${parseFloat(v || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`
 
   const fmtFecha = (d) => {
@@ -162,6 +179,7 @@ html, body {
 <table class="tbl">
   <tr class="sep-row"><td class="lbl">Monto apertura:</td><td class="val">${fmt(turno.montoInicial)}</td></tr>
   <tr class="sep-row"><td class="lbl">Ventas efectivo:</td><td class="val">${fmt(totalEfectivo)}</td></tr>
+  ${abonosEfectivo > 0 ? `<tr class="sep-row"><td class="lbl">Abonos efectivo:</td><td class="val">${fmt(abonosEfectivo)}</td></tr>` : ''}
   <tr class="sep-row"><td class="lbl">Total esperado:</td><td class="val">${fmt(turno.montoCalculado)}</td></tr>
   <tr class="sep-row"><td class="lbl">Declarado:</td><td class="val">${fmt(turno.montoFinalDeclarado)}</td></tr>
   <tr class="resaltado-dif">
@@ -179,6 +197,18 @@ html, body {
   <tr><td class="lbl">Transferencia:</td><td class="val">${fmt(totalTransferencia)}</td></tr>
   <tr class="resaltado"><td class="lbl">TOTAL:</td><td class="val">${fmt(totalGeneral)}</td></tr>
 </table>
+
+${abonosTotal > 0 ? `
+<hr class="sep"/>
+
+<div class="resumen-seccion">Abonos a Credito</div>
+<table class="tbl">
+  <tr><td class="lbl">Efectivo:</td><td class="val">${fmt(abonosEfectivo)}</td></tr>
+  <tr><td class="lbl">Tarjeta:</td><td class="val">${fmt(abonosTarjeta)}</td></tr>
+  <tr><td class="lbl">Transferencia:</td><td class="val">${fmt(abonosTransferencia)}</td></tr>
+  <tr class="resaltado"><td class="lbl">TOTAL ABONOS:</td><td class="val">${fmt(abonosTotal)}</td></tr>
+</table>
+` : ''}
 
 <hr class="sep"/>
 
