@@ -584,7 +584,14 @@ function obtenerSrcImagenProducto(p) {
 }
 
 function formatearStockProducto(p) {
-  if (!(p.stock > 0)) return 'Agotado'
+  if (!(p.stock > 0)) {
+    if (p.stock < 0) {
+      const s = Math.abs(parseFloat(p.stock))
+      const stock = Number.isInteger(s) ? s : s.toFixed(3).replace(/\.?0+$/, '')
+      return `Stock: -${stock}${p.esGranel && p.unidadVenta ? ' ' + p.unidadVenta : ''}`
+    }
+    return 'Agotado'
+  }
   const s = parseFloat(p.stock)
   const stock = Number.isInteger(s) ? s : s.toFixed(3).replace(/\.?0+$/, '')
   return `Stock: ${stock}${p.esGranel && p.unidadVenta ? ' ' + p.unidadVenta : ''}`
@@ -606,7 +613,7 @@ function renderTarjetaProducto(p) {
         <p class="producto-codigo">${escaparHtml(p.codigoInterno || '')}</p>
         ${renderBadgeGranel(p)}
         <p class="producto-precio">$${parseFloat(p.precioVenta || p.precioBase).toFixed(2)}${p.esGranel && p.unidadVenta ? `<span style="font-size:0.7rem;color:var(--muted,#999);font-weight:400;"> / ${escaparHtml(p.unidadVenta)}</span>` : ''}</p>
-        <p class="producto-stock ${p.stock > 0 ? '' : 'agotado'}">${formatearStockProducto(p)}</p>
+        <p class="producto-stock ${p.stock > 0 ? '' : p.stock < 0 ? 'negativo' : 'agotado'}">${formatearStockProducto(p)}</p>
         <button type="button" class="btn-ajustar-stock" data-action="ajustar"
           style="display:block;width:100%;margin-top:8px;padding:8px 0;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:8px;color:#e8edf5;font-family:'Barlow',sans-serif;font-size:0.82rem;font-weight:600;cursor:pointer;transition:background 0.15s,border-color 0.15s;">
           Ajustar
@@ -634,7 +641,7 @@ function renderProductoDestacado(p) {
         <div class="producto-destacado-bottom">
           <div>
             <p class="producto-destacado-precio">$${parseFloat(p.precioVenta || p.precioBase).toFixed(2)}${p.esGranel && p.unidadVenta ? `<span> / ${escaparHtml(p.unidadVenta)}</span>` : ''}</p>
-            <p class="producto-destacado-stock ${p.stock > 0 ? '' : 'agotado'}">${formatearStockProducto(p)}</p>
+            <p class="producto-destacado-stock ${p.stock > 0 ? '' : p.stock < 0 ? 'negativo' : 'agotado'}">${formatearStockProducto(p)}</p>
           </div>
           <button type="button" class="btn-ajustar-stock producto-destacado-accion" data-action="ajustar">Ajustar</button>
         </div>
@@ -1031,8 +1038,8 @@ function _actualizarPreviewImporte() {
   const cached = productoCache.get(id)
   if (cached && cached.stock !== null && cached.stock !== undefined && par.cantidad > parseFloat(cached.stock)) {
     const stockDisp = parseFloat(cached.stock)
-    const maxImp = Math.floor(stockDisp * precio * 100) / 100
-    if (errorDiv) { errorDiv.textContent = `Excede el stock disponible (máximo $${maxImp.toFixed(2)})`; errorDiv.style.display = 'block' }
+    const stockFmt = Number.isInteger(stockDisp) ? stockDisp : stockDisp.toFixed(3).replace(/\.?0+$/, '')
+    if (errorDiv) { errorDiv.textContent = `Stock insuficiente (disp.: ${stockFmt}). Venta en negativo permitida.`; errorDiv.style.display = 'block' }
   }
 }
 
@@ -1059,19 +1066,12 @@ function _confirmarImporteGranel() {
     return
   }
 
-  // Validar stock con la cantidad calculada
   const cached = productoCache.get(id)
   if (cached && cached.stock !== null && cached.stock !== undefined) {
     const stockDisp = parseFloat(cached.stock)
     if (par.cantidad > stockDisp) {
       const stockFmt = Number.isInteger(stockDisp) ? stockDisp : stockDisp.toFixed(3).replace(/\.?0+$/, '')
-      const maxImp = Math.floor(stockDisp * precio * 100) / 100
-      if (errorDiv) {
-        errorDiv.textContent = `Stock insuficiente. Disponible: ${stockFmt} ${unidadVenta || ''} (máximo $${maxImp.toFixed(2)})`
-        errorDiv.style.display = 'block'
-      }
-      inputImp?.focus()
-      return
+      mostrarToast(`Stock insuficiente (${stockFmt} disp.). Venta en negativo permitida.`, 'warning')
     }
   }
 
@@ -1139,19 +1139,16 @@ function confirmarCantidadGranel() {
     cantidadBase = cantidad * factor
   }
 
-  // Validar stock
   const cached = productoCache.get(id)
   if (cached && cached.stock !== null && cached.stock !== undefined) {
     if (cantidadBase > parseFloat(cached.stock)) {
       const stockDisp = parseFloat(cached.stock)
-      let maxMsg = `Stock insuficiente. Disponible: ${Number.isInteger(stockDisp) ? stockDisp : stockDisp.toFixed(3)} ${unidadVenta}`
+      let maxMsg = `Stock insuficiente (${Number.isInteger(stockDisp) ? stockDisp : stockDisp.toFixed(3)} ${unidadVenta}). Venta en negativo permitida.`
       if (_unidadElegida === 'empaque' && factor > 1) {
         const maxEmpaques = Math.floor(stockDisp / factor)
         maxMsg += ` (${maxEmpaques} ${unidadCompra} completos)`
       }
-      if (errorDiv) { errorDiv.textContent = maxMsg; errorDiv.style.display = 'block' }
-      inputCant?.focus()
-      return
+      mostrarToast(maxMsg, 'warning')
     }
   }
 
@@ -3371,9 +3368,14 @@ async function enviarAjusteRapido() {
         const esGranel = cached?.esGranel || ajusteRapidoEstado.esGranel
         const unidad   = cached?.unidadVenta || ajusteRapidoEstado.unidadVenta
         if (nuevo > 0) {
-          stockEl.classList.remove('agotado')
+          stockEl.classList.remove('agotado', 'negativo')
           stockEl.textContent = `Stock: ${formatearStockAjuste(nuevo)}${esGranel && unidad ? ' ' + unidad : ''}`
+        } else if (nuevo < 0) {
+          stockEl.classList.remove('agotado')
+          stockEl.classList.add('negativo')
+          stockEl.textContent = `Stock: -${formatearStockAjuste(Math.abs(nuevo))}${esGranel && unidad ? ' ' + unidad : ''}`
         } else {
+          stockEl.classList.remove('negativo')
           stockEl.classList.add('agotado')
           stockEl.textContent = 'Agotado'
         }

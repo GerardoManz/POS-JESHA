@@ -295,6 +295,10 @@
   color: #ff6b6b;
 }
 
+.producto-destacado-stock.negativo {
+  color: #f0a050;
+}
+
 .producto-destacado-accion {
   width: min(210px, 38%) !important;
   min-width: 150px !important;
@@ -399,6 +403,11 @@
 .producto-stock.agotado {
   background: transparent;
   color: #ff6b6b;
+}
+
+.producto-stock.negativo {
+  background: transparent;
+  color: #f0a050;
 }
 
 .btn-ajustar-stock {

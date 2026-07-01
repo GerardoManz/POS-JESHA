@@ -195,38 +195,6 @@ exports.crearVenta = async (req, res) => {
     }
 
     const venta = await prisma.$transaction(async (tx) => {
-      const inventarios = await tx.inventarioSucursal.findMany({
-        where: { sucursalId, productoId: { in: detallesValidados.map(d => d.productoId) } }
-      })
-
-      const productosInfo = await tx.producto.findMany({
-        where:  { id: { in: detallesValidados.map(d => d.productoId) } },
-        select: { id: true, nombre: true }
-      })
-      const nombreProd = Object.fromEntries(productosInfo.map(p => [p.id, p.nombre]))
-
-      const sinStock = []
-      for (const detalle of detallesValidados) {
-        const inventario  = inventarios.find(i => parseInt(i.productoId) === parseInt(detalle.productoId))
-        const disponibles = inventario ? parseFloat(inventario.stockActual) : 0
-        if (!inventario || disponibles < detalle.cantidad) {
-          sinStock.push({
-            productoId:  detalle.productoId,
-            nombre:      nombreProd[detalle.productoId] || `Producto ${detalle.productoId}`,
-            disponibles,
-            solicitados: detalle.cantidad
-          })
-        }
-      }
-
-      if (sinStock.length > 0) {
-        const err = new Error('Stock insuficiente')
-        err.status   = 400
-        err.codigo   = 'STOCK_INSUFICIENTE'
-        err.sinStock = sinStock
-        throw err
-      }
-
       const montoPagadoFinal = metodoPago === 'EFECTIVO'
         ? parseFloat(parseFloat(montoPagadoRaw || 0).toFixed(2))
         : metodoPago === 'MIXTO'
@@ -308,39 +276,25 @@ exports.crearVenta = async (req, res) => {
       })
 
       for (const detalle of detallesValidados) {
-        // A2: decremento ATÓMICO. Solo descuenta si HAY stock suficiente en este instante.
-        // Cierra la carrera entre dos cajas que venden el mismo producto a la vez.
+        // A2: decremento ATÓMICO. Permite stock negativo cuando no hay suficiente.
         const upd = await tx.inventarioSucursal.updateMany({
           where: {
             productoId:  detalle.productoId,
-            sucursalId,
-            stockActual: { gte: detalle.cantidad }
+            sucursalId
           },
           data: { stockActual: { decrement: detalle.cantidad } }
         })
 
         if (upd.count === 0) {
-          // No se descontó: o no existe el registro, o se quedó sin stock por una venta simultánea.
-          const existe = await tx.inventarioSucursal.findUnique({
-            where: { productoId_sucursalId: { productoId: detalle.productoId, sucursalId } },
-            select: { stockActual: true }
+          await tx.inventarioSucursal.create({
+            data: {
+              empresaId,
+              productoId: detalle.productoId,
+              sucursalId,
+              stockActual: parseFloat((-detalle.cantidad).toFixed(3)),
+              stockMinimo: 0
+            }
           })
-          if (!existe) {
-            throw Object.assign(
-              new Error(`Registro de inventario no encontrado para producto ${detalle.productoId}`),
-              { status: 400, codigo: 'INV_NOT_FOUND' }
-            )
-          }
-          throw Object.assign(
-            new Error('Stock insuficiente'),
-            { status: 400, codigo: 'STOCK_INSUFICIENTE',
-              sinStock: [{
-                productoId:  detalle.productoId,
-                nombre:      nombreProd[detalle.productoId] || `Producto ${detalle.productoId}`,
-                disponibles: parseFloat(existe.stockActual),
-                solicitados: detalle.cantidad
-              }] }
-          )
         }
 
         // Leer el valor ya descontado para registrar el MovimientoInventario.
