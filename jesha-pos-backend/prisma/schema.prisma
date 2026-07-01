@@ -792,9 +792,13 @@ model DetalleOrdenCompra {
   costoAnterior       Decimal?    @db.Decimal(10, 2)
   precioVentaAnterior Decimal?    @db.Decimal(10, 2)
   precioVentaNuevo    Decimal?    @db.Decimal(10, 2)
-  facturaDesglosada   Boolean?
-  OrdenCompra         OrdenCompra @relation(fields: [ordenCompraId], references: [id], onDelete: Cascade)
-  Producto            Producto    @relation(fields: [productoId], references: [id])
+  facturaDesglosada        Boolean?
+  factorConversionSnapshot  Decimal?    @db.Decimal(10, 4)
+  unidadCompraSnapshot      String?
+  unidadVentaSnapshot       String?
+  costoUnitarioVenta        Decimal?    @db.Decimal(10, 2)
+  OrdenCompra              OrdenCompra @relation(fields: [ordenCompraId], references: [id], onDelete: Cascade)
+  Producto                 Producto    @relation(fields: [productoId], references: [id])
 }
 
 model DetallePedido {
@@ -846,6 +850,8 @@ model ProveedorProducto {
   precioCosto     Decimal   @db.Decimal(10, 2)
   activo          Boolean   @default(true)
   actualizadoEn   DateTime  @default(now()) @updatedAt
+  unidadCompra     String?
+  factorConversion Decimal?   @db.Decimal(10, 4)
   Producto        Producto  @relation(fields: [productoId], references: [id])
   Proveedor       Proveedor @relation(fields: [proveedorId], references: [id])
 

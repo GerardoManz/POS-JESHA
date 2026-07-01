@@ -100,41 +100,75 @@ const crear = async (req, res) => {
     if (!roles.includes(usuario.rol))
       return res.status(403).json({ success: false, error: 'Sin permiso para crear compras' })
 
-    const rows = detalles.map(d => {
-      const costo    = parseFloat(d.precioCosto || 0)
-      const cantidad = parseFloat(d.cantidadPedida) || 1
-      return {
-        productoId:       parseInt(d.productoId),
-        cantidadPedida:   cantidad,
-        cantidadRecibida: 0,
-        precioCosto:      costo,
-        subtotalPedido:   parseFloat((costo * cantidad).toFixed(2)),
-        subtotalRecibido: 0
-      }
-    })
+    const provId = parseInt(proveedorId)
+    const productoIds = [...new Set(detalles.map(d => parseInt(d.productoId)))]
 
-    const totalEstimado = parseFloat(rows.reduce((s, r) => s + r.subtotalPedido, 0).toFixed(2))
-    const folio = await generarFolio()
-
-    // Validar que todos los productos estén activos
-    const productoIds = rows.map(r => r.productoId)
-    const productosActivos = await prisma.producto.findMany({
-      where: { id: { in: productoIds }, activo: true },
-      select: { id: true }
+    // Productos activos + datos para snapshot de conversión (una sola query;
+    // doble función: validación de activos y fuente del snapshot global)
+    const productos = await prisma.producto.findMany({
+      where:  { id: { in: productoIds }, activo: true },
+      select: { id: true, factorConversion: true, unidadCompra: true, unidadVenta: true }
     })
-    const inactivos = productoIds.filter(id => !productosActivos.find(p => p.id === id))
+    const inactivos = productoIds.filter(id => !productos.find(p => p.id === id))
     if (inactivos.length > 0) {
       return res.status(400).json({
         success: false,
         error: `No se puede crear la orden: los productos ${inactivos.join(', ')} están inactivos.`
       })
     }
+    const prodMap = new Map(productos.map(p => [p.id, p]))
 
+    // Overrides por proveedor (opcional). null en estos campos => usar el global del producto.
+    const provProds = await prisma.proveedorProducto.findMany({
+      where:  { proveedorId: provId, productoId: { in: productoIds } },
+      select: { productoId: true, factorConversion: true, unidadCompra: true }
+    })
+    const ppMap = new Map(provProds.map(pp => [pp.productoId, pp]))
+
+    const rows = detalles.map(d => {
+      const productoId = parseInt(d.productoId)
+      const costo      = parseFloat(d.precioCosto || 0)   // por CAJA
+      const cantidad   = parseFloat(d.cantidadPedida) || 1
+
+      const prod = prodMap.get(productoId)
+      const pp   = ppMap.get(productoId)
+
+      // Precedencia: ProveedorProducto ?? Producto ?? 1 (guard >0)
+      const factorRaw =
+        (pp && pp.factorConversion != null) ? parseFloat(pp.factorConversion) :
+        (prod && prod.factorConversion != null) ? parseFloat(prod.factorConversion) : 1
+      const factorSnap = (Number.isFinite(factorRaw) && factorRaw > 0) ? factorRaw : 1
+
+      const unidadCompraSnap = (
+        (pp && pp.unidadCompra) ? pp.unidadCompra :
+        (prod && prod.unidadCompra) ? prod.unidadCompra : ''
+      ).trim()
+      const unidadVentaSnap = ((prod && prod.unidadVenta) || '').trim()
+
+      return {
+        productoId,
+        cantidadPedida:   cantidad,
+        cantidadRecibida: 0,
+        precioCosto:      costo,                                   // por CAJA
+        subtotalPedido:   parseFloat((costo * cantidad).toFixed(2)),
+        subtotalRecibido: 0,
+        // Snapshots congelados al crear la OC (la recepción los lee, no el producto vivo)
+        factorConversionSnapshot: factorSnap,
+        unidadCompraSnapshot:     unidadCompraSnap || null,
+        unidadVentaSnapshot:      unidadVentaSnap || null,
+        costoUnitarioVenta:       null                            // se calcula al recibir
+      }
+    })
+
+    const totalEstimado = parseFloat(rows.reduce((s, r) => s + r.subtotalPedido, 0).toFixed(2))
+    const folio = await generarFolio()
     const empresaId = getEmpresaId(req)
 
     const oc = await prisma.ordenCompra.create({
-      data: { empresaId, folio, sucursalId, proveedorId: parseInt(proveedorId), usuarioId, estado: 'ENVIADO',
-              totalEstimado, notas: notas || null, DetalleOrdenCompra: { create: rows } },
+      data: {
+        empresaId, folio, sucursalId, proveedorId: provId, usuarioId, estado: 'ENVIADO',
+        totalEstimado, notas: notas || null, DetalleOrdenCompra: { create: rows }
+      },
       select: OC_SELECT
     })
     await audit(usuarioId, sucursalId, 'CREAR_COMPRA', folio)
@@ -237,7 +271,13 @@ const recibir = async (req, res) => {
       where:  { id: parseInt(id) },
       select: {
         id: true, folio: true, estado: true, sucursalId: true, proveedorId: true,
-        DetalleOrdenCompra: { select: { id: true, productoId: true, cantidadPedida: true, cantidadRecibida: true, precioCosto: true } }
+        DetalleOrdenCompra: {
+          select: {
+            id: true, productoId: true, cantidadPedida: true, cantidadRecibida: true, precioCosto: true,
+            factorConversionSnapshot: true, unidadCompraSnapshot: true, unidadVentaSnapshot: true,
+            Producto: { select: { factorConversion: true, unidadVenta: true } }
+          }
+        }
       }
     })
     if (!oc)                         return res.status(404).json({ success: false, error: 'Orden no encontrada' })
@@ -256,19 +296,36 @@ const recibir = async (req, res) => {
         const detalle = oc.DetalleOrdenCompra.find(d => d.id === parseInt(item.detalleId))
         if (!detalle) continue
 
-        const cantNueva = parseFloat(item.cantidadRecibida) || 0
+        const cantNueva = parseFloat(item.cantidadRecibida) || 0   // en cajas (unidad de COMPRA)
         if (cantNueva <= 0) continue
 
+        // Factor: snapshot de la OC ?? producto vivo (OC legacy) ?? 1
+        const factorRaw =
+          detalle.factorConversionSnapshot != null ? parseFloat(detalle.factorConversionSnapshot) :
+          detalle.Producto?.factorConversion != null ? parseFloat(detalle.Producto.factorConversion) : 1
+        const safeFactor = (Number.isFinite(factorRaw) && factorRaw > 0) ? factorRaw : 1
+
         const cantYaRecibida    = parseFloat(detalle.cantidadRecibida)
-        const cantTotalRecibida = parseFloat((cantYaRecibida + cantNueva).toFixed(3))
-        const costoUnit = (item.precioCosto != null && parseFloat(item.precioCosto) > 0)
+        const cantTotalRecibida = parseFloat((cantYaRecibida + cantNueva).toFixed(3))   // cajas
+
+        // Costo por CAJA, del payload (gana el payload)
+        const precioCostoCaja = (item.precioCosto != null && parseFloat(item.precioCosto) > 0)
           ? parseFloat(item.precioCosto)
           : parseFloat(detalle.precioCosto)
 
-        const subtotalNuevo = parseFloat((costoUnit * cantNueva).toFixed(2))
+        // Base económica: DESGLOSE usa sin IVA; ambos por CAJA
+        const esDesglose  = item.tipoFacturaProv === 'DESGLOSE'
+        const costoSinIva = item.costoSinIvaProveedor != null ? parseFloat(item.costoSinIvaProveedor) : null
+        const baseCaja    = (esDesglose && costoSinIva && costoSinIva > 0) ? costoSinIva : precioCostoCaja
+
+        // Costo por PIEZA = base / factor
+        const costoUnitarioVenta = parseFloat((baseCaja / safeFactor).toFixed(2))
+
+        // Valor de compra recibido (cajas × precio-caja), para totalRecibido de la OC
+        const subtotalNuevo = parseFloat((precioCostoCaja * cantNueva).toFixed(2))
         totalRecibidoNuevo += subtotalNuevo
 
-        // Foto del producto ANTES de actualizarlo (auditoría) — se reutiliza para el costo promedio
+        // Foto del producto ANTES (auditoría + base del costo promedio)
         const prodAntes = await tx.producto.findUnique({
           where: { id: detalle.productoId },
           select: { costo: true, precioVenta: true, costoPromedio: true }
@@ -278,22 +335,23 @@ const recibir = async (req, res) => {
         const precioVentaNuevo    = (item.precioVenta != null && parseFloat(item.precioVenta) > 0)
           ? parseFloat(item.precioVenta) : null
 
-        // Actualizar detalle — cantidades, costo corregido y snapshot de auditoría
+        // Actualizar detalle — cantidades, costo y snapshot de conversión
         await tx.detalleOrdenCompra.update({
           where: { id: detalle.id },
           data:  {
-            precioCosto:      costoUnit,
-            cantidadRecibida: cantTotalRecibida,
-            subtotalPedido:   parseFloat((costoUnit * parseFloat(detalle.cantidadPedida)).toFixed(2)),
-            subtotalRecibido: parseFloat((costoUnit * cantTotalRecibida).toFixed(2)),
+            precioCosto:         precioCostoCaja,                      // por CAJA
+            cantidadRecibida:    cantTotalRecibida,                    // cajas
+            subtotalPedido:      parseFloat((precioCostoCaja * parseFloat(detalle.cantidadPedida)).toFixed(2)),
+            subtotalRecibido:    parseFloat((precioCostoCaja * cantTotalRecibida).toFixed(2)),
             costoAnterior,
             precioVentaAnterior,
             precioVentaNuevo,
-            facturaDesglosada: item.tipoFacturaProv === 'DESGLOSE'
+            facturaDesglosada:   esDesglose,
+            costoUnitarioVenta                                      // snapshot costo por PIEZA de esta recepción
           }
         })
 
-        // Upsert inventario — crea registro si no existe (InventarioSucursal NO tiene empresaId)
+        // Upsert inventario — crea registro si no existe
         const inv = await tx.inventarioSucursal.upsert({
           where: { productoId_sucursalId: { productoId: detalle.productoId, sucursalId: oc.sucursalId } },
           update: {},
@@ -301,34 +359,43 @@ const recibir = async (req, res) => {
         })
 
         const stockAntes   = parseFloat(inv.stockActual)
-        const stockDespues = parseFloat((stockAntes + cantNueva).toFixed(3))
+        const stockEntrada = parseFloat((cantNueva * safeFactor).toFixed(3))   // cajas → PIEZAS
+        const stockDespues = parseFloat((stockAntes + stockEntrada).toFixed(3))
 
-        // Calcular costo promedio ponderado (reusa prodAntes)
-        const costoActual        = parseFloat(prodAntes?.costoPromedio ?? costoUnit)
-        const nuevoCostoPromedio = stockAntes + cantNueva > 0
-          ? parseFloat(((stockAntes * costoActual + cantNueva * costoUnit) / (stockAntes + cantNueva)).toFixed(4))
-          : costoUnit
+        // Costo promedio ponderado en PIEZAS y costo por PIEZA
+        const costoPromAnterior  = parseFloat(prodAntes?.costoPromedio ?? costoUnitarioVenta)
+        const nuevoCostoPromedio = (stockAntes + stockEntrada) > 0
+          ? parseFloat(((stockAntes * costoPromAnterior + stockEntrada * costoUnitarioVenta) / (stockAntes + stockEntrada)).toFixed(4))
+          : costoUnitarioVenta
 
         await tx.inventarioSucursal.update({
           where: { productoId_sucursalId: { productoId: detalle.productoId, sucursalId: oc.sucursalId } },
           data:  { stockActual: stockDespues }
         })
 
-        const nuevoPrecioVenta = item.precioVenta ? parseFloat(item.precioVenta) : undefined
-        const tipoMapeado = item.tipoFacturaProv === 'DESGLOSE' ? 'DESGLOSE' : 'NETO'
-        const costoSinIva = item.costoSinIvaProveedor != null ? parseFloat(item.costoSinIvaProveedor) : null
+        const tipoMapeado = esDesglose ? 'DESGLOSE' : 'NETO'
+
+        // Margen: SIEMPRE que cambie el costo (fuera del spread de precioVenta),
+        // con fallback al precioVenta anterior y tope DECIMAL(5,2).
+        const pvParaMargen =
+          (precioVentaNuevo && precioVentaNuevo > 0) ? precioVentaNuevo :
+          (precioVentaAnterior && precioVentaAnterior > 0) ? precioVentaAnterior : null
+        const margenRecalc = (pvParaMargen && costoUnitarioVenta > 0)
+          ? parseFloat(Math.min(((pvParaMargen / costoUnitarioVenta - 1) * 100), 999.99).toFixed(2))
+          : null
+
         await tx.producto.update({
           where: { id: detalle.productoId },
           data:  {
-            costo:           costoUnit,
-            costoPromedio:   nuevoCostoPromedio,
+            costo:           costoUnitarioVenta,                    // por PIEZA
+            costoPromedio:   nuevoCostoPromedio,                    // por PIEZA
+            margen:          margenRecalc,                          // SIEMPRE
             tipoFacturaProv: tipoMapeado,
             ...(tipoMapeado === 'DESGLOSE' && costoSinIva && costoSinIva > 0 ? { costoSinIvaProveedor: costoSinIva } : {}),
             ...(tipoMapeado === 'NETO' ? { costoSinIvaProveedor: null } : {}),
-            ...(nuevoPrecioVenta && nuevoPrecioVenta > 0 ? {
-              precioVenta: nuevoPrecioVenta,
-              precioBase:  parseFloat((nuevoPrecioVenta / FACTOR_IVA).toFixed(2)),
-              margen:      costoUnit > 0 ? parseFloat(Math.min(((nuevoPrecioVenta / costoUnit - 1) * 100), 999.99).toFixed(2)) : null
+            ...(precioVentaNuevo && precioVentaNuevo > 0 ? {
+              precioVenta: precioVentaNuevo,
+              precioBase:  parseFloat((precioVentaNuevo / FACTOR_IVA).toFixed(2))
             } : {})
           }
         })
@@ -336,22 +403,22 @@ const recibir = async (req, res) => {
         // ProveedorProducto NO tiene empresaId
         await tx.proveedorProducto.upsert({
           where: { proveedorId_productoId: { proveedorId: oc.proveedorId, productoId: detalle.productoId } },
-          update: { precioCosto: costoUnit, activo: true },
-          create: { proveedorId: oc.proveedorId, productoId: detalle.productoId, precioCosto: costoUnit, activo: true }
+          update: { precioCosto: precioCostoCaja, activo: true },   // por CAJA
+          create: { proveedorId: oc.proveedorId, productoId: detalle.productoId, precioCosto: precioCostoCaja, activo: true }
         })
 
         await tx.movimientoInventario.create({
           data: {
             empresaId,
-            productoId:   detalle.productoId,
-            sucursalId:   oc.sucursalId,
+            productoId:    detalle.productoId,
+            sucursalId:    oc.sucursalId,
             usuarioId,
-            tipo:         'ENTRADA_COMPRA',
-            cantidad:     cantNueva,
+            tipo:          'ENTRADA_COMPRA',
+            cantidad:      stockEntrada,                            // PIEZAS
             stockAntes,
             stockDespues,
-            costoUnitario: costoUnit,
-            referencia:   oc.folio
+            costoUnitario: costoUnitarioVenta,                      // por PIEZA
+            referencia:    oc.folio
           }
         })
       }
