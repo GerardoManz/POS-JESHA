@@ -67,6 +67,16 @@ function esRfcGenerico(rfc) {
   return rfc && rfc.trim().toUpperCase() === RFC_PUBLICO_GENERAL
 }
 
+/** Retorna el nombre del primer servicio en detalles sin clave SAT válida, o null. */
+function primerServicioInvalido(detalles) {
+  for (const d of detalles) {
+    if (d.Producto?.tipo === 'SERVICIO' && !/^\d{8}$/.test(d.Producto?.claveSat || '')) {
+      return d.Producto?.nombre || `producto ${d.productoId}`
+    }
+  }
+  return null
+}
+
 function validarRazonSocialSat(razonSocial) {
   const razon = String(razonSocial || '').trim().normalize('NFC')
   if (!razon) return 'Nombre o razón social requerida'
@@ -92,16 +102,19 @@ function buildInvoicePayload({ rfc, razonSocial, regimenFiscal, codigoPostal, us
   const rfcUpper = rfc.trim().toUpperCase()
 
   const items = detalles.map(d => {
-    let productKey = '31161500'
-    if (d.Producto?.claveSat && /^\d{8}$/.test(d.Producto.claveSat)) {
-      productKey = d.Producto.claveSat
+    // Defensa en profundidad: servicio sin clave válida → error (el pre-check debería atraparlo antes)
+    const esServ = d.Producto?.tipo === 'SERVICIO'
+    const claveValida = d.Producto?.claveSat && /^\d{8}$/.test(d.Producto.claveSat)
+    if (esServ && !claveValida) {
+      throw new Error(`Servicio "${d.Producto?.nombre || '?'}" sin clave SAT de 8 dígitos. Corrige el producto antes de facturar.`)
     }
+    let productKey = claveValida ? d.Producto.claveSat : '31161500'
     return {
       quantity: parseFloat(d.cantidad),
       product: {
         description:  d.Producto?.nombre || 'Mercancía',
         product_key:  productKey,
-        unit_key:     d.Producto?.unidadSat || 'H87',
+        unit_key:     d.Producto?.unidadSat || (esServ ? 'E48' : 'H87'),
         price:        parseFloat(d.precioUnitario),
         tax_included: true,
         taxes: [{ type: 'IVA', rate: TASA_IVA, factor: 'Tasa', withholding: false }]
@@ -432,6 +445,12 @@ exports.solicitarFactura = async (req, res) => {
       return res.status(409).json({ error: 'Esta venta tiene un proceso de factura en curso. Intenta más tarde.' })
     }
 
+    // Pre-check: servicio sin clave SAT válida no debe llegar al timbrado
+    const servMalo = primerServicioInvalido(venta.DetalleVenta)
+    if (servMalo) {
+      return res.status(400).json({ error: `Servicio "${servMalo}" sin clave SAT de 8 dígitos. Corrige el producto antes de facturar.` })
+    }
+
     const total        = parseFloat(venta.total)
     const subtotal     = parseFloat((total / IVA_FACTOR).toFixed(2))
     const iva          = parseFloat((total - subtotal).toFixed(2))
@@ -689,6 +708,13 @@ exports.timbrarManual = async (req, res) => {
       if (!venta) {
         await prisma.facturaCfdi.update({ where: { id, ...whereScope }, data: { procesandoTimbrado: false, procesandoTimbradoEn: null } }).catch(() => {})
         return res.status(409).json({ error: 'La venta asociada no existe.' })
+      }
+
+      // Pre-check: servicio sin clave SAT válida → liberar lock y rechazar
+      const servMalo = primerServicioInvalido(venta.DetalleVenta)
+      if (servMalo) {
+        await prisma.facturaCfdi.update({ where: { id, ...whereScope }, data: { procesandoTimbrado: false, procesandoTimbradoEn: null } }).catch(() => {})
+        return res.status(400).json({ error: `Servicio "${servMalo}" sin clave SAT de 8 dígitos. Corrige el producto antes de facturar.` })
       }
 
       // ── Timbrar con idempotency_key ──

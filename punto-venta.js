@@ -584,6 +584,7 @@ function obtenerSrcImagenProducto(p) {
 }
 
 function formatearStockProducto(p) {
+  if (p.tipo === 'SERVICIO') return 'Servicio'
   if (!(p.stock > 0)) {
     if (p.stock < 0) {
       const s = Math.abs(parseFloat(p.stock))
@@ -819,7 +820,8 @@ function agregarAlCarrito(productoId, nombre, precio, esGranel = false, unidadVe
       precioVenta: precio, precioBase: precio,
       stock: null, codigoInterno: '',
       esGranel: false, unidadVenta: '',
-      unidadCompra: '', factorConversion: 1
+      unidadCompra: '', factorConversion: 1,
+      tipo: cached?.tipo || null
     })
   }
 

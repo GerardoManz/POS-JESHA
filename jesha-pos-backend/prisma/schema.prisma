@@ -401,6 +401,7 @@ model Producto {
   tipoFacturaProv      String?                @default("NETO")
   costoSinIvaProveedor Decimal?               @db.Decimal(10, 2)
   categoriaId          Int
+  tipo                 String                 @default("PRODUCTO")
   activo               Boolean                @default(true)
   actualizadoEn        DateTime               @default(now()) @updatedAt
   facturaLimite        DateTime?              @default(now())

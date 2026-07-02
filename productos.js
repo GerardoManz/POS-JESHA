@@ -705,6 +705,15 @@ window.editarProducto = async function(id) {
   
   productoActual = producto
   if (modalTitle) modalTitle.textContent = 'Editar Producto'
+
+  // Tipo: setear radio y mostrar/ocultar campos físicos
+  const esServ = producto.tipo === 'SERVICIO'
+  const radioProd = document.getElementById('tipo-producto')
+  const radioServ = document.getElementById('tipo-servicio')
+  if (esServ) { if (radioServ) radioServ.checked = true }
+  else        { if (radioProd) radioProd.checked = true }
+  aplicarTipoProducto(esServ)
+
   document.getElementById('producto-nombre').value            = producto.nombre
   document.getElementById('producto-codigo').value            = producto.codigoInterno
   document.getElementById('producto-codigoBarras').value      = producto.codigoBarras || ''
@@ -829,6 +838,10 @@ function abrirModalNuevo() {
   if (radioFacturaA) radioFacturaA.checked = true
   aplicarTipoFactura('A')
 
+  // Resetear tipo de producto a PRODUCTO
+  if (document.getElementById('tipo-producto')) document.getElementById('tipo-producto').checked = true
+  aplicarTipoProducto(false)
+
   // Limpiar costoSinIva explícitamente (por si no está dentro del form)
   const costoSinIvaInput = document.getElementById('producto-costoSinIva')
   if (costoSinIvaInput) costoSinIvaInput.value = ''
@@ -887,6 +900,7 @@ async function guardarProducto(e) {
     precioVenta:      precioVenta ? parseFloat(precioVenta) : null,
     categoriaId:      parseInt(categoria),
     proveedorId:      proveedorId ? parseInt(proveedorId) : null,
+    tipo:             document.getElementById('tipo-producto')?.checked ? 'PRODUCTO' : 'SERVICIO',
     unidadCompra:     document.getElementById('producto-unidadCompra').value.trim() || null,
     unidadVenta:      document.getElementById('producto-unidadVenta').value.trim() || null,
     factorConversion: parseFloat(document.getElementById('producto-factorConversion').value) || null,
@@ -1188,6 +1202,18 @@ function aplicarTipoFactura(tipo) {
   }
 
   calcularMargen()
+}
+
+// Muestra/oculta campos de producto físico según tipo
+function aplicarTipoProducto(esServicio) {
+  const cf = document.getElementById('campos-fisicos')
+  if (cf) cf.style.display = esServicio ? 'none' : ''
+  // Botón Sugerir SAT solo para productos físicos
+  const btnSat = document.getElementById('btn-sugerir-sat')
+  if (btnSat) btnSat.style.display = esServicio ? 'none' : ''
+  // Ajustar label según tipo
+  const satSection = document.getElementById('sat-panel')
+  if (satSection && esServicio) satSection.style.display = 'none'
 }
 
 // Cuando el empleado escribe en "Precio sin IVA de proveedor" (Esc. B)
@@ -1595,6 +1621,15 @@ function configurarEventos() {
   // Radio buttons tipo de factura
   if (radioFacturaA) radioFacturaA.addEventListener('change', () => aplicarTipoFactura('A'))
   if (radioFacturaB) radioFacturaB.addEventListener('change', () => aplicarTipoFactura('B'))
+
+  // Radio tipo de producto → mostrar/ocultar campos físicos
+  const tipoProd = document.getElementById('tipo-producto')
+  const tipoServ = document.getElementById('tipo-servicio')
+  function actualizarTipoProducto() {
+    aplicarTipoProducto(tipoServ?.checked === true)
+  }
+  if (tipoProd) tipoProd.addEventListener('change', actualizarTipoProducto)
+  if (tipoServ) tipoServ.addEventListener('change', actualizarTipoProducto)
 
   // Campo sin IVA de proveedor (Esc. B) → calcula precio proveedor automático
   const inputCostoSinIva = document.getElementById('producto-costoSinIva')

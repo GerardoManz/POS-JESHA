@@ -259,6 +259,27 @@
         </div>
       </div>
 
+      <!-- ── TIPO DE PRODUCTO ── -->
+      <div class="form-group full-width" id="tipo-producto-wrap" style="margin-bottom:12px;">
+        <label style="margin-bottom:8px;display:block;">Tipo de producto</label>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;">
+          <label id="tipo-label-prod" style="display:flex;align-items:flex-start;gap:10px;padding:10px 16px;border-radius:8px;cursor:pointer;border:1px solid #6b9de8;flex:1;min-width:160px;background:rgba(107,157,232,0.08);">
+            <input type="radio" name="tipo-producto" id="tipo-producto" value="PRODUCTO" style="margin-top:3px;accent-color:#6b9de8;flex-shrink:0;" checked />
+            <div>
+              <div style="font-size:0.85rem;font-weight:600;color:var(--text);">Producto físico</div>
+              <div style="font-size:0.72rem;color:var(--muted);margin-top:2px;">Tiene inventario, factor y unidades de medida</div>
+            </div>
+          </label>
+          <label id="tipo-label-serv" style="display:flex;align-items:flex-start;gap:10px;padding:10px 16px;border-radius:8px;cursor:pointer;border:1px solid var(--panel-border);flex:1;min-width:160px;">
+            <input type="radio" name="tipo-producto" id="tipo-servicio" value="SERVICIO" style="margin-top:3px;accent-color:#6b9de8;flex-shrink:0;" />
+            <div>
+              <div style="font-size:0.85rem;font-weight:600;color:var(--text);">Servicio</div>
+              <div style="font-size:0.72rem;color:var(--muted);margin-top:2px;">Flete, mano de obra, maquinaria — sin inventario</div>
+            </div>
+          </label>
+        </div>
+      </div>
+
       <!-- ── TIPO DE FACTURA DE PROVEEDOR ── -->
       <div class="form-group full-width" id="tipo-factura-wrap">
         <label style="margin-bottom:8px;display:block;">Tipo de factura del proveedor</label>
@@ -344,6 +365,9 @@
         </div>
       </div>
 
+      <!-- ── CAMPOS PARA PRODUCTO FÍSICO (se ocultan en SERVICIO) ── -->
+      <div id="campos-fisicos">
+
       <!-- Unidades de medida -->
       <div class="form-row">
         <div class="form-group">
@@ -376,6 +400,9 @@
         </div>
         <div id="granel-unidad-info" style="display:none;margin-top:8px;padding:8px 12px;background:rgba(107,157,232,0.08);border:1px solid rgba(107,157,232,0.2);border-radius:8px;font-size:0.8rem;color:#6b9de8;">
           La unidad de venta (arriba) se usará como unidad de granel. Ej: <strong>mts</strong>, <strong>kg</strong>, <strong>lts</strong>
+        </div>
+      </div>
+
         </div>
       </div>
 

@@ -275,7 +275,15 @@ exports.crearVenta = async (req, res) => {
         include: { DetalleVenta: { include: { Producto: true } } }
       })
 
+      // Producto.tipo por ID para gatear stock (servicios no generan inventario)
+      const tipoPorProd = new Map(
+        ventaCreada.DetalleVenta.map(d => [d.productoId, d.Producto?.tipo])
+      )
+
       for (const detalle of detallesValidados) {
+        // Servicios no tienen inventario — saltar todo el bloque de stock
+        if (tipoPorProd.get(detalle.productoId) === 'SERVICIO') continue
+
         // A2: decremento ATÓMICO. Permite stock negativo cuando no hay suficiente.
         const upd = await tx.inventarioSucursal.updateMany({
           where: {
