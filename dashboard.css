@@ -110,6 +110,7 @@ body {
   flex: 1;
   min-height: 0;
   flex-direction: column;
+  position: relative;
 }
 
 .brand {
@@ -247,6 +248,96 @@ body {
   font-size: 0.75rem;
   line-height: 1.5;
   padding: 0 4px;
+}
+
+/* ── SIDEBAR COMPACTO (tablets landscape con poca altura) ── */
+
+/* Sidebar con posición relativa para pseudo-elemento de scroll hint */
+.sidebar {
+  position: relative;
+}
+
+/* Scroll hint: gradiente sutil al fondo del contenedor del menú */
+.sidebar > div:first-child::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 36px;
+  background: linear-gradient(to bottom, transparent 0%, var(--sidebar-bg) 100%);
+  pointer-events: none;
+  z-index: 2;
+  opacity: 0.6;
+}
+
+@media (max-height: 950px) {
+  .sidebar {
+    padding: 16px 14px;
+  }
+  .brand {
+    padding: 0 6px 12px;
+    margin-bottom: 10px;
+  }
+  .brand img {
+    height: 28px;
+  }
+  .brand-text h1 {
+    font-size: 1rem;
+  }
+  .brand-text p {
+    font-size: 0.7rem;
+  }
+  .menu-item {
+    padding: 8px 10px;
+    font-size: 0.82rem;
+  }
+  .sidebar-footer {
+    padding-top: 10px;
+  }
+  .sidebar-footer small {
+    display: none;
+  }
+  .logout {
+    padding: 8px 10px;
+    margin-bottom: 6px;
+    font-size: 0.82rem;
+  }
+}
+
+@media (max-height: 850px) {
+  .sidebar {
+    padding: 10px 10px;
+  }
+  .brand {
+    padding: 0 4px 8px;
+    margin-bottom: 6px;
+  }
+  .brand img {
+    height: 24px;
+  }
+  .brand-text p {
+    display: none;
+  }
+  .menu-item {
+    padding: 6px 8px;
+    font-size: 0.78rem;
+    gap: 8px;
+  }
+  .sidebar-toggle {
+    width: 28px;
+    height: 28px;
+    margin-bottom: 8px;
+  }
+  .logout {
+    padding: 6px 8px;
+    font-size: 0.78rem;
+    gap: 6px;
+    margin-bottom: 4px;
+  }
+  .sidebar-footer {
+    padding-top: 6px;
+  }
 }
 
 /* ── CONTENIDO ── */
@@ -684,5 +775,12 @@ input[type="date"].filter-date:focus {
     display: inline-flex;
     align-items: center;
     justify-content: center;
+  }
+  .menu-item {
+    padding: 12px 14px;
+    min-height: 44px;
+  }
+  .logout {
+    min-height: 44px;
   }
 }
