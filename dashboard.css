@@ -110,7 +110,6 @@ body {
   flex: 1;
   min-height: 0;
   flex-direction: column;
-  position: relative;
 }
 
 .brand {
@@ -251,25 +250,6 @@ body {
 }
 
 /* ── SIDEBAR COMPACTO (tablets landscape con poca altura) ── */
-
-/* Sidebar con posición relativa para pseudo-elemento de scroll hint */
-.sidebar {
-  position: relative;
-}
-
-/* Scroll hint: gradiente sutil al fondo del contenedor del menú */
-.sidebar > div:first-child::after {
-  content: '';
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 36px;
-  background: linear-gradient(to bottom, transparent 0%, var(--sidebar-bg) 100%);
-  pointer-events: none;
-  z-index: 2;
-  opacity: 0.6;
-}
 
 @media (max-height: 950px) {
   .sidebar {
