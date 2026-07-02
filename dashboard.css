@@ -251,7 +251,7 @@ body {
 
 /* ── SIDEBAR COMPACTO (tablets landscape con poca altura) ── */
 
-@media (max-height: 950px) {
+@media (max-height: 950px) and (hover: none) and (max-width: 1400px) {
   .sidebar {
     padding: 16px 14px;
   }
@@ -285,7 +285,7 @@ body {
   }
 }
 
-@media (max-height: 850px) {
+@media (max-height: 850px) and (hover: none) and (max-width: 1400px) {
   .sidebar {
     padding: 10px 10px;
   }
