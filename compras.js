@@ -152,8 +152,9 @@ function renderDetalle() {
   const showRecibido = !esPendiente || recibiendo
 
   document.getElementById('col-recibido-header').style.display = showRecibido ? '' : 'none'
-  const colPend = document.getElementById('col-pendiente-header')
-  if (colPend) colPend.style.display = recibiendo ? '' : 'none'
+  document.getElementById('col-uc-header').style.display = recibiendo ? '' : 'none'
+  document.getElementById('col-factor-header').style.display = recibiendo ? '' : 'none'
+  document.getElementById('col-piezas-header').style.display = recibiendo ? '' : 'none'
   const colPV = document.getElementById('col-precio-venta-header')
   if (colPV) colPV.style.display = recibiendo ? '' : 'none'
 
@@ -202,6 +203,18 @@ function renderDetalle() {
         estadoFila = `<span style="font-size:0.7rem;background:rgba(255,193,7,0.1);color:#ffc107;border:1px solid rgba(255,193,7,0.25);border-radius:4px;padding:1px 6px;margin-left:6px;">parcial ${cantRecibida}/${cantPedida}</span>`
     }
 
+    const celdaUC = recibiendo
+      ? `<td style="text-align:center"><span style="font-size:0.82rem;color:var(--muted)">${unidad}</span></td>`
+      : ''
+    const celdaFactor = recibiendo
+      ? `<td style="text-align:center"><span style="font-size:0.82rem;color:${factor > 1 ? 'var(--accent)' : 'var(--muted)'}">${factor > 1 ? `×${factor}` : '—'}</span></td>`
+      : ''
+    const celdaPiezas = recibiendo && !yaCompleto && factor > 1
+      ? `<td style="text-align:right;font-size:0.82rem;">
+           <span id="piezas-val-${d.id}" style="color:#60d080">${parseFloat((pendiente * factor).toFixed(3))} ${unidadVenta}</span>
+         </td>`
+      : (recibiendo ? `<td style="text-align:center;color:var(--muted);font-size:0.78rem;">—</td>` : '')
+
     const celdaRecibido = showRecibido ? `<td style="text-align:center">
       ${recibiendo
         ? yaCompleto
@@ -212,19 +225,11 @@ function renderDetalle() {
                  data-factor="${factor}" data-uv="${unidadVenta}"
                  oninput="recRecalcularResumen(); recEquivalente('${d.id}')"
                  style="width:${granel ? '76px' : '64px'};text-align:center;" />
-               <span style="font-size:0.68rem;color:var(--muted);">máx ${pendiente} ${unidad}</span>
-               ${factor > 1 ? `<span id="equiv-${d.id}" style="font-size:0.66rem;color:var(--accent);">→ ${pendiente} × ${factor} = ${parseFloat((pendiente * factor).toFixed(3))} ${unidadVenta} al inventario</span>` : ''}
-             </div>`
+                <span style="font-size:0.68rem;color:var(--muted);">máx ${pendiente} ${unidad}</span>
+              </div>`
         : `<span style="color:${yaCompleto ? '#60d080' : cantRecibida > 0 ? '#ffc107' : 'var(--muted)'}">
              ${cantRecibida} / ${cantPedida}
            </span>`
-      }
-    </td>` : ''
-
-    const celdaPendiente = recibiendo ? `<td style="text-align:center">
-      ${yaCompleto
-        ? `<span style="color:#60d080;font-size:0.78rem;">—</span>`
-        : `<span style="color:#ffc107;font-size:0.82rem;font-weight:500;">${pendiente} ${unidad}</span>`
       }
     </td>` : ''
 
@@ -288,8 +293,10 @@ function renderDetalle() {
         <strong>${cantPedida}</strong>
         <div class="qty-pedido">${unidad}</div>
       </td>
+      ${celdaUC}
+      ${celdaFactor}
       ${celdaRecibido}
-      ${celdaPendiente}
+      ${celdaPiezas}
       <td>
         <span style="color:${costoColor}">${fmt(costoOrden)}</span>
         ${costoAntLabel}
@@ -1178,16 +1185,17 @@ window.facOnMG = function(id) {
 // productos con factor > 1; en 1:1 el span no existe y sale silencioso.
 window.recEquivalente = function(id) {
   const input = document.getElementById('rec-' + id)
-  const span  = document.getElementById('equiv-' + id)
-  if (!input || !span) return
+  const valEl = document.getElementById('piezas-val-' + id)
+  if (!input || !valEl) return
   const factor = parseFloat(input.dataset.factor) || 1
   const uv     = input.dataset.uv || 'pza'
   const v      = parseFloat(input.value) || 0
   if (factor > 1 && v > 0) {
-    const piezas = parseFloat((v * factor).toFixed(3))
-    span.textContent = `→ ${v} × ${factor} = ${piezas} ${uv} al inventario`
+    valEl.textContent = parseFloat((v * factor).toFixed(3)) + ' ' + uv
+    valEl.style.color = '#60d080'
   } else {
-    span.textContent = ''
+    valEl.textContent = '—'
+    valEl.style.color = 'var(--muted)'
   }
 }
 

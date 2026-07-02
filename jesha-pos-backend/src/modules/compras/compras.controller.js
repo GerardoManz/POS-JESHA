@@ -133,17 +133,17 @@ const crear = async (req, res) => {
       const prod = prodMap.get(productoId)
       const pp   = ppMap.get(productoId)
 
-      // Precedencia: ProveedorProducto ?? Producto ?? 1 (guard >0)
-      const factorRaw =
-        (pp && pp.factorConversion != null) ? parseFloat(pp.factorConversion) :
-        (prod && prod.factorConversion != null) ? parseFloat(prod.factorConversion) : 1
-      const factorSnap = (Number.isFinite(factorRaw) && factorRaw > 0) ? factorRaw : 1
+      // Precedencia: frontend ?? ProveedorProducto ?? Producto ?? fallback
+      const factorSnap = parseFloat(d.factorConversion)
+        || (pp && parseFloat(pp.factorConversion))
+        || (prod && parseFloat(prod.factorConversion)) || 1
+      const factorSafe = (Number.isFinite(factorSnap) && factorSnap > 0) ? factorSnap : 1
 
-      const unidadCompraSnap = (
-        (pp && pp.unidadCompra) ? pp.unidadCompra :
-        (prod && prod.unidadCompra) ? prod.unidadCompra : ''
-      ).trim()
-      const unidadVentaSnap = ((prod && prod.unidadVenta) || '').trim()
+      const unidadCompraSnap = (d.unidadCompra
+        || (pp && pp.unidadCompra)
+        || (prod && prod.unidadCompra) || '').trim()
+      const unidadVentaSnap = (d.unidadVenta
+        || (prod && prod.unidadVenta) || '').trim()
 
       return {
         productoId,
@@ -153,7 +153,7 @@ const crear = async (req, res) => {
         subtotalPedido:   parseFloat((costo * cantidad).toFixed(2)),
         subtotalRecibido: 0,
         // Snapshots congelados al crear la OC (la recepción los lee, no el producto vivo)
-        factorConversionSnapshot: factorSnap,
+        factorConversionSnapshot: factorSafe,
         unidadCompraSnapshot:     unidadCompraSnap || null,
         unidadVentaSnapshot:      unidadVentaSnap || null,
         costoUnitarioVenta:       null                            // se calcula al recibir
