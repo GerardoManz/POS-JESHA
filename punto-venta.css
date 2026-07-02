@@ -9,7 +9,7 @@
 .punto-venta-content {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: 100dvh;
   min-height: 0;
 }
 
@@ -975,7 +975,7 @@
 @media (max-width: 900px) {
   .punto-venta-content {
     height: auto;
-    min-height: 100vh;
+    min-height: 100dvh;
   }
 
   .pos-container {
@@ -2153,6 +2153,22 @@
     padding-left: 9px;
     margin-left: 4px;
   }
+}
+
+/* Compactar espaciado en pantallas con poca altura */
+@media (max-height: 760px) {
+  .punto-venta-content { height: 100dvh; }
+  .pos-container { gap: 12px; }
+  .catalogo-section { gap: 10px; }
+  .pos-search { padding: 10px 14px; }
+  .productos-grid { gap: 8px; }
+  .productos-secundarios-grid { gap: 8px; }
+  .carrito-items-container { min-height: 80px; max-height: 30vh; }
+  .carrito-header { padding: 12px 14px; }
+  .carrito-actions { padding: 10px 14px; }
+  .producto-destacado { padding: 12px; }
+  .content-header { margin-bottom: 16px; }
+  .content-header h2 { font-size: 1.4rem; }
 }
 
 /* ── Modal overlay (patrón turno) ── */

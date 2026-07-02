@@ -29,6 +29,12 @@
   --logo-filter:     brightness(0) invert(1);
   --theme-icon:      #ffc107;
   --color-scheme:    dark;
+  --z-dropdown:      200;
+  --z-sticky:        400;
+  --z-modal-backdrop: 500;
+  --z-modal:         600;
+  --z-toast:         7000;
+  --z-banner:        10000;
 }
 
 :root[data-theme="light"] {
@@ -59,6 +65,12 @@
   --logo-filter:     none;
   --theme-icon:      #172033;
   --color-scheme:    light;
+  --z-dropdown:      200;
+  --z-sticky:        400;
+  --z-modal-backdrop: 500;
+  --z-modal:         600;
+  --z-toast:         7000;
+  --z-banner:        10000;
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -89,7 +101,7 @@ body {
   padding: 24px 14px;
   position: sticky;
   top: 0;
-  height: 100vh;
+  height: 100dvh;
   overflow: hidden;
 }
 
@@ -412,7 +424,7 @@ body {
 }
 
 /* ── DASHBOARD TABLAS ── */
-.panel-tabla { overflow:hidden; }
+.panel-tabla { overflow-x: auto; }
 .dash-table { width:100%; border-collapse:collapse; font-size:0.85rem; margin-top:4px; }
 .dash-table th { padding:8px 12px; text-align:left; border-bottom:1px solid var(--panel-border); font-weight:600; color:var(--muted); font-size:0.72rem; text-transform:uppercase; letter-spacing:0.04em; }
 .dash-table td { padding:10px 12px; border-bottom:1px solid var(--panel-border); color:var(--text); vertical-align:middle; }
@@ -639,4 +651,38 @@ input[type="date"].filter-date:focus {
 .tipo-tab:hover:not(.active) {
   border-color: rgba(255,255,255,0.2);
   color: var(--text);
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   GLOBAL: RESPONSIVE BASE
+   ════════════════════════════════════════════════════════════════════ */
+
+/* Modales respetan viewport horizontal */
+@media (max-width: 560px) {
+  .modal-content,
+  [class*="modal-content"] {
+    max-width: calc(100vw - 32px) !important;
+    margin: 0 auto;
+  }
+  .modal-content[style*="max-width"] {
+    max-width: calc(100vw - 32px) !important;
+  }
+  .modal { padding: 16px; }
+}
+
+/* Touch targets ≥44px para tablets/celulares */
+@media (pointer: coarse) {
+  .btn-icon,
+  .sidebar-toggle,
+  .theme-toggle,
+  .modal-close,
+  .cart-delete-btn,
+  .btn-eliminar,
+  button[class*="btn-"]:not(.btn-pag) {
+    min-width: 44px;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
 }

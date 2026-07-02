@@ -534,3 +534,21 @@ input.filter-select[type="date"] {
   opacity: 0.35;
   cursor: not-allowed;
 }
+
+/* ── RESPONSIVE ── */
+@media (max-width: 768px) {
+  .toolbar { flex-direction: column; align-items: stretch; }
+  .toolbar .search-group { width: 100%; }
+  .hist-kpis { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .toolbar select, .toolbar button { width: 100%; }
+  .ver-meta { grid-template-columns: repeat(2, 1fr); }
+  .table-wrapper { overflow-x: auto; }
+}
+
+@media (max-width: 480px) {
+  .hist-kpis { grid-template-columns: 1fr; }
+  .ver-meta { grid-template-columns: 1fr; }
+  .det-resumen-row { min-width: auto; }
+  .det-acciones-modal { flex-direction: column; }
+  .det-acciones-modal button { width: 100%; }
+}

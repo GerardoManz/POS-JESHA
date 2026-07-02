@@ -458,7 +458,19 @@
 
 /* ── RESPONSIVE ── */
 @media (max-width: 900px) {
-  .corte-grid {
-    grid-template-columns: 1fr;
-  }
+  .corte-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 768px) {
+  .toolbar { flex-direction: column; align-items: stretch; }
+  .toolbar .search-group { width: 100%; }
+  .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+  .desglose-section { flex-direction: column; }
+  .desglose-metodo { width: 100%; }
+}
+
+@media (max-width: 480px) {
+  .kpi-grid { grid-template-columns: 1fr; }
+  .modal-content { max-width: calc(100vw - 24px) !important; }
+  .pagination { flex-wrap: wrap; gap: 8px; }
 }

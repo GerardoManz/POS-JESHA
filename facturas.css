@@ -29,9 +29,9 @@
 .fact-stat-label { font-size: 0.72rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
 .fact-stat-valor { font-family: 'Barlow Condensed', sans-serif; font-size: 1.6rem; font-weight: 700; color: var(--accent); }
 .fact-stat-card.pendiente .fact-stat-valor { color: var(--orange); }
-.fact-stat-card.timbrada  .fact-stat-valor { color: #60d080; }
-.fact-stat-card.cancelada .fact-stat-valor { color: #ff6b6b; }
-.fact-stat-card.incierto  .fact-stat-valor { color: #fbbf24; }
+.fact-stat-card.timbrada  .fact-stat-valor { color: var(--success); }
+.fact-stat-card.cancelada .fact-stat-valor { color: var(--danger); }
+.fact-stat-card.incierto  .fact-stat-valor { color: var(--warning); }
 
 /* ── TABLA ── */
 .fact-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
@@ -45,11 +45,11 @@
 /* ── BADGES ── */
 .fact-badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase; white-space: nowrap; }
 .badge-pendiente { background: rgba(232,113,10,0.12); color: var(--orange, #e8710a); }
-.badge-timbrada  { background: rgba(96,208,128,0.12); color: #60d080; }
-.badge-cancelada { background: rgba(255,107,107,0.12); color: #ff6b6b; }
+.badge-timbrada  { background: rgba(96,208,128,0.12); color: var(--success); }
+.badge-cancelada { background: rgba(255,107,107,0.12); color: var(--danger); }
 .badge-bloqueada { background: rgba(122,133,153,0.12); color: var(--muted); }
 .badge-vencida   { background: rgba(122,133,153,0.12); color: var(--muted); }
-.badge-incierto  { background: rgba(217,119,6,0.15); color: #fbbf24; }
+.badge-incierto  { background: rgba(217,119,6,0.15); color: var(--warning); }
 
 /* ── BOTÓN TIMBRAR ── */
 .btn-timbrar { color: var(--orange, #e8710a) !important; }
@@ -74,8 +74,8 @@
 .cand-info-id { font-size: 0.72rem; color: var(--muted); font-family: monospace; word-break: break-all; }
 .cand-info-uuid { font-size: 0.68rem; color: var(--muted); word-break: break-all; }
 .cand-info-total { font-size: 0.82rem; font-weight: 700; color: var(--accent); }
-.cand-badge-exact { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.65rem; font-weight: 700; background: rgba(96,208,128,0.15); color: #60d080; white-space: nowrap; }
-.cand-badge-approx { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.65rem; font-weight: 700; background: rgba(217,119,6,0.12); color: #fbbf24; white-space: nowrap; }
+.cand-badge-exact { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.65rem; font-weight: 700; background: rgba(96,208,128,0.15); color: var(--success); white-space: nowrap; }
+.cand-badge-approx { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.65rem; font-weight: 700; background: rgba(217,119,6,0.12); color: var(--warning); white-space: nowrap; }
 
 /* ── BOTONES ADICIONALES ── */
 .btn-warning {

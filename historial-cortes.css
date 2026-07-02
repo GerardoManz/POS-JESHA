@@ -314,4 +314,13 @@
   .contable-kpis {
     grid-template-columns: repeat(2, 1fr);
   }
+
+  .toolbar { flex-direction: column; align-items: stretch; }
+  .toolbar .search-group { width: 100%; }
+}
+
+@media (max-width: 480px) {
+  .contable-kpis { grid-template-columns: 1fr; }
+  .pagination { flex-wrap: wrap; gap: 8px; }
+  .operativo-kpis { grid-template-columns: 1fr; }
 }

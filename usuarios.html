@@ -89,6 +89,17 @@
     .tab-btn { padding:10px 22px; background:transparent; border:none; border-bottom:2px solid transparent; margin-bottom:-2px; color:var(--muted); font-family:'Barlow Condensed',sans-serif; font-size:0.85rem; font-weight:600; text-transform:uppercase; letter-spacing:0.04em; cursor:pointer; transition:all 0.15s; }
     .tab-btn:hover { color:var(--text); }
     .tab-btn.active { color:var(--accent); border-bottom-color:var(--accent); }
+    @media (max-width: 768px) {
+      .page-header { flex-direction: column; gap: 12px; }
+      .toolbar { flex-direction: column; align-items: stretch; }
+      .search-wrap { min-width: 100%; }
+      .form-row { grid-template-columns: 1fr; }
+      .meta-info { grid-template-columns: 1fr; }
+      .modal { max-width: calc(100vw - 32px) !important; }
+    }
+    @media (max-width: 480px) {
+      .table-wrap { overflow-x: auto; }
+    }
   </style>
 </head>
 <body data-page="usuarios">
