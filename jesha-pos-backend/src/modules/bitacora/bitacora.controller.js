@@ -128,10 +128,26 @@ const listar = async (req, res) => {
     if (origen)    where.origen    = origen
     if (clienteId && clienteId !== 'null') where.clienteId = parseInt(clienteId)
     if (buscar) {
+      const termLimpio = buscar.trim()
+      const esNumerico = /^\d+$/.test(termLimpio)
+      let ids = []
+
+      if (!esNumerico) {
+        try {
+          const rawResult = await prisma.$queryRaw`
+            SELECT b.id FROM "Bitacora" b
+            WHERE to_tsvector('simple', b.titulo) @@ plainto_tsquery('simple', ${termLimpio})
+          `
+          ids = rawResult.map(r => r.id)
+        } catch { /* fallback a contains */ }
+      }
+
       where.OR = [
-        { folio:   { contains: buscar, mode: 'insensitive' } },
-        { titulo:  { contains: buscar, mode: 'insensitive' } },
-        { Cliente: { nombre: { contains: buscar, mode: 'insensitive' } } }
+        ...(ids.length > 0 ? [{ id: { in: ids } }] : [
+          { titulo: { contains: termLimpio, mode: 'insensitive' } }
+        ]),
+        { folio:   { contains: termLimpio, mode: 'insensitive' } },
+        { Cliente: { nombre: { contains: termLimpio, mode: 'insensitive' } } }
       ]
     }
 

@@ -77,7 +77,9 @@ async function listar(req, res) {
             page = 1,
             limit = 50,
             // Compatibilidad con skip/take directo (ej: POS u otros módulos)
-            skip, take
+            skip, take,
+            tipo,           // 'PRODUCTO' | 'SERVICIO' — filtra por tipo de producto
+            activo          // 'true' | 'false' | undefined → todos (mismo patrón que usuarios)
         } = req.query
 
         // Calcular skip/take desde page/limit O desde skip/take directo
@@ -113,7 +115,8 @@ async function listar(req, res) {
         }
 
         const whereScope = esScopeGlobal ? {} : { empresaId: empresaIdScope }
-        const where = { ...whereScope, activo: true }
+        const where = { ...whereScope }
+        if (activo !== undefined) where.activo = activo === 'true'
 
         // ── Filtro por proveedor ──
         if (proveedorId) {
@@ -137,21 +140,57 @@ async function listar(req, res) {
             const sinCeros = termLimpio.replace(/^0+/, '')
             const palabras = termLimpio.split(/\s+/).filter(Boolean)
 
-            if (palabras.length <= 1) {
+            if (!esCodigoNumerico) {
+                // Texto → full-text search PostgreSQL (word boundary, orden independiente)
+                // PVC ≠ CPVC, "tubo pvc 3/4" coincide con "3/4\" TUBO PVC"
+                try {
+                    const rawResult = await prisma.$queryRaw`
+                        SELECT p.id FROM "Producto" p
+                        WHERE p."empresaId" = ${empresaIdScope}
+                          AND (
+                            to_tsvector('simple', p.nombre) @@ plainto_tsquery('simple', ${termLimpio})
+                            OR p."codigoInterno" ILIKE ${'%' + termLimpio + '%'}
+                            OR p."codigoBarras" ILIKE ${'%' + termLimpio + '%'}
+                          )
+                    `
+                    const ids = rawResult.map(r => r.id)
+                    if (ids.length > 0) {
+                        where.id = { in: ids }
+                    } else {
+                        // Sin resultados → devolver vacío sin consultar
+                        return res.json({ success: true, data: [], paginacion: { total: 0, totalPaginas: 0, pagina: 1 } })
+                    }
+                } catch (rawErr) {
+                    console.error('⚠️ Full-text search fallback, usando contains:', rawErr.message)
+                    // Fallback al comportamiento anterior
+                    if (palabras.length <= 1) {
+                        where.OR = [
+                            { nombre:        { contains: termLimpio, mode: 'insensitive' } },
+                            { codigoInterno: { contains: termLimpio, mode: 'insensitive' } },
+                            { codigoBarras:  { contains: termLimpio, mode: 'insensitive' } }
+                        ]
+                    } else {
+                        where.AND = palabras.map(p => ({
+                            nombre: { contains: p, mode: 'insensitive' }
+                        }))
+                    }
+                }
+            } else {
+                // Numérico (escaneo de código) → lógica original
                 const condiciones = [
                     { nombre:        { contains: termLimpio, mode: 'insensitive' } },
                     { codigoInterno: { contains: termLimpio, mode: 'insensitive' } },
                     { codigoBarras:  { contains: termLimpio, mode: 'insensitive' } }
                 ]
 
-                if (esCodigoNumerico && sinCeros !== termLimpio && sinCeros.length > 0) {
+                if (sinCeros !== termLimpio && sinCeros.length > 0) {
                     condiciones.push(
                         { codigoInterno: { contains: sinCeros, mode: 'insensitive' } },
                         { codigoBarras:  { contains: sinCeros, mode: 'insensitive' } }
                     )
                 }
 
-                if (esCodigoNumerico && sinCeros.length > 0) {
+                if (sinCeros.length > 0) {
                     condiciones.push(
                         { codigoInterno: { endsWith: sinCeros, mode: 'insensitive' } },
                         { codigoBarras:  { endsWith: sinCeros, mode: 'insensitive' } }
@@ -159,10 +198,6 @@ async function listar(req, res) {
                 }
 
                 where.OR = condiciones
-            } else {
-                where.AND = palabras.map(palabra => ({
-                    nombre: { contains: palabra, mode: 'insensitive' }
-                }))
             }
         }
 
@@ -177,8 +212,14 @@ async function listar(req, res) {
         // 'bajo' se maneja post-query porque requiere comparar dos columnas
         // (stockActual <= stockMinimoAlerta) que Prisma no soporta en where
 
+        // ── Filtro por tipo de producto ──
+        if (tipo && ['PRODUCTO', 'SERVICIO'].includes(tipo)) {
+            where.tipo = tipo
+        }
+
         // ── Query de datos y conteo en paralelo ──
-        const whereGlobal = { ...whereScope, activo: true }
+        const whereGlobal = { ...whereScope }
+        if (activo !== undefined) whereGlobal.activo = activo === 'true'
         const takeConsulta = incluirFrecuenciaTickets && stockFiltro !== 'bajo'
             ? Math.max(skipNum + takeNum, 150)
             : (stockFiltro === 'bajo' ? 9999 : takeNum)
@@ -368,7 +409,7 @@ async function obtener(req, res) {
 
 async function crear(req, res) {
     try {
-        const {
+        let {
             nombre, codigoInterno, codigoBarras, descripcion,
             costo, precioBase, precioVenta, categoriaId,
             unidadCompra, unidadVenta, factorConversion,
@@ -390,8 +431,15 @@ async function crear(req, res) {
             })
         }
 
-        // Validar CLAVE SAT y UNIDAD SAT obligatorios
-        if (satInvalido(claveSat) || satInvalido(unidadSat)) {
+        // tipo: PRODUCTO (default) o SERVICIO. Servicio → sin inventario, SAT auto 78101800/E48
+        const tipoFinal = tipo || 'PRODUCTO'
+        if (!['PRODUCTO', 'SERVICIO'].includes(tipoFinal)) {
+            return res.status(400).json({ success: false, error: "tipo debe ser 'PRODUCTO' o 'SERVICIO'", campo: 'tipo' })
+        }
+        const esServicio = tipoFinal === 'SERVICIO'
+
+        // Validar CLAVE SAT y UNIDAD SAT obligatorios (solo para productos físicos)
+        if (!esServicio && (satInvalido(claveSat) || satInvalido(unidadSat))) {
             return res.status(400).json({
                 success: false,
                 error: 'CLAVE SAT y UNIDAD SAT son obligatorios',
@@ -399,15 +447,19 @@ async function crear(req, res) {
             })
         }
 
-        // tipo: PRODUCTO (default) o SERVICIO. Un servicio no lleva inventario
-        // ni factor, y exige clave SAT de 8 dígitos (no hay default de ferretería).
-        const tipoFinal = tipo || 'PRODUCTO'
-        if (!['PRODUCTO', 'SERVICIO'].includes(tipoFinal)) {
-            return res.status(400).json({ success: false, error: "tipo debe ser 'PRODUCTO' o 'SERVICIO'", campo: 'tipo' })
+        // Servicio sin SAT → auto-asignar default confiable
+        if (esServicio) {
+            claveSat = claveSat || '78101800'     // Servicios generales
+            unidadSat = unidadSat || 'E48'        // Unidad de servicio
         }
-        const esServicio = tipoFinal === 'SERVICIO'
+
         if (esServicio && !/^\d{8}$/.test(claveSat || '')) {
             return res.status(400).json({ success: false, error: 'Servicio requiere clave SAT de 8 dígitos', campo: 'claveSat' })
+        }
+
+        // Auto-generar código de barras para productos físicos sin uno
+        if (!esServicio && !codigoBarras) {
+            codigoBarras = `GEN-${codigoInterno.trim().replace(/\s+/g, '-')}`
         }
 
         const existente = await prisma.producto.findUnique({ where: { empresaId_codigoInterno: { empresaId, codigoInterno } } })
@@ -539,8 +591,13 @@ async function editar(req, res) {
         const esServ = existente.tipo === 'SERVICIO'
 
         // Preservar SAT si el PUT no reenvía el campo (un update parcial no debe borrarlo).
-        const claveSatFinal  = ('claveSat'  in req.body) ? (claveSat  || null) : existente.claveSat
-        const unidadSatFinal = ('unidadSat' in req.body) ? (unidadSat || null) : existente.unidadSat
+        let claveSatFinal  = ('claveSat'  in req.body) ? (claveSat  || null) : existente.claveSat
+        let unidadSatFinal = ('unidadSat' in req.body) ? (unidadSat || null) : existente.unidadSat
+        // Servicio sin SAT → auto-asignar default confiable (defensa)
+        if (esServ) {
+            claveSatFinal  = claveSatFinal  || '78101800'
+            unidadSatFinal = unidadSatFinal || 'E48'
+        }
         if (esServ && !/^\d{8}$/.test(claveSatFinal || '')) {
             return res.status(400).json({ success: false, error: 'Servicio requiere clave SAT de 8 dígitos', campo: 'claveSat' })
         }

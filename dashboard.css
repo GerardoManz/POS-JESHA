@@ -608,3 +608,35 @@ input[type="date"].filter-date:focus {
   .sidebar-collapsed .sidebar-toggle { align-self: flex-start; }
   .sidebar-collapsed .sidebar-toggle .chevron { transform: none; }
 }
+
+/* ════════════════════════════════════════════════════════════════════
+   TABS DE TIPO — réplica de cotizaciones.css para uso en productos
+   ════════════════════════════════════════════════════════════════════ */
+.tipo-tabs {
+  display: flex;
+  gap: 4px;
+}
+
+.tipo-tab {
+  padding: 6px 14px;
+  background: transparent;
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  color: var(--muted);
+  font-family: 'Barlow', sans-serif;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.tipo-tab.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.tipo-tab:hover:not(.active) {
+  border-color: rgba(255,255,255,0.2);
+  color: var(--text);
+}

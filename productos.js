@@ -49,7 +49,7 @@ let totalPaginas   = 1
 // Variables DOM
 let productosTbody, searchInput, filtroDepto, filtroCat
 let btnNuevoProducto, modal, modalTitle, btnCancelModal, btnCloseModal
-let filtroStock
+let filtroStock, filtroTipo, filtroActivo
 let formulario, inputImagen
 let imagenPreviewContainer, imagenPreview, btnCambiarPreview
 let btnLimpiarFiltros
@@ -76,6 +76,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   btnNuevoProducto = document.getElementById('btn-nuevo-producto')
   btnLimpiarFiltros = document.getElementById('btn-limpiar-filtros')
   filtroStock      = document.getElementById('filtro-stock')
+  filtroTipo       = document.getElementById('filtro-tipo')
+  filtroActivo     = document.getElementById('filtro-activo')
 
   // Capturar elementos DOM — MODAL
   modal              = document.getElementById('modal-producto')
@@ -199,6 +201,12 @@ async function cargarProductos() {
 
     const stockVal = filtroStock?.value
     if (stockVal) params.set('stock', stockVal)
+
+    const tipoVal = filtroTipo?.value
+    if (tipoVal) params.set('tipo', tipoVal)
+
+    const activoVal = filtroActivo?.value
+    if (activoVal) params.set('activo', activoVal)
 
     const resultado = await apiFetch(`/productos?${params}`)
     productosLista = resultado.data || resultado
@@ -417,6 +425,8 @@ function aplicarFiltros() {
 function limpiarFiltros() {
   if (filtroDepto)  filtroDepto.value  = ''
   if (filtroStock)  filtroStock.value  = ''
+  if (filtroTipo)   filtroTipo.value   = ''
+  if (filtroActivo) filtroActivo.value = ''
   if (filtroCat)    { filtroCat.value = ''; filtroCat.disabled = true }
   if (searchInput)  searchInput.value  = ''
   actualizarCategoriasFiltroToolbar()
@@ -706,13 +716,15 @@ window.editarProducto = async function(id) {
   productoActual = producto
   if (modalTitle) modalTitle.textContent = 'Editar Producto'
 
-  // Tipo: setear radio y mostrar/ocultar campos físicos
+  // Tipo: setear tab activo y mostrar/ocultar campos físicos
   const esServ = producto.tipo === 'SERVICIO'
-  const radioProd = document.getElementById('tipo-producto')
-  const radioServ = document.getElementById('tipo-servicio')
-  if (esServ) { if (radioServ) radioServ.checked = true }
-  else        { if (radioProd) radioProd.checked = true }
+  document.querySelectorAll('#tipo-producto-tabs .tipo-tab').forEach(t => {
+    t.classList.toggle('active', t.dataset.tipo === (esServ ? 'SERVICIO' : 'PRODUCTO'))
+  })
   aplicarTipoProducto(esServ)
+  // Al editar, el tipo es inmutable — ocultar tabs
+  const tabs = document.getElementById('tipo-producto-tabs')
+  if (tabs) tabs.style.display = 'none'
 
   document.getElementById('producto-nombre').value            = producto.nombre
   document.getElementById('producto-codigo').value            = producto.codigoInterno
@@ -839,7 +851,12 @@ function abrirModalNuevo() {
   aplicarTipoFactura('A')
 
   // Resetear tipo de producto a PRODUCTO
-  if (document.getElementById('tipo-producto')) document.getElementById('tipo-producto').checked = true
+  document.querySelectorAll('#tipo-producto-tabs .tipo-tab').forEach(t => {
+    t.classList.toggle('active', t.dataset.tipo === 'PRODUCTO')
+  })
+  // Mostrar tabs (se ocultan al editar)
+  const tabs = document.getElementById('tipo-producto-tabs')
+  if (tabs) tabs.style.display = ''
   aplicarTipoProducto(false)
 
   // Limpiar costoSinIva explícitamente (por si no está dentro del form)
@@ -865,6 +882,8 @@ function cerrarModal() {
   if (imagenPreviewContainer) imagenPreviewContainer.style.display = 'none'
   resetSugerenciaSat()
   productoActual = null
+  const tabs = document.getElementById('tipo-producto-tabs')
+  if (tabs) tabs.style.display = ''
 }
 
 async function guardarProducto(e) {
@@ -888,25 +907,27 @@ async function guardarProducto(e) {
 
   // ✅ FIX: Determinar tipo de factura según radio seleccionado
   const tipoFactura = radioFacturaB?.checked ? 'DESGLOSE' : 'NETO'
-  
+
+  const tipoProd = document.querySelector('#tipo-producto-tabs .tipo-tab.active')?.dataset.tipo || 'PRODUCTO'
+
   const datos = {
     nombre, codigoInterno: codigo,
-    codigoBarras:     document.getElementById('producto-codigoBarras').value.trim() || null,
+    codigoBarras:     tipoProd === 'SERVICIO' ? null : (document.getElementById('producto-codigoBarras').value.trim() || null),
     descripcion:      document.getElementById('producto-descripcion').value.trim() || null,
-    costo:            parseFloat(document.getElementById('producto-costo').value) || null,
-    costoSinIvaProveedor: parseFloat(document.getElementById('producto-costoSinIva')?.value) || null,
+    costo:            tipoProd === 'SERVICIO' ? null : (parseFloat(document.getElementById('producto-costo').value) || null),
+    costoSinIvaProveedor: tipoProd === 'SERVICIO' ? null : (parseFloat(document.getElementById('producto-costoSinIva')?.value) || null),
     tipoFacturaProv:  tipoFactura,
     precioBase:       precioBaseNum,
     precioVenta:      precioVenta ? parseFloat(precioVenta) : null,
     categoriaId:      parseInt(categoria),
-    proveedorId:      proveedorId ? parseInt(proveedorId) : null,
-    tipo:             document.getElementById('tipo-producto')?.checked ? 'PRODUCTO' : 'SERVICIO',
-    unidadCompra:     document.getElementById('producto-unidadCompra').value.trim() || null,
-    unidadVenta:      document.getElementById('producto-unidadVenta').value.trim() || null,
-    factorConversion: parseFloat(document.getElementById('producto-factorConversion').value) || null,
-    claveSat:         document.getElementById('producto-claveSat').value.trim() || null,
-    unidadSat:        document.getElementById('producto-unidadSat').value.trim() || null,
-    esGranel:         document.getElementById('producto-esGranel')?.checked || false,
+    proveedorId:      tipoProd === 'SERVICIO' ? null : (proveedorId ? parseInt(proveedorId) : null),
+    tipo:             tipoProd,
+    unidadCompra:     tipoProd === 'SERVICIO' ? null : (document.getElementById('producto-unidadCompra').value.trim() || null),
+    unidadVenta:      tipoProd === 'SERVICIO' ? null : (document.getElementById('producto-unidadVenta').value.trim() || null),
+    factorConversion: tipoProd === 'SERVICIO' ? null : (parseFloat(document.getElementById('producto-factorConversion').value) || null),
+    claveSat:         tipoProd === 'SERVICIO' ? null : (document.getElementById('producto-claveSat').value.trim() || null),
+    unidadSat:        tipoProd === 'SERVICIO' ? null : (document.getElementById('producto-unidadSat').value.trim() || null),
+    esGranel:         tipoProd === 'SERVICIO' ? false : (document.getElementById('producto-esGranel')?.checked || false),
   }
   
   console.log('📤 Enviando datos al backend:', datos)
@@ -1204,16 +1225,11 @@ function aplicarTipoFactura(tipo) {
   calcularMargen()
 }
 
-// Muestra/oculta campos de producto físico según tipo
+// Muestra/oculta campos exclusivos de producto físico (clase .campo-fisico)
 function aplicarTipoProducto(esServicio) {
-  const cf = document.getElementById('campos-fisicos')
-  if (cf) cf.style.display = esServicio ? 'none' : ''
-  // Botón Sugerir SAT solo para productos físicos
-  const btnSat = document.getElementById('btn-sugerir-sat')
-  if (btnSat) btnSat.style.display = esServicio ? 'none' : ''
-  // Ajustar label según tipo
-  const satSection = document.getElementById('sat-panel')
-  if (satSection && esServicio) satSection.style.display = 'none'
+  document.querySelectorAll('.campo-fisico').forEach(el => {
+    el.style.display = esServicio ? 'none' : ''
+  })
 }
 
 // Cuando el empleado escribe en "Precio sin IVA de proveedor" (Esc. B)
@@ -1576,6 +1592,8 @@ function configurarEventos() {
     searchInput.addEventListener('keypress', e => { if (e.key === 'Enter') { clearTimeout(debounce); aplicarFiltros() } })
   }
   if (filtroStock)       filtroStock.addEventListener('change', aplicarFiltros)
+  if (filtroTipo)        filtroTipo.addEventListener('change', aplicarFiltros)
+  if (filtroActivo)      filtroActivo.addEventListener('change', aplicarFiltros)
   if (btnLimpiarFiltros) btnLimpiarFiltros.addEventListener('click', limpiarFiltros)
 
   // ── Paginación ──
@@ -1622,14 +1640,14 @@ function configurarEventos() {
   if (radioFacturaA) radioFacturaA.addEventListener('change', () => aplicarTipoFactura('A'))
   if (radioFacturaB) radioFacturaB.addEventListener('change', () => aplicarTipoFactura('B'))
 
-  // Radio tipo de producto → mostrar/ocultar campos físicos
-  const tipoProd = document.getElementById('tipo-producto')
-  const tipoServ = document.getElementById('tipo-servicio')
-  function actualizarTipoProducto() {
-    aplicarTipoProducto(tipoServ?.checked === true)
-  }
-  if (tipoProd) tipoProd.addEventListener('change', actualizarTipoProducto)
-  if (tipoServ) tipoServ.addEventListener('change', actualizarTipoProducto)
+  // Tabs tipo de producto → mostrar/ocultar campos físicos
+  document.querySelectorAll('#tipo-producto-tabs .tipo-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('#tipo-producto-tabs .tipo-tab').forEach(t => t.classList.remove('active'))
+      tab.classList.add('active')
+      aplicarTipoProducto(tab.dataset.tipo === 'SERVICIO')
+    })
+  })
 
   // Campo sin IVA de proveedor (Esc. B) → calcula precio proveedor automático
   const inputCostoSinIva = document.getElementById('producto-costoSinIva')

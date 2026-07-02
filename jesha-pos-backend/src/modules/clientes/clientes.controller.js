@@ -54,12 +54,29 @@ const listar = async (req, res) => {
     if (tipo)              where.tipo   = tipo
     if (activo !== undefined) where.activo = activo === 'true'
     if (buscar) {
+      const termLimpio = buscar.trim()
+      const esNumerico = /^\d+$/.test(termLimpio)
+      let ids = []
+
+      if (!esNumerico) {
+        try {
+          const rawResult = await prisma.$queryRaw`
+            SELECT c.id FROM "Cliente" c
+            WHERE to_tsvector('simple', c.nombre) @@ plainto_tsquery('simple', ${termLimpio})
+               OR to_tsvector('simple', c.apodo) @@ plainto_tsquery('simple', ${termLimpio})
+          `
+          ids = rawResult.map(r => r.id)
+        } catch { /* fallback a contains */ }
+      }
+
       where.OR = [
-        { nombre:   { contains: buscar, mode: 'insensitive' } },
-        { apodo:    { contains: buscar, mode: 'insensitive' } },
-        { rfc:      { contains: buscar, mode: 'insensitive' } },
-        { telefono: { contains: buscar, mode: 'insensitive' } },
-        { email:    { contains: buscar, mode: 'insensitive' } }
+        ...(ids.length > 0 ? [{ id: { in: ids } }] : [
+          { nombre: { contains: termLimpio, mode: 'insensitive' } },
+          { apodo:  { contains: termLimpio, mode: 'insensitive' } }
+        ]),
+        { rfc:      { contains: termLimpio, mode: 'insensitive' } },
+        { telefono: { contains: termLimpio, mode: 'insensitive' } },
+        { email:    { contains: termLimpio, mode: 'insensitive' } }
       ]
     }
 

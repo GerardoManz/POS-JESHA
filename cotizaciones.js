@@ -236,6 +236,7 @@ window.verCotizacion = async function(id) {
     const data = await apiFetch(`/cotizaciones/${id}`)
     cotizacionActual = data.data
     const c = cotizacionActual
+    c.tipo = c.tipo || 'PRODUCTOS'   // normalizar cotizaciones antiguas sin tipo
 
     document.getElementById('ver-folio').textContent = c.folio
     const badgeEl = document.getElementById('ver-estado-badge')
