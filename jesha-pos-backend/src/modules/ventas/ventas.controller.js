@@ -296,11 +296,10 @@ exports.crearVenta = async (req, res) => {
         if (upd.count === 0) {
           await tx.inventarioSucursal.create({
             data: {
-              empresaId,
               productoId: detalle.productoId,
               sucursalId,
               stockActual: parseFloat((-detalle.cantidad).toFixed(3)),
-              stockMinimo: 0
+              stockMinimoAlerta: 0
             }
           })
         }
