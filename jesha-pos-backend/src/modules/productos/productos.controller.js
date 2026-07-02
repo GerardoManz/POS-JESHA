@@ -390,13 +390,7 @@ async function crear(req, res) {
             })
         }
 
-        const tipoFinal = tipo || 'PRODUCTO'
-        if (!['PRODUCTO', 'SERVICIO'].includes(tipoFinal)) {
-            return res.status(400).json({ success: false, error: 'tipo inválido. Use PRODUCTO o SERVICIO.' })
-        }
-        const esServicio = tipoFinal === 'SERVICIO'
-
-        // SAT obligatorio para ambos tipos, pero servicio exige 8 dígitos en clave
+        // Validar CLAVE SAT y UNIDAD SAT obligatorios
         if (satInvalido(claveSat) || satInvalido(unidadSat)) {
             return res.status(400).json({
                 success: false,
@@ -404,8 +398,16 @@ async function crear(req, res) {
                 campo: 'sat'
             })
         }
-        if (esServicio && !/^\d{8}$/.test((claveSat || '').trim())) {
-            return res.status(400).json({ success: false, error: 'Servicio requiere clave SAT de 8 dígitos' })
+
+        // tipo: PRODUCTO (default) o SERVICIO. Un servicio no lleva inventario
+        // ni factor, y exige clave SAT de 8 dígitos (no hay default de ferretería).
+        const tipoFinal = tipo || 'PRODUCTO'
+        if (!['PRODUCTO', 'SERVICIO'].includes(tipoFinal)) {
+            return res.status(400).json({ success: false, error: "tipo debe ser 'PRODUCTO' o 'SERVICIO'", campo: 'tipo' })
+        }
+        const esServicio = tipoFinal === 'SERVICIO'
+        if (esServicio && !/^\d{8}$/.test(claveSat || '')) {
+            return res.status(400).json({ success: false, error: 'Servicio requiere clave SAT de 8 dígitos', campo: 'claveSat' })
         }
 
         const existente = await prisma.producto.findUnique({ where: { empresaId_codigoInterno: { empresaId, codigoInterno } } })
@@ -413,32 +415,20 @@ async function crear(req, res) {
             return res.status(400).json({ success: false, error: 'El código interno ya existe' })
         }
 
-        // Factor de conversión: solo aplica a PRODUCTO
-        let costoUnitVta = null
-        let margenProd = null
-        if (!esServicio) {
-            const factorRaw    = factorConversion ? parseFloat(factorConversion) : 1
-            const safeFactor   = (Number.isFinite(factorRaw) && factorRaw > 0) ? factorRaw : 1
-            costoUnitVta       = costo ? parseFloat((parseFloat(costo) / safeFactor).toFixed(4)) : null
-            const precioVtaNum = precioVenta ? parseFloat(precioVenta) : null
-            margenProd         = (costoUnitVta && costoUnitVta > 0 && precioVtaNum && precioVtaNum > 0)
-                ? parseFloat(Math.min(((precioVtaNum / costoUnitVta - 1) * 100), 999.99).toFixed(2))
-                : null
-        } else {
-            // Servicio: el costo es directo (sin factor), el margen igual se calcula
-            costoUnitVta = costo ? parseFloat(costo) : null
-            const precioVtaNum = precioVenta ? parseFloat(precioVenta) : null
-            margenProd = (costoUnitVta && costoUnitVta > 0 && precioVtaNum && precioVtaNum > 0)
-                ? parseFloat(Math.min(((precioVtaNum / costoUnitVta - 1) * 100), 999.99).toFixed(2))
-                : null
-        }
+        // Factor de conversión: el form envía precio por caja; Producto.costo es por pieza
+        const factorRaw    = factorConversion ? parseFloat(factorConversion) : 1
+        const safeFactor   = esServicio ? 1 : ((Number.isFinite(factorRaw) && factorRaw > 0) ? factorRaw : 1)
+        const costoUnitVta = costo ? parseFloat((parseFloat(costo) / safeFactor).toFixed(4)) : null
+        const precioVtaNum = precioVenta ? parseFloat(precioVenta) : null
+        const margenProd   = (costoUnitVta && costoUnitVta > 0 && precioVtaNum && precioVtaNum > 0)
+            ? parseFloat(Math.min(((precioVtaNum / costoUnitVta - 1) * 100), 999.99).toFixed(2))
+            : null
 
         const producto = await prisma.producto.create({
             data: {
                 empresaId,
                 nombre,
                 codigoInterno,
-                tipo:                tipoFinal,
                 codigoBarras:        codigoBarras     || null,
                 descripcion:         descripcion      || null,
                 costo:               costoUnitVta,
@@ -455,6 +445,7 @@ async function crear(req, res) {
                 tipoFacturaProv:     tipoFacturaProv  || 'NETO',
                 costoSinIvaProveedor: costoSinIvaProveedor ? parseFloat(costoSinIvaProveedor) : null,
                 esGranel:            esServicio ? false : (esGranel === true || esGranel === 'true'),
+                tipo:                tipoFinal,
                 activo: true
             },
             include: {
@@ -541,39 +532,27 @@ async function editar(req, res) {
             return res.status(404).json({ success: false, error: 'Producto no encontrado' })
         }
 
-        // Bloquear cambio de tipo (se fija al crear)
+        // tipo es inmutable tras crear: cambiarlo dejaría inventario huérfano.
         if (tipo && tipo !== existente.tipo) {
-            return res.status(400).json({ success: false, error: 'El tipo no se puede cambiar después de crear el producto. Crea uno nuevo.' })
+            return res.status(400).json({ success: false, error: 'El tipo no se puede cambiar después de crear el producto. Crea uno nuevo.', campo: 'tipo' })
         }
-
         const esServ = existente.tipo === 'SERVICIO'
 
-        // Preservar claveSat/unidadSat si no vienen en el body (evita borrado silencioso)
+        // Preservar SAT si el PUT no reenvía el campo (un update parcial no debe borrarlo).
         const claveSatFinal  = ('claveSat'  in req.body) ? (claveSat  || null) : existente.claveSat
         const unidadSatFinal = ('unidadSat' in req.body) ? (unidadSat || null) : existente.unidadSat
-
-        if (esServ && !/^\d{8}$/.test((claveSatFinal || '').trim())) {
-            return res.status(400).json({ success: false, error: 'Servicio requiere clave SAT de 8 dígitos' })
+        if (esServ && !/^\d{8}$/.test(claveSatFinal || '')) {
+            return res.status(400).json({ success: false, error: 'Servicio requiere clave SAT de 8 dígitos', campo: 'claveSat' })
         }
 
-        // Factor de conversión: solo aplica a PRODUCTO
-        let costoUnitVta = null
-        let margenProd = null
-        if (!esServ) {
-            const factorRaw    = factorConversion ? parseFloat(factorConversion) : 1
-            const safeFactor   = (Number.isFinite(factorRaw) && factorRaw > 0) ? factorRaw : 1
-            costoUnitVta       = costo ? parseFloat((parseFloat(costo) / safeFactor).toFixed(4)) : null
-            const precioVtaNum = precioVenta ? parseFloat(precioVenta) : null
-            margenProd         = (costoUnitVta && costoUnitVta > 0 && precioVtaNum && precioVtaNum > 0)
-                ? parseFloat(Math.min(((precioVtaNum / costoUnitVta - 1) * 100), 999.99).toFixed(2))
-                : null
-        } else {
-            costoUnitVta = costo ? parseFloat(costo) : null
-            const precioVtaNum = precioVenta ? parseFloat(precioVenta) : null
-            margenProd = (costoUnitVta && costoUnitVta > 0 && precioVtaNum && precioVtaNum > 0)
-                ? parseFloat(Math.min(((precioVtaNum / costoUnitVta - 1) * 100), 999.99).toFixed(2))
-                : null
-        }
+        // Factor de conversión: el form envía precio por caja; Producto.costo es por pieza
+        const factorRaw    = factorConversion ? parseFloat(factorConversion) : 1
+        const safeFactor   = esServ ? 1 : ((Number.isFinite(factorRaw) && factorRaw > 0) ? factorRaw : 1)
+        const costoUnitVta = costo ? parseFloat((parseFloat(costo) / safeFactor).toFixed(4)) : null
+        const precioVtaNum = precioVenta ? parseFloat(precioVenta) : null
+        const margenProd   = (costoUnitVta && costoUnitVta > 0 && precioVtaNum && precioVtaNum > 0)
+            ? parseFloat(Math.min(((precioVtaNum / costoUnitVta - 1) * 100), 999.99).toFixed(2))
+            : null
 
         const producto = await prisma.producto.update({
             where: { id: parseInt(id) },

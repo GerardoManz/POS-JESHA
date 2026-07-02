@@ -67,16 +67,6 @@ function esRfcGenerico(rfc) {
   return rfc && rfc.trim().toUpperCase() === RFC_PUBLICO_GENERAL
 }
 
-/** Retorna el nombre del primer servicio en detalles sin clave SAT válida, o null. */
-function primerServicioInvalido(detalles) {
-  for (const d of detalles) {
-    if (d.Producto?.tipo === 'SERVICIO' && !/^\d{8}$/.test(d.Producto?.claveSat || '')) {
-      return d.Producto?.nombre || `producto ${d.productoId}`
-    }
-  }
-  return null
-}
-
 function validarRazonSocialSat(razonSocial) {
   const razon = String(razonSocial || '').trim().normalize('NFC')
   if (!razon) return 'Nombre o razón social requerida'
@@ -93,6 +83,19 @@ function obtenerFacturaActivaDeVenta(venta) {
   return [...directas, ...vinculadas].find(f => f.estado !== 'CANCELADA')
 }
 
+// Devuelve el nombre del primer detalle SERVICIO con clave SAT inválida (no 8
+// dígitos), o null si todos son facturables. Se llama ANTES de crear el lock
+// PENDIENTE (o antes de timbrar en manual) para rechazar con 400 sin dejar la
+// venta atorada en PENDIENTE_TIMBRADO. NO aplica a factura global (usa 01010101).
+function primerServicioInvalido(detalles) {
+  for (const d of detalles) {
+    if (d.Producto?.tipo === 'SERVICIO' && !/^\d{8}$/.test(d.Producto?.claveSat || '')) {
+      return d.Producto?.nombre || `producto ${d.productoId}`
+    }
+  }
+  return null
+}
+
 // ════════════════════════════════════════════════════════════════════
 //  Construir objeto de invoice para Facturapi (DRY)
 //  Usado tanto en solicitarFactura como en timbrarManual.
@@ -102,19 +105,19 @@ function buildInvoicePayload({ rfc, razonSocial, regimenFiscal, codigoPostal, us
   const rfcUpper = rfc.trim().toUpperCase()
 
   const items = detalles.map(d => {
-    // Defensa en profundidad: servicio sin clave válida → error (el pre-check debería atraparlo antes)
-    const esServ = d.Producto?.tipo === 'SERVICIO'
+    const esServicio  = d.Producto?.tipo === 'SERVICIO'
     const claveValida = d.Producto?.claveSat && /^\d{8}$/.test(d.Producto.claveSat)
-    if (esServ && !claveValida) {
-      throw new Error(`Servicio "${d.Producto?.nombre || '?'}" sin clave SAT de 8 dígitos. Corrige el producto antes de facturar.`)
+    // Defensa en profundidad: un servicio sin clave válida NO cae al default de
+    // ferretería. El pre-check en el call site evita llegar aquí con el lock puesto.
+    if (esServicio && !claveValida) {
+      throw new Error(`Servicio "${d.Producto?.nombre || '?'}" requiere clave SAT de 8 dígitos válida`)
     }
-    let productKey = claveValida ? d.Producto.claveSat : '31161500'
     return {
       quantity: parseFloat(d.cantidad),
       product: {
         description:  d.Producto?.nombre || 'Mercancía',
-        product_key:  productKey,
-        unit_key:     d.Producto?.unidadSat || (esServ ? 'E48' : 'H87'),
+        product_key:  claveValida ? d.Producto.claveSat : '31161500',
+        unit_key:     d.Producto?.unidadSat || (esServicio ? 'E48' : 'H87'),
         price:        parseFloat(d.precioUnitario),
         tax_included: true,
         taxes: [{ type: 'IVA', rate: TASA_IVA, factor: 'Tasa', withholding: false }]
@@ -445,7 +448,8 @@ exports.solicitarFactura = async (req, res) => {
       return res.status(409).json({ error: 'Esta venta tiene un proceso de factura en curso. Intenta más tarde.' })
     }
 
-    // Pre-check: servicio sin clave SAT válida no debe llegar al timbrado
+    // Pre-check ANTES del lock: un servicio sin clave válida se rechaza aquí (400),
+    // sin crear la FacturaCfdi PENDIENTE que dejaría la venta atorada en 409.
     const servMalo = primerServicioInvalido(venta.DetalleVenta)
     if (servMalo) {
       return res.status(400).json({ error: `Servicio "${servMalo}" sin clave SAT de 8 dígitos. Corrige el producto antes de facturar.` })
@@ -710,11 +714,12 @@ exports.timbrarManual = async (req, res) => {
         return res.status(409).json({ error: 'La venta asociada no existe.' })
       }
 
-      // Pre-check: servicio sin clave SAT válida → liberar lock y rechazar
+      // Pre-check de servicio: rechazar antes de llamar a Facturapi y liberar el
+      // lock, dejando la factura PENDIENTE para corrección (patrón de L676/L690).
       const servMalo = primerServicioInvalido(venta.DetalleVenta)
       if (servMalo) {
         await prisma.facturaCfdi.update({ where: { id, ...whereScope }, data: { procesandoTimbrado: false, procesandoTimbradoEn: null } }).catch(() => {})
-        return res.status(400).json({ error: `Servicio "${servMalo}" sin clave SAT de 8 dígitos. Corrige el producto antes de facturar.` })
+        return res.status(400).json({ error: `Servicio "${servMalo}" sin clave SAT de 8 dígitos. Corrige el producto antes de timbrar.` })
       }
 
       // ── Timbrar con idempotency_key ──
