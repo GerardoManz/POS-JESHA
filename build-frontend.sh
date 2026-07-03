@@ -8,6 +8,8 @@ cp ./*.html dist/
 cp ./*.css dist/
 cp ./*.js dist/
 
+cp ./favicon*.png ./favicon.ico ./apple-touch-icon.png dist/
+
 mkdir -p dist/Imagenes
 cp -R Imagenes/. dist/Imagenes/
 

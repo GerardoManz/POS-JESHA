@@ -1,3 +1,5 @@
 dist/
+dist-test/
 
 .wrangler/
+jesha-pos-backend/scripts/
