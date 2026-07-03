@@ -31,6 +31,7 @@ const path = require('path');
 const { normalizarTexto } = require('./sat.normalizador');
 const listas = require('./sat.listas');
 const dicc = require('./sat.diccionario');
+const conocimiento = require('./sat.conocimiento');
 
 // ---------------------------------------------------------------------------
 // Configuración calibrable (Fase 6/7)
@@ -58,11 +59,15 @@ const PESOS = {
   SIMILITUD_SAT: 15,
   CONSISTENCIA_UNIDAD: 10,
   BOOST_FRECUENCIA: 5,
+  REGLA_CONOCIMIENTO: 65,
+  BONO_CONOCIMIENTO_ALTA: 15,
+  BONO_FAMILIA_CERTIFICADA: 30,
 };
 
 const PENALIZACIONES = {
   CONFLICTO_FAMILIA: -25,
   AMBIGUEDAD_CRITICA: -20,
+  CONFLICTO_CONOCIMIENTO: -35,
 };
 
 // ---------------------------------------------------------------------------
@@ -319,10 +324,18 @@ function candidatosDeCatalogo(tokens, indice) {
 // ---------------------------------------------------------------------------
 
 function puntuarCandidato(clave, ctx) {
-  const { indice, importantes, familiasNuevo, existentesValidos, unidadResuelta, frecuencias, ambiguedad } = ctx;
+  const { indice, importantes, familiasNuevo, existentesValidos, unidadResuelta, frecuencias, ambiguedad, reglasConocimiento } = ctx;
   const entrada = indice.claves[clave];
   const razones = [];
   let score = 0;
+
+  // 0. Conocimiento de mercado: productos iconicos o patrones muy concretos.
+  const reglaConocimiento = reglasConocimiento.find((r) => r.claveSat === clave);
+  if (reglaConocimiento) {
+    score += PESOS.REGLA_CONOCIMIENTO;
+    razones.push(reglaConocimiento.razon);
+    if (reglaConocimiento.confianza >= 95) score += PESOS.BONO_CONOCIMIENTO_ALTA;
+  }
 
   // 1. Regla ferretera (dominante). Una clave que llega por regla
   //    ferretera directa es señal fuerte por sí sola: recibe el peso
@@ -339,6 +352,10 @@ function puntuarCandidato(clave, ctx) {
         Math.round((familiaConClave.puntaje - dicc.UMBRAL_FAMILIA) * 2.5) + PESOS.BONO_CLAVE_ESPECIFICA
       );
       score += bono;
+    }
+    if (familiaConClave.certificada === true) {
+      score += PESOS.BONO_FAMILIA_CERTIFICADA;
+      razones.push('Familia certificada por catálogo SAT vigente');
     }
   }
 
@@ -420,12 +437,18 @@ function puntuarCandidato(clave, ctx) {
   if (ambiguedad.ambiguo) {
     score += PENALIZACIONES.AMBIGUEDAD_CRITICA;
   }
+  if (reglasConocimiento.length > 0 && !reglaConocimiento) {
+    score += PENALIZACIONES.CONFLICTO_CONOCIMIENTO;
+    razones.push('Conflicto con regla directa de conocimiento');
+  }
 
   // Corroboración para AUTO: una regla ferretera sola NO basta. Se exige
   // una segunda señal independiente (existente válido, cobertura SAT
   // alta, o regla previamente certificada por evaluación humana).
   const certificada = UMBRALES.REGLAS_CERTIFICADAS.has(clave);
-  const corroborado = corroboraExistente || corroboraSat || certificada;
+  const conocimientoAlto = reglaConocimiento && reglaConocimiento.confianza >= 95;
+  const familiaCertificada = familiaConClave && familiaConClave.certificada === true;
+  const corroborado = corroboraExistente || corroboraSat || certificada || conocimientoAlto || familiaCertificada;
 
   return {
     claveSat: clave,
@@ -468,6 +491,7 @@ function sugerirSat(entrada, opciones = {}) {
   );
 
   const norm = normalizarTexto(`${nombre} ${entrada.descripcion || ''}`);
+  const reglasConocimiento = conocimiento.detectarConocimiento(`${nombre} ${entrada.descripcion || ''}`);
   const importantes = tokensImportantes(norm.tokens);
   const familiasNuevo = dicc.detectarFamilias(norm.tokens);
   const ambiguedad = dicc.esAmbiguo(norm.tokens);
@@ -482,12 +506,13 @@ function sugerirSat(entrada, opciones = {}) {
 
   // Universo de candidatos (filtro duro: hard blocklist y existencia)
   const universo = new Set();
+  for (const r of reglasConocimiento) universo.add(r.claveSat);
   for (const f of familiasNuevo) for (const c of f.claves) universo.add(c);
   for (const ex of existentesValidos) universo.add(ex.clave);
   for (const c of candidatosDeCatalogo(importantes, indice)) universo.add(c);
 
   const diagnostico = opciones.diagnostico === true;
-  const ctx = { indice, importantes, familiasNuevo, existentesValidos, unidadResuelta, frecuencias: opciones.frecuencias, ambiguedad };
+  const ctx = { indice, importantes, familiasNuevo, existentesValidos, unidadResuelta, frecuencias: opciones.frecuencias, ambiguedad, reglasConocimiento };
   const puntuados = [];
   for (const clave of universo) {
     if (listas.esHardBlock(clave) || !claveExiste(clave, indice)) continue;
@@ -504,6 +529,7 @@ function sugerirSat(entrada, opciones = {}) {
   const razonesGlobales = [];
   if (ambiguedad.ambiguo) razonesGlobales.push(`Término ambiguo: "${ambiguedad.termino}"`);
   if (unidadResuelta === null) razonesGlobales.push(razonUnidad);
+  for (const r of reglasConocimiento) razonesGlobales.push(`Conocimiento: ${r.id}`);
   for (const f of familiasNuevo) razonesGlobales.push(`Familia detectada: ${f.id}`);
 
   const topDiagnostico = () => puntuados.slice(0, 3).map((c) => ({

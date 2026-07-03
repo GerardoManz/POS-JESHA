@@ -13,12 +13,16 @@
  * nunca unidad de venta.
  */
 
-const STOPWORDS = new Set([
+const { STOPWORDS_EXTRA } = require('./sat.stopwords');
+
+const STOPWORDS_BASE = new Set([
   'de', 'del', 'la', 'el', 'los', 'las', 'un', 'una', 'unos', 'unas',
   'y', 'o', 'u', 'a', 'en', 'con', 'sin', 'para', 'por', 'sobre',
   'su', 'sus', 'que', 'se', 'al', 'lo', 'le', 'es', 'tipo', 'uso',
   'marca', 'modelo', 'color', 'varios', 'varias', 'otros', 'otras',
 ]);
+
+const STOPWORDS = new Set([...STOPWORDS_BASE, ...STOPWORDS_EXTRA]);
 
 // Abreviaturas a nivel token. El valor puede expandir a varios tokens.
 const ABREVIATURAS = {
@@ -43,9 +47,34 @@ const ABREVIATURAS = {
   ced: ['cedula'],
   galv: ['galvanizado'],
   galvanizada: ['galvanizado'],
+  galvanizadas: ['galvanizado'],
+  galvanizados: ['galvanizado'],
   inox: ['inoxidable'],
+  ino: ['inoxidable'],
   hex: ['hexagonal'],
   exag: ['hexagonal'],
+  hexag: ['hexagonal'],
+  cab: ['cabeza'],
+  cza: ['cabeza'],
+  pijas: ['pija'],
+  tornillos: ['tornillo'],
+  tuercas: ['tuerca'],
+  taquetes: ['taquete'],
+  brocas: ['broca'],
+  rodillos: ['rodillo'],
+  brochas: ['brocha'],
+  guantes: ['guante'],
+  candados: ['candado'],
+  cerraduras: ['cerradura'],
+  desarmadores: ['desarmador'],
+  destornilladores: ['destornillador'],
+  lamparas: ['lampara'],
+  valvulas: ['valvula'],
+  mangueras: ['manguera'],
+  conexiones: ['conexion'],
+  coples: ['cople'],
+  codos: ['codo'],
+  tubos: ['tubo'],
   fco: ['fosco'],
   transp: ['transparente'],
   bco: ['blanco'],
@@ -100,8 +129,9 @@ function normalizarTexto(texto) {
     });
   }
 
-  // Lo que queda de símbolos de medida ya no aporta.
-  t = t.replace(/["'.\-x/]+/g, ' ');
+  // Lo que queda de símbolos de medida ya no aporta. No borrar la letra "x"
+  // dentro de palabras: coflex, hermex, flexible, hexagonal, etc.
+  t = t.replace(/["'.\-/]+/g, ' ');
 
   // Tokenizar, expandir abreviaturas, filtrar stopwords y tokens basura.
   const tokens = [];
@@ -127,5 +157,6 @@ module.exports = {
   normalizarTexto,
   quitarAcentos,
   STOPWORDS,
+  STOPWORDS_BASE,
   ABREVIATURAS,
 };
