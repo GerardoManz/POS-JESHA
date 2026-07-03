@@ -147,8 +147,11 @@ async function listar(req, res) {
             const palabras = termLimpio.split(/\s+/).filter(Boolean)
 
             if (!esCodigoNumerico) {
-                // Texto → full-text search PostgreSQL (word boundary, orden independiente)
-                // PVC ≠ CPVC, "tubo pvc 3/4" coincide con "3/4\" TUBO PVC"
+                // Híbrido: full-text PostgreSQL (precisión: PVC ≠ CPVC) +
+                // ILIKE por palabra individual (cobertura: "concreto" en "p/concreto")
+                let ids = []
+
+                // 1) Full-text search PostgreSQL — word boundary, orden independiente
                 try {
                     const rawResult = await prisma.$queryRaw`
                         SELECT p.id FROM "Producto" p
@@ -159,27 +162,37 @@ async function listar(req, res) {
                             OR p."codigoBarras" ILIKE ${'%' + termLimpio + '%'}
                           )
                     `
-                    const ids = rawResult.map(r => r.id)
-                    if (ids.length > 0) {
-                        where.id = { in: ids }
-                    } else {
-                        // Sin resultados → devolver vacío sin consultar
-                        return res.json({ success: true, data: [], paginacion: { total: 0, totalPaginas: 0, pagina: 1 } })
-                    }
+                    ids = rawResult.map(r => Number(r.id))
                 } catch (rawErr) {
-                    console.error('⚠️ Full-text search fallback, usando contains:', rawErr.message)
-                    // Fallback al comportamiento anterior
-                    if (palabras.length <= 1) {
-                        where.OR = [
-                            { nombre:        { contains: termLimpio, mode: 'insensitive' } },
-                            { codigoInterno: { contains: termLimpio, mode: 'insensitive' } },
-                            { codigoBarras:  { contains: termLimpio, mode: 'insensitive' } }
-                        ]
-                    } else {
-                        where.AND = palabras.map(p => ({
-                            nombre: { contains: p, mode: 'insensitive' }
+                    console.error('⚠️ Full-text search error:', rawErr.message)
+                }
+
+                // 2) ILIKE por palabra — para que "clavo concreto" encuentre "clavo p/concreto"
+                try {
+                    const ilikeWhere = {
+                        ...(esScopeGlobal ? {} : { empresaId: empresaIdScope }),
+                        AND: palabras.map(p => ({
+                            OR: [
+                                { nombre:        { contains: p, mode: 'insensitive' } },
+                                { codigoInterno: { contains: p, mode: 'insensitive' } },
+                                { codigoBarras:  { contains: p, mode: 'insensitive' } }
+                            ]
                         }))
                     }
+                    const ilikeResults = await prisma.producto.findMany({
+                        where: ilikeWhere,
+                        select: { id: true }
+                    })
+                    const ilikeIds = ilikeResults.map(r => r.id)
+                    ids = [...new Set([...ids, ...ilikeIds])]
+                } catch (ilikeErr) {
+                    console.error('⚠️ ILIKE search error:', ilikeErr.message)
+                }
+
+                if (ids.length > 0) {
+                    where.id = { in: ids }
+                } else {
+                    return res.json({ success: true, data: [], paginacion: { total: 0, totalPaginas: 0, pagina: 1 } })
                 }
             } else {
                 // Numérico (escaneo de código) → lógica original
@@ -232,10 +245,11 @@ async function listar(req, res) {
         } else {
             whereGlobal.activo = true
         }
-        const takeConsulta = incluirFrecuenciaTickets && stockFiltro !== 'bajo'
+        const requiereRanking = incluirFrecuenciaTickets || !!terminoBusqueda
+        const takeConsulta = requiereRanking && stockFiltro !== 'bajo'
             ? Math.max(skipNum + takeNum, 150)
             : (stockFiltro === 'bajo' ? 9999 : takeNum)
-        const skipConsulta = incluirFrecuenciaTickets ? 0 : skipNum
+        const skipConsulta = requiereRanking ? 0 : skipNum
 
         const queries = [
             prisma.producto.findMany({
@@ -281,8 +295,8 @@ async function listar(req, res) {
                 return sa > 0 && sa <= sm
             })
             total = productos.length
-            // Aplicar paginación manual sobre el resultado filtrado, salvo ranking POS.
-            if (!incluirFrecuenciaTickets) productos = productos.slice(skipNum, skipNum + takeNum)
+            // Aplicar paginación manual sobre el resultado filtrado, salvo ranking.
+            if (!requiereRanking) productos = productos.slice(skipNum, skipNum + takeNum)
         }
 
         const frecuenciaTickets = new Map()
@@ -311,8 +325,9 @@ async function listar(req, res) {
             }
         }
 
-        if (incluirFrecuenciaTickets) {
+        if (requiereRanking) {
             const normalizar = valor => String(valor || '').toLowerCase()
+            const escaparRegex = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
             const scoreProducto = prod => {
                 const nombre = normalizar(prod.nombre)
                 const codigoInterno = normalizar(prod.codigoInterno)
@@ -326,6 +341,9 @@ async function listar(req, res) {
                     if (codigoInterno.includes(terminoRanking) || codigoBarras.includes(terminoRanking)) score += 500000
                     if (nombre.startsWith(terminoRanking)) score += 200000
                     if (nombre.includes(terminoRanking)) score += 100000
+                    // Palabra exacta (ej: "PVC" en "TUBO PVC 3/4" ≠ "CPVC")
+                    const re = new RegExp('\\b' + escaparRegex(terminoRanking) + '\\b', 'i')
+                    if (re.test(prod.nombre)) score += 50000
                 }
                 if (stockActual > 0) score += 10000
                 score += frecuencia * 100
