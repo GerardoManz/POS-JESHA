@@ -79,7 +79,7 @@ async function listar(req, res) {
             // Compatibilidad con skip/take directo (ej: POS u otros módulos)
             skip, take,
             tipo,           // 'PRODUCTO' | 'SERVICIO' — filtra por tipo de producto
-            activo          // 'true' | 'false' | undefined → todos (mismo patrón que usuarios)
+            activo          // 'true' | 'false' | 'all' — default: 'true' (solo activos)
         } = req.query
 
         // Calcular skip/take desde page/limit O desde skip/take directo
@@ -116,7 +116,13 @@ async function listar(req, res) {
 
         const whereScope = esScopeGlobal ? {} : { empresaId: empresaIdScope }
         const where = { ...whereScope }
-        if (activo !== undefined) where.activo = activo === 'true'
+        if (activo === 'all') {
+            // no filtra — retorna todos
+        } else if (activo !== undefined) {
+            where.activo = activo === 'true'
+        } else {
+            where.activo = true  // default: solo activos
+        }
 
         // ── Filtro por proveedor ──
         if (proveedorId) {
@@ -219,7 +225,13 @@ async function listar(req, res) {
 
         // ── Query de datos y conteo en paralelo ──
         const whereGlobal = { ...whereScope }
-        if (activo !== undefined) whereGlobal.activo = activo === 'true'
+        if (activo === 'all') {
+            // no filtra
+        } else if (activo !== undefined) {
+            whereGlobal.activo = activo === 'true'
+        } else {
+            whereGlobal.activo = true
+        }
         const takeConsulta = incluirFrecuenciaTickets && stockFiltro !== 'bajo'
             ? Math.max(skipNum + takeNum, 150)
             : (stockFiltro === 'bajo' ? 9999 : takeNum)
@@ -386,7 +398,7 @@ async function obtener(req, res) {
             }
         })
 
-        if (!producto) {
+        if (!producto || !producto.activo) {
             return res.status(404).json({ success: false, error: 'Producto no encontrado' })
         }
 
