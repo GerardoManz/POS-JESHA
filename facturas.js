@@ -19,6 +19,7 @@ let paginaActual = 1
 const LIMIT      = 20
 let debounce
 let clientesCache = []
+let facturaEmpresaId = null
 const ACENTOS_RAZON_SOCIAL = /[ÁÉÍÓÚÜáéíóúü]/
 
 function validarRazonSocialSat(razonSocial) {
@@ -149,6 +150,7 @@ window.verDetalle = async function(id) {
     const data = await res.json()
     if (!res.ok) throw new Error(data.error)
     const f = data.data
+    facturaEmpresaId = f.empresaId || null
 
     // Poblar campos fiscales (ahora inputs/selects)
     llenarCatalogosDetalle()
@@ -421,7 +423,12 @@ window.verCandidatos = async function(facturaId) {
   btnClose.onclick = () => { panel.style.display = 'none' }
 
   try {
-    const res  = await fetch(`${API_URL}/facturas/${facturaId}/timbrado-candidatos`, {
+    const empresaId = USUARIO.empresaId || facturaEmpresaId
+    const params = new URLSearchParams()
+    if (empresaId) params.set('empresaId', empresaId)
+    const qs = params.toString()
+    const url = `${API_URL}/facturas/${facturaId}/timbrado-candidatos${qs ? '?' + qs : ''}`
+    const res  = await fetch(url, {
       headers: { 'Authorization': `Bearer ${TOKEN}` }
     })
     const data = await res.json()
@@ -491,10 +498,13 @@ window.verCandidatos = async function(facturaId) {
 // ════════════════════════════════════════════════════════════════════
 window.reconciliarTimbrado = async function(facturaId, facturapiId) {
   try {
+    const empresaId = USUARIO.empresaId || facturaEmpresaId
+    const body = { facturapiId }
+    if (empresaId) body.empresaId = empresaId
     const res  = await fetch(`${API_URL}/facturas/${facturaId}/reconciliar-timbrado`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
-      body:    JSON.stringify({ facturapiId })
+      body:    JSON.stringify(body)
     })
     const data = await res.json()
 
@@ -533,10 +543,13 @@ window.descartarTimbradoIncierto = async function(facturaId) {
     return
   }
   try {
+    const empresaId = USUARIO.empresaId || facturaEmpresaId
+    const body = { confirmacionManual: texto }
+    if (empresaId) body.empresaId = empresaId
     const res  = await fetch(`${API_URL}/facturas/${facturaId}/descartar-timbrado-incierto`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
-      body:    JSON.stringify({ confirmacionManual: texto })
+      body:    JSON.stringify(body)
     })
     const data = await res.json()
     if (res.status === 409) {
