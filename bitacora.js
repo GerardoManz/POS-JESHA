@@ -685,12 +685,23 @@ function filaProductoGuardadoHTML(d, editable) {
   </tr>`
 }
 
-// ── Imprimir ticket de un retiro específico ──
-function imprimirTicketRetiro(retiroId) {
-  const base = (typeof API_URL !== 'undefined' ? API_URL : window.__JESHA_API_URL__ || '').replace(/\/$/, '')
-  const url = `${base}/bitacoras/${bitacoraActual.id}/retiros/${retiroId}/ticket`
-  const TOKEN = localStorage.getItem('jesha_token')
-  window.open(`${url}?token=${TOKEN}`, '_blank', 'width=380,height=700')
+// ── Encolar ticket de retiro al agente ──
+async function imprimirTicketRetiro(retiroId) {
+  try {
+    const r = await fetch(`${API_URL}/impresion/job`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
+      body: JSON.stringify({ tipo: 'RETIRO', retiroId })
+    })
+    if (r.ok) {
+      jeshaToast('✅ Vale de retiro enviado a impresora', 'success')
+    } else {
+      const d = await r.json().catch(() => ({}))
+      jeshaToast(d.error || 'Error al imprimir', 'warning')
+    }
+  } catch (e) {
+    jeshaToast('❌ Error de conexión', 'error')
+  }
 }
 
 // ── Borrador local: filas, edición, quitar, barra y guardado por lote ──
@@ -1246,10 +1257,22 @@ async function registrarAbono() {
   }
 }
 
-function abrirTicketAbono(abonoId) {
-  const base = (typeof API_URL !== 'undefined' ? API_URL : window.__JESHA_API_URL__ || '').replace(/\/$/, '')
-  const url = `${base}/abonos/ticket?abonoId=${abonoId}`
-  window.open(url, '_blank', 'width=380,height=700')
+async function abrirTicketAbono(abonoId) {
+  try {
+    const r = await fetch(`${API_URL}/impresion/job`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
+      body: JSON.stringify({ tipo: 'ABONO', abonoId })
+    })
+    if (r.ok) {
+      jeshaToast('✅ Comprobante enviado a impresora', 'success')
+    } else {
+      const d = await r.json().catch(() => ({}))
+      jeshaToast(d.error || 'Error al imprimir', 'warning')
+    }
+  } catch (e) {
+    jeshaToast('❌ Error de conexión', 'error')
+  }
 }
 
 // ── Modal estilizado para preguntar si imprimir ──

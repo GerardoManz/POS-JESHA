@@ -657,14 +657,22 @@ function limpiarFiltros() {
 // ════════════════════════════════════════════════════════════════════
 //  IMPRIMIR TICKET
 // ════════════════════════════════════════════════════════════════════
-window.imprimirTicket = function(id) {
-  const url = `${API_URL}/ventas/${id}/ticket`
-  const win = window.open('', '_blank', 'width=420,height=700,scrollbars=yes')
-  win.document.write('<html><body style="font-family:sans-serif;text-align:center;padding:20px"><p>Cargando ticket...</p></body></html>')
-  fetch(url, { headers: { 'Authorization': `Bearer ${TOKEN}` } })
-    .then(r => r.text())
-    .then(html => { win.document.open(); win.document.write(html); win.document.close() })
-    .catch(err => { win.document.write(`<p style="color:red">Error: ${err.message}</p>`) })
+window.imprimirTicket = async function(id) {
+  try {
+    const r = await fetch(`${API_URL}/impresion/job`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
+      body: JSON.stringify({ tipo: 'VENTA', ventaId: id })
+    })
+    if (r.ok) {
+      jeshaToast('✅ Ticket enviado a impresora', 'success')
+    } else {
+      const d = await r.json().catch(() => ({}))
+      jeshaToast(d.error || 'Error al imprimir', 'warning')
+    }
+  } catch (e) {
+    jeshaToast('❌ Error de conexión', 'error')
+  }
 }
 
 // ════════════════════════════════════════════════════════════════════

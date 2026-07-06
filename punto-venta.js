@@ -2089,20 +2089,31 @@ function mostrarModalExito(ventaData, totalFinal) {
 
   overlay.style.display = 'flex'
 
-// Botón imprimir ticket — abre ventana con HTML del ticket
+// Botón imprimir ticket — encola reimpresión al agente
   const btnImprimir = document.getElementById('btn-imprimir-ticket-exito')
   if (btnImprimir) {
-    btnImprimir.onclick = () => {
+    btnImprimir.onclick = async () => {
       const ventaId = ventaData.id
       if (!ventaId) { mostrarToast('ID de venta no disponible', 'warning'); return }
-      const url = `${API_URL}/ventas/${ventaId}/ticket`
-      const win = window.open('', '_blank', 'width=380,height=700,scrollbars=yes')
-      if (!win) { mostrarToast('Permite las ventanas emergentes para imprimir el ticket', 'warning'); return }
-      win.document.write('<html><body style="font-family:sans-serif;text-align:center;padding:20px;background:#fff"><p>Cargando ticket...</p></body></html>')
-      fetch(url, { headers: { 'Authorization': `Bearer ${TOKEN}` } })
-        .then(r => { if (!r.ok) throw new Error('Error al cargar ticket'); return r.text() })
-        .then(html => { win.document.open(); win.document.write(html); win.document.close() })
-        .catch(err => { win.document.write(`<p style="color:red">Error: ${err.message}</p>`) })
+      btnImprimir.disabled = true
+      const origText = btnImprimir.textContent
+      btnImprimir.textContent = '⏳ Enviando...'
+      try {
+        const r = await fetch(`${API_URL}/impresion/job`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
+          body: JSON.stringify({ tipo: 'VENTA', ventaId })
+        })
+        if (r.ok) {
+          btnImprimir.textContent = '✅ Enviado a impresora'
+        } else {
+          const d = await r.json().catch(() => ({}))
+          btnImprimir.textContent = '❌ ' + (d.error || 'Error')
+        }
+      } catch (e) {
+        btnImprimir.textContent = '❌ Sin conexión'
+      }
+      setTimeout(() => { btnImprimir.textContent = origText; btnImprimir.disabled = false }, 3000)
     }
   }
 

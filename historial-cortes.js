@@ -192,9 +192,23 @@ window.abrirTicket = function(turnoId) {
   document.body.style.overflow = 'hidden'
 }
 
-window.descargarPDF = function() {
+window.descargarPDF = async function() {
   if (!_ultimoTurnoId) return
-  window.open(`${API_URL}/turnos-caja/${_ultimoTurnoId}/ticket?token=${TOKEN}`, '_blank')
+  try {
+    const r = await fetch(`${API_URL}/impresion/job`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
+      body: JSON.stringify({ tipo: 'CORTE', turnoId: _ultimoTurnoId })
+    })
+    if (r.ok) {
+      jeshaToast('✅ Corte enviado a impresora', 'success')
+    } else {
+      const d = await r.json().catch(() => ({}))
+      jeshaToast(d.error || 'Error al imprimir', 'warning')
+    }
+  } catch (e) {
+    jeshaToast('❌ Error de conexión', 'error')
+  }
 }
 
 function cerrarTicket() {
