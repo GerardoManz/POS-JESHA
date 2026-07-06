@@ -1,5 +1,5 @@
 {
-  "apiUrl": "http://localhost:3000",
+  "apiUrl": "https://jesha-pos-api.onrender.com",
   "printer": {
     "interface": "printer:POS58 Printer",
     "width": 32,
@@ -10,5 +10,8 @@
     "openCashDrawerEnabled": true
   },
   "pollIntervalMs": 2000,
-  "networkTimeoutMs": 8000
+  "networkTimeoutMs": 8000,
+  "skipOldJobs": true,
+  "oldJobThresholdMinutes": 120,
+  "resetOnStart": false
 }

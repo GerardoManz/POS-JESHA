@@ -38,6 +38,22 @@ function makePrinter(printerCfg = {}) {
   })
 }
 
+// Verifica si la impresora está en línea (no desconectada ni en offline manual).
+// Usa WorkOffline (offline manual) y PrinterStatus (7=Offline).
+// Status 0 (Unknown) es común en POS58 USB incluso cuando funciona.
+function checkPrinterOnline(printerName) {
+  try {
+    const out = execFileSync('powershell', [
+      '-NoProfile', '-Command',
+      `$p = Get-CimInstance -ClassName Win32_Printer -Filter "Name='${printerName}'"; if (!$p) { 'NOT_FOUND'; return }; if ($p.WorkOffline -or $p.PrinterStatus -eq 7) { 'OFFLINE' } else { 'ONLINE' }`
+    ], { stdio: 'pipe', timeout: 5000, encoding: 'utf8' })
+    const status = (out || '').trim()
+    return status === 'ONLINE'
+  } catch (_) {
+    return true // ante la duda, asumir online para no bloquear ventas
+  }
+}
+
 // Envía un buffer ESC/POS a la impresora Windows escribiendo a la ruta compartida
 function printRaw(buffer, printerName) {
   const paths = [
@@ -320,7 +336,7 @@ function headerEmpresa(printer, emp) {
   if (emp.telefono) pprintln(printer, `Tel: ${emp.telefono}`)
 }
 
-// ── Dispatcher por tipo.
+// Dispatcher por tipo.
 function buildTicket(printer, payload, printerCfg = {}, logoBuffer = null) {
   switch (payload && payload.tipo) {
     case 'VENTA':
@@ -342,5 +358,6 @@ function buildTicket(printer, payload, printerCfg = {}, logoBuffer = null) {
 module.exports = {
   makePrinter, buildTicket,
   buildVentaTicket, buildCorteTicket, buildAbonoTicket, buildRetiroTicket,
-  printTicket, money, qty, stripAccents, pprintln, pleftRight
+  printTicket, money, qty, stripAccents, pprintln, pleftRight,
+  checkPrinterOnline
 }

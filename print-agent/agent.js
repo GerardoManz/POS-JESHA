@@ -6,7 +6,8 @@
 require('dotenv').config()
 const fs = require('fs')
 const path = require('path')
-const { makePrinter, buildTicket, printTicket } = require('./escpos-builder')
+const { execFileSync } = require('child_process')
+const { makePrinter, buildTicket, printTicket, checkPrinterOnline } = require('./escpos-builder')
 
 // ── Config ──
 const cfg = JSON.parse(fs.readFileSync(path.join(__dirname, 'config.json'), 'utf8'))
@@ -16,6 +17,9 @@ const PRINTER = cfg.printer || {}
 const PRINTER_NAME = (PRINTER.interface || '').replace(/^printer:/, '') || 'POS58 Printer'
 const POLL_MS = cfg.pollIntervalMs || 2000
 const TIMEOUT_MS = cfg.networkTimeoutMs || 8000
+const SKIP_OLD = cfg.skipOldJobs !== false
+const OLD_THRESHOLD_MS = (cfg.oldJobThresholdMinutes || 120) * 60 * 1000
+const RESET_ON_START = cfg.resetOnStart === true
 
 if (!TOKEN) {
   console.error('Falta JESHA_AGENT_TOKEN en .env')
@@ -39,6 +43,16 @@ async function api(reqPath, { method = 'POST', body } = {}) {
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+
+// Parsea fecha "DD/MM/YY HH:mm" del payload a Date
+function parsePayloadDate(payload) {
+  const raw = (payload && (payload.venta?.fecha || payload.corte?.fecha || payload.abono?.fecha || payload.retiro?.fecha))
+  if (!raw) return null
+  const m = raw.match(/^(\d{2})\/(\d{2})\/(\d{2})\s+(\d{2}):(\d{2})/)
+  if (!m) return null
+  const [_, dd, mm, yy, hh, mi] = m
+  return new Date(`20${yy}-${mm}-${dd}T${hh}:${mi}:00`)
+}
 
 // Confirma /success con reintentos. NUNCA llama /fail (el ticket ya salió).
 async function confirmSuccess(id, attempts = 4) {
@@ -76,7 +90,28 @@ async function tick() {
   const job = await res.json()
   console.log(`Job ${job.printJobId} | ${job.tipo}/${job.modo}`)
 
-  // Fase A: construir + imprimir. Si falla aquí, NADA salió -> /fail (seguro reintentar).
+  // Seguridad: saltar jobs antiguos sin imprimirlos
+  if (SKIP_OLD) {
+    const fecha = parsePayloadDate(job.payload)
+    if (fecha) {
+      const edadMs = Date.now() - fecha.getTime()
+      if (edadMs > OLD_THRESHOLD_MS) {
+        const dias = Math.round(edadMs / 86400000)
+        console.log(`  -> saltado (${dias}d antiguo, umbral ${cfg.oldJobThresholdMinutes || 120}min)`)
+        await reportFail(job.printJobId, `omitido por antiguedad: ${dias} dias`)
+        return true
+      }
+    }
+  }
+
+  // Fase A: verificar que la impresora esté en línea
+  if (!checkPrinterOnline(PRINTER_NAME)) {
+    console.log(`  -> impresora NO disponible (offline/desconectada)`)
+    await reportFail(job.printJobId, 'impresora no disponible')
+    return true
+  }
+
+  // Fase B: construir + imprimir. Si falla aquí, NADA salió -> /fail (seguro reintentar).
   try {
     const printer = makePrinter(PRINTER)
     buildTicket(printer, job.payload, PRINTER)
@@ -88,7 +123,7 @@ async function tick() {
     return true
   }
 
-  // Fase B: el ticket YA salió. Confirmar con reintentos; nunca /fail aquí.
+  // Fase C: el ticket YA salió. Confirmar con reintentos; nunca /fail aquí.
   const ok = await confirmSuccess(job.printJobId)
   if (ok) {
     console.log(`  -> ENVIADO_A_IMPRESORA`)
@@ -133,6 +168,10 @@ function listPrinters() {
 
 // ── Modo --drawer: abre el cajón de dinero ──
 function drawerTest() {
+  if (!checkPrinterOnline(PRINTER_NAME)) {
+    console.log(`ERROR: Impresora "${PRINTER_NAME}" no disponible. Verifica que esté encendida y conectada.`)
+    process.exit(1)
+  }
   const printer = makePrinter(PRINTER)
   printer.openCashDrawer()
   printTicket(printer, PRINTER_NAME)
@@ -141,6 +180,10 @@ function drawerTest() {
 
 // ── Modo --hello: ticket mínimo de prueba ──
 function helloWorld() {
+  if (!checkPrinterOnline(PRINTER_NAME)) {
+    console.log(`ERROR: Impresora "${PRINTER_NAME}" no disponible. Verifica que esté encendida y conectada.`)
+    process.exit(1)
+  }
   const printer = makePrinter(PRINTER)
   printer.alignCenter()
   printer.bold(true)
@@ -166,19 +209,45 @@ async function main() {
   if (arg === '--drawer') return drawerTest()
 
   console.log(`Print Agent | API ${API_URL} | impresora "${PRINTER.interface}"`)
+  if (SKIP_OLD) console.log(`Seguridad: saltando jobs >${cfg.oldJobThresholdMinutes || 120}min de antiguedad`)
 
-  // Reset de huérfanos: con 1 agente, todo EN_PROCESO previo está atascado.
-  try {
-    const r = await api('/impresion/agent/reset')
-    if (r.ok) {
-      const { resetCount } = await r.json()
-      console.log(`Reset de huérfanos: ${resetCount} job(s) devueltos a PENDIENTE`)
-    } else {
-      console.warn(`Reset devolvió HTTP ${r.status} (¿token o API?)`)
+  // Reset de huérfanos: opcional (config.resetOnStart=true), desactivado por defecto
+  // para no re-procesar jobs antiguos al arrancar.
+  if (RESET_ON_START) {
+    try {
+      const r = await api('/impresion/agent/reset')
+      if (r.ok) {
+        const { resetCount } = await r.json()
+        console.log(`Reset de huérfanos: ${resetCount} job(s) devueltos a PENDIENTE`)
+      } else {
+        console.warn(`Reset devolvió HTTP ${r.status} (¿token o API?)`)
+      }
+    } catch (e) {
+      console.warn('No se pudo resetear al arrancar:', e.message)
     }
-  } catch (e) {
-    console.warn('No se pudo resetear al arrancar:', e.message)
   }
+
+  // Limpiar spooler al arrancar (jobs huérfanos de ejecuciones previas)
+  try {
+    execFileSync('powershell', [
+      '-NoProfile', '-Command',
+      `Get-PrintJob -PrinterName "${PRINTER_NAME}" -ErrorAction SilentlyContinue | Remove-PrintJob -ErrorAction SilentlyContinue`
+    ], { stdio: 'pipe', timeout: 10000 })
+  } catch (_) { /* si falla la limpieza, no es crítico */ }
+
+  // Monitor periódico de estado de impresora (cada 30s)
+  let printerWasOnline = null
+  setInterval(() => {
+    const online = checkPrinterOnline(PRINTER_NAME)
+    if (online !== printerWasOnline) {
+      printerWasOnline = online
+      if (online) {
+        console.log(`[monitor] Impresora "${PRINTER_NAME}" ONLINE`)
+      } else {
+        console.log(`[monitor] Impresora "${PRINTER_NAME}" OFFLINE - no se imprimiran tickets hasta que vuelva`)
+      }
+    }
+  }, 30000)
 
   loop()
 }
