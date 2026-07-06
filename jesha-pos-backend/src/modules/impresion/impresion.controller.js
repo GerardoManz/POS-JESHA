@@ -130,6 +130,25 @@ const agentReset = wrap(async (req, res) => {
   res.json({ ok: true, resetCount: count })
 })
 
+// GET /impresion/health — estado de la cola (agente). Auditable sin tocar la impresora.
+const agentHealth = wrap(async (req, res) => {
+  const health = await service.getHealth(req.agentEmpresaId)
+  res.json(health)
+})
+
+// POST /impresion/drawer — abrir cajón de dinero manualmente (frontend, requireAuth).
+const abrirCajon = wrap(async (req, res) => {
+  const empresaId = req.usuario.empresaId
+  const payload = JSON.stringify({ tipo: 'CAJON', abrirCajon: true })
+  const idKey = `CAJON:${empresaId}:${Date.now()}:${Math.random().toString(36).slice(2, 6)}`
+  const rows = await prisma.$queryRawUnsafe(
+    `INSERT INTO "PrintJob" ("empresaId", "idempotencyKey", "tipo", "modo", "queueName", "payload", "creadoEn")
+     VALUES ($1, $2, 'VENTA', 'ORIGINAL', $3, $4::jsonb, NOW()) RETURNING id`,
+    empresaId, idKey, service.DEFAULT_QUEUE, payload
+  )
+  res.json({ ok: true, printJobId: Number(rows[0].id) })
+})
+
 module.exports = {
   requireAgentAuth,
   encolarManual,
@@ -138,5 +157,7 @@ module.exports = {
   agentNext,
   agentSuccess,
   agentFail,
-  agentReset
+  agentReset,
+  agentHealth,
+  abrirCajon
 }

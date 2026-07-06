@@ -121,6 +121,41 @@ async function listJobs(empresaId, { estado, take = 50 } = {}) {
   })
 }
 
+// Health: resumen de la cola de impresión para una empresa (auditable, sin auth de usuario).
+async function getHealth(empresaId) {
+  const [pendientes, ultimosJobs] = await Promise.all([
+    prisma.printJob.count({
+      where: { empresaId, estado: 'PENDIENTE' }
+    }),
+    prisma.printJob.findMany({
+      where: { empresaId },
+      orderBy: { creadoEn: 'desc' },
+      take: 10,
+      select: { id: true, tipo: true, modo: true, estado: true, creadoEn: true, intentos: true, error: true }
+    })
+  ])
+
+  const cincoMinAtras = new Date(Date.now() - 5 * 60 * 1000)
+  const recientes = ultimosJobs.filter(j => new Date(j.creadoEn) > cincoMinAtras)
+  const exitosRecientes = recientes.filter(j => j.estado === 'ENVIADO_A_IMPRESORA').length
+  const fallosRecientes = recientes.filter(j => j.estado === 'FALLIDO').length
+  const tasaExito = recientes.length > 0
+    ? parseFloat((exitosRecientes / recientes.length * 100).toFixed(1))
+    : null
+
+  return {
+    pendientes,
+    ultimosJobs,
+    ventana5min: {
+      total: recientes.length,
+      exitos: exitosRecientes,
+      fallos: fallosRecientes,
+      tasaExito,
+      impresoraProbablementeBien: fallosRecientes === 0 || tasaExito === null || tasaExito >= 50
+    }
+  }
+}
+
 module.exports = {
   DEFAULT_QUEUE,
   MAX_INTENTOS,
@@ -132,5 +167,6 @@ module.exports = {
   resetStaleForEmpresa,
   cleanupStaleJobs,
   getJob,
-  listJobs
+  listJobs,
+  getHealth
 }

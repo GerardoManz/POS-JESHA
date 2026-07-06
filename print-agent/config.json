@@ -1,0 +1,14 @@
+{
+  "apiUrl": "http://localhost:3000",
+  "printer": {
+    "interface": "printer:POS58 Printer",
+    "width": 32,
+    "codepage": "PC437",
+    "cutMode": "full",
+    "feedLinesAfterPrint": 4,
+    "printLogo": false,
+    "openCashDrawerEnabled": true
+  },
+  "pollIntervalMs": 2000,
+  "networkTimeoutMs": 8000
+}

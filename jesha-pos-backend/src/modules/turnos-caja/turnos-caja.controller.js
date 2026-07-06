@@ -1,13 +1,8 @@
 const prisma = require('../../lib/prisma')
 const getEmpresaId = require('../../helpers/getEmpresaId')
-
-const EMPRESA = {
-  nombre:   'Ferretería e Iluminación JESHA',
-  slogan:   'Productos y Servicios de Máxima Calidad',
-  direccion:'Av. San Simón #03',
-  ciudad:   'Guadalupe, Zacatecas',
-  tel1:     '492 101 6879',
-}
+const { EMPRESA } = require('../../../config/empresa')
+const { buildCorteSnapshot, formatFechaTicket } = require('../impresion/impresion.snapshot')
+const { encolarImpresion } = require('../impresion/impresion.service')
 
 // ════════════════════════════════════════════════════════════════════
 //  FUENTE ÚNICA DE VERDAD DEL EFECTIVO EN CAJA
@@ -269,6 +264,44 @@ const cerrarTurno = async (req, res) => {
           usuarioId, sucursalId, accion: 'CERRAR_TURNO', modulo: 'turnos-caja',
           referencia: `Turno ${turno.id} cerrado. Calc: $${montoCalculado} Decl: $${montoFinalDeclarado} Dif: $${diferencia}`
         }
+      })
+
+      const { totalEfectivo: vEf, totalTarjeta: vTar, totalTransferencia: vTrans } =
+        calcularTotalesPorMetodoDesdeMovimientos(movimientos)
+      const { totalEfectivo: aEf, totalTarjeta: aTar, totalTransferencia: aTrans } =
+        calcularTotalesPorMetodoDesdeMovimientos(movimientos, ['ABONO_BITACORA'])
+
+      const empresaRow = await tx.empresa.findUnique({
+        where: { id: empresaId },
+        select: { rfc: true }
+      })
+
+      const snapshot = buildCorteSnapshot({
+        empresa: { ...EMPRESA, telefono: EMPRESA.tel1, rfc: empresaRow?.rfc },
+        turnoId: turno.id,
+        fecha: formatFechaTicket(new Date()),
+        cajero: turnoCerrado.Usuario?.nombre || null,
+        sucursal: turnoCerrado.Sucursal?.nombre || null,
+        montoCalculado,
+        montoFinalDeclarado: parseFloat(montoFinalDeclarado),
+        diferencia,
+        movimientos: [
+          { metodo: 'Efectivo',      monto: vEf },
+          { metodo: 'Tarjeta',       monto: vTar },
+          { metodo: 'Transferencia', monto: vTrans },
+          { metodo: 'Abonos Efectivo',     monto: aEf },
+          { metodo: 'Abonos Tarjeta',      monto: aTar },
+          { metodo: 'Abonos Transferencia', monto: aTrans }
+        ].filter(m => m.monto !== 0)
+      })
+
+      await encolarImpresion(tx, {
+        empresaId,
+        tipo: 'CORTE',
+        modo: 'ORIGINAL',
+        entidadId: turno.id,
+        turnoId: turno.id,
+        payload: snapshot
       })
 
       return turnoCerrado

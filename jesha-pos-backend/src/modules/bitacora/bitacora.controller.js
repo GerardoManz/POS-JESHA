@@ -7,6 +7,9 @@
 
 const prisma = require('../../lib/prisma')
 const getEmpresaId = require('../../helpers/getEmpresaId')
+const { EMPRESA } = require('../../../config/empresa')
+const { buildAbonoSnapshot, buildRetiroSnapshot, formatFechaTicket } = require('../impresion/impresion.snapshot')
+const { encolarImpresion } = require('../impresion/impresion.service')
 
 // ── Auditoría ──
 async function audit(usuarioId, sucursalId, accion, ref, empresaId, valorDespues = null) {
@@ -1098,6 +1101,34 @@ const agregarProductosBatch = async (req, res) => {
         })
       }
 
+      // ═══ Impresión: encolar ticket de retiro (atómico con la transacción) ═══
+      const empresaRow = await tx.empresa.findUnique({
+        where: { id: empresaId },
+        select: { rfc: true }
+      })
+
+      const retiroSnapshot = buildRetiroSnapshot({
+        empresa: { ...EMPRESA, telefono: EMPRESA.tel1, rfc: empresaRow?.rfc },
+        retiroId: retiro.id,
+        fecha: formatFechaTicket(new Date()),
+        cajero: req.usuario?.nombre || null,
+        trabajador: recibeNombreRetiro,
+        productos: itemsNorm.map(it => ({
+          nombre: prodMap.get(it.productoId)?.nombre || '—',
+          cantidad: it.cant,
+          precioUnitario: it.precio
+        }))
+      })
+
+      await encolarImpresion(tx, {
+        empresaId,
+        tipo: 'RETIRO',
+        modo: 'ORIGINAL',
+        entidadId: retiro.id,
+        retiroId: retiro.id,
+        payload: retiroSnapshot
+      })
+
       return { resumen, totalLote, retiroId: retiro.id }
     })
 
@@ -1435,7 +1466,7 @@ const registrarAbono = async (req, res) => {
     // ── Obtener bitácora CON origen ──
     const bitacora = await prisma.bitacora.findUnique({
       where: { id: parseInt(id) },
-      select: { id: true, folio: true, estado: true, origen: true, totalAbonado: true, totalMateriales: true, saldoPendiente: true, descuentoMonto: true, clienteId: true }
+      select: { id: true, folio: true, estado: true, origen: true, totalAbonado: true, totalMateriales: true, saldoPendiente: true, descuentoMonto: true, clienteId: true, Cliente: { select: { nombre: true } } }
     })
     if (!bitacora) return res.status(404).json({ success: false, error: 'Bitácora no encontrada' })
     if (bitacora.estado !== 'ABIERTA') {
@@ -1468,7 +1499,7 @@ const registrarAbono = async (req, res) => {
     const cerrar       = nuevoSaldo <= 0.005
 
     await prisma.$transaction(async tx => {
-      await tx.abonoBitacora.create({
+      const abono = await tx.abonoBitacora.create({
         data: {
           empresaId,
           bitacoraId: parseInt(id),
@@ -1508,6 +1539,35 @@ const registrarAbono = async (req, res) => {
           referencia: bitacora.folio,
           notas:      `Abono a bitácora ${bitacora.folio}${cerrar ? ' (liquidación completa)' : ''}`
         }
+      })
+
+      // ═══ Impresión: encolar ticket de abono (atómico con la transacción) ═══
+      const empresaRow = await tx.empresa.findUnique({
+        where: { id: empresaId },
+        select: { rfc: true }
+      })
+
+      const abonoSnapshot = buildAbonoSnapshot({
+        empresa: { ...EMPRESA, telefono: EMPRESA.tel1, rfc: empresaRow?.rfc },
+        abonoId: abono.id,
+        fecha: formatFechaTicket(new Date()),
+        cajero: req.usuario?.nombre || null,
+        cliente: bitacora.Cliente?.nombre || null,
+        montoAbono,
+        metodoPago: metodoPago || 'EFECTIVO',
+        metodoLabel: metodoPago || 'EFECTIVO',
+        saldoAnterior: saldoActual,
+        saldoNuevo: nuevoSaldo,
+        abrirCajon: (metodoPago || 'EFECTIVO') === 'EFECTIVO'
+      })
+
+      await encolarImpresion(tx, {
+        empresaId,
+        tipo: 'ABONO',
+        modo: 'ORIGINAL',
+        entidadId: abono.id,
+        abonoId: abono.id,
+        payload: abonoSnapshot
       })
     })
 

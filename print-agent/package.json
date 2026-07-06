@@ -1,0 +1,16 @@
+{
+  "name": "jesha-pos-print-agent",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "start": "node agent.js",
+    "list": "node agent.js --list",
+    "hello": "node agent.js --hello",
+    "drawer": "node agent.js --drawer"
+  },
+  "dependencies": {
+    "node-thermal-printer": "^4.6.0",
+    "dotenv": "^16.4.5"
+  }
+}

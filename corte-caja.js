@@ -54,6 +54,7 @@ const modalCierreClose         = document.getElementById('modal-cierre-close')
 const resumenCierreModal       = document.getElementById('resumen-cierre-modal')
 const resultadoCierreContenido = document.getElementById('resultado-cierre-contenido')
 const notasCierreInput         = document.getElementById('notas-cierre')
+const btnReimprimirCorte       = document.getElementById('btn-reimprimir-corte')
 
 let turnoActivo      = null
 let efectivoEsperado = 0
@@ -276,6 +277,8 @@ function mostrarResultadoCierre(turno, montoContado) {
       </div>
     </div>
   `
+  btnReimprimirCorte.style.display = 'inline-block'
+  btnReimprimirCorte.dataset.turnoId = turno.id
   modalResultadoCierre.style.display = 'flex'
 }
 
@@ -296,6 +299,28 @@ function configurarEventListeners() {
   btnConfirmarCierre.addEventListener('click', cerrarTurno)
   btnCancelarCierre.addEventListener('click', () => { modalConfirmarCierre.style.display = 'none' })
   modalCierreClose.addEventListener('click', () => { modalConfirmarCierre.style.display = 'none' })
+
+  btnReimprimirCorte.addEventListener('click', async () => {
+    const turnoId = btnReimprimirCorte.dataset.turnoId
+    if (!turnoId) return
+    btnReimprimirCorte.disabled = true
+    btnReimprimirCorte.textContent = '⏳ Enviando...'
+    try {
+      const r = await fetch(`${API_URL}/impresion/job`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
+        body: JSON.stringify({ tipo: 'CORTE', turnoId: parseInt(turnoId) })
+      })
+      if (r.ok) {
+        btnReimprimirCorte.textContent = '✅ Enviado a impresora'
+      } else {
+        const data = await r.json().catch(() => ({}))
+        btnReimprimirCorte.textContent = '❌ ' + (data.error || 'Error')
+      }
+    } catch (e) {
+      btnReimprimirCorte.textContent = '❌ Error de red'
+    }
+  })
 
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') modalConfirmarCierre.style.display = 'none'

@@ -80,6 +80,7 @@ const fechaActual              = document.getElementById('fecha-actual')
 
 // ── ARTÍCULO RÁPIDO ──
 const btnArticuloRapido        = document.getElementById('btn-articulo-rapido')
+const btnAbrirCajon            = document.getElementById('btn-abrir-cajon')
 const modalArticuloRapido      = document.getElementById('modal-articulo-rapido')
 const arForm                   = document.getElementById('articulo-rapido-form')
 const arNombre                 = document.getElementById('ar-nombre')
@@ -88,6 +89,7 @@ const arCodigoBarras           = document.getElementById('ar-codigoBarras')
 const arCategoria              = document.getElementById('ar-categoria')
 const arPrecio                 = document.getElementById('ar-precio')
 const arUnidad                 = document.getElementById('ar-unidad')
+const arUnidadSat              = document.getElementById('ar-unidadSat')
 const arStock                  = document.getElementById('ar-stock')
 const arCantidad               = document.getElementById('ar-cantidad')
 const arEsGranel               = document.getElementById('ar-esGranel')
@@ -104,6 +106,9 @@ let _arCategoriasCache  = null
 let _arAvanzadasAbierto  = false
 const AR_CAT_KEY        = 'jesha_categorias_cache_v1'
 const AR_LAST_CAT_KEY   = 'jesha_ar_last_cat'
+let _arUnidadesSatLista   = []
+let _arUnidadesVentaLista = []
+let _arUnidadesVentaMap   = new Map()
 const turnoStatus              = document.getElementById('turno-status')
 
 if (fechaActual) {
@@ -265,6 +270,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
+  _arCargarUnidades()
+  _arInitUnidades()
   configurarEventosCotizar()
   console.log('✅ Punto de Venta listo')
 })
@@ -2782,6 +2789,8 @@ function configurarEventListeners() {
 
   // ✅ Artículo rápido
   btnArticuloRapido?.addEventListener('click', abrirModalArticuloRapido)
+  // ✅ Cajón
+  btnAbrirCajon?.addEventListener('click', abrirCajon)
   arClose?.addEventListener('click', cerrarModalArticuloRapido)
   arCancel?.addEventListener('click', cerrarModalArticuloRapido)
   arForm?.addEventListener('submit', enviarArticuloRapido)
@@ -2860,6 +2869,105 @@ function resolverSucursalParaArticuloRapido() {
   )
 }
 
+// ══════════════════════════════════════════════════════════════════
+//  ARTÍCULO RÁPIDO — Unidades SAT (datalist + autofill)
+// ══════════════════════════════════════════════════════════════════
+
+const UNIDADES_AR_FALLBACK = {
+  unidadesSat: [
+    { id: 'H87', nombre: 'Pieza', simbolo: '', esComun: true },
+    { id: 'MTR', nombre: 'Metro', simbolo: 'm', esComun: true },
+    { id: 'KGM', nombre: 'Kilogramo', simbolo: 'kg', esComun: true },
+    { id: 'LTR', nombre: 'Litro', simbolo: 'l', esComun: true },
+    { id: 'XPK', nombre: 'Paquete', simbolo: '', esComun: true },
+    { id: 'PR', nombre: 'Par', simbolo: '', esComun: true },
+    { id: 'KT', nombre: 'Kit', simbolo: '', esComun: true },
+    { id: 'SET', nombre: 'Conjunto', simbolo: '', esComun: true },
+  ],
+  unidadVenta: [
+    { valor: 'PZA', unidadSat: 'H87', nombre: 'Pieza', aliases: ['PZ', 'PZAS', 'PIEZA'], esComun: true },
+    { valor: 'MT', unidadSat: 'MTR', nombre: 'Metro', aliases: ['M', 'MTS', 'METRO'], esComun: true },
+    { valor: 'KG', unidadSat: 'KGM', nombre: 'Kilogramo', aliases: ['KILO', 'KILOS'], esComun: true },
+    { valor: 'LT', unidadSat: 'LTR', nombre: 'Litro', aliases: ['L', 'LTS', 'LITRO'], esComun: true },
+    { valor: 'PAQUETE', unidadSat: 'XPK', nombre: 'Paquete', aliases: ['PACK', 'PAQ'], esComun: true },
+    { valor: 'PAR', unidadSat: 'PR', nombre: 'Par', aliases: [], esComun: true },
+    { valor: 'KIT', unidadSat: 'KT', nombre: 'Kit', aliases: [], esComun: true },
+    { valor: 'JUEGO', unidadSat: 'SET', nombre: 'Juego', aliases: ['SET'], esComun: true },
+  ],
+}
+
+function _arNormalizarUnidad(valor) {
+  return String(valor || '').trim().toUpperCase().replace(/\s+/g, ' ')
+}
+
+function _arRegistrarUnidadVenta(unidad) {
+  if (!unidad?.valor) return
+  _arUnidadesVentaMap.set(_arNormalizarUnidad(unidad.valor), unidad)
+  ;(unidad.aliases || []).forEach(function(alias) {
+    _arUnidadesVentaMap.set(_arNormalizarUnidad(alias), unidad)
+  })
+}
+
+function _arLlenarDatalist(id, items, valueKey) {
+  var lista = document.getElementById(id)
+  if (!lista) return
+  var frag = document.createDocumentFragment()
+  ;(items || []).forEach(function(item) {
+    var value = item[valueKey]
+    if (!value) return
+    var opt = document.createElement('option')
+    opt.value = value
+    if (valueKey === 'valor') {
+      opt.label = (item.nombre || value) + (item.unidadSat ? ' (' + item.unidadSat + ')' : '')
+    } else {
+      opt.label = (item.nombre || '') + (item.simbolo ? ' - ' + item.simbolo : '')
+    }
+    frag.appendChild(opt)
+  })
+  lista.innerHTML = ''
+  lista.appendChild(frag)
+}
+
+function _arAplicarCatalogoUnidades(data) {
+  _arUnidadesSatLista = Array.isArray(data.unidadesSat) ? data.unidadesSat : UNIDADES_AR_FALLBACK.unidadesSat
+  _arUnidadesVentaLista = Array.isArray(data.unidadVenta) ? data.unidadVenta : UNIDADES_AR_FALLBACK.unidadVenta
+  _arUnidadesVentaMap = new Map()
+  _arUnidadesVentaLista.forEach(_arRegistrarUnidadVenta)
+  _arLlenarDatalist('ar-unidades-venta-list', _arUnidadesVentaLista, 'valor')
+  _arLlenarDatalist('ar-unidades-sat-list', _arUnidadesSatLista, 'id')
+}
+
+async function _arCargarUnidades() {
+  try {
+    var resultado = await apiFetch('/productos/sat/unidades')
+    _arAplicarCatalogoUnidades(resultado?.data || resultado || {})
+  } catch (err) {
+    console.error('Error cargando unidades SAT para art. rápido:', err)
+    _arAplicarCatalogoUnidades(UNIDADES_AR_FALLBACK)
+  }
+}
+
+function _arAplicarUnidadVenta() {
+  if (!arUnidad) return
+  var unidad = _arUnidadesVentaMap.get(_arNormalizarUnidad(arUnidad.value))
+  if (unidad) arUnidad.value = unidad.valor
+  if (unidad?.unidadSat && arUnidadSat && !arUnidadSat.value) {
+    arUnidadSat.value = unidad.unidadSat
+  }
+}
+
+function _arInitUnidades() {
+  if (arUnidad) {
+    arUnidad.addEventListener('change', _arAplicarUnidadVenta)
+    arUnidad.addEventListener('blur', _arAplicarUnidadVenta)
+  }
+  if (arUnidadSat) {
+    arUnidadSat.addEventListener('blur', function() {
+      arUnidadSat.value = _arNormalizarUnidad(arUnidadSat.value)
+    })
+  }
+}
+
 function _arActualizarPreview() {
   if (!arPreview || !arPreviewText) return
   const nombre  = (arNombre?.value || '').trim()
@@ -2906,6 +3014,29 @@ window.toggleArAvanzadas = function() {
   }
 }
 
+async function abrirCajon() {
+  if (!btnAbrirCajon) return
+  btnAbrirCajon.disabled = true
+  const origText = btnAbrirCajon.innerHTML
+  btnAbrirCajon.innerHTML = '<span>⏳ Abriendo...</span>'
+  try {
+    const r = await fetch(`${API_URL}/impresion/drawer`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` }
+    })
+    if (r.ok) {
+      btnAbrirCajon.innerHTML = '<span>✅ Cajón abierto</span>'
+      setTimeout(() => { btnAbrirCajon.innerHTML = origText; btnAbrirCajon.disabled = false }, 2000)
+    } else {
+      btnAbrirCajon.innerHTML = '<span>❌ Error</span>'
+      setTimeout(() => { btnAbrirCajon.innerHTML = origText; btnAbrirCajon.disabled = false }, 2000)
+    }
+  } catch (e) {
+    btnAbrirCajon.innerHTML = '<span>❌ Sin conexión</span>'
+    setTimeout(() => { btnAbrirCajon.innerHTML = origText; btnAbrirCajon.disabled = false }, 2000)
+  }
+}
+
 async function abrirModalArticuloRapido() {
   if (!modalArticuloRapido) return
   if (!turnoActivo?.id) {
@@ -2926,7 +3057,8 @@ async function abrirModalArticuloRapido() {
   if (arPrecio)         arPrecio.value = ''
   if (arStock)          arStock.value = '1'
   if (arCantidad)       arCantidad.value = '1'
-  if (arUnidad)         arUnidad.value = 'pza'
+  if (arUnidad)         arUnidad.value = 'PZA'
+  if (arUnidadSat)      arUnidadSat.value = ''
   if (arEsGranel)       arEsGranel.checked = false
   if (arError)         { arError.style.display = 'none'; arError.textContent = '' }
   _arActualizarPreview()
@@ -2984,12 +3116,12 @@ async function enviarArticuloRapido(e) {
     precioVenta:   parseFloat(arPrecio?.value),
     stockInicial:  parseFloat(arStock?.value),
     cantidadVenta: parseFloat(arCantidad?.value),
-    unidadVenta:   arUnidad?.value || 'pza',
+    unidadVenta:   _arNormalizarUnidad(arUnidad?.value) || 'PZA',
     esGranel:      !!arEsGranel?.checked,
     sucursalId:    resolverSucursalParaArticuloRapido(),
     turnoId:       turnoActivo?.id || null,
     claveSat:      null,
-    unidadSat:     'H87'
+    unidadSat:     _arNormalizarUnidad(arUnidadSat?.value) || 'H87'
   }
 
   // Si el panel avanzadas está cerrado, stockInicial = cantidadVenta
