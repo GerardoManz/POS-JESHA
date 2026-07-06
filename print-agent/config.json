@@ -6,7 +6,8 @@
     "codepage": "PC437",
     "cutMode": "full",
     "feedLinesAfterPrint": 4,
-    "printLogo": false,
+    "printLogo": true,
+    "logoUrl": "https://res.cloudinary.com/dabyfymjd/image/upload/q_auto/f_auto/v1779317658/logo-jesha_hmlble.png",
     "openCashDrawerEnabled": true
   },
   "pollIntervalMs": 2000,

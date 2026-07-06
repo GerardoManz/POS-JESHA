@@ -97,13 +97,13 @@ function aplicarCorte(printer, cutMode) {
 }
 
 // ── Ticket de VENTA ──
-function buildVentaTicket(printer, payload, printerCfg = {}, logoBuffer = null) {
+function buildVentaTicket(printer, payload, printerCfg = {}, logoUrl = null) {
   const emp = payload.empresa || {}
   const v = payload.venta || {}
   const productos = Array.isArray(payload.productos) ? payload.productos : []
 
-  if (printerCfg.printLogo && logoBuffer) {
-    try { printer.printImageBuffer(logoBuffer) } catch (_) {}
+  if (printerCfg.printLogo && logoUrl) {
+    try { printer.printImage(logoUrl) } catch (_) {}
   }
 
   headerEmpresa(printer, emp)
@@ -149,7 +149,7 @@ function buildVentaTicket(printer, payload, printerCfg = {}, logoBuffer = null) 
     printer.drawLine()
     printer.alignCenter()
     printer.printQR(payload.qrUrl, { cellSize: 6, correction: 'M' })
-    pprintln(printer, 'Escanea para facturar')
+    pprintln(printer, 'Escanea para solicitar factura')
   }
 
   printer.drawLine()
@@ -157,8 +157,15 @@ function buildVentaTicket(printer, payload, printerCfg = {}, logoBuffer = null) 
   printer.bold(true)
   pprintln(printer, 'Gracias por su compra')
   printer.bold(false)
-  pprintln(printer, 'Conserve su ticket')
-  pprintln(printer, '3 dias para facturar')
+  pprintln(printer, 'Conserve su ticket para')
+  pprintln(printer, 'aclaraciones')
+  printer.drawLine()
+  pprintln(printer, 'El cliente cuenta con 3 dias')
+  pprintln(printer, 'para realizar su factura.')
+  pprintln(printer, 'Pasado el plazo, JESHA no')
+  pprintln(printer, 'se hace responsable.')
+  pprintln(printer, 'No se aceptan devoluciones')
+  pprintln(printer, 'por mal uso.')
 
   feed(printer, printerCfg.feedLinesAfterPrint || 4)
   aplicarCorte(printer, printerCfg.cutMode || 'none')
@@ -337,10 +344,10 @@ function headerEmpresa(printer, emp) {
 }
 
 // Dispatcher por tipo.
-function buildTicket(printer, payload, printerCfg = {}, logoBuffer = null) {
+function buildTicket(printer, payload, printerCfg = {}, logoUrl = null) {
   switch (payload && payload.tipo) {
     case 'VENTA':
-      return buildVentaTicket(printer, payload, printerCfg, logoBuffer)
+      return buildVentaTicket(printer, payload, printerCfg, logoUrl)
     case 'CORTE':
       return buildCorteTicket(printer, payload, printerCfg)
     case 'ABONO':

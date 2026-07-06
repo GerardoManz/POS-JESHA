@@ -20,6 +20,7 @@ const TIMEOUT_MS = cfg.networkTimeoutMs || 8000
 const SKIP_OLD = cfg.skipOldJobs !== false
 const OLD_THRESHOLD_MS = (cfg.oldJobThresholdMinutes || 120) * 60 * 1000
 const RESET_ON_START = cfg.resetOnStart === true
+const LOGO_URL = cfg.printer && cfg.printer.logoUrl || null
 
 if (!TOKEN) {
   console.error('Falta JESHA_AGENT_TOKEN en .env')
@@ -114,7 +115,7 @@ async function tick() {
   // Fase B: construir + imprimir. Si falla aquí, NADA salió -> /fail (seguro reintentar).
   try {
     const printer = makePrinter(PRINTER)
-    buildTicket(printer, job.payload, PRINTER)
+    buildTicket(printer, job.payload, PRINTER, LOGO_URL)
     printTicket(printer, PRINTER_NAME)
   } catch (err) {
     const msg = String((err && err.message) || err)
