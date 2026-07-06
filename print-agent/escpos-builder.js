@@ -97,13 +97,13 @@ function aplicarCorte(printer, cutMode) {
 }
 
 // ── Ticket de VENTA ──
-function buildVentaTicket(printer, payload, printerCfg = {}, logoUrl = null) {
+function buildVentaTicket(printer, payload, printerCfg = {}, logoBuffer = null) {
   const emp = payload.empresa || {}
   const v = payload.venta || {}
   const productos = Array.isArray(payload.productos) ? payload.productos : []
 
-  if (printerCfg.printLogo && logoUrl) {
-    try { printer.printImage(logoUrl) } catch (_) {}
+  if (printerCfg.printLogo && logoBuffer) {
+    try { printer.printImageBuffer(logoBuffer) } catch (_) {}
   }
 
   headerEmpresa(printer, emp)
@@ -344,10 +344,10 @@ function headerEmpresa(printer, emp) {
 }
 
 // Dispatcher por tipo.
-function buildTicket(printer, payload, printerCfg = {}, logoUrl = null) {
+function buildTicket(printer, payload, printerCfg = {}, logoBuffer = null) {
   switch (payload && payload.tipo) {
     case 'VENTA':
-      return buildVentaTicket(printer, payload, printerCfg, logoUrl)
+      return buildVentaTicket(printer, payload, printerCfg, logoBuffer)
     case 'CORTE':
       return buildCorteTicket(printer, payload, printerCfg)
     case 'ABONO':

@@ -21,6 +21,7 @@ const SKIP_OLD = cfg.skipOldJobs !== false
 const OLD_THRESHOLD_MS = (cfg.oldJobThresholdMinutes || 120) * 60 * 1000
 const RESET_ON_START = cfg.resetOnStart === true
 const LOGO_URL = cfg.printer && cfg.printer.logoUrl || null
+let LOGO_BUFFER = null
 
 if (!TOKEN) {
   console.error('Falta JESHA_AGENT_TOKEN en .env')
@@ -115,7 +116,7 @@ async function tick() {
   // Fase B: construir + imprimir. Si falla aquí, NADA salió -> /fail (seguro reintentar).
   try {
     const printer = makePrinter(PRINTER)
-    buildTicket(printer, job.payload, PRINTER, LOGO_URL)
+    buildTicket(printer, job.payload, PRINTER, LOGO_BUFFER)
     printTicket(printer, PRINTER_NAME)
   } catch (err) {
     const msg = String((err && err.message) || err)
@@ -249,6 +250,22 @@ async function main() {
       }
     }
   }, 30000)
+
+  // Cargar logo desde Cloudinary a buffer (para printImageBuffer)
+  if (LOGO_URL) {
+    try {
+      const res = await fetch(LOGO_URL)
+      if (res.ok) {
+        const buf = await res.arrayBuffer()
+        LOGO_BUFFER = Buffer.from(buf)
+        console.log('Logo cargado de Cloudinary')
+      } else {
+        console.warn('No se pudo cargar el logo: HTTP', res.status)
+      }
+    } catch (e) {
+      console.warn('No se pudo cargar el logo:', e.message)
+    }
+  }
 
   loop()
 }
