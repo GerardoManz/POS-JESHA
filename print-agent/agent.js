@@ -196,8 +196,8 @@ function helloWorld() {
   printer.drawLine()
   printer.println('Acentos: n a e i o u')
   printer.println('UTF simple: n a e i o u $')
-  printer.cut()
   for (let i = 0; i < (PRINTER.feedLinesAfterPrint || 4); i++) printer.newLine()
+  printer.cut()
   printTicket(printer, PRINTER_NAME)
   console.log('HOLA MUNDO enviado.')
 }
