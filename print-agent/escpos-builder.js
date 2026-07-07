@@ -2,6 +2,7 @@
 // Envía los datos a la impresora vía PowerShell (Write-Printer), sin módulos nativos.
 const { ThermalPrinter, PrinterTypes, CharacterSet } = require('node-thermal-printer')
 const { execFileSync } = require('child_process')
+const { PNG } = require('pngjs')
 const fs = require('fs')
 const path = require('path')
 
@@ -90,6 +91,43 @@ function feed(printer, n) {
   for (let i = 0; i < (n || 0); i++) printer.newLine()
 }
 
+// Genera bytes ESC/POS GS v 0 desde un buffer PNG.
+// Todo pixel opaco (alpha > 126) se imprime en negro.
+function buildRasterImage(pngBuffer) {
+  if (!pngBuffer || !Buffer.isBuffer(pngBuffer)) return null
+  let png
+  try {
+    png = PNG.sync.read(pngBuffer)
+  } catch (_) {
+    return null
+  }
+  const { width, height, data } = png
+  const bytesPerRow = Math.ceil(width / 8)
+  const imgData = Buffer.alloc(bytesPerRow * height, 0)
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const idx = (y * width + x) << 2
+      const a = data[idx + 3]
+      if (a > 126) {
+        const byteIdx = y * bytesPerRow + (x >> 3)
+        const bitIdx = 7 - (x & 7)
+        imgData[byteIdx] |= (1 << bitIdx)
+      }
+    }
+  }
+
+  const paddedWidth = bytesPerRow * 8
+  const xL = (paddedWidth >> 3) & 0xFF
+  const yL = height & 0xFF
+  const yH = (height >> 8) & 0xFF
+
+  return Buffer.concat([
+    Buffer.from([0x1D, 0x76, 0x30, 48, xL, 0x00, yL, yH]),
+    imgData
+  ])
+}
+
 function aplicarCorte(printer, cutMode) {
   if (cutMode === 'partial') printer.partialCut()
   else if (cutMode === 'full') printer.cut()
@@ -103,8 +141,10 @@ function buildVentaTicket(printer, payload, printerCfg = {}, logoBuffer = null) 
   const productos = Array.isArray(payload.productos) ? payload.productos : []
 
   if (printerCfg.printLogo && logoBuffer) {
-    try { printer.printImageBuffer(logoBuffer) } catch (e) {
-      console.error('Error al imprimir logo:', e.message)
+    const raster = buildRasterImage(logoBuffer)
+    if (raster) {
+      printer.alignCenter()
+      printer.append(raster)
     }
   }
 
@@ -368,5 +408,5 @@ module.exports = {
   makePrinter, buildTicket,
   buildVentaTicket, buildCorteTicket, buildAbonoTicket, buildRetiroTicket,
   printTicket, money, qty, stripAccents, pprintln, pleftRight,
-  checkPrinterOnline
+  checkPrinterOnline, buildRasterImage
 }

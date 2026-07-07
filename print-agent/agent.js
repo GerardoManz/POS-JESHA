@@ -7,7 +7,7 @@ require('dotenv').config()
 const fs = require('fs')
 const path = require('path')
 const { execFileSync } = require('child_process')
-const { makePrinter, buildTicket, printTicket, checkPrinterOnline } = require('./escpos-builder')
+const { makePrinter, buildTicket, printTicket, checkPrinterOnline, buildRasterImage } = require('./escpos-builder')
 
 // ── Config ──
 const cfg = JSON.parse(fs.readFileSync(path.join(__dirname, 'config.json'), 'utf8'))
@@ -188,6 +188,10 @@ function helloWorld() {
   }
   const printer = makePrinter(PRINTER)
   printer.alignCenter()
+  if (PRINTER.printLogo && LOGO_BUFFER) {
+    const raster = buildRasterImage(LOGO_BUFFER)
+    if (raster) printer.append(raster)
+  }
   printer.bold(true)
   printer.println('HOLA MUNDO')
   printer.bold(false)
@@ -202,8 +206,33 @@ function helloWorld() {
   console.log('HOLA MUNDO enviado.')
 }
 
+// ── Cargar logo desde Cloudinary a buffer (para buildRasterImage) ──
+async function loadLogo() {
+  LOGO_BUFFER = null
+  if (!LOGO_URL) return
+  try {
+    const res = await fetch(LOGO_URL)
+    if (res.ok) {
+      const buf = await res.arrayBuffer()
+      LOGO_BUFFER = Buffer.from(buf)
+      if (LOGO_BUFFER[0] === 0x89 && LOGO_BUFFER[1] === 0x50) {
+        console.log('Logo cargado de Cloudinary (PNG)')
+      } else {
+        console.warn('Logo descargado NO es PNG — verificar URL sin f_auto. Bytes:', LOGO_BUFFER.slice(0, 4).toString('hex'))
+        LOGO_BUFFER = null
+      }
+    } else {
+      console.warn('No se pudo cargar el logo: HTTP', res.status)
+    }
+  } catch (e) {
+    console.warn('No se pudo cargar el logo:', e.message)
+  }
+}
+
 // ── Arranque ──
 async function main() {
+  await loadLogo()
+
   const arg = process.argv[2]
 
   if (arg === '--list') return listPrinters()
@@ -226,6 +255,21 @@ async function main() {
       }
     } catch (e) {
       console.warn('No se pudo resetear al arrancar:', e.message)
+    }
+    // Drenar jobs devueltos a PENDIENTE para evitar reimprimirlos
+    if (RESET_ON_START) {
+      let drained = 0
+      while (true) {
+        try {
+          const nr = await api('/impresion/agent/next')
+          if (nr.status === 204) break
+          if (!nr.ok) break
+          const job = await nr.json()
+          await reportFail(job.printJobId, 'omitido por reset al arrancar')
+          drained++
+        } catch (_) { break }
+      }
+      if (drained > 0) console.log(`Jobs omitidos tras reset: ${drained}`)
     }
   }
 
@@ -250,28 +294,6 @@ async function main() {
       }
     }
   }, 30000)
-
-  // Cargar logo desde Cloudinary a buffer (para printImageBuffer)
-  if (LOGO_URL) {
-    try {
-      const res = await fetch(LOGO_URL)
-      if (res.ok) {
-        const buf = await res.arrayBuffer()
-        LOGO_BUFFER = Buffer.from(buf)
-        // Verificar firma PNG (bytes 0-3: 89 50 4E 47)
-        if (LOGO_BUFFER[0] === 0x89 && LOGO_BUFFER[1] === 0x50) {
-          console.log('Logo cargado de Cloudinary (PNG)')
-        } else {
-          console.warn('Logo descargado NO es PNG — verificar URL sin f_auto. Bytes:', LOGO_BUFFER.slice(0, 4).toString('hex'))
-          LOGO_BUFFER = null
-        }
-      } else {
-        console.warn('No se pudo cargar el logo: HTTP', res.status)
-      }
-    } catch (e) {
-      console.warn('No se pudo cargar el logo:', e.message)
-    }
-  }
 
   loop()
 }
