@@ -46,7 +46,7 @@ function checkPrinterOnline(printerName) {
   try {
     const out = execFileSync('powershell', [
       '-NoProfile', '-Command',
-      `$p = Get-CimInstance -ClassName Win32_Printer -Filter "Name='${printerName}'"; if (!$p) { 'NOT_FOUND'; return }; if ($p.WorkOffline -or $p.PrinterStatus -eq 7) { 'OFFLINE' } else { 'ONLINE' }`
+      `$p = Get-CimInstance -ClassName Win32_Printer -Filter "Name='${printerName}'"; if (!$p) { 'NOT_FOUND'; return }; if ($p.WorkOffline -or $p.PrinterStatus -eq 7 -or $p.Availability -eq 7 -or $p.Availability -eq 8 -or $p.ExtendedPrinterStatus -eq 7) { 'OFFLINE' } else { 'ONLINE' }`
     ], { stdio: 'pipe', timeout: 5000, encoding: 'utf8' })
     const status = (out || '').trim()
     return status === 'ONLINE'

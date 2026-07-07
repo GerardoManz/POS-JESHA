@@ -46,14 +46,24 @@ async function api(reqPath, { method = 'POST', body } = {}) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
-// Parsea fecha "DD/MM/YY HH:mm" del payload a Date
+// Parsea fecha del payload a Date.
+// Soporta formato JESHA "DD/MM/YY HH:mm" y fallback ISO 8601.
 function parsePayloadDate(payload) {
   const raw = (payload && (payload.venta?.fecha || payload.corte?.fecha || payload.abono?.fecha || payload.retiro?.fecha))
   if (!raw) return null
+
+  // Formato JESHA: DD/MM/YY HH:mm
   const m = raw.match(/^(\d{2})\/(\d{2})\/(\d{2})\s+(\d{2}):(\d{2})/)
-  if (!m) return null
-  const [_, dd, mm, yy, hh, mi] = m
-  return new Date(`20${yy}-${mm}-${dd}T${hh}:${mi}:00`)
+  if (m) {
+    const [_, dd, mm, yy, hh, mi] = m
+    return new Date(`20${yy}-${mm}-${dd}T${hh}:${mi}:00`)
+  }
+
+  // Fallback ISO 8601 (ej. 2026-07-07T15:30:00)
+  const iso = new Date(raw)
+  if (!isNaN(iso.getTime())) return iso
+
+  return null
 }
 
 // Confirma /success con reintentos. NUNCA llama /fail (el ticket ya salió).
