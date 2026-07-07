@@ -102,6 +102,13 @@ async function tick() {
   const job = await res.json()
   console.log(`Job ${job.printJobId} | ${job.tipo}/${job.modo}`)
 
+  // Bitácoras nunca se imprimen automáticamente
+  if (job.tipo === 'BITACORA') {
+    console.log('  -> saltado (no se imprime en automatico)')
+    await confirmSuccess(job.printJobId)
+    return true
+  }
+
   // Seguridad: saltar jobs antiguos sin imprimirlos
   if (SKIP_OLD && job.modo !== 'COPIA') {
     const fecha = parsePayloadDate(job.payload)
