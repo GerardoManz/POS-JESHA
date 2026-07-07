@@ -93,7 +93,7 @@ async function tick() {
   console.log(`Job ${job.printJobId} | ${job.tipo}/${job.modo}`)
 
   // Seguridad: saltar jobs antiguos sin imprimirlos
-  if (SKIP_OLD) {
+  if (SKIP_OLD && job.modo !== 'COPIA') {
     const fecha = parsePayloadDate(job.payload)
     if (fecha) {
       const edadMs = Date.now() - fecha.getTime()
