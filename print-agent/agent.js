@@ -256,21 +256,6 @@ async function main() {
     } catch (e) {
       console.warn('No se pudo resetear al arrancar:', e.message)
     }
-    // Drenar jobs devueltos a PENDIENTE para evitar reimprimirlos
-    if (RESET_ON_START) {
-      let drained = 0
-      while (true) {
-        try {
-          const nr = await api('/impresion/agent/next')
-          if (nr.status === 204) break
-          if (!nr.ok) break
-          const job = await nr.json()
-          await reportFail(job.printJobId, 'omitido por reset al arrancar')
-          drained++
-        } catch (_) { break }
-      }
-      if (drained > 0) console.log(`Jobs omitidos tras reset: ${drained}`)
-    }
   }
 
   // Limpiar spooler al arrancar (jobs huérfanos de ejecuciones previas)

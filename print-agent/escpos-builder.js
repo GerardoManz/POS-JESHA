@@ -51,6 +51,7 @@ function checkPrinterOnline(printerName) {
     const status = (out || '').trim()
     return status === 'ONLINE'
   } catch (_) {
+    console.warn('[checkPrinterOnline] Error consultando estado de impresora:', _?.message || _)
     return true // ante la duda, asumir online para no bloquear ventas
   }
 }
@@ -123,7 +124,7 @@ function buildRasterImage(pngBuffer) {
   const yH = (height >> 8) & 0xFF
 
   return Buffer.concat([
-    Buffer.from([0x1D, 0x76, 0x30, 48, xL, 0x00, yL, yH]),
+    Buffer.from([0x1D, 0x76, 0x30, 0, xL, 0x00, yL, yH]),
     imgData
   ])
 }
