@@ -103,7 +103,9 @@ function buildVentaTicket(printer, payload, printerCfg = {}, logoBuffer = null) 
   const productos = Array.isArray(payload.productos) ? payload.productos : []
 
   if (printerCfg.printLogo && logoBuffer) {
-    try { printer.printImageBuffer(logoBuffer) } catch (_) {}
+    try { printer.printImageBuffer(logoBuffer) } catch (e) {
+      console.error('Error al imprimir logo:', e.message)
+    }
   }
 
   headerEmpresa(printer, emp)

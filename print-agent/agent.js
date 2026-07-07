@@ -258,7 +258,13 @@ async function main() {
       if (res.ok) {
         const buf = await res.arrayBuffer()
         LOGO_BUFFER = Buffer.from(buf)
-        console.log('Logo cargado de Cloudinary')
+        // Verificar firma PNG (bytes 0-3: 89 50 4E 47)
+        if (LOGO_BUFFER[0] === 0x89 && LOGO_BUFFER[1] === 0x50) {
+          console.log('Logo cargado de Cloudinary (PNG)')
+        } else {
+          console.warn('Logo descargado NO es PNG — verificar URL sin f_auto. Bytes:', LOGO_BUFFER.slice(0, 4).toString('hex'))
+          LOGO_BUFFER = null
+        }
       } else {
         console.warn('No se pudo cargar el logo: HTTP', res.status)
       }
