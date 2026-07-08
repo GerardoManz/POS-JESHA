@@ -141,12 +141,14 @@ function buildVentaTicket(printer, payload, printerCfg = {}, logoBuffer = null) 
   const v = payload.venta || {}
   const productos = Array.isArray(payload.productos) ? payload.productos : []
 
+  printer.bold(true)
+
   if (printerCfg.printLogo && logoBuffer) {
     const raster = buildRasterImage(logoBuffer)
     if (raster) {
       printer.alignCenter()
       printer.append(raster)
-      feed(printer, 2)
+      feed(printer, 3)
     }
   }
 
@@ -154,14 +156,13 @@ function buildVentaTicket(printer, payload, printerCfg = {}, logoBuffer = null) 
 
   printer.drawLine()
   printer.alignLeft()
-  pleftRight(printer, v.fecha || '', `Folio: ${v.folio || ''}`)
+  const folioCorto = v.folio ? v.folio.slice(-5) : ''
+  pleftRight(printer, v.fecha || '', `Folio: ${folioCorto}`)
   if (payload.cajero) pprintln(printer, `Cajero: ${payload.cajero}`)
   pprintln(printer, `Cliente: ${payload.cliente || 'Publico General'}`)
 
   printer.drawLine()
-  printer.bold(true)
   pleftRight(printer, 'Descripcion', 'Importe')
-  printer.bold(false)
   for (const p of productos) {
     pprintln(printer, String(p.nombre || ''))
     pleftRight(printer, `  ${qty(p.cantidad)} x ${money(p.precioUnitario)}`, money(p.subtotal))
@@ -174,11 +175,9 @@ function buildVentaTicket(printer, payload, printerCfg = {}, logoBuffer = null) 
   }
   printer.drawLine()
 
-  printer.bold(true)
   printer.setTextDoubleHeight()
   pleftRight(printer, 'TOTAL', money(v.total))
   printer.setTextNormal()
-  printer.bold(false)
   printer.drawLine()
 
   pleftRight(printer, 'Metodo:', payload.metodoLabel || payload.metodoPago || '')
@@ -193,14 +192,13 @@ function buildVentaTicket(printer, payload, printerCfg = {}, logoBuffer = null) 
     printer.drawLine()
     printer.alignCenter()
     printer.printQR(payload.qrUrl, { cellSize: 6, correction: 'M' })
+    feed(printer, 3)
     pprintln(printer, 'Escanea para solicitar factura')
   }
 
   printer.drawLine()
   printer.alignCenter()
-  printer.bold(true)
   pprintln(printer, 'Gracias por su compra')
-  printer.bold(false)
   pprintln(printer, 'Conserve su ticket para')
   pprintln(printer, 'aclaraciones')
   printer.drawLine()
@@ -221,20 +219,29 @@ function buildVentaTicket(printer, payload, printerCfg = {}, logoBuffer = null) 
 }
 
 // ── Ticket de CORTE DE CAJA ──
-function buildCorteTicket(printer, payload, printerCfg = {}) {
+function buildCorteTicket(printer, payload, printerCfg = {}, logoBuffer = null) {
   const emp = payload.empresa || {}
   const c = payload.corte || {}
   const movimientos = Array.isArray(payload.movimientos) ? payload.movimientos : []
+
+  printer.bold(true)
+
+  if (printerCfg.printLogo && logoBuffer) {
+    const raster = buildRasterImage(logoBuffer)
+    if (raster) {
+      printer.alignCenter()
+      printer.append(raster)
+      feed(printer, 3)
+    }
+  }
 
   headerEmpresa(printer, emp)
 
   printer.drawLine()
   printer.alignCenter()
-  printer.bold(true)
   printer.setTextDoubleHeight()
   pprintln(printer, 'CORTE DE CAJA')
   printer.setTextNormal()
-  printer.bold(false)
   printer.drawLine()
 
   printer.alignLeft()
@@ -244,25 +251,20 @@ function buildCorteTicket(printer, payload, printerCfg = {}) {
   if (c.sucursal) pprintln(printer, `Sucursal: ${c.sucursal}`)
 
   printer.drawLine()
-  printer.bold(true)
   pprintln(printer, 'Movimientos por metodo:')
-  printer.bold(false)
   for (const m of movimientos) {
     pleftRight(printer, `  ${m.metodo || ''}`, money(m.monto))
   }
 
   printer.drawLine()
-  printer.bold(true)
   pleftRight(printer, 'Total calculado:', money(c.montoCalculado))
   pleftRight(printer, 'Total declarado:', money(c.montoFinalDeclarado))
   const diff = Number(c.diferencia) || 0
   if (diff !== 0) {
-    printer.bold(true)
     pleftRight(printer, 'Diferencia:', diff > 0 ? `+${money(diff)}` : `-${money(Math.abs(diff))}`)
   } else {
     pleftRight(printer, 'Diferencia:', '$0.00')
   }
-  printer.bold(false)
 
   printer.drawLine()
   printer.alignCenter()
@@ -276,20 +278,29 @@ function buildCorteTicket(printer, payload, printerCfg = {}) {
 }
 
 // ── Ticket de ABONO ──
-function buildAbonoTicket(printer, payload, printerCfg = {}) {
+function buildAbonoTicket(printer, payload, printerCfg = {}, logoBuffer = null) {
   const emp = payload.empresa || {}
   const a = payload.abono || {}
+
+  printer.bold(true)
+
+  if (printerCfg.printLogo && logoBuffer) {
+    const raster = buildRasterImage(logoBuffer)
+    if (raster) {
+      printer.alignCenter()
+      printer.append(raster)
+      feed(printer, 3)
+    }
+  }
 
   headerEmpresa(printer, emp)
 
   printer.drawLine()
   printer.alignCenter()
-  printer.bold(true)
   printer.setTextDoubleHeight()
   pprintln(printer, 'COMPROBANTE')
   pprintln(printer, 'DE ABONO')
   printer.setTextNormal()
-  printer.bold(false)
   printer.drawLine()
 
   printer.alignLeft()
@@ -308,20 +319,16 @@ function buildAbonoTicket(printer, payload, printerCfg = {}) {
   }
   if (a.saldoNuevo != null) {
     const saldo = Number(a.saldoNuevo) || 0
-    printer.bold(true)
     if (saldo <= 0) {
       pleftRight(printer, 'Estado:', 'LIQUIDADA')
     } else {
       pleftRight(printer, 'Saldo pendiente:', money(a.saldoNuevo))
     }
-    printer.bold(false)
   }
 
   printer.drawLine()
   printer.alignCenter()
-  printer.bold(true)
   pprintln(printer, 'Gracias por su pago')
-  printer.bold(false)
 
   feed(printer, printerCfg.feedLinesAfterPrint || 4)
   aplicarCorte(printer, printerCfg.cutMode || 'none')
@@ -332,21 +339,30 @@ function buildAbonoTicket(printer, payload, printerCfg = {}) {
 }
 
 // ── Ticket de RETIRO DE MATERIALES ──
-function buildRetiroTicket(printer, payload, printerCfg = {}) {
+function buildRetiroTicket(printer, payload, printerCfg = {}, logoBuffer = null) {
   const emp = payload.empresa || {}
   const r = payload.retiro || {}
   const productos = Array.isArray(payload.productos) ? payload.productos : []
+
+  printer.bold(true)
+
+  if (printerCfg.printLogo && logoBuffer) {
+    const raster = buildRasterImage(logoBuffer)
+    if (raster) {
+      printer.alignCenter()
+      printer.append(raster)
+      feed(printer, 3)
+    }
+  }
 
   headerEmpresa(printer, emp)
 
   printer.drawLine()
   printer.alignCenter()
-  printer.bold(true)
   printer.setTextDoubleHeight()
   pprintln(printer, 'RETIRO DE')
   pprintln(printer, 'MATERIALES')
   printer.setTextNormal()
-  printer.bold(false)
   printer.drawLine()
 
   printer.alignLeft()
@@ -356,9 +372,7 @@ function buildRetiroTicket(printer, payload, printerCfg = {}) {
   if (r.trabajador) pprintln(printer, `Recibido por: ${r.trabajador}`)
 
   printer.drawLine()
-  printer.bold(true)
   pleftRight(printer, 'Producto', 'Cantidad')
-  printer.bold(false)
   for (const p of productos) {
     pprintln(printer, String(p.nombre || ''))
     pleftRight(printer, `  x ${qty(p.cantidad)}`, p.precioUnitario != null ? money(p.precioUnitario) : '')
@@ -377,9 +391,7 @@ function buildRetiroTicket(printer, payload, printerCfg = {}) {
 // ── Helper: header común de empresa ──
 function headerEmpresa(printer, emp) {
   printer.alignCenter()
-  printer.bold(true)
   pprintln(printer, emp.nombre || '')
-  printer.bold(false)
   if (emp.slogan) pprintln(printer, emp.slogan)
   if (emp.direccion) pprintln(printer, emp.direccion)
   if (emp.ciudad) pprintln(printer, emp.ciudad)
@@ -393,11 +405,11 @@ function buildTicket(printer, payload, printerCfg = {}, logoBuffer = null) {
     case 'VENTA':
       return buildVentaTicket(printer, payload, printerCfg, logoBuffer)
     case 'CORTE':
-      return buildCorteTicket(printer, payload, printerCfg)
+      return buildCorteTicket(printer, payload, printerCfg, logoBuffer)
     case 'ABONO':
-      return buildAbonoTicket(printer, payload, printerCfg)
+      return buildAbonoTicket(printer, payload, printerCfg, logoBuffer)
     case 'RETIRO':
-      return buildRetiroTicket(printer, payload, printerCfg)
+      return buildRetiroTicket(printer, payload, printerCfg, logoBuffer)
     case 'CAJON':
       printer.openCashDrawer()
       return
