@@ -192,7 +192,7 @@ function buildVentaTicket(printer, payload, printerCfg = {}, logoBuffer = null) 
     printer.drawLine()
     printer.alignCenter()
     printer.printQR(payload.qrUrl, { cellSize: 6, correction: 'M' })
-    feed(printer, 3)
+    printer.newLine()
     pprintln(printer, 'Escanea para solicitar factura')
   }
 
