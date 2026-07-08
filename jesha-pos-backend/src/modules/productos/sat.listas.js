@@ -43,6 +43,7 @@ const NO_AUTO = new Set([
   '31162800', // Ferretería en general — cajón genérico evidente
   '40141700', // Material de ferretería y accesorios — muy amplia y sobreusada
   '27111500', // Herramientas de corte y engarzado — muy amplia
+  '27111610', // Componentes de martillo y mazo — no es martillo completo
   '27111700', // Llaves inglesas y guías — muy amplia; preferir subclaves
   '39121700', // Ferretería eléctrica y suministros — muy amplia
   '30111500', // Concreto y morteros — semi-amplia, mal aplicada en muestras
@@ -53,6 +54,7 @@ const NO_LEARN = new Set([
   '31162800',
   '40141700',
   '27111500',
+  '27111610',
   '27111700',
   '39121700',
 ]);

@@ -75,6 +75,9 @@ router.post('/importar/datos-fiscales', requireRole('SUPERADMIN', 'ADMIN_SUCURSA
 
 router.get('/',                    productosController.listar)
 
+// GET /productos/sat/unidades — catálogo SAT + unidades operativas para dropdowns
+router.get('/sat/unidades',        satController.listarUnidades)
+
 // POST /productos/articulo-rapido — alta rápida desde POS (cualquier usuario autenticado)
 router.post('/articulo-rapido',   productosRapidoController.crearArticuloRapido)
 

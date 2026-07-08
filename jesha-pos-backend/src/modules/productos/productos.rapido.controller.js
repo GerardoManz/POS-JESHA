@@ -34,6 +34,7 @@
 const { Prisma } = require('@prisma/client')
 const prisma = require('../../lib/prisma')
 const getEmpresaId = require('../../helpers/getEmpresaId')
+const satMatcher = require('./sat.matcher')
 
 const IVA_FACTOR = 1.16
 
@@ -202,6 +203,18 @@ exports.crearArticuloRapido = async (req, res) => {
     const claveSatFinal = typeof claveSat === 'string' && claveSat.trim() !== ''
       ? claveSat.trim()
       : null
+
+    if (!satMatcher.validarUnidadSat(unidadSatFinal)) {
+      return res.status(400).json({ success: false, error: `UNIDAD SAT ${unidadSatFinal} no existe en el catálogo SAT vigente`, campo: 'unidadSat' })
+    }
+
+    if (claveSatFinal && !/^\d{8}$/.test(claveSatFinal)) {
+      return res.status(400).json({ success: false, error: 'CLAVE SAT debe tener 8 dígitos', campo: 'claveSat' })
+    }
+
+    if (claveSatFinal && !satMatcher.validarClaveSat(claveSatFinal)) {
+      return res.status(400).json({ success: false, error: `CLAVE SAT ${claveSatFinal} no existe en el catálogo SAT vigente`, campo: 'claveSat' })
+    }
 
     // ── Transacción ACID ──────────────────────────────────────────
     const resultado = await prisma.$transaction(async (tx) => {

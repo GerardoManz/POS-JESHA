@@ -37,6 +37,11 @@ let departamentosLista = []
 let categoriasLista    = []
 let proveedoresLista   = []
 let productoActual     = null
+let unidadesSatLista   = []
+let unidadesVentaLista = []
+let unidadesCompraLista = []
+let unidadesVentaMap   = new Map()
+let unidadesCompraMap  = new Map()
 
 // Total global
 let totalProductos = 0
@@ -102,6 +107,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   console.log('✅ Token encontrado')
   await cargarDepartamentos()
   await cargarCategorias()
+  cargarUnidadesSat()
   if (ES_ADMIN) await cargarProveedores()  // FIX: PRECIOS no usa el modal de producto, no necesita proveedores
   await cargarProductos()
   aplicarPermisosProductos()
@@ -126,6 +132,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Inicializar sugerencia SAT en modal de producto
   initSugerirSat()
+
+  // Inicializar dropdowns de unidades y auto-fill de Unidad SAT
+  initUnidadesProducto()
 })
 
 // ═══════════════════════════════════════════════════════════════════
@@ -153,6 +162,151 @@ function aplicarPermisosProductos() {
 // ═══════════════════════════════════════════════════════════════════
 // CARGA DE DATOS
 // ═══════════════════════════════════════════════════════════════════
+
+const UNIDADES_FALLBACK = {
+  unidadesSat: [
+    { id: 'H87', nombre: 'Pieza', simbolo: '', esComun: true },
+    { id: 'MTR', nombre: 'Metro', simbolo: 'm', esComun: true },
+    { id: 'KGM', nombre: 'Kilogramo', simbolo: 'kg', esComun: true },
+    { id: 'LTR', nombre: 'Litro', simbolo: 'l', esComun: true },
+    { id: 'XPK', nombre: 'Paquete', simbolo: '', esComun: true },
+    { id: 'PR', nombre: 'Par', simbolo: '', esComun: true },
+    { id: 'KT', nombre: 'Kit', simbolo: '', esComun: true },
+    { id: 'SET', nombre: 'Conjunto', simbolo: '', esComun: true },
+  ],
+  unidadVenta: [
+    { valor: 'PZA', unidadSat: 'H87', nombre: 'Pieza', aliases: ['PZ', 'PZAS', 'PIEZA'], esComun: true },
+    { valor: 'MT', unidadSat: 'MTR', nombre: 'Metro', aliases: ['M', 'MTS', 'METRO'], esComun: true },
+    { valor: 'KG', unidadSat: 'KGM', nombre: 'Kilogramo', aliases: ['KILO', 'KILOS'], esComun: true },
+    { valor: 'LT', unidadSat: 'LTR', nombre: 'Litro', aliases: ['L', 'LTS', 'LITRO'], esComun: true },
+    { valor: 'PAQUETE', unidadSat: 'XPK', nombre: 'Paquete', aliases: ['PACK', 'PAQ'], esComun: true },
+    { valor: 'PAR', unidadSat: 'PR', nombre: 'Par', aliases: [], esComun: true },
+    { valor: 'KIT', unidadSat: 'KT', nombre: 'Kit', aliases: [], esComun: true },
+    { valor: 'JUEGO', unidadSat: 'SET', nombre: 'Juego', aliases: ['SET'], esComun: true },
+  ],
+  unidadCompra: [
+    { valor: 'CAJA', unidadSat: 'XBX', nombre: 'Caja', aliases: [], esComun: true },
+    { valor: 'BULTO', unidadSat: 'XSA', nombre: 'Bulto / saco', aliases: ['SACO'], esComun: true },
+    { valor: 'ROLLO', unidadSat: 'XRO', nombre: 'Rollo', aliases: [], esComun: true },
+    { valor: 'PZA', unidadSat: 'H87', nombre: 'Pieza', aliases: ['PZ', 'PZAS', 'PIEZA'], esComun: true },
+    { valor: 'PAQUETE', unidadSat: 'XPK', nombre: 'Paquete', aliases: ['PACK', 'PAQ'], esComun: true },
+    { valor: 'MT', unidadSat: 'MTR', nombre: 'Metro', aliases: ['M', 'MTS', 'METRO'], esComun: true },
+    { valor: 'KG', unidadSat: 'KGM', nombre: 'Kilogramo', aliases: ['KILO', 'KILOS'], esComun: true },
+    { valor: 'LT', unidadSat: 'LTR', nombre: 'Litro', aliases: ['L', 'LTS', 'LITRO'], esComun: true },
+  ],
+}
+
+function normalizarUnidadTexto(valor) {
+  return String(valor || '').trim().toUpperCase().replace(/\s+/g, ' ')
+}
+
+function registrarUnidadOperativa(map, unidad) {
+  if (!unidad || !unidad.valor) return
+  map.set(normalizarUnidadTexto(unidad.valor), unidad)
+  ;(unidad.aliases || []).forEach(alias => map.set(normalizarUnidadTexto(alias), unidad))
+}
+
+async function cargarUnidadesSat() {
+  try {
+    const resultado = await apiFetch('/productos/sat/unidades')
+    const data = resultado?.data || resultado || {}
+    aplicarCatalogoUnidades(data)
+    console.log('✅ Unidades SAT:', unidadesSatLista.length)
+  } catch (error) {
+    console.error('❌ Error cargando unidades SAT:', error)
+    aplicarCatalogoUnidades(UNIDADES_FALLBACK)
+  }
+}
+
+function aplicarCatalogoUnidades(data) {
+  unidadesSatLista = Array.isArray(data.unidadesSat) ? data.unidadesSat : UNIDADES_FALLBACK.unidadesSat
+  unidadesVentaLista = Array.isArray(data.unidadVenta) ? data.unidadVenta : UNIDADES_FALLBACK.unidadVenta
+  unidadesCompraLista = Array.isArray(data.unidadCompra) ? data.unidadCompra : UNIDADES_FALLBACK.unidadCompra
+
+  unidadesVentaMap = new Map()
+  unidadesCompraMap = new Map()
+  unidadesVentaLista.forEach(u => registrarUnidadOperativa(unidadesVentaMap, u))
+  unidadesCompraLista.forEach(u => registrarUnidadOperativa(unidadesCompraMap, u))
+
+  unidadesSatLista.forEach(u => {
+    if (u?.id && u?.nombre) UNIDAD_LABEL_SAT[u.id] = u.nombre
+  })
+
+  llenarDatalistUnidadOperativa('producto-unidades-venta-list', unidadesVentaLista)
+  llenarDatalistUnidadOperativa('producto-unidades-compra-list', unidadesCompraLista)
+  llenarDatalistSat('producto-unidades-sat-list', unidadesSatLista)
+}
+
+function llenarDatalistUnidadOperativa(id, unidades) {
+  const lista = document.getElementById(id)
+  if (!lista) return
+  const fragment = document.createDocumentFragment()
+  ;(unidades || []).forEach((u) => {
+    if (!u?.valor) return
+    const option = document.createElement('option')
+    option.value = u.valor
+    option.label = `${u.nombre || u.valor}${u.unidadSat ? ` (${u.unidadSat})` : ''}`
+    fragment.appendChild(option)
+  })
+  lista.innerHTML = ''
+  lista.appendChild(fragment)
+}
+
+function llenarDatalistSat(id, unidades) {
+  const lista = document.getElementById(id)
+  if (!lista) return
+  const fragment = document.createDocumentFragment()
+  ;(unidades || []).forEach((u) => {
+    if (!u?.id) return
+    const option = document.createElement('option')
+    option.value = u.id
+    option.label = `${u.nombre || ''}${u.simbolo ? ` - ${u.simbolo}` : ''}`
+    fragment.appendChild(option)
+  })
+  lista.innerHTML = ''
+  lista.appendChild(fragment)
+}
+
+function normalizarInputUnidad(input, map) {
+  if (!input) return null
+  const clave = normalizarUnidadTexto(input.value)
+  const unidad = map.get(clave)
+  if (unidad) input.value = unidad.valor
+  return unidad || null
+}
+
+function obtenerValorUnidad(inputId, map) {
+  const input = document.getElementById(inputId)
+  if (!input) return null
+  const unidad = normalizarInputUnidad(input, map)
+  return unidad ? unidad.valor : (input.value.trim() || null)
+}
+
+function initUnidadesProducto() {
+  const unidadVenta = document.getElementById('producto-unidadVenta')
+  const unidadCompra = document.getElementById('producto-unidadCompra')
+  const unidadSat = document.getElementById('producto-unidadSat')
+
+  const aplicarUnidadVenta = () => {
+    const unidad = normalizarInputUnidad(unidadVenta, unidadesVentaMap)
+    if (unidad?.unidadSat && unidadSat) unidadSat.value = unidad.unidadSat
+  }
+
+  if (unidadVenta) {
+    unidadVenta.addEventListener('change', aplicarUnidadVenta)
+    unidadVenta.addEventListener('blur', aplicarUnidadVenta)
+  }
+
+  if (unidadCompra) {
+    const normalizarCompra = () => normalizarInputUnidad(unidadCompra, unidadesCompraMap)
+    unidadCompra.addEventListener('change', normalizarCompra)
+    unidadCompra.addEventListener('blur', normalizarCompra)
+  }
+
+  if (unidadSat) {
+    unidadSat.addEventListener('blur', () => { unidadSat.value = normalizarUnidadTexto(unidadSat.value) })
+  }
+}
 
 async function cargarDepartamentos() {
   try {
@@ -862,6 +1016,11 @@ function abrirModalNuevo() {
   // Limpiar costoSinIva explícitamente (por si no está dentro del form)
   const costoSinIvaInput = document.getElementById('producto-costoSinIva')
   if (costoSinIvaInput) costoSinIvaInput.value = ''
+
+  const unidadVentaInput = document.getElementById('producto-unidadVenta')
+  const unidadSatInput = document.getElementById('producto-unidadSat')
+  if (unidadVentaInput) unidadVentaInput.value = 'PZA'
+  if (unidadSatInput) unidadSatInput.value = 'H87'
   
   llenarModalDepartamentos()
   if (modalCatSelect) { modalCatSelect.innerHTML = '<option value="">Seleccionar categoría...</option>'; modalCatSelect.disabled = true }
@@ -909,6 +1068,9 @@ async function guardarProducto(e) {
   const tipoFactura = radioFacturaB?.checked ? 'DESGLOSE' : 'NETO'
 
   const tipoProd = document.querySelector('#tipo-producto-tabs .tipo-tab.active')?.dataset.tipo || 'PRODUCTO'
+  const unidadCompraValor = obtenerValorUnidad('producto-unidadCompra', unidadesCompraMap)
+  const unidadVentaValor = obtenerValorUnidad('producto-unidadVenta', unidadesVentaMap)
+  const unidadSatValor = normalizarUnidadTexto(document.getElementById('producto-unidadSat').value)
 
   const datos = {
     nombre, codigoInterno: codigo,
@@ -922,11 +1084,11 @@ async function guardarProducto(e) {
     categoriaId:      parseInt(categoria),
     proveedorId:      tipoProd === 'SERVICIO' ? null : (proveedorId ? parseInt(proveedorId) : null),
     tipo:             tipoProd,
-    unidadCompra:     tipoProd === 'SERVICIO' ? null : (document.getElementById('producto-unidadCompra').value.trim() || null),
-    unidadVenta:      tipoProd === 'SERVICIO' ? null : (document.getElementById('producto-unidadVenta').value.trim() || null),
+    unidadCompra:     tipoProd === 'SERVICIO' ? null : unidadCompraValor,
+    unidadVenta:      tipoProd === 'SERVICIO' ? null : unidadVentaValor,
     factorConversion: tipoProd === 'SERVICIO' ? null : (parseFloat(document.getElementById('producto-factorConversion').value) || null),
     claveSat:         tipoProd === 'SERVICIO' ? null : (document.getElementById('producto-claveSat').value.trim() || null),
-    unidadSat:        tipoProd === 'SERVICIO' ? null : (document.getElementById('producto-unidadSat').value.trim() || null),
+    unidadSat:        tipoProd === 'SERVICIO' ? null : (unidadSatValor || null),
     esGranel:         tipoProd === 'SERVICIO' ? false : (document.getElementById('producto-esGranel')?.checked || false),
   }
   

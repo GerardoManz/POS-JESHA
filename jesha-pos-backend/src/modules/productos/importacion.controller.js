@@ -5,6 +5,7 @@
 
 const prisma = require('../../lib/prisma')
 const getEmpresaId = require('../../helpers/getEmpresaId')
+const satMatcher = require('./sat.matcher')
 
 // ═══════════════════════════════════════════════════════════════════
 // UTILIDADES DE PARSEO CSV
@@ -122,6 +123,8 @@ function validarFila(fila, idx) {
     const precio = fila['PRECIO 1']
     const claveSat = fila['CLAVE SAT']
     const unidadSat = fila['UNIDAD SAT']
+    const claveSatLimpia = claveSat ? claveSat.trim() : ''
+    const unidadSatLimpia = unidadSat ? unidadSat.trim().toUpperCase() : ''
 
     if (!clave) {
         errores.push({ fila: idx, error: 'CLAVE vacía' })
@@ -139,12 +142,18 @@ function validarFila(fila, idx) {
     }
 
     // CLAVE SAT y UNIDAD SAT ahora son obligatorias
-    if (!claveSat || claveSat.trim() === '' || claveSat.toLowerCase() === 'null') {
+    if (!claveSatLimpia || claveSatLimpia.toLowerCase() === 'null' || claveSatLimpia.toLowerCase() === 'undefined') {
         errores.push({ fila: idx, clave, error: 'CLAVE SAT vacía o nula' })
+    } else if (!/^\d{8}$/.test(claveSatLimpia)) {
+        errores.push({ fila: idx, clave, error: `CLAVE SAT debe tener 8 dígitos: "${claveSatLimpia}"` })
+    } else if (!satMatcher.validarClaveSat(claveSatLimpia)) {
+        errores.push({ fila: idx, clave, error: `CLAVE SAT no existe en catálogo vigente: "${claveSatLimpia}"` })
     }
 
-    if (!unidadSat || unidadSat.trim() === '' || unidadSat.toLowerCase() === 'null') {
+    if (!unidadSatLimpia || unidadSatLimpia.toLowerCase() === 'null' || unidadSatLimpia.toLowerCase() === 'undefined') {
         errores.push({ fila: idx, clave, error: 'UNIDAD SAT vacía o nula' })
+    } else if (!satMatcher.validarUnidadSat(unidadSatLimpia)) {
+        errores.push({ fila: idx, clave, error: `UNIDAD SAT no existe en catálogo vigente: "${unidadSatLimpia}"` })
     }
 
     return errores
@@ -233,8 +242,8 @@ function mapearProducto(fila) {
         precioBase:  parseFloat(fila['PRECIO 1']) || 0,
         precioVenta: fila['PRECIO_VENTA'] ? parseFloat(fila['PRECIO_VENTA']) : null,
         costo:       fila['PRECIO COMPRA'] ? parseFloat(fila['PRECIO COMPRA']) : null,
-        claveSat:  fila['CLAVE SAT']  || null,
-        unidadSat: fila['UNIDAD SAT'] || null,
+        claveSat:  (fila['CLAVE SAT'] || '').trim() || null,
+        unidadSat: (fila['UNIDAD SAT'] || '').trim().toUpperCase() || null,
         esGranel,
         unidadVenta,
         activo: true,
@@ -720,13 +729,31 @@ exports.actualizarDatosFiscales = async (req, res) => {
             const promesas = lote.map(async (fila, j) => {
                 const numFila = i + j + 2
                 try {
-                    const claveCSV   = (fila['CLAVE'] || '').trim()
-                    const claveSat   = (fila['CLAVE SAT'] || '').trim() || null
-                    const unidadSat  = (fila['UNIDAD SAT'] || '').trim() || null
+                    let claveCSV = (fila['CLAVE'] || '').trim()
+                    const claveSat = (fila['CLAVE SAT'] || '').trim() || null
+                    const unidadSat = (fila['UNIDAD SAT'] || '').trim().toUpperCase() || null
 
                     if (!claveCSV) {
                         omitidos++
                         detalleOmitidos.push({ fila: numFila, clave: '(vacía)', razon: 'CLAVE vacía' })
+                        return
+                    }
+
+                    if (claveSat && !/^\d{8}$/.test(claveSat)) {
+                        omitidos++
+                        detalleOmitidos.push({ fila: numFila, clave: claveCSV, razon: `CLAVE SAT debe tener 8 dígitos: ${claveSat}` })
+                        return
+                    }
+
+                    if (claveSat && !satMatcher.validarClaveSat(claveSat)) {
+                        omitidos++
+                        detalleOmitidos.push({ fila: numFila, clave: claveCSV, razon: `CLAVE SAT no existe en catálogo vigente: ${claveSat}` })
+                        return
+                    }
+
+                    if (unidadSat && !satMatcher.validarUnidadSat(unidadSat)) {
+                        omitidos++
+                        detalleOmitidos.push({ fila: numFila, clave: claveCSV, razon: `UNIDAD SAT no existe en catálogo vigente: ${unidadSat}` })
                         return
                     }
 

@@ -14,6 +14,18 @@ if (!TOKEN) {
 }
 
 // ════════════════════════════════════════════════════════════════════
+//  HELPER: Limpiar teléfono para WhatsApp
+// ════════════════════════════════════════════════════════════════════
+
+function limpiarTelefono(telefono) {
+  let limpio = telefono.replace(/\D/g, '')
+  if (!limpio.startsWith('52') && limpio.length <= 10) {
+    limpio = '52' + limpio
+  }
+  return limpio
+}
+
+// ════════════════════════════════════════════════════════════════════
 //  ESTADO GLOBAL
 // ════════════════════════════════════════════════════════════════════
 
@@ -208,6 +220,9 @@ async function cargarCotizaciones() {
             ${c.estado === 'PENDIENTE' ? `<button class="btn-icon" onclick="abrirEdicion(${c.id})" title="Editar">✏️</button>` : ''}
             ${c.tipo === 'PRODUCTOS' ? `<button class="btn-icon" onclick="cargarEnPos(${c.id})" title="Cargar en POS">🛒</button>` : ''}
             <button class="btn-icon" onclick="descargarPdf(${c.id})" title="PDF">📄</button>
+            ${c.Cliente?.telefono ? `<button class="btn-icon btn-whatsapp" onclick="enviarWhatsAppPdf(${c.id})" title="Enviar por WhatsApp">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413z"/></svg>
+            </button>` : ''}
           </div>
         </td>
       </tr>
@@ -433,7 +448,7 @@ window.abrirEdicion = async function(id) {
       unidad:     d.unidad || '',
       cantidad:   d.cantidad,
       precio:     parseFloat(d.precioUnitario),
-      descuento:  parseFloat(d.descuento || 0),
+descuentoPct:  Math.round((parseFloat(d.descuento || 0) / (parseFloat(d.precioUnitario) * parseFloat(d.cantidad) || 1)) * 100),
       fechaManual: fechaInputValue(d.fechaManual)
     }))
 
@@ -474,14 +489,14 @@ function renderItemsProductos() {
     const codigo = item.codigoInterno || item.codigoBarras || '—'
     return `
     <tr id="cot-item-${item.productoId}">
-      <td><span class="cot-item-codigo">${codigo}</span></td>
-      <td><input type="date" value="${item.fechaManual || ''}" style="width:120px" oninput="itemsEdicion[${i}].fechaManual=this.value" /></td>
+<td><span class="cot-item-codigo">${codigo}</span></td>
+<td><input type="date" value="${item.fechaManual || ''}" style="width:90px" oninput="itemsEdicion[${i}].fechaManual=this.value" /></td>
       <td><div class="cot-item-desc">${item.nombre}</div></td>
-      <td><input type="text" value="${item.unidad || 'PZA'}" style="width:50px" oninput="itemsEdicion[${i}].unidad=this.value" /></td>
-      <td><input type="number" min="1" value="${item.cantidad}" style="width:52px" oninput="actualizarCantidadItem(${i},this.value)" min="${item.esGranel ? 0.001 : 1}" step="1" /></td>
-      <td><input type="number" min="0" step="0.01" value="${item.precio.toFixed(2)}" style="width:82px" oninput="actualizarPrecioItem(${i},this.value)" /></td>
-      <td><input type="number" min="0" step="0.01" value="${(item.descuento || 0).toFixed(2)}" style="width:82px" oninput="actualizarDescuentoItem(${i},this.value)" /></td>
-      <td id="prod-total-${i}"><strong>${fmt((item.precio * item.cantidad) - item.descuento)}</strong></td>
+      <td><input type="text" value="${item.unidad || 'PZA'}" style="width:58px" oninput="itemsEdicion[${i}].unidad=this.value" /></td>
+      <td><input type="number" min="1" value="${item.cantidad}" style="width:64px" oninput="actualizarCantidadItem(${i},this.value)" min="${item.esGranel ? 0.001 : 1}" step="1" /></td>
+      <td><input type="number" min="0" step="0.01" value="${item.precio.toFixed(2)}" style="width:94px" oninput="actualizarPrecioItem(${i},this.value)" /></td>
+      <td><input type="number" min="0" max="10" step="1" id="cot-item-desc-input-${i}" value="${item.descuentoPct || 0}" style="width:60px" oninput="actualizarDescuentoPorcentajeItem(${i},this.value)" placeholder="%" /></td>
+      <td id="prod-total-${i}"><strong>${fmt(calcularTotalItem(item))}</strong></td>
       <td><button class="btn-icon" onclick="quitarItem(${i})" style="color:#f44336">&times;</button></td>
     </tr>
   `}).join('')
@@ -517,23 +532,36 @@ window.actualizarPrecioItem = function(i, v) {
   const n = parseFloat(v)
   if (!isNaN(n) && n >= 0) { itemsEdicion[i].precio = n; actualizarFilaTotal(i) }
 }
-window.actualizarDescuentoItem = function(i, v) {
-  const n = parseFloat(v)
-  if (!isNaN(n) && n >= 0) { itemsEdicion[i].descuento = n; actualizarFilaTotal(i) }
+function calcularDescuentoMonetario(item) {
+  const importe = item.precio * item.cantidad
+  const pct = parseFloat(item.descuentoPct || 0)
+  return parseFloat((importe * (pct / 100)).toFixed(2))
+}
+
+function calcularTotalItem(item) {
+  const importe = item.precio * item.cantidad
+  const descPct = parseFloat(item.descuentoPct || 0)
+  return importe - (importe * (descPct / 100))
+}
+
+window.actualizarDescuentoPorcentajeItem = function(i, v) {
+  let pct = parseInt(v) || 0
+  if (pct > 10) { pct = 10; const el = document.getElementById('cot-item-desc-input-' + i); if (el) el.value = '10'; jeshaToast('Máximo 10% por línea', 'warning') }
+  if (pct < 0) pct = 0
+  itemsEdicion[i].descuentoPct = pct; actualizarFilaTotal(i)
 }
 window.quitarItem = function(i) { itemsEdicion.splice(i, 1); renderItems() }
 
 function actualizarFilaTotal(i) {
   const item  = itemsEdicion[i]
-  const total = (item.precio * item.cantidad) - (item.descuento || 0)
-  // Actualizar celda de la fila sin tocar el resto del DOM
+  const total = calcularTotalItem(item)
   const celda = document.getElementById(`prod-total-${i}`) || document.getElementById(`srv-total-${i}`)
   if (celda) celda.innerHTML = `<strong>${fmt(total)}</strong>`
   actualizarTotal()
 }
 
 function actualizarTotal() {
-  const totalLineas = itemsEdicion.reduce((s, i) => s + (i.precio * i.cantidad) - (i.descuento || 0), 0)
+  const totalLineas = itemsEdicion.reduce((s, i) => s + calcularTotalItem(i), 0)
   const pct = descuentoGlobalPct
   const descAmt = parseFloat((totalLineas * (pct / 100)).toFixed(2))
   const totalFinal = parseFloat((totalLineas - descAmt).toFixed(2))
@@ -593,7 +621,7 @@ function agregarProductoAItems(prod) {
       unidad:     prod.unidadVenta || 'PZA',
       cantidad:   prod.esGranel ? 0.1 : 1,
       precio:     parseFloat(prod.precioVenta || prod.precioBase),
-      descuento:  0,
+descuentoPct: 0,
       esGranel:   prod.esGranel || false,
       fechaManual: fechaHoyLocalInput()
     })
@@ -603,7 +631,7 @@ function agregarProductoAItems(prod) {
 }
 
 function agregarLineaServicio() {
-  itemsEdicion.push({ concepto: '', unidad: '', cantidad: 1, precio: 0, descuento: 0, fechaManual: fechaHoyLocalInput() })
+  itemsEdicion.push({ concepto: '', unidad: '', cantidad: 1, precio: 0, descuentoPct: 0, fechaManual: fechaHoyLocalInput() })
   renderItems()
 }
 
@@ -617,7 +645,7 @@ async function guardarCotizacion() {
   const notas     = document.getElementById('cot-notas').value.trim() || null
 
   // Calcular descuento global
-  const totalLineas = itemsEdicion.reduce((s, i) => s + (i.precio * i.cantidad) - (i.descuento || 0), 0)
+  const totalLineas = itemsEdicion.reduce((s, i) => s + calcularTotalItem(i), 0)
   const descAmt = parseFloat((totalLineas * (descuentoGlobalPct / 100)).toFixed(2))
 
   let detalles
@@ -627,7 +655,7 @@ async function guardarCotizacion() {
       unidad:         i.unidad,
       cantidad:       i.cantidad,
       precioUnitario: i.precio,
-      descuento:      i.descuento || 0,
+      descuento:      calcularDescuentoMonetario(i),
       fechaManual:    i.fechaManual || null
     }))
   } else {
@@ -636,7 +664,7 @@ async function guardarCotizacion() {
       unidad:         i.unidad,
       cantidad:       i.cantidad,
       precioUnitario: i.precio,
-      descuento:      0,
+      descuento:      0, esGranel: false, descuentoPct: 0,
       fechaManual:    i.fechaManual || null
     }))
   }
@@ -970,6 +998,21 @@ window.cargarEnPos = async function(id) {
     }
     localStorage.setItem('pos_cotizacion', JSON.stringify(posPayload))
     window.location.href = 'punto-venta.html'
+  } catch (err) { jeshaToast('Error: ' + err.message, 'error') }
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  WHATSAPP — descarga PDF + notificación
+// ════════════════════════════════════════════════════════════════════
+
+window.enviarWhatsAppPdf = async function(id) {
+  try {
+    const r = await apiFetch(`/cotizaciones/${id}`)
+    const c = r.data
+    if (c.Cliente?.telefono) {
+      window.open(`https://wa.me/${limpiarTelefono(c.Cliente.telefono)}?text=${encodeURIComponent('Le comparto la cotización')}`, '_blank', 'noopener,noreferrer')
+    }
+    await descargarPdf(id)
   } catch (err) { jeshaToast('Error: ' + err.message, 'error') }
 }
 

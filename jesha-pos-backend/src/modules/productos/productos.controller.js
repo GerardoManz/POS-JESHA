@@ -10,6 +10,7 @@ const { Prisma } = require('@prisma/client')
 const prisma = require('../../lib/prisma')
 const getEmpresaId = require('../../helpers/getEmpresaId')
 const { eliminarImagenProducto } = require('../../lib/cloudinary')
+const satMatcher = require('./sat.matcher')
 
 // Valida si claveSat/unidadSat vienen vacíos o como "null"/"undefined"
 function satInvalido(valor) {
@@ -21,6 +22,39 @@ function satInvalido(valor) {
         if (trimmed.toLowerCase() === 'undefined') return true
     }
     return false
+}
+
+function normalizarClaveSat(valor) {
+    if (satInvalido(valor)) return null
+    return String(valor).trim()
+}
+
+function normalizarUnidadSat(valor) {
+    if (satInvalido(valor)) return null
+    return String(valor).trim().toUpperCase()
+}
+
+function validarSatCatalogo(claveSat, unidadSat) {
+    const clave = normalizarClaveSat(claveSat)
+    const unidad = normalizarUnidadSat(unidadSat)
+
+    if (!clave || !unidad) {
+        return { ok: false, campo: 'sat', error: 'CLAVE SAT y UNIDAD SAT son obligatorios' }
+    }
+
+    if (!/^\d{8}$/.test(clave)) {
+        return { ok: false, campo: 'claveSat', error: 'CLAVE SAT debe tener 8 dígitos' }
+    }
+
+    if (!satMatcher.validarClaveSat(clave)) {
+        return { ok: false, campo: 'claveSat', error: `CLAVE SAT ${clave} no existe en el catálogo SAT vigente` }
+    }
+
+    if (!satMatcher.validarUnidadSat(unidad)) {
+        return { ok: false, campo: 'unidadSat', error: `UNIDAD SAT ${unidad} no existe en el catálogo SAT vigente` }
+    }
+
+    return { ok: true, claveSat: clave, unidadSat: unidad }
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -483,9 +517,12 @@ async function crear(req, res) {
             unidadSat = unidadSat || 'E48'        // Unidad de servicio
         }
 
-        if (esServicio && !/^\d{8}$/.test(claveSat || '')) {
-            return res.status(400).json({ success: false, error: 'Servicio requiere clave SAT de 8 dígitos', campo: 'claveSat' })
+        const validacionSat = validarSatCatalogo(claveSat, unidadSat)
+        if (!validacionSat.ok) {
+            return res.status(400).json({ success: false, error: validacionSat.error, campo: validacionSat.campo })
         }
+        claveSat = validacionSat.claveSat
+        unidadSat = validacionSat.unidadSat
 
         // Auto-generar código de barras para productos físicos sin uno
         if (!esServicio && !codigoBarras) {
@@ -628,9 +665,13 @@ async function editar(req, res) {
             claveSatFinal  = claveSatFinal  || '78101800'
             unidadSatFinal = unidadSatFinal || 'E48'
         }
-        if (esServ && !/^\d{8}$/.test(claveSatFinal || '')) {
-            return res.status(400).json({ success: false, error: 'Servicio requiere clave SAT de 8 dígitos', campo: 'claveSat' })
+
+        const validacionSat = validarSatCatalogo(claveSatFinal, unidadSatFinal)
+        if (!validacionSat.ok) {
+            return res.status(400).json({ success: false, error: validacionSat.error, campo: validacionSat.campo })
         }
+        claveSatFinal = validacionSat.claveSat
+        unidadSatFinal = validacionSat.unidadSat
 
         // Factor de conversión: el form envía precio por caja; Producto.costo es por pieza
         const factorRaw    = factorConversion ? parseFloat(factorConversion) : 1

@@ -47,11 +47,66 @@ const REGLAS_DIRECTAS = [
     razon: 'Mango para martillo/marro identificado como componente',
   },
   {
+    id: 'juego_brocas',
+    claveSat: '27112845',
+    confianza: 96,
+    todos: [/\b(juego|kit|set)\b/, /\bbrocas?\b/],
+    razon: 'Juego/kit de brocas identificado',
+  },
+  {
     id: 'aflojatodo_lubricante',
     claveSat: '15121806',
     confianza: 94,
     todos: [/\baflojatodo\b/],
     razon: 'Aflojatodo identificado como lubricante anticorrosion',
+  },
+
+  // Cinta delimitadora / seguridad.
+  {
+    id: 'cinta_delimitadora_seguridad',
+    claveSat: '31201513',
+    confianza: 96,
+    todos: [/\bcinta\b/, /\b(delimitador|delimitadora|precaución|precaucion|seguridad)\b/],
+    razon: 'Cinta delimitadora/de seguridad identificada',
+  },
+
+  // Pegatanke (marcas de adhesivos).
+  {
+    id: 'pegatanke_transparente',
+    claveSat: '31201619',
+    confianza: 96,
+    todos: [/\bpegatanke\b/, /\btransparente\b/],
+    razon: 'Pegatanke transparente identificado como adhesivo instantaneo',
+  },
+  {
+    id: 'pegatanke_masilla',
+    claveSat: '31201605',
+    confianza: 96,
+    todos: [/\bpegatanke\b/, /\b(masilla|epoxica)\b/],
+    razon: 'Pegatanke masilla epoxica identificado',
+  },
+  {
+    id: 'pegatanke_negro',
+    claveSat: '31201632',
+    confianza: 93,
+    todos: [/\bpegatanke\b/, /\bnegro\b/],
+    razon: 'Pegatanke negro identificado como sellador de silicona',
+  },
+  {
+    id: 'pegatanke_generico',
+    claveSat: '31201600',
+    confianza: 90,
+    todos: [/\bpegatanke\b/],
+    razon: 'Pegatanke generico identificado como adhesivo/sellador',
+  },
+
+  // Llave nariz (hose bib / outdoor faucet).
+  {
+    id: 'llave_nariz_jardin',
+    claveSat: '40141600',
+    confianza: 96,
+    todos: [/\bllave\b/, /\bnariz\b/, /\bjardin\b/],
+    razon: 'Llave nariz de jardin identificada como valvula para manguera',
   },
 
   // Cintas.
@@ -158,6 +213,14 @@ const REGLAS_DIRECTAS = [
     todos: [/\bimpermeabilizante\b/],
     razon: 'Impermeabilizante identificado como agente de impermeabilizacion',
   },
+  {
+    id: 'pigmento_colorante',
+    claveSat: '12171600',
+    confianza: 94,
+    todos: [/\b(pigmento|pigmentos|colorante|colorantes)\b/],
+    excluye: [/\b(pintura|esmalte|barniz)\b/],
+    razon: 'Pigmento/colorante identificado',
+  },
 
   // Materiales de construccion.
   {
@@ -165,7 +228,7 @@ const REGLAS_DIRECTAS = [
     claveSat: '30111601',
     confianza: 95,
     todos: [/\bcemento\b/],
-    excluye: [/\b(disolvente|pegamento|pvc|cpvc)\b/],
+    excluye: [/\b(disolvente|pegamento|pvc|cpvc|pigmento|pigmentos|colorante|colorantes|oxido)\b/],
     razon: 'Cemento de construccion identificado',
   },
   {
@@ -183,6 +246,80 @@ const REGLAS_DIRECTAS = [
     todos: [/\byeso\b/],
     excluye: [/\b(serrucho|soporte|cinta|taquete|pija|tornillo)\b/],
     razon: 'Yeso de construccion identificado',
+  },
+
+  // Utensilios de pintura.
+  {
+    id: 'cepillo_pintor',
+    claveSat: '27113003',
+    confianza: 92,
+    todos: [/\bcepillo\b/, /\b(pintor|pintores)\b/],
+    excluye: [/\balambre\b/, /\bacero\b/],
+    razon: 'Cepillo para pintor identificado como cepillo de aplicar',
+  },
+
+  // Bombas manuales / infladores.
+  {
+    id: 'bomba_manual_inflar',
+    claveSat: '40151506',
+    confianza: 93,
+    todos: [/\bbomba\b/, /\b(manual|inflar|inflador|bicicleta|balon|balones)\b/],
+    excluye: [/\bagua\b/, /\b(sumergible|periferica|presurizadora|electrico|electrica)\b/],
+    razon: 'Bomba manual/inflador identificado',
+  },
+
+  // Cortapernos.
+  {
+    id: 'cortapernos',
+    claveSat: '27111512',
+    confianza: 96,
+    todos: [/\bcortapernos?\b/],
+    razon: 'Cortapernos identificado',
+  },
+
+  // Brocas escalonadas (step drill bits).
+  {
+    id: 'broca_escalonada',
+    claveSat: '27112841',
+    confianza: 94,
+    todos: [/\bbroca\b/, /\bescalonad[ao]\b/],
+    razon: 'Broca escalonada identificada como broca para metal',
+  },
+
+  // Equipo de seguridad.
+  {
+    id: 'chaleco_seguridad',
+    claveSat: '46181507',
+    confianza: 95,
+    todos: [/\bchaleco\b/, /\b(seguridad|reflectante|reflejante)\b/],
+    razon: 'Chaleco de seguridad identificado',
+  },
+  {
+    id: 'casco_seguridad',
+    claveSat: '46181704',
+    confianza: 95,
+    todos: [/\bcasco\b/, /\b(seguridad|proteccion)\b/],
+    excluye: [/\b(barco|bote|lancha|marino|antiguo|historico)\b/],
+    razon: 'Casco de seguridad identificado',
+  },
+
+  // Herramientas electricas.
+  {
+    id: 'pistola_calor',
+    claveSat: '27112717',
+    confianza: 97,
+    todos: [/\bpistola\b/, /\bcalor\b/],
+    excluye: [/\b(soldar|silicon|calafatead)\b/],
+    razon: 'Pistola de calor identificada',
+  },
+
+  // Accesorios de lavabo/fregadero.
+  {
+    id: 'chupon_sprayer',
+    claveSat: '30181812',
+    confianza: 88,
+    todos: [/\bchupon\b/],
+    razon: 'Chupon/rociador de lavabo identificado como rociador',
   },
 ];
 

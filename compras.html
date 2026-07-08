@@ -280,7 +280,8 @@
       <div class="form-row" style="margin-bottom:10px;">
         <div class="form-group">
           <label>Unidad de Venta</label>
-          <input type="text" id="pr-unidadVenta" class="search-input" style="width:100%;" placeholder="pza" value="pza" />
+          <input type="text" id="pr-unidadVenta" class="search-input" style="width:100%;" list="pr-unidades-venta-list" placeholder="PZA" value="PZA" autocomplete="off" />
+          <datalist id="pr-unidades-venta-list"></datalist>
         </div>
         <div class="form-group" style="justify-content:flex-end;">
           <label style="font-size:0.78rem;font-weight:600;color:var(--muted);text-transform:uppercase;">Producto a granel</label>
@@ -302,7 +303,7 @@
       <!-- Claves SAT -->
       <div class="form-row" style="margin-bottom:12px;">
         <div class="form-group"><label>Clave SAT</label><input type="text" id="pr-claveSat" class="search-input" style="width:100%;" placeholder="8 dígitos" maxlength="8" /></div>
-        <div class="form-group"><label>Unidad SAT</label><input type="text" id="pr-unidadSat" class="search-input" style="width:100%;" placeholder="ej: H87" /></div>
+        <div class="form-group"><label>Unidad SAT</label><input type="text" id="pr-unidadSat" class="search-input" style="width:100%;" list="pr-unidades-sat-list" placeholder="ej: H87" autocomplete="off" /><datalist id="pr-unidades-sat-list"></datalist></div>
       </div>
 
       <div id="pr-error" class="error-message" style="margin-bottom:8px;"></div>
