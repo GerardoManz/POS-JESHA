@@ -22,6 +22,9 @@ let _catsCache   = []
 let _preciosCache = {}
 let _spDetalleActivo = null
 let debounce, debounceSearch, debounceProd, debounceProv
+let _unidadesSatCompraRapida = []
+let _unidadesVentaCompraRapida = []
+let _unidadesVentaMapCompraRapida = new Map()
 
 const fmt = v => `$${parseFloat(v||0).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})}`
 const fmtFecha = iso => iso ? new Date(iso).toLocaleString('es-MX',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '—'
@@ -34,6 +37,98 @@ const ESTADOS = {
 }
 
 // apiFetch global disponible desde sidebar.js
+
+const UNIDADES_COMPRA_RAPIDA_FALLBACK = {
+  unidadesSat: [
+    { id: 'H87', nombre: 'Pieza', simbolo: '', esComun: true },
+    { id: 'MTR', nombre: 'Metro', simbolo: 'm', esComun: true },
+    { id: 'KGM', nombre: 'Kilogramo', simbolo: 'kg', esComun: true },
+    { id: 'LTR', nombre: 'Litro', simbolo: 'l', esComun: true },
+    { id: 'XPK', nombre: 'Paquete', simbolo: '', esComun: true },
+    { id: 'PR', nombre: 'Par', simbolo: '', esComun: true },
+    { id: 'KT', nombre: 'Kit', simbolo: '', esComun: true },
+    { id: 'SET', nombre: 'Conjunto', simbolo: '', esComun: true },
+  ],
+  unidadVenta: [
+    { valor: 'PZA', unidadSat: 'H87', nombre: 'Pieza', aliases: ['PZ', 'PZAS', 'PIEZA'], esComun: true },
+    { valor: 'MT', unidadSat: 'MTR', nombre: 'Metro', aliases: ['M', 'MTS', 'METRO'], esComun: true },
+    { valor: 'KG', unidadSat: 'KGM', nombre: 'Kilogramo', aliases: ['KILO', 'KILOS'], esComun: true },
+    { valor: 'LT', unidadSat: 'LTR', nombre: 'Litro', aliases: ['L', 'LTS', 'LITRO'], esComun: true },
+    { valor: 'PAQUETE', unidadSat: 'XPK', nombre: 'Paquete', aliases: ['PACK', 'PAQ'], esComun: true },
+    { valor: 'PAR', unidadSat: 'PR', nombre: 'Par', aliases: [], esComun: true },
+    { valor: 'KIT', unidadSat: 'KT', nombre: 'Kit', aliases: [], esComun: true },
+    { valor: 'JUEGO', unidadSat: 'SET', nombre: 'Juego', aliases: ['SET'], esComun: true },
+  ],
+}
+
+function normalizarUnidadCompraRapida(valor) {
+  return String(valor || '').trim().toUpperCase().replace(/\s+/g, ' ')
+}
+
+function registrarUnidadVentaCompraRapida(unidad) {
+  if (!unidad?.valor) return
+  _unidadesVentaMapCompraRapida.set(normalizarUnidadCompraRapida(unidad.valor), unidad)
+  ;(unidad.aliases || []).forEach(alias => _unidadesVentaMapCompraRapida.set(normalizarUnidadCompraRapida(alias), unidad))
+}
+
+async function cargarUnidadesCompraRapida() {
+  try {
+    const resultado = await apiFetch('/productos/sat/unidades')
+    aplicarCatalogoUnidadesCompraRapida(resultado?.data || resultado || {})
+  } catch (err) {
+    console.error('Error cargando unidades SAT para compras:', err)
+    aplicarCatalogoUnidadesCompraRapida(UNIDADES_COMPRA_RAPIDA_FALLBACK)
+  }
+}
+
+function aplicarCatalogoUnidadesCompraRapida(data) {
+  _unidadesSatCompraRapida = Array.isArray(data.unidadesSat) ? data.unidadesSat : UNIDADES_COMPRA_RAPIDA_FALLBACK.unidadesSat
+  _unidadesVentaCompraRapida = Array.isArray(data.unidadVenta) ? data.unidadVenta : UNIDADES_COMPRA_RAPIDA_FALLBACK.unidadVenta
+  _unidadesVentaMapCompraRapida = new Map()
+  _unidadesVentaCompraRapida.forEach(registrarUnidadVentaCompraRapida)
+  llenarDatalistCompraRapida('pr-unidades-venta-list', _unidadesVentaCompraRapida, 'valor')
+  llenarDatalistCompraRapida('pr-unidades-sat-list', _unidadesSatCompraRapida, 'id')
+}
+
+function llenarDatalistCompraRapida(id, items, valueKey) {
+  const lista = document.getElementById(id)
+  if (!lista) return
+  const frag = document.createDocumentFragment()
+  ;(items || []).forEach((item) => {
+    const value = item?.[valueKey]
+    if (!value) return
+    const opt = document.createElement('option')
+    opt.value = value
+    opt.label = valueKey === 'valor'
+      ? `${item.nombre || value}${item.unidadSat ? ` (${item.unidadSat})` : ''}`
+      : `${item.nombre || ''}${item.simbolo ? ` - ${item.simbolo}` : ''}`
+    frag.appendChild(opt)
+  })
+  lista.innerHTML = ''
+  lista.appendChild(frag)
+}
+
+function aplicarUnidadVentaCompraRapida() {
+  const inputVenta = document.getElementById('pr-unidadVenta')
+  const inputSat = document.getElementById('pr-unidadSat')
+  if (!inputVenta) return null
+  const unidad = _unidadesVentaMapCompraRapida.get(normalizarUnidadCompraRapida(inputVenta.value))
+  if (unidad) inputVenta.value = unidad.valor
+  if (unidad?.unidadSat && inputSat) inputSat.value = unidad.unidadSat
+  return unidad || null
+}
+
+function initUnidadesCompraRapida() {
+  const inputVenta = document.getElementById('pr-unidadVenta')
+  const inputSat = document.getElementById('pr-unidadSat')
+  if (inputVenta) {
+    inputVenta.addEventListener('change', aplicarUnidadVentaCompraRapida)
+    inputVenta.addEventListener('blur', aplicarUnidadVentaCompraRapida)
+  }
+  if (inputSat) {
+    inputSat.addEventListener('blur', () => { inputSat.value = normalizarUnidadCompraRapida(inputSat.value) })
+  }
+}
 
 // ════════════════════════════════════════════════════════════════════
 //  LISTAR
@@ -407,7 +502,7 @@ window.confirmarRecepcion = async function() {
     ocActual = data.data
     ocActual._recibiendo = false
     renderDetalle()
-    cargarCompras()
+    await cargarCompras()
   } catch (err) {
     jeshaToast('Error: ' + err.message, 'error')
   } finally {
@@ -430,7 +525,7 @@ window.cancelarCompra = async function(id) {
     const data = await apiFetch(`/compras/${id}/cancelar`, { method:'PATCH' })
     ocActual = data.data
     renderDetalle()
-    cargarCompras()
+    await cargarCompras()
   } catch (err) { jeshaToast('Error: ' + err.message, 'error') }
 }
 
@@ -456,7 +551,7 @@ async function registrarAbono() {
     montoInput.value = ''
     document.getElementById('abono-notas').value = ''
     renderDetalle()
-    cargarCompras()
+    await cargarCompras()
     jeshaToast('Pago registrado', 'success')
   } catch (err) {
     const msg = err.message || 'Error al registrar abono'
@@ -641,7 +736,7 @@ async function guardarCompra() {
       await apiFetch('/compras', { method:'POST', body: JSON.stringify({ proveedorId: provId, detalles, notas }) })
     }
     document.getElementById('modal-crear').classList.remove('active')
-    paginaActual = 1; cargarCompras()
+    paginaActual = 1; await cargarCompras()
   } catch (err) { mostrarError('crear-error', err.message) }
   finally { btn.disabled = false; btn.textContent = 'Guardar Compra' }
 }
@@ -888,9 +983,9 @@ function abrirModalProdRapido() {
   document.getElementById('pr-costo-b-display').value = ''
   document.getElementById('pr-pventa').value       = ''
   document.getElementById('pr-precioBase').value   = ''
-  document.getElementById('pr-unidadVenta').value  = 'pza'
+  document.getElementById('pr-unidadVenta').value  = 'PZA'
   document.getElementById('pr-claveSat').value     = ''
-  document.getElementById('pr-unidadSat').value    = ''
+  document.getElementById('pr-unidadSat').value    = 'H87'
   document.getElementById('pr-esGranel').checked   = false
   document.getElementById('pr-depto').value        = ''
   document.getElementById('pr-cat').innerHTML      = '<option value="">Seleccionar depto primero</option>'
@@ -1385,12 +1480,13 @@ async function guardarProdRapido() {
   const precioBase = pventa > 0 ? parseFloat((pventa / IVA_FACTOR).toFixed(2)) : 0
 
   // Unidad de venta + granel
-  const unidadVenta = document.getElementById('pr-unidadVenta').value.trim() || 'pza'
+  const unidadVentaOp = aplicarUnidadVentaCompraRapida()
+  const unidadVenta = unidadVentaOp?.valor || document.getElementById('pr-unidadVenta').value.trim() || 'PZA'
   const esGranel    = document.getElementById('pr-esGranel')?.checked || false
 
   // SAT
   const claveSat  = document.getElementById('pr-claveSat').value.trim() || null
-  const unidadSat = document.getElementById('pr-unidadSat').value.trim() || null
+  const unidadSat = normalizarUnidadCompraRapida(document.getElementById('pr-unidadSat').value) || null
 
   // Validaciones
   if (!nombre) { mostrarError('pr-error', 'Nombre requerido'); return }
@@ -1444,6 +1540,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (fechaEl) fechaEl.textContent = new Date().toLocaleDateString('es-MX',{ weekday:'long', year:'numeric', month:'long', day:'numeric' })
 
   await cargarProveedores()
+  cargarUnidadesCompraRapida()
   cargarCompras()
 
   document.getElementById('search-input')?.addEventListener('input', () => {
@@ -1481,6 +1578,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Granel toggle
   document.getElementById('pr-esGranel')?.addEventListener('change', prActualizarGranel)
+
+  // Unidades SAT para producto rápido
+  initUnidadesCompraRapida()
 
   // Cargar catálogo para producto rápido
   cargarDeptosYCats()
