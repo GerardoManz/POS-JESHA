@@ -217,7 +217,6 @@ ${(saldoCliente !== null && saldoCliente > 0 && !bitacoraLiquidada) ? `
 </div>
 
 <button class="no-print" onclick="window.print()">Imprimir</button>
-<script>window.addEventListener('load',()=>{setTimeout(()=>window.print(),600)})</script>
 </body>
 </html>`
 }

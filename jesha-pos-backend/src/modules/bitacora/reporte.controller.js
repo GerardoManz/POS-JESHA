@@ -368,7 +368,6 @@ ${bitacora.notas ? `<p style="font-size:8px;color:#555;margin-top:2mm;padding:2m
 </div>
 
 <button class="no-print" onclick="window.print()">Imprimir Reporte</button>
-<script>window.addEventListener('load',()=>{setTimeout(()=>window.print(),400)})</script>
 </body>
 </html>`
 }

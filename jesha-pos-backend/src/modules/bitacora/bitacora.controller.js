@@ -1101,34 +1101,6 @@ const agregarProductosBatch = async (req, res) => {
         })
       }
 
-      // ═══ Impresión: encolar ticket de retiro (atómico con la transacción) ═══
-      const empresaRow = await tx.empresa.findUnique({
-        where: { id: empresaId },
-        select: { rfc: true }
-      })
-
-      const retiroSnapshot = buildRetiroSnapshot({
-        empresa: { ...EMPRESA, telefono: EMPRESA.tel1, rfc: empresaRow?.rfc },
-        retiroId: retiro.id,
-        fecha: formatFechaTicket(new Date()),
-        cajero: req.usuario?.nombre || null,
-        trabajador: recibeNombreRetiro,
-        productos: itemsNorm.map(it => ({
-          nombre: prodMap.get(it.productoId)?.nombre || '—',
-          cantidad: it.cant,
-          precioUnitario: it.precio
-        }))
-      })
-
-      await encolarImpresion(tx, {
-        empresaId,
-        tipo: 'RETIRO',
-        modo: 'ORIGINAL',
-        entidadId: retiro.id,
-        retiroId: retiro.id,
-        payload: retiroSnapshot
-      })
-
       return { resumen, totalLote, retiroId: retiro.id }
     })
 
@@ -1541,34 +1513,6 @@ const registrarAbono = async (req, res) => {
         }
       })
 
-      // ═══ Impresión: encolar ticket de abono (atómico con la transacción) ═══
-      const empresaRow = await tx.empresa.findUnique({
-        where: { id: empresaId },
-        select: { rfc: true }
-      })
-
-      const abonoSnapshot = buildAbonoSnapshot({
-        empresa: { ...EMPRESA, telefono: EMPRESA.tel1, rfc: empresaRow?.rfc },
-        abonoId: abono.id,
-        fecha: formatFechaTicket(new Date()),
-        cajero: req.usuario?.nombre || null,
-        cliente: bitacora.Cliente?.nombre || null,
-        montoAbono,
-        metodoPago: metodoPago || 'EFECTIVO',
-        metodoLabel: metodoPago || 'EFECTIVO',
-        saldoAnterior: saldoActual,
-        saldoNuevo: nuevoSaldo,
-        abrirCajon: (metodoPago || 'EFECTIVO') === 'EFECTIVO'
-      })
-
-      await encolarImpresion(tx, {
-        empresaId,
-        tipo: 'ABONO',
-        modo: 'ORIGINAL',
-        entidadId: abono.id,
-        abonoId: abono.id,
-        payload: abonoSnapshot
-      })
     })
 
     const accion = cerrar ? 'ABONO_BITACORA_CIERRE' : 'ABONO_BITACORA'

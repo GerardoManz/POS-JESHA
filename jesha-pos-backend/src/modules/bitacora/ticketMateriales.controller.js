@@ -338,7 +338,6 @@ html, body { width:100%; max-width:100%; margin:0; padding:1mm 3mm; font-family:
 </div>
 
 <button class="no-print" onclick="window.print()">Imprimir</button>
-<script>window.addEventListener('load',()=>{setTimeout(()=>window.print(),600)})</script>
 </body>
 </html>`
 }

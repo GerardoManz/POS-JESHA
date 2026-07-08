@@ -146,6 +146,7 @@ function buildVentaTicket(printer, payload, printerCfg = {}, logoBuffer = null) 
     if (raster) {
       printer.alignCenter()
       printer.append(raster)
+      printer.newLine()
     }
   }
 
