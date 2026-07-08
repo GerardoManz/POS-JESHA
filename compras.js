@@ -134,8 +134,11 @@ function initUnidadesCompraRapida() {
 //  LISTAR
 // ════════════════════════════════════════════════════════════════════
 async function cargarCompras() {
+  console.log('[DEBUG] cargarCompras: INICIO')
   const tbody  = document.getElementById('comp-tbody')
   const pagDiv = document.getElementById('pagination')
+  if (!tbody) { console.error('[DEBUG] cargarCompras: #comp-tbody NO EXISTE'); return }
+  console.log('[DEBUG] cargarCompras: tbody OK, paginaActual=', paginaActual)
   tbody.innerHTML = `<tr><td colspan="8" class="loading-cell"><div class="spinner"></div><p>Cargando...</p></td></tr>`
 
   const buscar     = document.getElementById('search-input')?.value.trim() || ''
@@ -149,15 +152,20 @@ async function cargarCompras() {
   if (proveedorId)   params.set('proveedorId', proveedorId)
 
   try {
-    const data   = await apiFetch(`/compras?${params}`)
+    const url   = `/compras?${params}`
+    console.log('[DEBUG] cargarCompras: GET', url)
+    const data   = await apiFetch(url)
+    console.log('[DEBUG] cargarCompras: respuesta OK, total=', data.total, 'items=', data.data?.length)
     const lista  = data.data || []
     const total  = data.total || 0
 
     if (lista.length === 0) {
+      console.log('[DEBUG] cargarCompras: lista vacia con filtros')
       tbody.innerHTML = `<tr><td colspan="8" class="loading-cell"><p>No hay compras con los filtros aplicados</p></td></tr>`
       pagDiv.style.display = 'none'; return
     }
 
+    console.log('[DEBUG] cargarCompras: renderizando', lista.length, 'filas')
     tbody.innerHTML = lista.map(oc => {
       const e = ESTADOS[oc.estado] || { label: oc.estado, cls: 'enviado' }
       const saldo = parseFloat(oc.totalEstimado) - parseFloat(oc.totalPagado || 0)
@@ -182,8 +190,10 @@ async function cargarCompras() {
       document.getElementById('btn-next').disabled = paginaActual >= totalPags
     } else pagDiv.style.display = 'none'
   } catch (err) {
+    console.error('[DEBUG] cargarCompras catch:', err.message)
     tbody.innerHTML = `<tr><td colspan="8" class="loading-cell"><p style="color:#f44336">Error: ${err.message}</p></td></tr>`
   }
+  console.log('[DEBUG] cargarCompras: FIN')
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -736,8 +746,14 @@ async function guardarCompra() {
       await apiFetch('/compras', { method:'POST', body: JSON.stringify({ proveedorId: provId, detalles, notas }) })
     }
     document.getElementById('modal-crear').classList.remove('active')
-    paginaActual = 1; await cargarCompras()
-  } catch (err) { mostrarError('crear-error', err.message) }
+    paginaActual = 1
+    console.log('[DEBUG] guardarCompra: llamando cargarCompras()')
+    await cargarCompras()
+    console.log('[DEBUG] guardarCompra: cargarCompras() completado')
+  } catch (err) {
+    console.error('[DEBUG] guardarCompra catch:', err.message)
+    mostrarError('crear-error', err.message)
+  }
   finally { btn.disabled = false; btn.textContent = 'Guardar Compra' }
 }
 
