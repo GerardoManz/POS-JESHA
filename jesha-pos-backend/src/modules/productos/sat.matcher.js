@@ -58,6 +58,7 @@ const PESOS = {
   SIMILITUD_EXISTENTES: 15,
   SIMILITUD_SAT: 15,
   CONSISTENCIA_UNIDAD: 10,
+  CONSISTENCIA_RAMA: 10,
   BOOST_FRECUENCIA: 5,
   REGLA_CONOCIMIENTO: 65,
   BONO_CONOCIMIENTO_ALTA: 15,
@@ -66,6 +67,7 @@ const PESOS = {
 
 const PENALIZACIONES = {
   CONFLICTO_FAMILIA: -25,
+  CONFLICTO_RAMA: -15,
   AMBIGUEDAD_CRITICA: -20,
   CONFLICTO_CONOCIMIENTO: -35,
 };
@@ -418,6 +420,25 @@ function puntuarCandidato(clave, ctx) {
       score += PESOS.CONSISTENCIA_UNIDAD;
     }
     // contradicción con la mayoría: 0 puntos
+  }
+
+  // 5b. Consistencia de rama (branch)
+  if (familiaConClave && familiasNuevo.length > 1) {
+    const ramaDominante = {};
+    for (const f of familiasNuevo) {
+      if (f.rama) ramaDominante[f.rama] = (ramaDominante[f.rama] || 0) + 1;
+    }
+    const ramasOrd = Object.entries(ramaDominante).sort((a, b) => b[1] - a[1]);
+    if (ramasOrd.length > 0) {
+      const topRama = ramasOrd[0][0];
+      if (familiaConClave.rama === topRama) {
+        score += PESOS.CONSISTENCIA_RAMA;
+        razones.push(`Rama consistente: ${topRama}`);
+      } else if (familiaConClave.rama) {
+        score += PENALIZACIONES.CONFLICTO_RAMA;
+        razones.push(`Conflicto de rama: ${familiaConClave.rama} vs ${topRama}`);
+      }
+    }
   }
 
   // 6. Boost de frecuencia histórica (pequeño y condicionado)

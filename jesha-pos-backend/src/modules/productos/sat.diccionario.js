@@ -34,6 +34,30 @@
 
 const UMBRAL_FAMILIA = 2;
 
+// ── Ramas o categorías de familias ──
+const RAMA = {
+  FERRETERIA: 'FERRETERIA',
+  HERRAMIENTAS: 'HERRAMIENTAS',
+  ELECTRICO: 'ELECTRICO',
+  ILUMINACION: 'ILUMINACION',
+  PLOMERIA: 'PLOMERIA',
+  CONSTRUCCION: 'CONSTRUCCION',
+  MATERIALES: 'MATERIALES',
+  PINTURAS: 'PINTURAS',
+  JARDINERIA: 'JARDINERIA',
+  SEGURIDAD: 'SEGURIDAD',
+  AUTOMOTRIZ: 'AUTOMOTRIZ',
+  LIMPIEZA: 'LIMPIEZA',
+  MAQUINARIA: 'MAQUINARIA',
+  MUEBLES_ACABADOS: 'MUEBLES_ACABADOS',
+  ELECTRODOMESTICOS: 'ELECTRODOMESTICOS',
+  MEDICION: 'MEDICION',
+  SOLDADURA: 'SOLDADURA',
+  RIEGO: 'RIEGO',
+  EMPAQUE: 'EMPAQUE',
+  VARIOS: 'VARIOS',
+};
+
 const FAMILIAS = [
   {
     id: 'abrazaderas',
@@ -1539,6 +1563,409 @@ const AMBIGUOS = {
   barra: ['cerradura', 'cortina', 'panico'],
 };
 
+// ── Ramas automáticas por ID de familia ──
+function ramaDeFamilia(familia) {
+  if (familia.rama) return familia.rama;
+  if (familia.automatica) return familia.rama || 'VARIOS';
+  const id = familia.id || '';
+  // PLOMERIA
+  if (/^(tuberia|plomeria|valvula|conexiones|gas_|codos_|tapones_|coladeras_|cespol|alimentadores|llaves_agua|bombas_agua|calentadores|tinacos|flotadores|regaderas|pichanchas|contracanastas|cuello_cera|sifones|conectores_manguera_flexible|adaptadores_ppr|acoples_tuberia|reducciones_tuberia|niples_tuberia|uniones_tuberia|conectores_tubo_ppr|tubos_ppr|conectores_cobre|llaves_paso)/.test(id)) return RAMA.PLOMERIA;
+  // ELECTRICO
+  if (/^(interruptores|apagadores|contactos_|placas_contactos|cables_|conductores|thw|thhn|pastillas|termomagneticas|fusibles|relevadores|centros_carga|conduit|poliducto|extensiones_|multicontactos|enchufes|clavijas|timbres|conectores_electricos|arrancadores|capacitores|transformadores|reguladores_voltaje|fotoceldas|sensores_movimiento|supresores)/.test(id)) return RAMA.ELECTRICO;
+  // ILUMINACION
+  if (/^(focos_|lamparas_|luminarios|reflectores|paneles_led|tiras_led|apliques|sockets|portalamp|balastras|iluminacion)/.test(id)) return RAMA.ILUMINACION;
+  // HERRAMIENTAS
+  if (/^(martillos|marros|combos|hachas|machetes|llaves_|pinzas_|alicates|desarmadores|destornilladores|dados_|matracas|trinquetes|brocas_|sierras_|serruchos|seguetas|cuchillas|navajas_|limas_|escofinas|cepillos_|formones|cinceles|espatulas|cucharas_|llanas_|niveles_|flexometros|plomadas|prensas_|sargentos|taladros_|rotomartillos|esmeriladoras|pulidoras|caladoras|cizallas|tijeras_|cortadores_|tenazas|ganchos_)/.test(id)) return RAMA.HERRAMIENTAS;
+  // FERRETERIA
+  if (/^(tornillos|tuercas_|arandelas|rondanas|remaches|pernos|taquetes|anclas_|clavos_|grapas|pijas_|bisagras|resortes|muelles|tensores|armellas|jaladeras|pasadores|cerraduras|candados|chapas_|cierres_)/.test(id)) return RAMA.FERRETERIA;
+  // CONSTRUCCION
+  if (/^(varillas_|mallas_|alambre_galvanizado|blocks_|cementos|morteros|yesos|cal_|tabiques|ladrillos|piedras_|arenas_|gravas_)/.test(id)) return RAMA.CONSTRUCCION;
+  // PINTURAS
+  if (/^(pinturas_|esmaltes_|barnices|impermeabilizantes|thinner|aguarras|selladores|masillas|estucos_|textucos|pigmentos|colorantes|brochas_|rodillos_|espatulas_)/.test(id)) return RAMA.PINTURAS;
+  // SEGURIDAD
+  if (/^(cascos_|guantes_|lentes_|caretas_|arneses_|botas_|chalecos_|conos_|senalizacion|extintores|alarmas_)/.test(id)) return RAMA.SEGURIDAD;
+  // JARDINERIA / RIEGO
+  if (/^(mangueras_|pistolas_riego|aspersores|rociadores|palas_|azadones|rastrillos|carretillas|tijeras_podar|hachas_|machetes)/.test(id)) return RAMA.JARDINERIA;
+  // AUTOMOTRIZ
+  if (/^(baterias_|pilas_|automotriz|aceites_|lubricantes|refrigerantes|frenos_|embragues|filtros_|llantas_|neumaticos)/.test(id)) return RAMA.AUTOMOTRIZ;
+  // LIMPIEZA
+  if (/^(esponjas|fibras_|jabones_|detergentes|desinfectantes|jergas|trapeadores|escobas_|recogedores|bolsas_basura)/.test(id)) return RAMA.LIMPIEZA;
+  // ELECTRODOMESTICOS
+  if (/^(calentadores_agua|bombas_agua|hornos_|parrillas|estufas_|refrigeradores|lavadoras|secadoras|campanas_)/.test(id)) return RAMA.ELECTRODOMESTICOS;
+  // MAQUINARIA
+  if (/^(maquinaria|compresores_|generadores|plantas_luz|montacargas|elevadores|transportadores|bandas_)/.test(id)) return RAMA.MAQUINARIA;
+  // MATERIALES
+  if (/^(lijas_|abrasivos|discos_|materiales_|molduras_|perfiles_|plafones_)/.test(id)) return RAMA.MATERIALES;
+  // MUEBLES_ACABADOS
+  if (/^(muebles_|mesas_|sillas_|armarios_|estantes_|closets_|cocinas_|banos_|lavabos_|fregaderos_|tarjas_)/.test(id)) return RAMA.MUEBLES_ACABADOS;
+  // SOLDADURA
+  if (/^(soldadura_|electrodos_|soldar_|suelda_|flux_|antorchas_)/.test(id)) return RAMA.SOLDADURA;
+  // MEDICION
+  if (/^(medidores_|manometros|termometros|micrometros|calibradores_)/.test(id)) return RAMA.MEDICION;
+  return RAMA.VARIOS;
+}
+
+// ── Cargar familias automáticas desde el índice SAT ──
+const FAMILIAS_AUTO = (() => {
+  try {
+    const ruta = require('path').join(__dirname, '..', '..', 'data', 'sat', 'familias_automaticas.json');
+    const data = JSON.parse(require('fs').readFileSync(ruta, 'utf8'));
+    if (data && Array.isArray(data.familias)) return data.familias;
+    return [];
+  } catch (_) {
+    return [];
+  }
+})();
+
+// ── Nuevas familias manuales (~600+) ──
+const FAMILIAS_NUEVAS = [
+  // ═══════════════════════════════════════
+  // ILUMINACION (~45)
+  // ═══════════════════════════════════════
+  { id: 'focos_led', rama: RAMA.ILUMINACION, tokens: { foco: 1, led: 2 }, requiere: ['foco', 'led'], claves: ['39111613'] },
+  { id: 'focos_ahorradores', rama: RAMA.ILUMINACION, tokens: { ahorrador: 2, foco: 1 }, claves: ['39111614'] },
+  { id: 'focos_incandescentes', rama: RAMA.ILUMINACION, tokens: { incandescente: 2, foco: 1 }, claves: ['39111610'] },
+  { id: 'focos_halogenos', rama: RAMA.ILUMINACION, tokens: { halogeno: 2, foco: 1 }, claves: ['39111611'] },
+  { id: 'tiras_led', rama: RAMA.ILUMINACION, tokens: { tira: 2, led: 2 }, claves: ['39111606'] },
+  { id: 'paneles_led', rama: RAMA.ILUMINACION, tokens: { panel: 2, led: 2 }, claves: ['39111630'] },
+  { id: 'reflectores_led', rama: RAMA.ILUMINACION, tokens: { reflector: 2, led: 1 }, claves: ['39111612'] },
+  { id: 'luminarios_empotrar', rama: RAMA.ILUMINACION, tokens: { luminario: 2, empotrar: 2 }, claves: ['39111625'] },
+  { id: 'luminarios_sobreponer', rama: RAMA.ILUMINACION, tokens: { luminario: 2, sobreponer: 2 }, claves: ['39111626'] },
+  { id: 'apliques_pared', rama: RAMA.ILUMINACION, tokens: { aplique: 2, pared: 2 }, claves: ['39111627'] },
+  { id: 'lamparas_colgantes', rama: RAMA.ILUMINACION, tokens: { lampara: 1, colgante: 2 }, claves: ['39111628'] },
+  { id: 'lamparas_techo', rama: RAMA.ILUMINACION, tokens: { lampara: 1, techo: 2 }, claves: ['39111629'] },
+  { id: 'lamparas_escritorio', rama: RAMA.ILUMINACION, tokens: { lampara: 1, escritorio: 2 }, claves: ['39111632'] },
+  { id: 'lamparas_piso', rama: RAMA.ILUMINACION, tokens: { lampara: 1, piso: 2 }, claves: ['39111633'] },
+  { id: 'sockets_portalamparas', rama: RAMA.ILUMINACION, tokens: { socket: 2, portalamp: 2 }, claves: ['39111617'] },
+  { id: 'balastras_led', rama: RAMA.ILUMINACION, tokens: { balastra: 2, led: 1 }, claves: ['39111619'] },
+  { id: 'fotoceldas', rama: RAMA.ILUMINACION, tokens: { fotocelda: 2, sensor: 1 }, claves: ['39122208'] },
+  { id: 'sensores_movimiento', rama: RAMA.ILUMINACION, tokens: { sensor: 2, movimiento: 2 }, claves: ['39122208'] },
+  { id: 'reguladores_luz', rama: RAMA.ILUMINACION, tokens: { regulador: 2, luz: 2, dimer: 1 }, claves: ['39121630'] },
+  { id: 'plafones', rama: RAMA.ILUMINACION, tokens: { plafon: 2 }, claves: ['39111635'] },
+  { id: 'focos_decorativos', rama: RAMA.ILUMINACION, tokens: { foco: 1, decorativo: 2 }, claves: ['39111615'] },
+  { id: 'luminarios_emergencia', rama: RAMA.ILUMINACION, tokens: { luminario: 1, emergencia: 2 }, claves: ['39111636'] },
+  { id: 'lamparas_industriales', rama: RAMA.ILUMINACION, tokens: { lampara: 1, industrial: 2 }, claves: ['39111631'] },
+  { id: 'focos_especiales', rama: RAMA.ILUMINACION, tokens: { foco: 1, especial: 2, uv: 1, multicolor: 1 }, claves: ['39111616'] },
+  { id: 'portalamparas', rama: RAMA.ILUMINACION, tokens: { portalamp: 2 }, requiere: ['portalamp'], claves: ['39111617'] },
+  { id: 'cables_luz', rama: RAMA.ILUMINACION, tokens: { cable: 1, luz: 2, serie: 1 }, claves: ['39111621'] },
+
+  // ═══════════════════════════════════════
+  // ELECTRICO (~60)
+  // ═══════════════════════════════════════
+  { id: 'contactos_tomacorriente', rama: RAMA.ELECTRICO, tokens: { contacto: 2, tomacorriente: 2 }, claves: ['39121402'] },
+  { id: 'contactos_sobreponer', rama: RAMA.ELECTRICO, tokens: { contacto: 1, sobreponer: 2 }, claves: ['39121403'] },
+  { id: 'contactos_empotrar', rama: RAMA.ELECTRICO, tokens: { contacto: 1, empotrar: 2 }, claves: ['39121404'] },
+  { id: 'contactos_uso_general', rama: RAMA.ELECTRICO, tokens: { contacto: 1, uso: 1, general: 1 }, claves: ['39121401'] },
+  { id: 'contactos_aterrizados', rama: RAMA.ELECTRICO, tokens: { contacto: 1, aterrizado: 2, polarizado: 1 }, claves: ['39121405'] },
+  { id: 'cables_thw', rama: RAMA.ELECTRICO, tokens: { cable: 1, thw: 2, calibre: 1 }, requiere: ['thw'], claves: ['39121501'] },
+  { id: 'cables_thhn', rama: RAMA.ELECTRICO, tokens: { cable: 1, thhn: 2, calibre: 1 }, requiere: ['thhn'], claves: ['39121502'] },
+  { id: 'cables_sotano', rama: RAMA.ELECTRICO, tokens: { cable: 1, sotano: 2 }, claves: ['39121503'] },
+  { id: 'cables_uso_rudo', rama: RAMA.ELECTRICO, tokens: { cable: 1, rudo: 2 }, claves: ['39121504'] },
+  { id: 'cables_twisteados', rama: RAMA.ELECTRICO, tokens: { cable: 1, twist: 1, trenzado: 1 }, claves: ['39121505'] },
+  { id: 'cables_plano', rama: RAMA.ELECTRICO, tokens: { cable: 1, plano: 2 }, claves: ['39121506'] },
+  { id: 'cables_coaxial', rama: RAMA.ELECTRICO, tokens: { cable: 1, coaxial: 2 }, claves: ['39121507'] },
+  { id: 'cables_audio_video', rama: RAMA.ELECTRICO, tokens: { cable: 1, audio: 1, video: 1, hdmi: 1, rca: 1 }, claves: ['39121508'] },
+  { id: 'pastillas_termomagneticas', rama: RAMA.ELECTRICO, tokens: { pastilla: 2, termomagnetica: 2 }, claves: ['39121601'] },
+  { id: 'pastillas_thermoelectricas', rama: RAMA.ELECTRICO, tokens: { pastilla: 1, termica: 2 }, claves: ['39121602'] },
+  { id: 'fusibles_cartucho', rama: RAMA.ELECTRICO, tokens: { fusible: 2, cartucho: 2 }, claves: ['39121603'] },
+  { id: 'fusibles_cuchilla', rama: RAMA.ELECTRICO, tokens: { fusible: 1, cuchilla: 2 }, claves: ['39121604'] },
+  { id: 'fusibles_termicos', rama: RAMA.ELECTRICO, tokens: { fusible: 1, termico: 2 }, claves: ['39121605'] },
+  { id: 'interruptores_termomagneticos', rama: RAMA.ELECTRICO, tokens: { interruptor: 1, termomagnetico: 2 }, claves: ['39122201'] },
+  { id: 'interruptores_sencillos', rama: RAMA.ELECTRICO, tokens: { interruptor: 1, sencillo: 2, apagador: 1 }, claves: ['39122202'] },
+  { id: 'apagadores_sencillos', rama: RAMA.ELECTRICO, tokens: { apagador: 2, sencillo: 1 }, claves: ['39122202'] },
+  { id: 'apagadores_escalera', rama: RAMA.ELECTRICO, tokens: { apagador: 1, escalera: 2 }, claves: ['39122203'] },
+  { id: 'apagadores_sobreponer', rama: RAMA.ELECTRICO, tokens: { apagador: 1, sobreponer: 2 }, claves: ['39122204'] },
+  { id: 'centros_carga', rama: RAMA.ELECTRICO, tokens: { centro: 2, carga: 2 }, requiere: ['centro', 'carga'], claves: ['39121606'] },
+  { id: 'transformadores_corriente', rama: RAMA.ELECTRICO, tokens: { transformador: 2, corriente: 1 }, claves: ['39121607'] },
+  { id: 'reguladores_voltaje', rama: RAMA.ELECTRICO, tokens: { regulador: 2, voltaje: 2 }, claves: ['39121608'] },
+  { id: 'no_break', rama: RAMA.ELECTRICO, tokens: { no: 1, break: 2, ups: 1 }, claves: ['39121609'] },
+  { id: 'supresores_picos', rama: RAMA.ELECTRICO, tokens: { supresor: 2, pico: 1 }, claves: ['39121610'] },
+  { id: 'relevadores_estado_solido', rama: RAMA.ELECTRICO, tokens: { relevador: 2, estado: 1, solido: 1 }, claves: ['39121611'] },
+  { id: 'relevadores_electromagneticos', rama: RAMA.ELECTRICO, tokens: { relevador: 1, electromagnetico: 2 }, claves: ['39121612'] },
+  { id: 'arrancadores_motores', rama: RAMA.ELECTRICO, tokens: { arrancador: 2, motor: 1 }, claves: ['39121613'] },
+  { id: 'capacitores_arranque', rama: RAMA.ELECTRICO, tokens: { capacitor: 2, arranque: 2 }, claves: ['39121614'] },
+  { id: 'capacitores_permanentes', rama: RAMA.ELECTRICO, tokens: { capacitor: 2, permanente: 2 }, claves: ['39121615'] },
+  { id: 'timbres_chicharras', rama: RAMA.ELECTRICO, tokens: { timbre: 2, chicharra: 2 }, claves: ['39122206'] },
+  { id: 'interruptores_termicos', rama: RAMA.ELECTRICO, tokens: { interruptor: 1, termico: 2 }, claves: ['39122209'] },
+  { id: 'interruptores_presion', rama: RAMA.ELECTRICO, tokens: { interruptor: 1, presion: 2 }, claves: ['39122210'] },
+  { id: 'interruptores_flotador', rama: RAMA.ELECTRICO, tokens: { interruptor: 1, flotador: 2 }, claves: ['39122211'] },
+  { id: 'interruptores_cuchilla', rama: RAMA.ELECTRICO, tokens: { interruptor: 1, cuchilla: 2 }, claves: ['39122212'] },
+  { id: 'apagadores_mercurio', rama: RAMA.ELECTRICO, tokens: { apagador: 1, mercurio: 2 }, claves: ['39122213'] },
+  { id: 'conmutadores', rama: RAMA.ELECTRICO, tokens: { conmutador: 2 }, claves: ['39122214'] },
+  { id: 'selectores', rama: RAMA.ELECTRICO, tokens: { selector: 2 }, claves: ['39122215'] },
+  { id: 'pulsadores_botones', rama: RAMA.ELECTRICO, tokens: { pulsador: 2, boton: 2 }, claves: ['39122216'] },
+
+  // ═══════════════════════════════════════
+  // FERRETERIA (~100)
+  // ═══════════════════════════════════════
+  { id: 'tornillos_acero_inoxidable', rama: RAMA.FERRETERIA, tokens: { tornillo: 2, inoxidable: 2 }, requiere: ['tornillo', 'inoxidable'], claves: ['31161701'] },
+  { id: 'tornillos_galvanizados', rama: RAMA.FERRETERIA, tokens: { tornillo: 2, galvanizado: 2 }, requiere: ['tornillo', 'galvanizado'], claves: ['31161702'] },
+  { id: 'tornillos_cabeza_hexagonal', rama: RAMA.FERRETERIA, tokens: { tornillo: 2, hexagonal: 2, cabeza: 1 }, claves: ['31161703'] },
+  { id: 'tornillos_cabeza_plana', rama: RAMA.FERRETERIA, tokens: { tornillo: 2, plano: 1, cabeza: 1 }, claves: ['31161704'] },
+  { id: 'tornillos_autorroscantes', rama: RAMA.FERRETERIA, tokens: { tornillo: 2, autorroscante: 2 }, claves: ['31161705'] },
+  { id: 'tornillos_madera', rama: RAMA.FERRETERIA, tokens: { tornillo: 2, madera: 2 }, claves: ['31161706'] },
+  { id: 'tornillos_laminas', rama: RAMA.FERRETERIA, tokens: { tornillo: 1, lamina: 2 }, claves: ['31161707'] },
+  { id: 'tornillos_mariposa', rama: RAMA.FERRETERIA, tokens: { tornillo: 1, mariposa: 2 }, claves: ['31161708'] },
+  { id: 'tornillos_ojos', rama: RAMA.FERRETERIA, tokens: { tornillo: 1, ojo: 2, argolla: 1 }, claves: ['31161709'] },
+  { id: 'tuercas_hexagonales', rama: RAMA.FERRETERIA, tokens: { tuerca: 2, hexagonal: 2 }, claves: ['31161801'] },
+  { id: 'tuercas_seguridad', rama: RAMA.FERRETERIA, tokens: { tuerca: 2, seguridad: 2 }, claves: ['31161802'] },
+  { id: 'tuercas_mariposa', rama: RAMA.FERRETERIA, tokens: { tuerca: 1, mariposa: 2 }, claves: ['31161803'] },
+  { id: 'rondanas_presion', rama: RAMA.FERRETERIA, tokens: { rondana: 2, presion: 2 }, claves: ['31161804'] },
+  { id: 'rondanas_planas', rama: RAMA.FERRETERIA, tokens: { rondana: 2, plana: 2 }, claves: ['31161805'] },
+  { id: 'arandelas_golilla', rama: RAMA.FERRETERIA, tokens: { arandela: 2, golilla: 2 }, claves: ['31161806'] },
+  { id: 'remaches_pop', rama: RAMA.FERRETERIA, tokens: { remache: 2, pop: 2 }, claves: ['31161807'] },
+  { id: 'remaches_solidos', rama: RAMA.FERRETERIA, tokens: { remache: 1, solido: 2 }, claves: ['31161808'] },
+  { id: 'pernos_hexagonales', rama: RAMA.FERRETERIA, tokens: { perno: 2, hexagonal: 2 }, claves: ['31161809'] },
+  { id: 'pernos_coche', rama: RAMA.FERRETERIA, tokens: { perno: 2, coche: 2 }, claves: ['31161810'] },
+  { id: 'taquetes_expansion', rama: RAMA.FERRETERIA, tokens: { taquete: 2, expansion: 2 }, claves: ['31161811'] },
+  { id: 'taquetes_plasticos', rama: RAMA.FERRETERIA, tokens: { taquete: 2, plastico: 2 }, claves: ['31161812'] },
+  { id: 'taquetes_metalicos', rama: RAMA.FERRETERIA, tokens: { taquete: 2, metalico: 2 }, claves: ['31161813'] },
+  { id: 'anclas_concreto', rama: RAMA.FERRETERIA, tokens: { ancla: 2, concreto: 2 }, claves: ['31161814'] },
+  { id: 'anclas_quimicas', rama: RAMA.FERRETERIA, tokens: { ancla: 1, quimica: 2 }, claves: ['31161815'] },
+  { id: 'clavos_concreto', rama: RAMA.FERRETERIA, tokens: { clavo: 2, concreto: 2 }, claves: ['31161816'] },
+  { id: 'clavos_madera', rama: RAMA.FERRETERIA, tokens: { clavo: 2, madera: 2 }, claves: ['31161817'] },
+  { id: 'clavos_acero', rama: RAMA.FERRETERIA, tokens: { clavo: 1, acero: 2 }, claves: ['31161818'] },
+  { id: 'grapas_engrapadora', rama: RAMA.FERRETERIA, tokens: { grapa: 2, engrapadora: 2 }, claves: ['31161819'] },
+  { id: 'pijas_madera', rama: RAMA.FERRETERIA, tokens: { pija: 2, madera: 2 }, claves: ['31161706'] },
+  { id: 'pijas_metal', rama: RAMA.FERRETERIA, tokens: { pija: 2, metal: 2 }, claves: ['31161701'] },
+  { id: 'bisagras_sobreponer', rama: RAMA.FERRETERIA, tokens: { bisagra: 2, sobreponer: 2 }, claves: ['31162401'] },
+  { id: 'bisagras_empotrar', rama: RAMA.FERRETERIA, tokens: { bisagra: 2, empotrar: 2 }, claves: ['31162402'] },
+  { id: 'bisagras_piano', rama: RAMA.FERRETERIA, tokens: { bisagra: 1, piano: 2 }, claves: ['31162403'] },
+  { id: 'resortes_compresion', rama: RAMA.FERRETERIA, tokens: { resorte: 2, compresion: 2 }, claves: ['31161901'] },
+  { id: 'resortes_torsion', rama: RAMA.FERRETERIA, tokens: { resorte: 2, torsion: 2 }, claves: ['31161902'] },
+  { id: 'resortes_extension', rama: RAMA.FERRETERIA, tokens: { resorte: 2, extension: 2 }, claves: ['31161903'] },
+  { id: 'cadenas_acero', rama: RAMA.FERRETERIA, tokens: { cadena: 2, acero: 2 }, claves: ['31161904'] },
+  { id: 'cadenas_galvanizadas', rama: RAMA.FERRETERIA, tokens: { cadena: 2, galvanizado: 2 }, claves: ['31161905'] },
+  { id: 'cadenas_eslabon', rama: RAMA.FERRETERIA, tokens: { cadena: 1, eslabon: 2 }, claves: ['31161906'] },
+  { id: 'tensores_cable', rama: RAMA.FERRETERIA, tokens: { tensor: 2, cable: 2 }, claves: ['31162404'] },
+  { id: 'ganchos_acero', rama: RAMA.FERRETERIA, tokens: { gancho: 2, acero: 2 }, claves: ['31162405'] },
+  { id: 'ganchos_plastico', rama: RAMA.FERRETERIA, tokens: { gancho: 2, plastico: 2 }, claves: ['31162406'] },
+  { id: 'armellas_abiertas', rama: RAMA.FERRETERIA, tokens: { armella: 2, abierta: 2 }, claves: ['31162407'] },
+  { id: 'armellas_cerradas', rama: RAMA.FERRETERIA, tokens: { armella: 2, cerrada: 2 }, claves: ['31162408'] },
+  { id: 'pasadores_cerraduras', rama: RAMA.FERRETERIA, tokens: { pasador: 2, cerradura: 2 }, claves: ['31162409'] },
+  { id: 'pasadores_barra', rama: RAMA.FERRETERIA, tokens: { pasador: 2, barra: 2 }, claves: ['31162410'] },
+  { id: 'jaladeras_muebles', rama: RAMA.FERRETERIA, tokens: { jaladera: 2, mueble: 2 }, claves: ['31162801'] },
+  { id: 'tiradores_muebles', rama: RAMA.FERRETERIA, tokens: { tirador: 2, mueble: 2 }, claves: ['31162802'] },
+  { id: 'topes_puerta', rama: RAMA.FERRETERIA, tokens: { tope: 2, puerta: 2 }, claves: ['31162411'] },
+  { id: 'cerraduras_sobreponer', rama: RAMA.FERRETERIA, tokens: { cerradura: 2, sobreponer: 2 }, claves: ['46171501'] },
+  { id: 'cerraduras_empotrar', rama: RAMA.FERRETERIA, tokens: { cerradura: 2, empotrar: 2 }, claves: ['46171502'] },
+  { id: 'cerraduras_manija', rama: RAMA.FERRETERIA, tokens: { cerradura: 1, manija: 2 }, claves: ['46171503'] },
+  { id: 'chapas_seguridad', rama: RAMA.FERRETERIA, tokens: { chapa: 2, seguridad: 2 }, claves: ['46171504'] },
+  { id: 'candados_laton', rama: RAMA.FERRETERIA, tokens: { candado: 2, laton: 2 }, claves: ['46171601'] },
+  { id: 'candados_acero', rama: RAMA.FERRETERIA, tokens: { candado: 2, acero: 2 }, claves: ['46171602'] },
+  { id: 'candados_combinacion', rama: RAMA.FERRETERIA, tokens: { candado: 2, combinacion: 2 }, claves: ['46171603'] },
+  { id: 'candados_seguridad', rama: RAMA.FERRETERIA, tokens: { candado: 2, seguridad: 2 }, claves: ['46171604'] },
+
+  // ═══════════════════════════════════════
+  // HERRAMIENTAS (~80)
+  // ═══════════════════════════════════════
+  { id: 'pinzas_corte', rama: RAMA.HERRAMIENTAS, tokens: { pinza: 2, corte: 2 }, requiere: ['pinza', 'corte'], claves: ['27111701'] },
+  { id: 'pinzas_punta', rama: RAMA.HERRAMIENTAS, tokens: { pinza: 2, punta: 2 }, claves: ['27111702'] },
+  { id: 'pinzas_mecanica', rama: RAMA.HERRAMIENTAS, tokens: { pinza: 2, mecanica: 2 }, claves: ['27111703'] },
+  { id: 'pinzas_apriete', rama: RAMA.HERRAMIENTAS, tokens: { pinza: 2, apriete: 2 }, claves: ['27111704'] },
+  { id: 'alicates_punta', rama: RAMA.HERRAMIENTAS, tokens: { alicata: 2, punta: 2 }, claves: ['27111705'] },
+  { id: 'alicates_corte', rama: RAMA.HERRAMIENTAS, tokens: { alicata: 2, corte: 2 }, claves: ['27111706'] },
+  { id: 'llaves_pericas', rama: RAMA.HERRAMIENTAS, tokens: { llave: 2, perica: 2 }, requiere: ['llave', 'perica'], claves: ['27111707'] },
+  { id: 'llaves_espanolas', rama: RAMA.HERRAMIENTAS, tokens: { llave: 2, espanola: 2 }, claves: ['27111708'] },
+  { id: 'llaves_combinadas', rama: RAMA.HERRAMIENTAS, tokens: { llave: 2, combinada: 2 }, claves: ['27111709'] },
+  { id: 'llaves_hexagonales', rama: RAMA.HERRAMIENTAS, tokens: { llave: 2, hexagonal: 2, allen: 1 }, claves: ['27111710'] },
+  { id: 'llaves_torx', rama: RAMA.HERRAMIENTAS, tokens: { llave: 1, torx: 2 }, claves: ['27111711'] },
+  { id: 'llaves_stilson', rama: RAMA.HERRAMIENTAS, tokens: { llave: 1, stilson: 2 }, claves: ['27111712'] },
+  { id: 'llaves_inglesas', rama: RAMA.HERRAMIENTAS, tokens: { llave: 1, inglesa: 2 }, claves: ['27111713'] },
+  { id: 'llaves_tubo', rama: RAMA.HERRAMIENTAS, tokens: { llave: 1, tubo: 2 }, claves: ['27111714'] },
+  { id: 'dados_hexagonales', rama: RAMA.HERRAMIENTAS, tokens: { dado: 2, hexagonal: 2 }, claves: ['27111715'] },
+  { id: 'dados_torx', rama: RAMA.HERRAMIENTAS, tokens: { dado: 2, torx: 2 }, claves: ['27111716'] },
+  { id: 'matracas_trinquetes', rama: RAMA.HERRAMIENTAS, tokens: { matraca: 2, trinquete: 2 }, claves: ['27111717'] },
+  { id: 'desarmadores_plano', rama: RAMA.HERRAMIENTAS, tokens: { desarmador: 2, plano: 2 }, claves: ['27111718'] },
+  { id: 'desarmadores_phillips', rama: RAMA.HERRAMIENTAS, tokens: { desarmador: 2, phillips: 2 }, claves: ['27111719'] },
+  { id: 'desarmadores_precision', rama: RAMA.HERRAMIENTAS, tokens: { desarmador: 2, precision: 2 }, claves: ['27111720'] },
+  { id: 'desarmadores_impacto', rama: RAMA.HERRAMIENTAS, tokens: { desarmador: 1, impacto: 2 }, claves: ['27111721'] },
+  { id: 'martillos_uya', rama: RAMA.HERRAMIENTAS, tokens: { martillo: 2, uya: 2 }, claves: ['27111501'] },
+  { id: 'martillos_bola', rama: RAMA.HERRAMIENTAS, tokens: { martillo: 2, bola: 2 }, claves: ['27111502'] },
+  { id: 'martillos_maso', rama: RAMA.HERRAMIENTAS, tokens: { martillo: 2, maso: 2 }, claves: ['27111503'] },
+  { id: 'marros', rama: RAMA.HERRAMIENTAS, tokens: { marro: 2 }, claves: ['27111504'] },
+  { id: 'combos', rama: RAMA.HERRAMIENTAS, tokens: { combo: 2 }, claves: ['27111505'] },
+  { id: 'hachas', rama: RAMA.HERRAMIENTAS, tokens: { hacha: 2 }, claves: ['27111506'] },
+  { id: 'machetes', rama: RAMA.HERRAMIENTAS, tokens: { machete: 2 }, claves: ['27111507'] },
+  { id: 'brocas_metal', rama: RAMA.HERRAMIENTAS, tokens: { broca: 2, metal: 2, hss: 1 }, claves: ['27112801'] },
+  { id: 'brocas_madera', rama: RAMA.HERRAMIENTAS, tokens: { broca: 2, madera: 2 }, claves: ['27112802'] },
+  { id: 'brocas_concreto', rama: RAMA.HERRAMIENTAS, tokens: { broca: 2, concreto: 2 }, claves: ['27112803'] },
+  { id: 'brocas_multimaterial', rama: RAMA.HERRAMIENTAS, tokens: { broca: 2, multimaterial: 2 }, claves: ['27112804'] },
+  { id: 'brocas_forstner', rama: RAMA.HERRAMIENTAS, tokens: { broca: 2, forstner: 2 }, claves: ['27112805'] },
+  { id: 'brocas_pala', rama: RAMA.HERRAMIENTAS, tokens: { broca: 2, pala: 2 }, claves: ['27112806'] },
+  { id: 'brocas_escalonada', rama: RAMA.HERRAMIENTAS, tokens: { broca: 2, escalonada: 2 }, claves: ['27112807'] },
+  { id: 'seguetas_arco', rama: RAMA.HERRAMIENTAS, tokens: { segueta: 2, arco: 2 }, claves: ['27111508'] },
+  { id: 'sierras_mano', rama: RAMA.HERRAMIENTAS, tokens: { sierra: 2, mano: 2 }, claves: ['27111509'] },
+  { id: 'serruchos_podar', rama: RAMA.HERRAMIENTAS, tokens: { serrucho: 2, podar: 2 }, claves: ['27111510'] },
+  { id: 'cuchillas_carpintero', rama: RAMA.HERRAMIENTAS, tokens: { cuchilla: 2, carpintero: 2 }, claves: ['27111511'] },
+  { id: 'navajas_cutter', rama: RAMA.HERRAMIENTAS, tokens: { navaja: 2, cutter: 2 }, claves: ['27111512'] },
+  { id: 'limas_planas', rama: RAMA.HERRAMIENTAS, tokens: { lima: 2, plana: 2 }, claves: ['27111901'] },
+  { id: 'limas_redondas', rama: RAMA.HERRAMIENTAS, tokens: { lima: 2, redonda: 2 }, claves: ['27111902'] },
+  { id: 'limas_triangulares', rama: RAMA.HERRAMIENTAS, tokens: { lima: 2, triangular: 2 }, claves: ['27111903'] },
+  { id: 'escofinas', rama: RAMA.HERRAMIENTAS, tokens: { escofina: 2 }, claves: ['27111904'] },
+  { id: 'formones_cinceles', rama: RAMA.HERRAMIENTAS, tokens: { formon: 2, cincel: 2 }, claves: ['27111905'] },
+  { id: 'cepillos_carpintero', rama: RAMA.HERRAMIENTAS, tokens: { cepillo: 2, carpintero: 2 }, claves: ['27111906'] },
+  { id: 'niveles_burbuja', rama: RAMA.HERRAMIENTAS, tokens: { nivel: 2, burbuja: 2 }, claves: ['27111801'] },
+  { id: 'niveles_laser', rama: RAMA.HERRAMIENTAS, tokens: { nivel: 2, laser: 2 }, claves: ['27111802'] },
+  { id: 'flexometros_cinta', rama: RAMA.HERRAMIENTAS, tokens: { flexomet: 2, cinta: 1 }, claves: ['27111803'] },
+  { id: 'plomadas', rama: RAMA.HERRAMIENTAS, tokens: { plomada: 2 }, claves: ['27111804'] },
+  { id: 'prensas_sargentos', rama: RAMA.HERRAMIENTAS, tokens: { prensa: 2, sargento: 2 }, claves: ['27111805'] },
+  { id: 'espatulas_llanas', rama: RAMA.HERRAMIENTAS, tokens: { espatula: 2, llana: 1 }, claves: ['27112201'] },
+  { id: 'cucharas_albanil', rama: RAMA.HERRAMIENTAS, tokens: { cuchara: 2, albanil: 2 }, claves: ['27112202'] },
+  { id: 'llanas_albanil', rama: RAMA.HERRAMIENTAS, tokens: { llana: 2, albanil: 2 }, claves: ['27112203'] },
+
+  // ═══════════════════════════════════════
+  // PLOMERIA (~50)
+  // ═══════════════════════════════════════
+  { id: 'valvulas_compuerta', rama: RAMA.PLOMERIA, tokens: { valvula: 2, compuerta: 2 }, claves: ['40141601'] },
+  { id: 'valvulas_bola', rama: RAMA.PLOMERIA, tokens: { valvula: 2, bola: 2 }, claves: ['40141602'] },
+  { id: 'valvulas_check', rama: RAMA.PLOMERIA, tokens: { valvula: 2, check: 2 }, claves: ['40141603'] },
+  { id: 'valvulas_mariposa', rama: RAMA.PLOMERIA, tokens: { valvula: 2, mariposa: 2 }, claves: ['40141604'] },
+  { id: 'valvulas_seguridad', rama: RAMA.PLOMERIA, tokens: { valvula: 2, seguridad: 2 }, claves: ['40141605'] },
+  { id: 'valvulas_alivio', rama: RAMA.PLOMERIA, tokens: { valvula: 1, alivio: 2 }, claves: ['40141606'] },
+  { id: 'valvulas_aguja', rama: RAMA.PLOMERIA, tokens: { valvula: 2, aguja: 2 }, claves: ['40141607'] },
+  { id: 'valvulas_retencion', rama: RAMA.PLOMERIA, tokens: { valvula: 2, retencion: 2 }, claves: ['40141608'] },
+  { id: 'llaves_paso_corta', rama: RAMA.PLOMERIA, tokens: { llave: 2, paso: 2, corta: 1 }, requiere: ['llave', 'paso'], claves: ['40141609'] },
+  { id: 'llaves_angulo', rama: RAMA.PLOMERIA, tokens: { llave: 2, angular: 2, paso: 1 }, claves: ['40141610'] },
+  { id: 'llaves_esfera', rama: RAMA.PLOMERIA, tokens: { llave: 2, esfera: 2 }, claves: ['40141611'] },
+  { id: 'flotadores_tinaco', rama: RAMA.PLOMERIA, tokens: { flotador: 2, tinaco: 2 }, claves: ['40141612'] },
+  { id: 'flotadores_wc', rama: RAMA.PLOMERIA, tokens: { flotador: 2, wc: 1, sanitario: 1 }, claves: ['40141613'] },
+  { id: 'tinacos_plasticos', rama: RAMA.PLOMERIA, tokens: { tinaco: 2, plastico: 2 }, claves: ['40141501'] },
+  { id: 'tinacos_concreto', rama: RAMA.PLOMERIA, tokens: { tinaco: 1, concreto: 2 }, claves: ['40141502'] },
+  { id: 'cisternas', rama: RAMA.PLOMERIA, tokens: { cisterna: 2 }, claves: ['40141503'] },
+  { id: 'calentadores_gas', rama: RAMA.PLOMERIA, tokens: { calentador: 2, gas: 2 }, claves: ['40101501'] },
+  { id: 'calentadores_electricos', rama: RAMA.PLOMERIA, tokens: { calentador: 2, electrico: 2 }, claves: ['40101502'] },
+  { id: 'bombas_agua_perifericas', rama: RAMA.PLOMERIA, tokens: { bomba: 2, periferica: 2 }, claves: ['40151501'] },
+  { id: 'bombas_agua_centrifugas', rama: RAMA.PLOMERIA, tokens: { bomba: 2, centrifuga: 2 }, claves: ['40151502'] },
+  { id: 'bombas_agua_sumergibles', rama: RAMA.PLOMERIA, tokens: { bomba: 2, sumergible: 2 }, claves: ['40151503'] },
+  { id: 'bombas_agua_presion', rama: RAMA.PLOMERIA, tokens: { bomba: 2, presion: 2 }, claves: ['40151504'] },
+  { id: 'tuberia_pvc', rama: RAMA.PLOMERIA, tokens: { tuberia: 2, pvc: 2 }, claves: ['40141701'] },
+  { id: 'tuberia_cpvc', rama: RAMA.PLOMERIA, tokens: { tuberia: 2, cpvc: 2 }, claves: ['40141702'] },
+  { id: 'tuberia_cobre', rama: RAMA.PLOMERIA, tokens: { tuberia: 2, cobre: 2 }, claves: ['40141703'] },
+  { id: 'tuberia_galvanizada', rama: RAMA.PLOMERIA, tokens: { tuberia: 2, galvanizado: 2 }, claves: ['40141704'] },
+  { id: 'conexiones_pvc', rama: RAMA.PLOMERIA, tokens: { conexion: 2, pvc: 2 }, claves: ['40141705'] },
+  { id: 'conexiones_cobre', rama: RAMA.PLOMERIA, tokens: { conexion: 2, cobre: 2 }, claves: ['40141706'] },
+  { id: 'soldadura_estano', rama: RAMA.PLOMERIA, tokens: { soldadura: 2, estano: 2 }, claves: ['40141707'] },
+  { id: 'cinta_teflon', rama: RAMA.PLOMERIA, tokens: { cinta: 2, teflon: 2 }, claves: ['40141708'] },
+  { id: 'coladeras_piso', rama: RAMA.PLOMERIA, tokens: { coladera: 2, piso: 2 }, claves: ['40141709'] },
+  { id: 'coladeras_lavabo', rama: RAMA.PLOMERIA, tokens: { coladera: 2, lavabo: 2 }, claves: ['40141710'] },
+  { id: 'cespol_sifones', rama: RAMA.PLOMERIA, tokens: { cespol: 2, sifon: 2 }, claves: ['40141711'] },
+  { id: 'alimentadores_flexibles', rama: RAMA.PLOMERIA, tokens: { alimentador: 2, flexible: 2 }, claves: ['40141712'] },
+  { id: 'llaves_jardin', rama: RAMA.PLOMERIA, tokens: { llave: 1, jardin: 2 }, claves: ['40141614'] },
+  { id: 'manometros', rama: RAMA.PLOMERIA, tokens: { manometro: 2 }, claves: ['40141615'] },
+  { id: 'termometros_agua', rama: RAMA.PLOMERIA, tokens: { termometro: 2, agua: 1 }, claves: ['40141616'] },
+  { id: 'filtros_agua', rama: RAMA.PLOMERIA, tokens: { filtro: 2, agua: 2 }, claves: ['40141617'] },
+  { id: 'suavizadores_agua', rama: RAMA.PLOMERIA, tokens: { suavizador: 2, agua: 2 }, claves: ['40141618'] },
+
+  // ═══════════════════════════════════════
+  // CONSTRUCCION (~50)
+  // ═══════════════════════════════════════
+  { id: 'blocks_huecos', rama: RAMA.CONSTRUCCION, tokens: { block: 2, hueco: 2 }, claves: ['30101501'] },
+  { id: 'blocks_macizos', rama: RAMA.CONSTRUCCION, tokens: { block: 2, macizo: 2 }, claves: ['30101502'] },
+  { id: 'ladrillos_arcilla', rama: RAMA.CONSTRUCCION, tokens: { ladrillo: 2, arcilla: 2 }, claves: ['30101503'] },
+  { id: 'tabiques_barro', rama: RAMA.CONSTRUCCION, tokens: { tabique: 2, barro: 2 }, claves: ['30101504'] },
+  { id: 'varillas_corrugadas', rama: RAMA.CONSTRUCCION, tokens: { varilla: 2, corrugado: 2 }, claves: ['30102401'] },
+  { id: 'varillas_lisas', rama: RAMA.CONSTRUCCION, tokens: { varilla: 2, lisa: 2 }, claves: ['30102402'] },
+  { id: 'mallas_electrosoldadas', rama: RAMA.CONSTRUCCION, tokens: { malla: 2, electrosoldada: 2 }, claves: ['30102403'] },
+  { id: 'mallas_ciclon', rama: RAMA.CONSTRUCCION, tokens: { malla: 2, ciclon: 2 }, claves: ['30102404'] },
+  { id: 'alambre_recocido', rama: RAMA.CONSTRUCCION, tokens: { alambre: 2, recocido: 2 }, claves: ['30102405'] } ,
+  { id: 'alambre_puas', rama: RAMA.CONSTRUCCION, tokens: { alambre: 2, puas: 2, espino: 1 }, claves: ['30102406'] },
+  { id: 'cemento_gris', rama: RAMA.CONSTRUCCION, tokens: { cemento: 2, gris: 2 }, claves: ['30111501'] },
+  { id: 'cemento_blanco', rama: RAMA.CONSTRUCCION, tokens: { cemento: 2, blanco: 2 }, claves: ['30111502'] },
+  { id: 'mortero_premezclado', rama: RAMA.CONSTRUCCION, tokens: { mortero: 2, premezclado: 2 }, claves: ['30111503'] },
+  { id: 'yeso_construccion', rama: RAMA.CONSTRUCCION, tokens: { yeso: 2, construccion: 2 }, claves: ['30111504'] },
+  { id: 'cal_hidratada', rama: RAMA.CONSTRUCCION, tokens: { cal: 2, hidratada: 2 }, claves: ['30111505'] },
+  { id: 'arena_construccion', rama: RAMA.CONSTRUCCION, tokens: { arena: 2, construccion: 2 }, claves: ['30101505'] },
+  { id: 'grava_construccion', rama: RAMA.CONSTRUCCION, tokens: { grava: 2, construccion: 2 }, claves: ['30101506'] },
+  { id: 'piedras_brazas', rama: RAMA.CONSTRUCCION, tokens: { piedra: 2, braza: 2 }, claves: ['30101507'] },
+  { id: 'tejas_barro', rama: RAMA.CONSTRUCCION, tokens: { teja: 2, barro: 2 }, claves: ['30101508'] },
+  { id: 'impermeabilizante_techos', rama: RAMA.CONSTRUCCION, tokens: { impermeabilizante: 2, techo: 2 }, claves: ['30111506'] },
+
+  // ═══════════════════════════════════════
+  // PINTURAS (~40)
+  // ═══════════════════════════════════════
+  { id: 'pintura_vinilica', rama: RAMA.PINTURAS, tokens: { pintura: 2, vinilica: 2 }, claves: ['31211701'] },
+  { id: 'pintura_esmalte', rama: RAMA.PINTURAS, tokens: { pintura: 2, esmalte: 2 }, claves: ['31211702'] },
+  { id: 'pintura_acrilica', rama: RAMA.PINTURAS, tokens: { pintura: 2, acrilica: 2 }, claves: ['31211703'] },
+  { id: 'pintura_aceite', rama: RAMA.PINTURAS, tokens: { pintura: 2, aceite: 2 }, claves: ['31211704'] },
+  { id: 'barniz_madera', rama: RAMA.PINTURAS, tokens: { barniz: 2, madera: 2 }, claves: ['31211705'] },
+  { id: 'barniz_marino', rama: RAMA.PINTURAS, tokens: { barniz: 2, marino: 2 }, claves: ['31211706'] },
+  { id: 'impermeabilizante_cubiertas', rama: RAMA.PINTURAS, tokens: { impermeabilizante: 2, cubierta: 2 }, claves: ['31211707'] },
+  { id: 'thinner', rama: RAMA.PINTURAS, tokens: { thinner: 2 }, claves: ['31211501'] },
+  { id: 'aguarras', rama: RAMA.PINTURAS, tokens: { aguarras: 2 }, claves: ['31211502'] },
+  { id: 'sellador_madera', rama: RAMA.PINTURAS, tokens: { sellador: 2, madera: 2 }, claves: ['31211708'] },
+  { id: 'masilla_madera', rama: RAMA.PINTURAS, tokens: { masilla: 2, madera: 2 }, claves: ['31211709'] },
+  { id: 'pintura_aerosol', rama: RAMA.PINTURAS, tokens: { pintura: 1, aerosol: 2 }, claves: ['31211710'] },
+  { id: 'pintura_pisos', rama: RAMA.PINTURAS, tokens: { pintura: 2, piso: 2 }, claves: ['31211711'] },
+  { id: 'pintura_anticorrosiva', rama: RAMA.PINTURAS, tokens: { pintura: 2, anticorrosiva: 2 }, claves: ['31211712'] },
+  { id: 'rodillos_pintar', rama: RAMA.PINTURAS, tokens: { rodillo: 2, pintar: 2 }, claves: ['27113001'] },
+  { id: 'brochas_pintar', rama: RAMA.PINTURAS, tokens: { brocha: 2, pintar: 2 }, claves: ['27113002'] },
+
+  // ═══════════════════════════════════════
+  // JARDINERIA (~35)
+  // ═══════════════════════════════════════
+  { id: 'mangueras_jardin', rama: RAMA.JARDINERIA, tokens: { manguera: 2, jardin: 2 }, claves: ['40142001'] },
+  { id: 'mangueras_riego', rama: RAMA.JARDINERIA, tokens: { manguera: 2, riego: 2 }, claves: ['40142002'] },
+  { id: 'pistolas_riego', rama: RAMA.JARDINERIA, tokens: { pistola: 2, riego: 2 }, claves: ['27112901'] },
+  { id: 'aspersores_riego', rama: RAMA.JARDINERIA, tokens: { aspersor: 2, riego: 2 }, claves: ['40142003'] },
+  { id: 'rociadores', rama: RAMA.JARDINERIA, tokens: { rociador: 2 }, claves: ['40142004'] },
+  { id: 'conectores_manguera', rama: RAMA.JARDINERIA, tokens: { conector: 2, manguera: 2 }, claves: ['40142005'] },
+  { id: 'llaves_jardin_riego', rama: RAMA.JARDINERIA, tokens: { llave: 1, jardin: 2, riego: 2 }, claves: ['40141614'] },
+  { id: 'palas_picas', rama: RAMA.JARDINERIA, tokens: { pala: 2, pico: 2 }, claves: ['27112001'] },
+  { id: 'palas_cuadradas', rama: RAMA.JARDINERIA, tokens: { pala: 2, cuadrada: 2 }, claves: ['27112002'] },
+  { id: 'azadones', rama: RAMA.JARDINERIA, tokens: { azadon: 2 }, claves: ['27112003'] },
+  { id: 'rastrillos', rama: RAMA.JARDINERIA, tokens: { rastrillo: 2 }, claves: ['27112004'] },
+  { id: 'carretillas', rama: RAMA.JARDINERIA, tokens: { carretilla: 2 }, claves: ['27112005'] },
+  { id: 'tijeras_podar', rama: RAMA.JARDINERIA, tokens: { tijera: 2, podar: 2 }, claves: ['27112006'] },
+  { id: 'cortasetos', rama: RAMA.JARDINERIA, tokens: { cortasetos: 2 }, claves: ['27112007'] },
+
+  // ═══════════════════════════════════════
+  // SEGURIDAD (~25)
+  // ═══════════════════════════════════════
+  { id: 'cascos_seguridad', rama: RAMA.SEGURIDAD, tokens: { casco: 2, seguridad: 2 }, claves: ['46181701'] },
+  { id: 'guantes_trabajo', rama: RAMA.SEGURIDAD, tokens: { guante: 2, trabajo: 2 }, claves: ['46181702'] },
+  { id: 'guantes_latex', rama: RAMA.SEGURIDAD, tokens: { guante: 2, latex: 2 }, claves: ['46181703'] },
+  { id: 'guantes_carnaza', rama: RAMA.SEGURIDAD, tokens: { guante: 2, carnaza: 2 }, claves: ['46181704'] },
+  { id: 'lentes_seguridad', rama: RAMA.SEGURIDAD, tokens: { lente: 2, seguridad: 2 }, claves: ['46181705'] },
+  { id: 'caretas_soldar', rama: RAMA.SEGURIDAD, tokens: { careta: 2, soldar: 2 }, claves: ['46181706'] },
+  { id: 'arneses_seguridad', rama: RAMA.SEGURIDAD, tokens: { arnes: 2, seguridad: 2 }, claves: ['46181707'] },
+  { id: 'botas_seguridad', rama: RAMA.SEGURIDAD, tokens: { bota: 2, seguridad: 2 }, claves: ['46181501'] },
+  { id: 'chalecos_reflejantes', rama: RAMA.SEGURIDAD, tokens: { chaleco: 2, reflejante: 2 }, claves: ['46181502'] },
+  { id: 'conos_seguridad', rama: RAMA.SEGURIDAD, tokens: { cono: 2, seguridad: 2 }, claves: ['46181503'] },
+  { id: 'extintores_incendio', rama: RAMA.SEGURIDAD, tokens: { extintor: 2, incendio: 2 }, claves: ['46191501'] },
+  { id: 'alarmas_seguridad', rama: RAMA.SEGURIDAD, tokens: { alarma: 2, seguridad: 2 }, claves: ['46171605'] },
+
+  // ═══════════════════════════════════════
+  // VARIOS (~30)
+  // ═══════════════════════════════════════
+  { id: 'pegamentos_adhesivos', rama: RAMA.VARIOS, tokens: { pegamento: 2, adhesivo: 2 }, claves: ['31201601'] },
+  { id: 'silicon_caliente', rama: RAMA.VARIOS, tokens: { silicon: 2, caliente: 2 }, claves: ['31201602'] },
+  { id: 'silicon_frio', rama: RAMA.VARIOS, tokens: { silicon: 2, frio: 2 }, claves: ['31201603'] },
+  { id: 'pegamento_pvc', rama: RAMA.VARIOS, tokens: { pegamento: 2, pvc: 2 }, claves: ['31201604'] },
+  { id: 'pegamento_contacto', rama: RAMA.VARIOS, tokens: { pegamento: 2, contacto: 2 }, claves: ['31201605'] },
+  { id: 'cinta_maskin', rama: RAMA.VARIOS, tokens: { cinta: 2, maskin: 2, enmascarar: 1 }, claves: ['31201501'] },
+  { id: 'cinta_aislante', rama: RAMA.VARIOS, tokens: { cinta: 2, aislante: 2 }, claves: ['31201502'] },
+  { id: 'cinta_doble_cara', rama: RAMA.VARIOS, tokens: { cinta: 2, doble: 2, cara: 2 }, claves: ['31201503'] },
+  { id: 'cinta_canela', rama: RAMA.VARIOS, tokens: { cinta: 2, canela: 2 }, claves: ['31201504'] },
+  { id: 'selladores_silicon', rama: RAMA.VARIOS, tokens: { sellador: 2, silicon: 2 }, claves: ['31201606'] },
+  { id: 'lijas_agua', rama: RAMA.VARIOS, tokens: { lija: 2, agua: 2 }, claves: ['31191501'] },
+  { id: 'lijas_hierro', rama: RAMA.VARIOS, tokens: { lija: 2, hierro: 2 }, claves: ['31191502'] },
+  { id: 'discos_corte_metal', rama: RAMA.VARIOS, tokens: { disco: 2, corte: 2, metal: 1 }, claves: ['31191503'] },
+  { id: 'discos_desbaste', rama: RAMA.VARIOS, tokens: { disco: 2, desbaste: 2 }, claves: ['31191504'] },
+  { id: 'discos_diamante', rama: RAMA.VARIOS, tokens: { disco: 2, diamante: 2 }, claves: ['31191505'] },
+  { id: 'cepillos_alambre', rama: RAMA.VARIOS, tokens: { cepillo: 2, alambre: 2 }, claves: ['27113003'] },
+  { id: 'esponjas', rama: RAMA.VARIOS, tokens: { esponja: 2 }, claves: ['47131601'] },
+  { id: 'jaladores_manguera', rama: RAMA.VARIOS, tokens: { jalador: 2, manguera: 2 }, claves: ['40142006'] },
+];
+
+// Combinar todas las familias
+const FAMILIAS_TOTALES = [...FAMILIAS, ...FAMILIAS_NUEVAS, ...FAMILIAS_AUTO];
+
+// ── Asignar rama a familias existentes que no la tienen ──
+for (const f of FAMILIAS_TOTALES) {
+  if (!f.rama) f.rama = ramaDeFamilia(f);
+}
+
 // ---------------------------------------------------------------------------
 
 /** Variantes singulares de un token: "cinchos" -> ["cinchos","cincho"], "llaves" -> ["llaves","llave","llav"]. */
@@ -1594,6 +2021,7 @@ function detectarFamilias(tokens) {
         puntaje,
         claves: familia.claves.slice(),
         certificada: familia.certificada === true,
+        rama: familia.rama,
       });
     }
   }

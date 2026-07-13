@@ -24,6 +24,13 @@ const STOPWORDS_MARCAS = new Set([
   'avante', 'fleximatic', 'bticino', 'kw', 'tae', 'promax', 'valvo',
   'simon', 'forza', 'dica', 'noman', 'alco', 'cobesa', 'tolsen', 'evesa',
   'kliker', 'ortop', 'karcher', 'mimsa', 'jama', 'banner', 'malibu',
+  'dremel', 'skil', 'milwaukee', 'metabo', 'festool', 'hitachi',
+  'panasonic', 'sony', 'samsung', 'lg', 'whirlpool', 'mabe', 'acros',
+  'daewoo', 'hisense', 'toshiba', 'steren', 'intercraft', 'kaiser',
+  'kleen', 'viking', 'pinguino', 'clima', 'sharp', 'bic', 'faber',
+  'castel', 'stabilo', 'sharpie', 'paper', 'mate', 'condulmex',
+  'nicromex', 'nexans', 'kondu', 'voltech', 'portacable', 'jm',
+  'gac', 'knova', 'black', 'decker',
 ]);
 
 const STOPWORDS_COMERCIALES = new Set([
@@ -36,6 +43,14 @@ const STOPWORDS_COMERCIALES = new Set([
   'pieza', 'piezas', 'repuesto', 'repuestos', 'refaccion', 'refacciones',
   'accesorio', 'accesorios', 'varios', 'surtido', 'surtida', 'modelo',
   'linea', 'serie', 'tipo', 'talla', 'no', 'num', 'numero', 'codigo',
+  'basico', 'basica', 'esencial', 'ecologico', 'ecologica',
+  'artesanal', 'clasico', 'clasica', 'moderno', 'moderna',
+  'contemporaneo', 'rinde', 'maximo', 'optimo', 'rendimiento',
+  'calidad', 'garantia', 'original', 'generico', 'alternativo',
+  'compatible', 'universal', 'multimarca', 'marca', 'patentado',
+  'registrado', 'disenado', 'especial', 'especializado',
+  'recomendado', 'popular', 'tradicional', 'nuevo', 'nueva',
+  'original', 'autentico', 'legitimo', 'exclusivo',
 ]);
 
 const STOPWORDS_COLORES = new Set([
@@ -45,6 +60,12 @@ const STOPWORDS_COLORES = new Set([
   'verde', 'amarillo', 'amarilla', 'naranja', 'cafe', 'beige', 'marfil',
   'transparente', 'traslucido', 'traslucida', 'natural', 'naturales',
   'cromo', 'cromado', 'cromada', 'satin', 'mate', 'oro', 'plata',
+  'hueso', 'almendra', 'marron', 'chocolate', 'vino', 'mostaza',
+  'olivo', 'menta', 'celeste', 'turquesa', 'violeta', 'lila',
+  'rosado', 'rosada', 'coral', 'bronce', 'dorado', 'dorada',
+  'plateado', 'plateada', 'grafito', 'niquel', 'niquelado',
+  'niquelada', 'pulido', 'pulida', 'anodizado', 'anodizada',
+  'esmaltado', 'esmaltada', 'lacado', 'lacada', 'oxidado', 'oxidada',
 ]);
 
 const STOPWORDS_EXTRA = new Set([
