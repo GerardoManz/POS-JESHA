@@ -365,7 +365,7 @@ function puntuarCandidato(clave, ctx) {
   const tokensClave = new Set([...(entrada.t || []), ...(entrada.s || [])]);
   for (const f of familiasNuevo) {
     if (f.claves.includes(clave)) {
-      const familiaDef = dicc.FAMILIAS.find((fd) => fd.id === f.id);
+      const familiaDef = dicc.FAMILIAS_TOTALES.find((fd) => fd.id === f.id);
       for (const base of Object.keys(familiaDef.tokens)) tokensClave.add(base);
     }
   }

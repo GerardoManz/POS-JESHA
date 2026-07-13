@@ -2079,6 +2079,7 @@ function familiasDeClave(claveSat) {
 module.exports = {
   UMBRAL_FAMILIA,
   FAMILIAS,
+  FAMILIAS_TOTALES,
   AMBIGUOS,
   detectarFamilias,
   esAmbiguo,
