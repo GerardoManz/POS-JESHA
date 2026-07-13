@@ -682,6 +682,68 @@ const REGLAS_DIRECTAS = [
     todos: [/\bmartillo\b/, /\bbola\b/],
     razon: 'Martillo de bola identificado',
   },
+
+  // ── New rules 2026-07-13 ──
+  {
+    id: 'broca_hss_metal',
+    claveSat: '27112841',
+    confianza: 96,
+    todos: [/\bbroca\b/, /\bhss\b/],
+    razon: 'Broca HSS identificada como broca para metal',
+  },
+  {
+    id: 'cable_thw_calibre',
+    claveSat: '26121600',
+    confianza: 95,
+    todos: [/\b(cable|alambre)\b/, /\bthw\b/, /\bcalibre\b/],
+    razon: 'Cable THW por calibre identificado como cable electrico',
+  },
+  {
+    id: 'guantes_nitrilo_industrial',
+    claveSat: '46181504',
+    confianza: 96,
+    todos: [/\bguante\b/, /\bnitrilo\b/],
+    excluye: [/\bjardin\b/, /\bcocina\b/],
+    razon: 'Guante de nitrilo identificado como equipo de seguridad',
+  },
+  {
+    id: 'pala_cuadrada_pico',
+    claveSat: '22101700',
+    confianza: 95,
+    todos: [/\bpala\b/, /\b(cuadrada|redonda)\b/],
+    excluye: [/\bjardin\b/, /\bpico\b/, /\bcava\b/],
+    razon: 'Pala cuadrada/redonda identificada como herramienta de construccion',
+  },
+  {
+    id: 'tapon_pvc_cementar',
+    claveSat: '40173500',
+    confianza: 94,
+    todos: [/\btapon\b/, /\b(pvc|hidraulico|cementar)\b/],
+    razon: 'Tapón PVC para cementar identificado',
+  },
+  {
+    id: 'cadena_acero_galvanizado',
+    claveSat: '31151600',
+    confianza: 95,
+    todos: [/\bcadena\b/, /\b(acero|galvanizada|galvanizado)\b/],
+    excluye: [/\bluminario\b/, /\blampara\b/, /\bfoco\b/, /\btienda\b/],
+    razon: 'Cadena de acero/galvanizada identificada',
+  },
+  {
+    id: 'flotador_tinaco',
+    claveSat: '40141612',
+    confianza: 96,
+    todos: [/\bflotador\b/, /\btinaco\b/],
+    razon: 'Flotador para tinaco identificado',
+  },
+  {
+    id: 'foco_led_especifico',
+    claveSat: '39101600',
+    confianza: 93,
+    todos: [/\bfoco\b/, /\bled\b/],
+    excluye: [/\btira\b/, /\bpanel\b/, /\bluminario\b/, /\breflector\b/],
+    razon: 'Foco LED identificado como iluminacion general',
+  },
 ];
 
 function detectarConocimiento(texto) {

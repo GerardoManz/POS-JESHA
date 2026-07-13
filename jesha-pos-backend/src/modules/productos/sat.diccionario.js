@@ -210,12 +210,12 @@ const FAMILIAS = [
   },
   {
     id: 'seguetas_arcos',
-    tokens: { segueta: 2, sierra: 1 },
+    tokens: { segueta: 2, sierra: 1, arco: 1 },
     claves: ['27111559'],
   },
   {
     id: 'tinacos_tanques',
-    tokens: { tinaco: 2, cisterna: 2, tanque: 2 },
+    tokens: { tinaco: 2, cisterna: 2, tanque: 2, flotador: 1 },
     claves: ['24111810'],
   },
   {
@@ -768,6 +768,19 @@ const FAMILIAS = [
     excluye: ['manguera', 'tanque', 'cilindro', 'regulador'],
     claves: ['40141751'],
   },
+  // ---- Familias generales eléctricas ----
+  {
+    id: 'fusibles',
+    rama: RAMA.ELECTRICO,
+    tokens: { fusible: 2 },
+    claves: ['39121600'],
+  },
+  {
+    id: 'pastillas_termicas',
+    rama: RAMA.ELECTRICO,
+    tokens: { pastilla: 2, termica: 1 },
+    claves: ['39121600'],
+  },
   // ---- Familias sin clave confirmada todavía (solo gate + acotación) ----
   {
     id: 'plomeria_conexiones',
@@ -1189,7 +1202,7 @@ const FAMILIAS = [
   // ---- Familias lote 4 (2026-07-03): siguientes mayores frecuencias en sin-familia ----
   {
     id: 'cadenas',
-    tokens: { cadena: 2 },
+    tokens: { cadena: 2, acero: 1 },
     excluye: ['luminario', 'lampara', 'foco', 'plafon', 'electrica', 'elect', 'electron', 'tienda', 'nivel', 'carbon', 'rodillo', 'transportador', 'bicicleta', 'motocicleta', 'moto'],
     claves: ['31151600'],
   },
@@ -1990,7 +2003,7 @@ function coincide(tokenProducto, base) {
  */
 function detectarFamilias(tokens) {
   const resultados = [];
-  for (const familia of FAMILIAS) {
+  for (const familia of FAMILIAS_TOTALES) {
     // Tokens obligatorios: si la familia los declara, TODOS deben estar
     // presentes o la familia no activa (evita que un token especializador
     // como "corte" active la familia sin su ancla "disco").
@@ -2047,7 +2060,7 @@ function esAmbiguo(tokens) {
 
 // Mapa inverso clave -> familias, para el gate de contradicción.
 const _clavesAFamilias = new Map();
-for (const familia of FAMILIAS) {
+for (const familia of FAMILIAS_TOTALES) {
   for (const clave of familia.claves) {
     if (!_clavesAFamilias.has(clave)) _clavesAFamilias.set(clave, []);
     _clavesAFamilias.get(clave).push(familia.id);

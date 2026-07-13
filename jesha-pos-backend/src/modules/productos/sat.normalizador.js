@@ -170,6 +170,7 @@ const ABREVIATURAS = {
   reflect: ['reflector'],
   plaf: ['plafon'],
   portal: ['portalampara'],
+  portalamp: ['portalampara'],
   // Ferreteria
   torn: ['tornillo'],
   pij: ['pija'],
