@@ -671,6 +671,10 @@ function filaProductoGuardadoHTML(d, editable) {
   const respTxt  = d.Responsable?.nombre || '—'
   const recibeTxt = d.recibeNombre || d.RecibeTrabajador?.nombre || '—'
 
+  const celdaRecibe = (editable && !todoDevuelto)
+    ? `<td class="celda-editable" data-detid="${d.id}" data-campo="recibeTrabajadorId" data-original="${d.recibeTrabajadorId || ''}" title="Click para cambiar quién recibe">${recibeTxt} <span class="edit-icon">✎</span></td>`
+    : `<td>${recibeTxt}</td>`
+
   return `<tr style="${filaStyle}">
     <td>${nombre}${sufijoNombre}</td>
     <td>${unidad}</td>
@@ -679,7 +683,7 @@ function filaProductoGuardadoHTML(d, editable) {
     <td><strong>${formatMoney(d.subtotal)}</strong></td>
     <td>${fechaTxt}</td>
     <td>${respTxt}</td>
-    <td>${recibeTxt}</td>
+    ${celdaRecibe}
     <td>${origen}</td>
     <td>${btnQuitar}</td>
   </tr>`
@@ -797,16 +801,46 @@ async function guardarBorrador() {
 }
 
 function activarEdicionCelda(td) {
-  if (td.querySelector('input')) return  // ya está activa
+  if (td.querySelector('input, select')) return
   const detid    = parseInt(td.dataset.detid)
   const campo    = td.dataset.campo
-  const original = parseFloat(td.dataset.original)
+  const original = td.dataset.original
 
+  // ── Campo recibeTrabajadorId: dropdown en vez de input numérico ──
+  if (campo === 'recibeTrabajadorId') {
+    const sel = document.createElement('select')
+    sel.style.cssText = 'width:140px;padding:4px 8px;background:rgba(255,255,255,0.08);border:1px solid var(--accent);border-radius:5px;color:var(--text);font-family:inherit;font-size:0.82rem;outline:none;cursor:pointer;'
+
+    sel.innerHTML = '<option value="">— Selecciona —</option>' +
+      (Array.isArray(trabajadoresActivos) ? trabajadoresActivos.map(t =>
+        `<option value="${t.id}"${String(t.id) === original ? ' selected' : ''}>${nombreTrabajadorLabel(t)}</option>`
+      ).join('') : '')
+
+    td.innerHTML = ''
+    td.appendChild(sel)
+    sel.focus()
+
+    const guardar = async () => {
+      const nuevo = sel.value
+      if (nuevo === original) { renderDetalle(); return }
+      await editarDetalleBitacora(detid, campo, nuevo ? parseInt(nuevo) : null)
+    }
+
+    sel.addEventListener('change', guardar)
+    sel.addEventListener('blur', () => setTimeout(guardar, 200))
+    sel.addEventListener('keydown', ev => {
+      if (ev.key === 'Escape') { ev.preventDefault(); renderDetalle() }
+    })
+    return
+  }
+
+  // ── Campos numéricos (cantidad, precioUnitario) ──
+  const originalNum = parseFloat(original)
   const inp = document.createElement('input')
   inp.type  = 'number'
   inp.step  = campo === 'cantidad' ? '1' : '0.01'
   inp.min   = '0'
-  inp.value = original
+  inp.value = originalNum
   inp.style.cssText = 'width:80px;padding:4px 8px;background:rgba(255,255,255,0.08);border:1px solid var(--accent);border-radius:5px;color:var(--text);font-family:inherit;font-size:0.875rem;'
 
   td.innerHTML = ''
@@ -821,7 +855,7 @@ function activarEdicionCelda(td) {
       renderDetalle()
       return
     }
-    if (nuevo === original) {
+    if (nuevo === originalNum) {
       renderDetalle()
       return
     }

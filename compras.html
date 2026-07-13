@@ -200,10 +200,16 @@
         <input type="hidden" id="pr-prov-id" />
       </div>
 
-      <!-- Nombre + Código -->
+      <!-- Nombre + Código Interno + Código Barras -->
       <div class="form-row" style="margin-bottom:10px;">
         <div class="form-group" style="flex:2;"><label>Nombre *</label><input type="text" id="pr-nombre" class="search-input" style="width:100%;" placeholder="Ej: Niple galvanizado 1/2x10" /></div>
         <div class="form-group" style="flex:1;"><label>Código Interno *</label><input type="text" id="pr-codigo" class="search-input" style="width:100%;" placeholder="Ej: NIP-G12" /></div>
+      </div>
+      <div class="form-row" style="margin-bottom:10px;">
+        <div class="form-group" style="flex:1;">
+          <label>Código de Barras <small style="color:var(--muted);font-weight:400;">(opcional)</small></label>
+          <input type="text" id="pr-codigoBarras" class="search-input" style="width:100%;" placeholder="Si se deja vacío se genera uno automático" maxlength="40" />
+        </div>
       </div>
 
       <!-- Departamento + Categoría -->
@@ -301,9 +307,33 @@
       </div>
 
       <!-- Claves SAT -->
-      <div class="form-row" style="margin-bottom:12px;">
+      <div class="form-row" style="margin-bottom:8px;">
         <div class="form-group"><label>Clave SAT</label><input type="text" id="pr-claveSat" class="search-input" style="width:100%;" placeholder="8 dígitos" maxlength="8" /></div>
         <div class="form-group"><label>Unidad SAT</label><input type="text" id="pr-unidadSat" class="search-input" style="width:100%;" list="pr-unidades-sat-list" placeholder="ej: H87" autocomplete="off" /><datalist id="pr-unidades-sat-list"></datalist></div>
+      </div>
+
+      <!-- Sugerencia SAT -->
+      <div style="margin-bottom:12px;">
+        <button type="button" class="btn-secondary" id="pr-btn-sugerir-sat" style="font-size:0.82rem;padding:5px 14px;">Sugerir SAT</button>
+        <div class="sat-panel" id="pr-sat-panel" style="display:none;margin-top:8px;">
+          <div class="sat-status" id="pr-sat-status" style="display:none;"></div>
+          <div class="sat-head">
+            <span class="sat-badge" id="pr-sat-badge"></span>
+            <span class="sat-conf" id="pr-sat-confianza"></span>
+          </div>
+          <div class="sat-section">
+            <div class="sat-label">Clave SAT — elige una</div>
+            <div class="sat-chips" id="pr-sat-claves"></div>
+          </div>
+          <div class="sat-section">
+            <div class="sat-label">Unidad SAT</div>
+            <div class="sat-chips" id="pr-sat-unidades"></div>
+          </div>
+          <button type="button" class="sat-razones-toggle" id="pr-sat-razones-toggle" style="display:none;">
+            Por qué <span class="sat-caret">⌄</span>
+          </button>
+          <div class="sat-razones" id="pr-sat-razones" style="display:none;"></div>
+        </div>
       </div>
 
       <div id="pr-error" class="error-message" style="margin-bottom:8px;"></div>

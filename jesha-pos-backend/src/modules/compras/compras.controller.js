@@ -33,7 +33,7 @@ const OC_SELECT = {
       id: true, cantidadPedida: true, cantidadRecibida: true,
       precioCosto: true, subtotalPedido: true, subtotalRecibido: true,
       costoAnterior: true, precioVentaAnterior: true, precioVentaNuevo: true, facturaDesglosada: true, factorConversionSnapshot: true, unidadCompraSnapshot: true, unidadVentaSnapshot: true,
-        Producto: { select: { id: true, nombre: true, codigoInterno: true, codigoBarras: true, unidadCompra: true, costo: true, costoPromedio: true, precioVenta: true, precioBase: true, esGranel: true, factorConversion: true, unidadVenta: true, tipoFacturaProv: true, costoSinIvaProveedor: true, ProveedorProducto: { select: { proveedorId: true, codigoProveedor: true } } } }
+        Producto: { select: { id: true, nombre: true, codigoInterno: true, codigoBarras: true, unidadCompra: true, costo: true, costoPromedio: true, precioVenta: true, precioBase: true, esGranel: true, factorConversion: true, unidadVenta: true, claveSat: true, unidadSat: true, tipoFacturaProv: true, costoSinIvaProveedor: true, ProveedorProducto: { select: { proveedorId: true, codigoProveedor: true } } } }
     }
   },
   AbonoCompra: {
@@ -276,7 +276,7 @@ const recibir = async (req, res) => {
           select: {
             id: true, productoId: true, cantidadPedida: true, cantidadRecibida: true, precioCosto: true,
             factorConversionSnapshot: true, unidadCompraSnapshot: true, unidadVentaSnapshot: true,
-            Producto: { select: { factorConversion: true, unidadVenta: true } }
+            Producto: { select: { factorConversion: true, unidadVenta: true, claveSat: true, unidadSat: true } }
           }
         }
       }
@@ -299,6 +299,10 @@ const recibir = async (req, res) => {
 
         const cantNueva = parseFloat(item.cantidadRecibida) || 0   // en cajas (unidad de COMPRA)
         if (cantNueva <= 0) continue
+
+        // SAT fields (opcional en recepción)
+        const claveSatRecibido  = item.claveSat ? String(item.claveSat).trim() || null : undefined
+        const unidadSatRecibido = item.unidadSat ? String(item.unidadSat).trim() || null : undefined
 
         // Factor: snapshot de la OC ?? producto vivo (OC legacy) ?? 1
         const factorRaw =
@@ -397,7 +401,9 @@ const recibir = async (req, res) => {
             ...(precioVentaNuevo && precioVentaNuevo > 0 ? {
               precioVenta: precioVentaNuevo,
               precioBase:  parseFloat((precioVentaNuevo / FACTOR_IVA).toFixed(2))
-            } : {})
+            } : {}),
+            ...(claveSatRecibido !== undefined ? { claveSat: claveSatRecibido } : {}),
+            ...(unidadSatRecibido !== undefined ? { unidadSat: unidadSatRecibido } : {})
           }
         })
 

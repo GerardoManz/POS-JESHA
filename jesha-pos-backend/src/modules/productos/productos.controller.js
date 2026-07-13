@@ -525,9 +525,20 @@ async function crear(req, res) {
         claveSat = validacionSat.claveSat
         unidadSat = validacionSat.unidadSat
 
-        // Auto-generar código de barras para productos físicos sin uno
+        // Auto-generar código de barras secuencial para productos físicos sin uno
         if (!esServicio && !codigoBarras) {
-            codigoBarras = `GEN-${codigoInterno.trim().replace(/\s+/g, '-')}`
+            const ultimoGen = await prisma.producto.findFirst({
+                where: { codigoBarras: { startsWith: 'GEN-' }, empresaId },
+                orderBy: { codigoBarras: 'desc' },
+                select: { codigoBarras: true }
+            })
+            let nextSeq = 1
+            if (ultimoGen?.codigoBarras) {
+                const partes = ultimoGen.codigoBarras.split('-')
+                const num = parseInt(partes[partes.length - 1], 10)
+                if (!isNaN(num)) nextSeq = num + 1
+            }
+            codigoBarras = `GEN-${String(nextSeq).padStart(8, '0')}`
         }
 
         const existente = await prisma.producto.findUnique({ where: { empresaId_codigoInterno: { empresaId, codigoInterno } } })

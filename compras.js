@@ -20,6 +20,7 @@ let proveedores  = []
 let _deptosCache = []
 let _catsCache   = []
 let _preciosCache = {}
+let _satCache = {}
 let _spDetalleActivo = null
 let debounce, debounceSearch, debounceProd, debounceProv
 let _unidadesSatCompraRapida = []
@@ -204,6 +205,7 @@ window.abrirDetalle = async function(id) {
     const data = await apiFetch(`/compras/${id}`)
     ocActual = data.data
     _preciosCache = {}
+    _satCache = {}
     _spDetalleActivo = null
     renderDetalle()
     document.getElementById('modal-detalle').classList.add('active')
@@ -387,11 +389,23 @@ function renderDetalle() {
         </div>`
     }
 
+    // SAT info durante recepción
+    const satClave  = d.Producto?.claveSat || ''
+    const satUnidad = d.Producto?.unidadSat || ''
+    const tieneSat  = satClave && satUnidad
+    const satBadge  = recibiendo
+      ? `<div style="font-size:0.68rem;color:${tieneSat ? 'var(--muted)' : '#f87171'};margin-top:3px;display:flex;align-items:center;gap:4px;">
+           SAT: ${satClave || '—'} / ${satUnidad || '—'}
+           <button type="button" onclick="event.stopPropagation();recEditarSat(${d.id})" style="background:none;border:none;cursor:pointer;font-size:0.72rem;color:var(--accent);padding:0;text-decoration:underline;">${tieneSat ? '✏️' : '➕'}</button>
+         </div>`
+      : ''
+
     return `
     <tr id="rec-tr-${d.id}" style="${rowStyle}">
       <td>
         ${d.Producto?.nombre || '—'}
         ${estadoFila}
+        ${satBadge}
         ${auditBlock}
       </td>
       <td style="text-align:center">
@@ -488,6 +502,7 @@ window.confirmarRecepcion = async function() {
       const cantNueva = parseFloat(document.getElementById(`rec-${d.id}`)?.value) || 0
       if (cantNueva <= 0) return null
       const c = _preciosCache[d.id] || {}
+      const sat = _satCache[d.id] || {}
       const precioCosto = (c.precioCosto && c.precioCosto > 0) ? c.precioCosto : parseFloat(d.precioCosto)
       const pvVal = (c.precioVenta && c.precioVenta > 0) ? c.precioVenta : 0
       const costoSinIva = tipoFactura === 'DESGLOSE' ? (c.costoSinIva || null) : null
@@ -497,7 +512,9 @@ window.confirmarRecepcion = async function() {
         precioCosto: +precioCosto.toFixed(2),
         precioVenta: pvVal > 0 ? +pvVal.toFixed(2) : null,
         tipoFacturaProv: tipoFactura,
-        costoSinIvaProveedor: costoSinIva
+        costoSinIvaProveedor: costoSinIva,
+        ...(sat.claveSat !== undefined ? { claveSat: sat.claveSat } : {}),
+        ...(sat.unidadSat !== undefined ? { unidadSat: sat.unidadSat } : {})
       }
     })
     .filter(Boolean)
@@ -997,6 +1014,7 @@ function abrirModalProdRapido() {
   // Limpiar campos
   document.getElementById('pr-nombre').value      = ''
   document.getElementById('pr-codigo').value       = ''
+  document.getElementById('pr-codigoBarras').value = ''
   document.getElementById('pr-costo').value        = ''
   document.getElementById('pr-costoSinIva').value  = ''
   document.getElementById('pr-costo-b-display').value = ''
@@ -1016,6 +1034,9 @@ function abrirModalProdRapido() {
 
   // Reset margen
   document.getElementById('pr-margen-wrap').style.display = 'none'
+
+  // Reset SAT
+  resetSugerenciaSatRapido()
 
   // Reset granel
   prActualizarGranel()
@@ -1472,6 +1493,30 @@ window.recAplicarTipoFactura = function(tipo) {
   renderFacturaViva()
 }
 
+// ── Editar SAT durante recepción ──
+window.recEditarSat = function(detalleId) {
+  const d = (ocActual?.DetalleOrdenCompra || []).find(doc => doc.id === detalleId)
+  if (!d) return
+  const claveActual  = _satCache[detalleId]?.claveSat  || d.Producto?.claveSat || ''
+  const unidadActual = _satCache[detalleId]?.unidadSat || d.Producto?.unidadSat || ''
+
+  const nombre = prompt('Editar Clave SAT para:\n' + (d.Producto?.nombre || '') + '\n\nClave SAT (8 dígitos):', claveActual)
+  if (nombre === null) return
+  const clave = nombre.trim()
+  if (clave && !/^\d{8}$/.test(clave)) {
+    jeshaToast('La clave SAT debe tener 8 dígitos numéricos', 'warning')
+    return
+  }
+  const unidad = prompt('Unidad SAT (ej: H87, KGM, MTR):', unidadActual)
+  if (unidad === null) return
+  const u = unidad.trim().toUpperCase()
+  if (!_satCache[detalleId]) _satCache[detalleId] = {}
+  _satCache[detalleId].claveSat  = clave || null
+  _satCache[detalleId].unidadSat = u || null
+  renderDetalle()
+  jeshaToast('SAT actualizado para la recepción', 'success')
+}
+
 // Toggle granel
 function prActualizarGranel() {
   const checked = document.getElementById('pr-esGranel')?.checked || false
@@ -1482,13 +1527,188 @@ function prActualizarGranel() {
   if (hint) hint.style.display = checked ? 'block' : 'none'
 }
 
+// ════════════════════════════════════════════════════════════════════
+//  SUGERIR SAT — Producto Rápido
+// ════════════════════════════════════════════════════════════════════
+function initSugerirSatRapido() {
+  const btn = document.getElementById('pr-btn-sugerir-sat')
+  if (!btn) return
+
+  const panel      = document.getElementById('pr-sat-panel')
+  const badgeEl    = document.getElementById('pr-sat-badge')
+  const confEl     = document.getElementById('pr-sat-confianza')
+  const clavesEl   = document.getElementById('pr-sat-claves')
+  const unidadesEl = document.getElementById('pr-sat-unidades')
+  const razonesEl  = document.getElementById('pr-sat-razones')
+  const razonesTgl = document.getElementById('pr-sat-razones-toggle')
+  const statusEl   = document.getElementById('pr-sat-status')
+  const inputNombre    = document.getElementById('pr-nombre')
+  const inputUnidadV   = document.getElementById('pr-unidadVenta')
+  const inputGranel    = document.getElementById('pr-esGranel')
+  const inputClaveSat  = document.getElementById('pr-claveSat')
+  const inputUnidadSat = document.getElementById('pr-unidadSat')
+
+  if (razonesTgl && razonesEl) {
+    razonesTgl.addEventListener('click', () => {
+      const isOpen = razonesEl.style.display === 'block'
+      razonesEl.style.display = isOpen ? 'none' : 'block'
+      razonesTgl.querySelector('.sat-caret').textContent = isOpen ? '⌄' : '⌃'
+    })
+  }
+
+  function mostrarEstado(tipo, msg) {
+    if (!statusEl) return
+    if (tipo === 'vacio') {
+      panel.style.display = 'block'
+      statusEl.style.display = 'block'
+      statusEl.innerHTML = '<span style="color:var(--muted);">Escribe el nombre del producto y presiona "Sugerir SAT"</span>'
+      badgeEl.innerHTML = ''
+      confEl.textContent = ''
+      clavesEl.innerHTML = ''
+      unidadesEl.innerHTML = ''
+      razonesEl.style.display = 'none'
+      if (razonesTgl) razonesTgl.style.display = 'none'
+      return
+    }
+    if (tipo === 'cargando') {
+      statusEl.style.display = 'block'
+      statusEl.innerHTML = '<span style="color:var(--accent);">🔍 Consultando SAT...</span>'
+      badgeEl.innerHTML = ''
+      confEl.textContent = ''
+      clavesEl.innerHTML = ''
+      unidadesEl.innerHTML = ''
+      razonesEl.style.display = 'none'
+      if (razonesTgl) razonesTgl.style.display = 'none'
+      return
+    }
+    if (tipo === 'error') {
+      statusEl.style.display = 'block'
+      statusEl.innerHTML = `<span style="color:#f87171;">❌ ${msg || 'Error al consultar SAT'}</span>`
+      badgeEl.innerHTML = ''
+      confEl.textContent = ''
+      clavesEl.innerHTML = ''
+      unidadesEl.innerHTML = ''
+      razonesEl.style.display = 'none'
+      if (razonesTgl) razonesTgl.style.display = 'none'
+      return
+    }
+    statusEl.style.display = 'none'
+  }
+
+  function marcarSeleccion(contenedor, chip) {
+    contenedor.querySelectorAll('.sat-chip').forEach(c => c.classList.remove('sat-chip--sel'))
+    chip.classList.add('sat-chip--sel')
+  }
+
+  function pintarSugerencia(data) {
+    const estado = (data && data.estado) || 'MANUAL'
+    const conf = Number.isFinite(data?.confianza) ? data.confianza : null
+    const unidadSatVal = (data?.unidadSat || '').trim()
+    const razones = Array.isArray(data?.razones) ? data.razones : []
+    let candidatos = Array.isArray(data?.candidatos) ? data.candidatos : []
+
+    if (candidatos.length === 0 && data?.claveSat) {
+      candidatos = [{ claveSat: data.claveSat, descripcion: data.descripcionSat, score: data.confianza }]
+    }
+
+    statusEl.style.display = 'none'
+
+    let badgeHtml = '', badgeClass = ''
+    if (estado === 'AUTO') { badgeHtml = '✅ Auto'; badgeClass = 'sat-badge--auto' }
+    else if (estado === 'SUGERIR') { badgeHtml = '⚠️ Sugerir'; badgeClass = 'sat-badge--sugerir' }
+    else { badgeHtml = '❓ Manual'; badgeClass = 'sat-badge--manual' }
+    badgeEl.className = 'sat-badge ' + badgeClass
+    badgeEl.innerHTML = badgeHtml
+    confEl.textContent = conf != null ? `Confianza: ${conf}%` : ''
+
+    clavesEl.innerHTML = candidatos.map(c => {
+      const sel = c.claveSat === inputClaveSat.value ? ' sat-chip--sel' : ''
+      return `<span class="sat-chip${sel}" data-clave="${c.claveSat}" data-desc="${(c.descripcion || '').replace(/"/g, '&quot;')}">${c.claveSat} ${c.descripcion ? '— ' + c.descripcion : ''}</span>`
+    }).join('')
+    clavesEl.querySelectorAll('.sat-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        marcarSeleccion(clavesEl, chip)
+        inputClaveSat.value = chip.dataset.clave
+      })
+    })
+
+    unidadesEl.innerHTML = unidadSatVal
+      ? `<span class="sat-chip${unidadSatVal === inputUnidadSat.value ? ' sat-chip--sel' : ''}" data-unidad="${unidadSatVal}">${unidadSatVal}</span>`
+      : ''
+    unidadesEl.querySelectorAll('.sat-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        marcarSeleccion(unidadesEl, chip)
+        inputUnidadSat.value = chip.dataset.unidad
+      })
+    })
+
+    if (razones.length > 0 && razonesTgl) {
+      razonesTgl.style.display = 'block'
+      razonesEl.innerHTML = razones.map(r => `<div class="sat-razon-item">• ${r}</div>`).join('')
+      razonesEl.style.display = 'none'
+      razonesTgl.querySelector('.sat-caret').textContent = '⌄'
+    } else {
+      if (razonesTgl) razonesTgl.style.display = 'none'
+      razonesEl.style.display = 'none'
+    }
+  }
+
+  btn.addEventListener('click', async () => {
+    const nombre = (inputNombre?.value || '').trim()
+    if (panel) panel.style.display = 'block'
+    if (!nombre) { mostrarEstado('vacio'); return }
+
+    btn.disabled = true
+    mostrarEstado('cargando')
+
+    try {
+      const resultado = await apiFetch('/productos/sat/sugerir', {
+        method: 'POST',
+        body: JSON.stringify({
+          nombre,
+          unidadVenta: (inputUnidadV?.value || '').trim(),
+          esGranel: inputGranel?.checked || false
+        })
+      })
+      if (resultado && resultado.success === false) throw new Error(resultado.error || 'Error al sugerir SAT')
+      const data = (resultado && resultado.data) ? resultado.data : resultado
+      pintarSugerencia(data)
+    } catch (err) {
+      console.error('Sugerir SAT:', err)
+      mostrarEstado('error', err.message)
+    } finally {
+      btn.disabled = false
+    }
+  })
+}
+
+function resetSugerenciaSatRapido() {
+  const panel = document.getElementById('pr-sat-panel')
+  if (panel) panel.style.display = 'none'
+  const statusEl = document.getElementById('pr-sat-status')
+  if (statusEl) statusEl.style.display = 'none'
+  const badgeEl = document.getElementById('pr-sat-badge')
+  if (badgeEl) badgeEl.innerHTML = ''
+  const confEl = document.getElementById('pr-sat-confianza')
+  if (confEl) confEl.textContent = ''
+  const clavesEl = document.getElementById('pr-sat-claves')
+  if (clavesEl) clavesEl.innerHTML = ''
+  const unidadesEl = document.getElementById('pr-sat-unidades')
+  if (unidadesEl) unidadesEl.innerHTML = ''
+  const razonesEl = document.getElementById('pr-sat-razones')
+  if (razonesEl) razonesEl.style.display = 'none'
+  const razonesTgl = document.getElementById('pr-sat-razones-toggle')
+  if (razonesTgl) razonesTgl.style.display = 'none'
+}
+
 async function guardarProdRapido() {
-  const nombre   = document.getElementById('pr-nombre').value.trim()
-  const codigo   = document.getElementById('pr-codigo').value.trim()
-  const catId    = document.getElementById('pr-cat').value
-  const costo    = parseFloat(document.getElementById('pr-costo').value)
-  const pventa   = parseFloat(document.getElementById('pr-pventa').value)
-  const provId   = document.getElementById('pr-prov-id').value || null
+  const nombre       = document.getElementById('pr-nombre').value.trim()
+  const codigo       = document.getElementById('pr-codigo').value.trim()
+  const codigoBarras = document.getElementById('pr-codigoBarras').value.trim() || undefined
+  const catId        = document.getElementById('pr-cat').value
+  const costo        = parseFloat(document.getElementById('pr-costo').value)
+  const pventa       = parseFloat(document.getElementById('pr-pventa').value)
+  const provId       = document.getElementById('pr-prov-id').value || null
 
   // Tipo de factura
   const esDesgloseB = document.getElementById('pr-radio-b')?.checked
@@ -1527,6 +1747,7 @@ async function guardarProdRapido() {
     const datos = {
       nombre,
       codigoInterno:        codigo,
+      codigoBarras:         codigoBarras,
       costo:                costo || null,
       costoSinIvaProveedor: costoSinIva,
       tipoFacturaProv:      tipoFactura,
@@ -1600,6 +1821,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Unidades SAT para producto rápido
   initUnidadesCompraRapida()
+  initSugerirSatRapido()
 
   // Cargar catálogo para producto rápido
   cargarDeptosYCats()

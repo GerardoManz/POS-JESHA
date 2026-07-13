@@ -1144,8 +1144,8 @@ const editarDetalle = async (req, res) => {
     const sucursalId = sucursalIdToken || 1
     const empresaId = getEmpresaId(req)
 
-    if (cantidad === undefined && precioUnitario === undefined) {
-      return res.status(400).json({ success: false, error: 'Debes enviar cantidad o precioUnitario' })
+    if (cantidad === undefined && precioUnitario === undefined && recibeTrabajadorId === undefined) {
+      return res.status(400).json({ success: false, error: 'Debes enviar cantidad, precioUnitario o recibeTrabajadorId' })
     }
 
     const bitacora = await prisma.bitacora.findUnique({
@@ -1176,18 +1176,22 @@ const editarDetalle = async (req, res) => {
     // ── Recibe (opcional en edición) ──
     let trabData = {}
     if (recibeTrabajadorId !== undefined) {
-      const recibeId = Number(recibeTrabajadorId)
-      if (!Number.isInteger(recibeId) || recibeId <= 0) {
-        return res.status(400).json({ success: false, error: 'recibeTrabajadorId inválido', codigo: 'RECIBE_INVALIDO' })
+      if (recibeTrabajadorId === null || recibeTrabajadorId === '') {
+        trabData = { recibeTrabajadorId: null, recibeNombre: null }
+      } else {
+        const recibeId = Number(recibeTrabajadorId)
+        if (!Number.isInteger(recibeId) || recibeId <= 0) {
+          return res.status(400).json({ success: false, error: 'recibeTrabajadorId inválido', codigo: 'RECIBE_INVALIDO' })
+        }
+        const trab = await prisma.trabajador.findFirst({
+          where: { id: recibeId, empresaId, activo: true },
+          select: { id: true, nombre: true, apodo: true }
+        })
+        if (!trab) {
+          return res.status(400).json({ success: false, error: 'Trabajador inválido, inactivo o de otra empresa', codigo: 'RECIBE_INVALIDO' })
+        }
+        trabData = { recibeTrabajadorId: trab.id, recibeNombre: nombreTrabajador(trab) }
       }
-      const trab = await prisma.trabajador.findFirst({
-        where: { id: recibeId, empresaId, activo: true },
-        select: { id: true, nombre: true, apodo: true }
-      })
-      if (!trab) {
-        return res.status(400).json({ success: false, error: 'Trabajador inválido, inactivo o de otra empresa', codigo: 'RECIBE_INVALIDO' })
-      }
-      trabData = { recibeTrabajadorId: trab.id, recibeNombre: nombreTrabajador(trab) }
     }
 
     const subtotalNuevo  = parseFloat((cantidadNueva * precioNuevo).toFixed(2))
