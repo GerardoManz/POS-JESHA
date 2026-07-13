@@ -67,8 +67,6 @@ router.post('/categorias',       requireRole('SUPERADMIN', 'ADMIN_SUCURSAL', 'PL
 
 router.post('/importar/csv',            requireRole('SUPERADMIN', 'ADMIN_SUCURSAL', 'PLATFORM_ADMIN'), uploadCSV.single('archivo'), importacionController.importarCSV)
 router.post('/importar/solo-nuevos',    requireRole('SUPERADMIN', 'ADMIN_SUCURSAL', 'PLATFORM_ADMIN'), uploadCSV.single('archivo'), importacionController.importarSoloNuevos)
-router.post('/importar/datos-fiscales', requireRole('SUPERADMIN', 'ADMIN_SUCURSAL', 'PLATFORM_ADMIN'), uploadCSV.single('archivo'), importacionController.actualizarDatosFiscales)
-
 // ═══════════════════════════════════════════════════════════════════
 // CRUD PRODUCTOS
 // ═══════════════════════════════════════════════════════════════════

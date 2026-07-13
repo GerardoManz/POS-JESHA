@@ -5,6 +5,7 @@
 
 const prisma = require('../../lib/prisma')
 const getEmpresaId = require('../../helpers/getEmpresaId')
+const { verificarStockPostOperacion } = require('../../helpers/verificarStock')
 
 /**
  * POST /inventario/ajuste-rapido
@@ -112,10 +113,19 @@ exports.ajusteRapido = async (req, res) => {
       }
     })
 
+    // Verificar stock post-operación (no bloqueante)
+    let stockAlerts = []
+    try {
+      stockAlerts = await verificarStockPostOperacion(prisma, empresaId, sucursalId, [productoId])
+    } catch (err) {
+      console.warn('⚠️ Error verificando stock post-ajuste:', err.message)
+    }
+
     return res.json({
       ok: true,
       mensaje: 'Ajuste registrado',
-      data: resultado
+      data: resultado,
+      stockAlerts
     })
 
   } catch (err) {

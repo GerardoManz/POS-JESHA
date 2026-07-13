@@ -3,6 +3,7 @@ const getEmpresaId = require('../../helpers/getEmpresaId')
 const { EMPRESA } = require('../../../config/empresa')
 const { buildCorteSnapshot, formatFechaTicket } = require('../impresion/impresion.snapshot')
 const { encolarImpresion } = require('../impresion/impresion.service')
+const { generarAlertasAutomaticas } = require('../reportes/reporte-stock.controller')
 
 // ════════════════════════════════════════════════════════════════════
 //  FUENTE ÚNICA DE VERDAD DEL EFECTIVO EN CAJA
@@ -309,6 +310,10 @@ const cerrarTurno = async (req, res) => {
 
     console.log(`✅ Turno ${resultado.id} cerrado. Diferencia: $${resultado.diferencia}`)
     res.json({ success: true, data: resultado })
+
+    // Generar alertas automáticas de stock (no bloqueante)
+    generarAlertasAutomaticas(empresaId, sucursalId, resultado.id)
+      .catch(err => console.error('⚠️ Error post-cierre generando alertas:', err.message))
   } catch (err) {
     if (err.status === 404) {
       return res.status(404).json({ error: err.error, codigo: err.codigo })

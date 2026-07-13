@@ -666,3 +666,100 @@ window.jeshaToast = function(mensaje, tipo = 'error', duracion = 4000) {
     }
   }, duracion)
 }
+
+// ════════════════════════════════════════════════════════════════════
+//  Banner de Alertas de Stock — se muestra después de operaciones
+//  stockAlerts: [{ productoId, nombre, codigoInterno, stockActual, stockMinimo, precioVenta, estado }]
+// ════════════════════════════════════════════════════════════════════
+if (!document.getElementById('jesha-stock-banner-styles')) {
+  const st = document.createElement('style')
+  st.id = 'jesha-stock-banner-styles'
+  st.textContent = `
+    @keyframes stockBannerIn { from { opacity:0; transform:translateY(-16px); } to { opacity:1; transform:translateY(0); } }
+    @keyframes stockBannerOut { from { opacity:1; transform:translateY(0); } to { opacity:0; transform:translateY(-16px); max-height:0; padding:0; margin:0; overflow:hidden; } }
+    #jesha-stock-banner {
+      animation: stockBannerIn 0.25s ease;
+      margin-bottom:12px;
+    }
+    #jesha-stock-banner.closing {
+      animation: stockBannerOut 0.25s ease forwards;
+    }
+  `
+  document.head.appendChild(st)
+}
+
+window.mostrarBannerStockAlertas = function(stockAlerts) {
+  if (!stockAlerts || stockAlerts.length === 0) return
+  document.getElementById('jesha-stock-banner')?.remove()
+
+  const sinStock = stockAlerts.filter(a => a.estado === 'SIN_STOCK')
+  const stockBajo = stockAlerts.filter(a => a.estado === 'STOCK_BAJO')
+  const total = sinStock.length + stockBajo.length
+
+  const banner = document.createElement('div')
+  banner.id = 'jesha-stock-banner'
+  Object.assign(banner.style, {
+    background: 'linear-gradient(135deg, rgba(255,107,107,0.1), rgba(232,113,10,0.08))',
+    border: '1px solid rgba(255,107,107,0.25)',
+    borderRadius: '10px',
+    padding: '12px 16px',
+    position: 'relative',
+    cursor: 'pointer'
+  })
+
+  const header = document.createElement('div')
+  Object.assign(header.style, {
+    display: 'flex', alignItems: 'center', gap: '10px',
+    fontFamily: "'Barlow', sans-serif", fontSize: '0.85rem'
+  })
+  header.innerHTML = `
+    <span style="font-size:1.1rem;flex-shrink:0;">⚠️</span>
+    <span style="font-weight:700;color:#ff6b6b;text-transform:uppercase;letter-spacing:0.04em;
+      font-family:'Barlow Condensed',sans-serif;">
+      ${total} producto${total !== 1 ? 's' : ''} cr\u00edtico${total !== 1 ? 's' : ''} de stock
+    </span>
+    <span style="margin-left:auto;color:var(--muted,#7a8599);font-size:0.8rem;cursor:pointer;" onclick="event.stopPropagation();this.closest('#jesha-stock-banner').classList.add('closing');setTimeout(()=>this.closest('#jesha-stock-banner').remove(),250)">✕</span>
+  `
+  banner.appendChild(header)
+
+  const list = document.createElement('div')
+  Object.assign(list.style, {
+    marginTop: '8px', display: 'flex', flexWrap: 'wrap', gap: '6px'
+  })
+  for (const a of stockAlerts) {
+    const chip = document.createElement('span')
+    const isSin = a.estado === 'SIN_STOCK'
+    Object.assign(chip.style, {
+      display: 'inline-flex', alignItems: 'center', gap: '4px',
+      padding: '4px 10px', borderRadius: '6px', fontSize: '0.78rem',
+      fontWeight: '600', fontFamily: "'Barlow', sans-serif",
+      background: isSin ? 'rgba(255,107,107,0.15)' : 'rgba(232,113,10,0.12)',
+      border: `1px solid ${isSin ? 'rgba(255,107,107,0.3)' : 'rgba(232,113,10,0.25)'}`,
+      color: isSin ? '#ff6b6b' : '#e8710a'
+    })
+    chip.textContent = `${a.nombre} (${isSin ? '0' : a.stockActual}/${a.stockMinimo})`
+    list.appendChild(chip)
+  }
+  banner.appendChild(list)
+
+  banner.addEventListener('click', () => {
+    const pagina = window.location.pathname.split('/').pop()
+    if (pagina !== 'reportes.html') {
+      window.location.href = 'reportes.html'
+    }
+  })
+
+  // Insertar al inicio del main-content
+  const main = document.querySelector('.main-content, main, #main-content')
+  if (main && main.firstChild) {
+    main.insertBefore(banner, main.firstChild)
+  } else {
+    // Fallback: después del sidebar
+    const sb = document.getElementById('sidebar-container') || document.querySelector('.sidebar')
+    if (sb && sb.nextSibling) {
+      sb.parentNode.insertBefore(banner, sb.nextSibling)
+    } else {
+      document.body.prepend(banner)
+    }
+  }
+}

@@ -6,6 +6,7 @@
 const prisma = require('../../lib/prisma')
 const getEmpresaId = require('../../helpers/getEmpresaId')
 const { FACTOR_IVA } = require('../../utils/constantes')
+const { verificarStockPostOperacion } = require('../../helpers/verificarStock')
 
 async function generarFolio() {
   const d   = new Date()
@@ -458,7 +459,21 @@ const recibir = async (req, res) => {
 
     await audit(usuarioId, sucursalId, 'RECIBIR_COMPRA', oc.folio)
     const ocActualizada = await prisma.ordenCompra.findUnique({ where: { id: parseInt(id) }, select: OC_SELECT })
-    res.json({ success: true, data: ocActualizada })
+
+    // Verificar stock post-operación (no bloqueante)
+    const productoIdsRecibidos = (detalles || [])
+      .map(d => oc.DetalleOrdenCompra.find(doc => doc.id === parseInt(d.detalleId))?.productoId)
+      .filter(Boolean)
+    let stockAlerts = []
+    if (productoIdsRecibidos.length > 0) {
+      try {
+        stockAlerts = await verificarStockPostOperacion(prisma, empresaId, sucursalId, productoIdsRecibidos)
+      } catch (err) {
+        console.warn('⚠️ Error verificando stock post-compra:', err.message)
+      }
+    }
+
+    res.json({ success: true, data: ocActualizada, stockAlerts })
   } catch (err) {
     console.error('❌ recibir compra:', err)
     res.status(500).json({ success: false, error: err.message })

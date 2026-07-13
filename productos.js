@@ -121,8 +121,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Inicializar ajuste de inventario
   initAjusteInventario()
 
-  // Inicializar actualización de datos fiscales
-  initActualizarFiscales()
+  // Inicializar plantilla de corrección
+  initPlantillaCorreccion()
 
   // Inicializar modal de precios (rol PRECIOS)
   initModalPrecios()
@@ -145,7 +145,7 @@ function aplicarPermisosProductos() {
   if (ES_ADMIN) return
 
   // Ocultar botones de administración
-  const idsAdmin = ['btn-nuevo-producto', 'btn-subir-inventario', 'btn-subir-solo-nuevos', 'btn-actualizar-fiscales']
+  const idsAdmin = ['btn-nuevo-producto', 'btn-subir-inventario', 'btn-subir-solo-nuevos', 'btn-descargar-plantilla', 'btn-subir-plantilla']
   idsAdmin.forEach(id => {
     const el = document.getElementById(id)
     if (el) el.style.display = 'none'
@@ -2393,10 +2393,14 @@ async function guardarAjuste() {
     if (minNuevo   !== '') body.stockMinimoAlerta = parseFloat(minNuevo)
     if (motivo)            body.motivo            = motivo
 
-    await apiFetch(`/productos/${productoAjuste.id}/inventario`, {
+    const editResp = await apiFetch(`/productos/${productoAjuste.id}/inventario`, {
       method:  'PATCH',
       body:    JSON.stringify(body)
     })
+
+    if (editResp.stockAlerts && editResp.stockAlerts.length > 0) {
+      mostrarBannerStockAlertas(editResp.stockAlerts)
+    }
 
     // Cerrar y recargar tabla
     document.getElementById('modal-ajuste-inv').style.display = 'none'
@@ -2427,76 +2431,86 @@ async function guardarAjuste() {
 }
 
 // ════════════════════════════════════════════════════════════════════
-//  ACTUALIZAR DATOS FISCALES — CSV con claveSat, unidadSat, proveedor
-//  Endpoint: POST /productos/importar/datos-fiscales
+//  PLANTILLA CORRECCIÓN — Descarga Excel con sin stock + stock bajo
+//  Sube el Excel corregido para actualizar stockMinimoAlerta/stockMaximo
+//  Endpoint: GET/POST /reportes/stock/plantilla-correccion
 // ════════════════════════════════════════════════════════════════════
 
-function initActualizarFiscales() {
-  const btnFiscales = document.getElementById('btn-actualizar-fiscales')
-  const inputCSV    = document.getElementById('input-csv-fiscales')
+function initPlantillaCorreccion() {
+  const btnDescargar = document.getElementById('btn-descargar-plantilla')
+  const btnSubir     = document.getElementById('btn-subir-plantilla')
+  const inputFile   = document.getElementById('input-plantilla-correccion')
 
-  if (!btnFiscales || !inputCSV) return
+  if (!btnDescargar || !btnSubir || !inputFile) return
 
-  btnFiscales.addEventListener('click', () => inputCSV.click())
+  btnDescargar.addEventListener('click', async () => {
+    const token = localStorage.getItem('jesha_token')
+    const api = window.__JESHA_API_URL__ || 'http://localhost:3000'
+    try {
+      btnDescargar.disabled = true
+      btnDescargar.textContent = '⏳ Descargando...'
 
-  inputCSV.addEventListener('change', async (e) => {
+      const res = await fetch(`${api}/reportes/stock/plantilla-correccion`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      if (!res.ok) throw new Error(await res.text().catch(() => `HTTP ${res.status}`))
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'plantilla-correccion.xlsx'
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+      jeshaToast('✅ Plantilla descargada. Edita la hoja "Corrección" y súbela de vuelta.', 'success')
+    } catch (err) {
+      jeshaToast('❌ Error al descargar plantilla: ' + err.message, 'error')
+    } finally {
+      btnDescargar.disabled = false
+      btnDescargar.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Descargar Plantilla Corrección`
+    }
+  })
+
+  btnSubir.addEventListener('click', () => inputFile.click())
+
+  inputFile.addEventListener('change', async (e) => {
     const archivo = e.target.files[0]
     if (!archivo) return
 
-    // Confirmar antes de enviar
-    const confirmar = confirm(
-      `¿Actualizar datos fiscales con "${archivo.name}"?\n\n` +
-      `Solo se actualizarán: Clave SAT, Unidad SAT y Proveedor.\n` +
-      `No se eliminarán ni crearán productos.`
-    )
+    const confirmar = await jeshaConfirm({
+      title: 'Subir plantilla corregida',
+      message: `Se actualizarán Stock, Mín y Máx de los productos modificados en <strong>"${archivo.name}"</strong>.`,
+      confirmText: 'Sí, subir',
+      cancelText: 'Cancelar',
+      type: 'primary'
+    })
+    if (!confirmar) { inputFile.value = ''; return }
 
-    if (!confirmar) {
-      inputCSV.value = ''
-      return
-    }
-
-    // Deshabilitar botón mientras procesa
-    btnFiscales.disabled = true
-    const textoOriginal = btnFiscales.innerHTML
-    btnFiscales.innerHTML = `
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="animation:spin 1s linear infinite">
-        <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
-      </svg>
-      Procesando...
-    `
+    btnSubir.disabled = true
+    const textoOriginal = btnSubir.innerHTML
+    btnSubir.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Subiendo...`
 
     try {
       const formData = new FormData()
       formData.append('archivo', archivo)
-
-      const resultado = await apiFetch('/productos/importar/datos-fiscales', {
+      const res = await apiFetch('/reportes/stock/corregir-plantilla', {
         method: 'POST',
         body: formData
       })
-
-      // Log de omitidos en consola para diagnóstico
-      if (resultado.detalleOmitidos && resultado.detalleOmitidos.length > 0) {
-        console.warn(`⚠️ ${resultado.omitidos} productos sin match:`)
-        console.table(resultado.detalleOmitidos)
-      }
-
-      // Toast de éxito con resumen
       jeshaToast(
-        `✅ Datos fiscales actualizados: ${resultado.actualizados} productos` +
-        (resultado.omitidos > 0 ? ` | ${resultado.omitidos} sin match` : '') +
-        (resultado.errores > 0 ? ` | ${resultado.errores} errores` : ''),
-        'success'
+        `✅ ${res.actualizados} productos actualizados` +
+        (res.sinCambios > 0 ? `, ${res.sinCambios} sin cambios` : '') +
+        (res.noEncontrados > 0 ? `, ${res.noEncontrados} no encontrados` : ''),
+        res.noEncontrados > 0 ? 'warning' : 'success'
       )
-
-      // Recargar tabla
       await cargarProductos()
-
     } catch (err) {
       jeshaToast('❌ Error: ' + err.message, 'error')
     } finally {
-      btnFiscales.disabled = false
-      btnFiscales.innerHTML = textoOriginal
-      inputCSV.value = ''
+      btnSubir.disabled = false
+      btnSubir.innerHTML = textoOriginal
+      inputFile.value = ''
     }
   })
 }

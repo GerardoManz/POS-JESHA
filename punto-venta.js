@@ -2311,6 +2311,10 @@ async function confirmarVenta() {
     const venta = await response.json()
     console.log('✅ Venta completada:', venta.data.folio)
 
+    if (venta.stockAlerts && venta.stockAlerts.length > 0) {
+      mostrarBannerStockAlertas(venta.stockAlerts)
+    }
+
     modalConfirmacion.style.display = 'none'
     mostrarModalExito(venta.data, totalFinal)
 
@@ -3530,6 +3534,10 @@ async function enviarAjusteRapido() {
     cerrarModalAjusteRapido()
     const signo = data.data.diferencia > 0 ? '+' : ''
     mostrarToast(`✓ Stock ajustado (${signo}${data.data.diferencia})`, 'success')
+
+    if (data.stockAlerts && data.stockAlerts.length > 0) {
+      mostrarBannerStockAlertas(data.stockAlerts)
+    }
 
   } catch (err) {
     console.error('Error de red en ajuste rápido:', err)

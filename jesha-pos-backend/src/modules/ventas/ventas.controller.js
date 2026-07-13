@@ -9,6 +9,7 @@ const os = require('os')
 const { buildVentaSnapshot, formatFechaTicket } = require('../impresion/impresion.snapshot')
 const { encolarImpresion } = require('../impresion/impresion.service')
 const { EMPRESA, LOGO_URL } = require('../../../config/empresa')
+const { verificarStockPostOperacion } = require('../../helpers/verificarStock')
 
 function getLanIp() {
   const interfaces = os.networkInterfaces()
@@ -530,7 +531,19 @@ exports.crearVenta = async (req, res) => {
     })
 
     console.log(`✅ Venta creada: ${venta.folio} - Total: $${venta.total}`)
-    res.status(201).json({ success: true, message: 'Venta registrada correctamente', data: venta })
+
+    // Verificar stock post-operación (no bloqueante)
+    const productoIds = venta.DetalleVenta?.map(d => d.productoId) || []
+    let stockAlerts = []
+    if (productoIds.length > 0) {
+      try {
+        stockAlerts = await verificarStockPostOperacion(prisma, empresaId, sucursalId, productoIds)
+      } catch (err) {
+        console.warn('⚠️ Error verificando stock post-venta:', err.message)
+      }
+    }
+
+    res.status(201).json({ success: true, message: 'Venta registrada correctamente', data: venta, stockAlerts })
 
   } catch (error) {
     console.error('❌ Error en crearVenta:', error)

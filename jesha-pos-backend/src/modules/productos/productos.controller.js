@@ -11,6 +11,7 @@ const prisma = require('../../lib/prisma')
 const getEmpresaId = require('../../helpers/getEmpresaId')
 const { eliminarImagenProducto } = require('../../lib/cloudinary')
 const satMatcher = require('./sat.matcher')
+const { verificarStockPostOperacion } = require('../../helpers/verificarStock')
 
 // Valida si claveSat/unidadSat vienen vacíos o como "null"/"undefined"
 function satInvalido(valor) {
@@ -1018,9 +1019,18 @@ const producto = await prisma.producto.findUnique({
 
     console.log(`✅ Inventario ajustado: producto ${id} | stock ${stockAnterior}→${stockActual ?? stockAnterior} | min ${minAnterior}→${stockMinimoAlerta ?? minAnterior} | por ${usuario.nombre}`)
 
+    // Verificar stock post-operación (no bloqueante)
+    let stockAlerts = []
+    try {
+      stockAlerts = await verificarStockPostOperacion(prisma, empresaId, sucursalId, [parseInt(id)])
+    } catch (err) {
+      console.warn('⚠️ Error verificando stock post-ajuste inventario:', err.message)
+    }
+
     res.json({
       success: true,
       mensaje: 'Inventario actualizado correctamente',
+      stockAlerts,
       data: {
         productoId:        parseInt(id),
         stockActual:       parseFloat(inventario.stockActual),

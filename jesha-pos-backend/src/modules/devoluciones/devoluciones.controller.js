@@ -5,6 +5,7 @@
 
 const prisma = require('../../lib/prisma')
 const getEmpresaId = require('../../helpers/getEmpresaId')
+const { verificarStockPostOperacion } = require('../../helpers/verificarStock')
 
 async function registrarAudit(usuarioId, sucursalId, referencia, detalleExtra, empresaId) {
   try {
@@ -289,6 +290,17 @@ let montoReembolso = 0
 
     console.log(`✅ Devolución ${folio} — Venta: ${venta.folio} — $${montoReembolso} — Estado venta: ${nuevoEstadoVenta}${sinTurno ? ' — ⚠️ sin turno' : ''}${bitacoraVenta ? ` — 📒 Bitácora ${bitacoraVenta.folio} actualizada` : ''}`)
 
+    // Verificar stock post-operación (no bloqueante)
+    const productoIdsDevueltos = Object.keys(productosMap).map(Number)
+    let stockAlerts = []
+    if (productoIdsDevueltos.length > 0) {
+      try {
+        stockAlerts = await verificarStockPostOperacion(prisma, empresaId, venta.sucursalId, productoIdsDevueltos)
+      } catch (err) {
+        console.warn('⚠️ Error verificando stock post-devolución:', err.message)
+      }
+    }
+
     res.status(201).json({
       success:       true,
       message:       'Devolución registrada correctamente',
@@ -297,6 +309,7 @@ let montoReembolso = 0
       sinTurno,
       estadoVenta:   nuevoEstadoVenta,
       bitacoraAfectada: bitacoraVenta ? { folio: bitacoraVenta.folio, id: bitacoraVenta.id } : null,
+      stockAlerts,
       data: {
         id:             devolucion.id,
         folio,

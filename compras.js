@@ -513,6 +513,9 @@ window.confirmarRecepcion = async function() {
     ocActual._recibiendo = false
     renderDetalle()
     await cargarCompras()
+    if (data.stockAlerts && data.stockAlerts.length > 0) {
+      mostrarBannerStockAlertas(data.stockAlerts)
+    }
   } catch (err) {
     jeshaToast('Error: ' + err.message, 'error')
   } finally {
