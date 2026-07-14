@@ -180,8 +180,8 @@ async function toggleActivo() {
   const nombre = proveedorActual.alias || proveedorActual.nombreOficial
   const ok = await jeshaConfirm({
     title: `${accion === 'desactivar' ? 'Desactivar' : 'Activar'} proveedor`,
-    message: `&iquest;${accion === 'desactivar' ? 'Desactivar' : 'Activar'} a <strong>${ESC(nombre)}</strong>?`,
-    confirmText: `S&iacute;, ${accion}`,
+    message: `¿${accion === 'desactivar' ? 'Desactivar' : 'Activar'} a <strong>${ESC(nombre)}</strong>?`,
+    confirmText: `Sí, ${accion}`,
     type: 'danger'
   })
   if (!ok) return
