@@ -344,7 +344,7 @@ function puntuarCandidato(clave, ctx) {
   //    completo, más un bono si la clave es ESPECÍFICA (no NO_AUTO) y la
   //    familia quedó inequívoca (puntaje por encima del umbral). Así una
   //    regla directa y limpia alcanza SUGERIR sin depender de existentes.
-  const familiaConClave = familiasNuevo.find((f) => f.claves.includes(clave));
+  const familiaConClave = familiasNuevo.find((f) => dicc.claveEnFamilia(f, clave));
   if (familiaConClave) {
     score += PESOS.REGLA_FERRETERA;
     razones.push(`Familia ${familiaConClave.id} detectada (regla ferretera)`);
@@ -364,7 +364,7 @@ function puntuarCandidato(clave, ctx) {
   // 2. Cobertura de tokens importantes
   const tokensClave = new Set([...(entrada.t || []), ...(entrada.s || [])]);
   for (const f of familiasNuevo) {
-    if (f.claves.includes(clave)) {
+    if (dicc.claveEnFamilia(f, clave)) {
       const familiaDef = dicc.FAMILIAS_TOTALES.find((fd) => fd.id === f.id);
       for (const base of Object.keys(familiaDef.tokens)) tokensClave.add(base);
     }

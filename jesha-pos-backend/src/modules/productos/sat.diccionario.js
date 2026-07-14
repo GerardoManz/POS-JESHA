@@ -2079,10 +2079,17 @@ function esAmbiguo(tokens) {
 
 // Mapa inverso clave -> familias, para el gate de contradicción.
 const _clavesAFamilias = new Map();
+const _prefijosAFamilias = new Map(); // prefijo 6 díg -> familias (auto)
 for (const familia of FAMILIAS_TOTALES) {
   for (const clave of familia.claves) {
-    if (!_clavesAFamilias.has(clave)) _clavesAFamilias.set(clave, []);
-    _clavesAFamilias.get(clave).push(familia.id);
+    if (clave.length === 6) {
+      // Prefijo de familia automática
+      if (!_prefijosAFamilias.has(clave)) _prefijosAFamilias.set(clave, []);
+      _prefijosAFamilias.get(clave).push(familia.id);
+    } else {
+      if (!_clavesAFamilias.has(clave)) _clavesAFamilias.set(clave, []);
+      _clavesAFamilias.get(clave).push(familia.id);
+    }
   }
 }
 
@@ -2090,9 +2097,19 @@ for (const familia of FAMILIAS_TOTALES) {
  * Familias a las que pertenece una clave según el diccionario.
  * Vacío si la clave no está mapeada (no implica error: el diccionario
  * solo cubre lo confirmado).
+ * También busca por prefijo (familias automáticas usan prefijos de 6 dígitos).
  */
 function familiasDeClave(claveSat) {
-  return _clavesAFamilias.get(claveSat) || [];
+  const directas = _clavesAFamilias.get(claveSat) || [];
+  const prefijo = claveSat.slice(0, 6);
+  const porPrefijo = _prefijosAFamilias.get(prefijo) || [];
+  if (porPrefijo.length === 0) return directas;
+  return [...directas, ...porPrefijo.filter((id) => !directas.includes(id))];
+}
+
+/** ¿La clave SAT pertenece a esta familia? (exacta o por prefijo de 6 dígitos) */
+function claveEnFamilia(familia, claveSat) {
+  return familia.claves.some((c) => c === claveSat || (c.length === 6 && claveSat.startsWith(c)));
 }
 
 module.exports = {
@@ -2103,6 +2120,7 @@ module.exports = {
   detectarFamilias,
   esAmbiguo,
   familiasDeClave,
+  claveEnFamilia,
   variantes,
   coincide,
 };
