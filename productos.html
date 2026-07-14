@@ -89,12 +89,13 @@
       <!-- STOCK -->
       <div class="filter-group">
         <label for="filtro-stock">📊 Stock</label>
-        <select id="filtro-stock" class="filter-select">
-          <option value="">Todos</option>
-          <option value="con">✅ Con stock</option>
-          <option value="bajo">⚠️ Bajo stock</option>
-          <option value="sin">❌ Sin stock</option>
-        </select>
+          <select id="filtro-stock" class="filter-select">
+            <option value="">Todos</option>
+            <option value="con">✅ Con stock</option>
+            <option value="bajo">⚠️ Bajo stock</option>
+            <option value="sin">❌ Sin stock</option>
+            <option value="sin_imagen">📸 Sin imagen</option>
+          </select>
       </div>
 
       <!-- TIPO DE PRODUCTO -->
@@ -173,9 +174,35 @@
 
     </section>
 
-    <!-- ── TABLA DE PRODUCTOS ── -->
-    <section class="panel">
-      <div class="table-wrapper">
+    <!-- ── PANEL DE PRODUCTOS ── -->
+    <section class="panel inventario-panel">
+
+      <!-- Header con toggle de vista -->
+      <div class="inventory-view-header">
+        <div>
+          <h3 class="inventory-title">Inventario</h3>
+          <p class="inventory-subtitle">Vista visual de productos</p>
+        </div>
+        <div class="inventory-view-actions">
+          <span class="view-label">Vista:</span>
+          <button id="btn-vista-grid" class="view-toggle active" type="button" title="Vista de tarjetas">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>
+            </svg>
+          </button>
+          <button id="btn-vista-lista" class="view-toggle" type="button" title="Vista de lista">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Grid de tarjetas (default) -->
+      <div id="productos-grid" class="productos-grid"></div>
+
+      <!-- Tabla (vista alternativa, oculta por defecto) -->
+      <div id="productos-lista-wrap" class="table-wrapper" style="display:none;">
         <table class="productos-table">
           <thead>
             <tr>
@@ -200,7 +227,7 @@
         </table>
       </div>
 
-      <!-- ── PAGINACIÓN ── -->
+      <!-- ── PAGINACIÓN (compartida) ── -->
       <div id="paginacion-bar" class="paginacion-bar" style="display:none;">
         <button id="btn-pag-anterior" class="btn-pag" disabled>← Anterior</button>
         <span id="pag-info" class="pag-info">Página 1 de 1</span>

@@ -59,6 +59,10 @@ let formulario, inputImagen
 let imagenPreviewContainer, imagenPreview, btnCambiarPreview
 let btnLimpiarFiltros
 
+// Grid / Vista
+let productosGrid, productosListaWrap, btnVistaGrid, btnVistaLista
+let vistaActual = localStorage.getItem('jesha_productos_view_mode') || 'grid'
+
 // Selects del modal (separados del toolbar)
 let modalDeptoSelect, modalCatSelect, modalProveedorSelect
 
@@ -97,6 +101,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   modalDeptoSelect   = document.getElementById('producto-departamento')
   modalCatSelect     = document.getElementById('producto-categoria')
   modalProveedorSelect = document.getElementById('producto-proveedor')
+
+  // Grid / Vista
+  productosGrid      = document.getElementById('productos-grid')
+  productosListaWrap = document.getElementById('productos-lista-wrap')
+  btnVistaGrid       = document.getElementById('btn-vista-grid')
+  btnVistaLista      = document.getElementById('btn-vista-lista')
 
   // Tipo de factura
   radioFacturaA  = document.getElementById('radio-factura-a')
@@ -151,11 +161,9 @@ function aplicarPermisosProductos() {
     if (el) el.style.display = 'none'
   })
 
-  // Ocultar header de columna ACCIONES para PRECIOS
+  // Marcar rol para estilos responsive
   if (ES_PRECIOS) {
     document.body.classList.add('rol-precios')
-    const th = document.getElementById('th-acciones')
-    if (th) th.style.display = 'none'
   }
 }
 
@@ -372,9 +380,11 @@ async function cargarProductos() {
     }
     if (resultado.resumenStock) window._resumenStock = resultado.resumenStock
 
+    const conImg = productosLista.filter(p => obtenerImagenProducto(p)).length
     console.log(`✅ Productos cargados: ${productosLista.length} de ${totalProductos} (pág ${paginaActual}/${totalPaginas})`)
+    console.info(`📸 Imágenes: ${conImg} con imagen, ${productosLista.length - conImg} sin imagen`)
     mostrarEstadisticasInventario()
-    renderizarTabla(productosLista)
+    renderizarProductos(productosLista)
     renderizarPaginacion()
   } catch (error) {
     console.error('❌ Error cargando productos:', error)
@@ -598,7 +608,7 @@ function accionesFila(p) {
     return `
       <button class="btn-icon btn-editar-producto" data-id="${p.id}" title="Editar">✏️</button>
       <button class="btn-ajuste-inv" data-id="${p.id}" title="Ajustar stock">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
         Stock
       </button>
       <button class="btn-icon btn-toggle-estado ${p.activo ? 'btn-desactivar' : 'btn-activar'}"
@@ -652,9 +662,304 @@ function renderizarTabla(productos) {
       <td style="color:${stockBajo ? '#ff9999' : 'inherit'}">${fmtStock(stock)}</td>
       <td class="col-min-stock">${fmtStock(minStock)}</td>
       <td class="col-estado"><span class="estado-badge ${p.activo ? 'activo' : 'inactivo'}">${p.activo ? 'Activo' : 'Inactivo'}</span></td>
-      ${ES_PRECIOS ? '' : `<td><div class="actions-cell">${accionesFila(p)}</div></td>`}
+      ${(() => { const a = accionesFila(p); return a ? `<td><div class="actions-cell">${a}</div></td>` : '' })()}
     </tr>`
   }).join('')
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// GRID — Vista de tarjetas
+// ═══════════════════════════════════════════════════════════════════
+
+function obtenerImagenProducto(p) {
+  const raw = p.imagenUrl || p.Categoria?.imagenUrl || ''
+  if (!raw) return ''
+
+  try {
+    const url = new URL(raw, API_URL)
+
+    if (url.hostname.includes('cloudinary') && !url.href.includes('/upload/c_pad,')) {
+      const parts = url.href.split('/upload/')
+      if (parts.length === 2) {
+        return `${parts[0]}/upload/c_pad,w_400,h_300,f_auto,q_auto,b_rgb:f3f5f8/${parts[1]}`
+      }
+    }
+
+    return url.href
+  } catch {
+    return ''
+  }
+}
+
+function obtenerImagenOriginal(p) {
+  const raw = p.imagenUrl || p.Categoria?.imagenUrl || ''
+  if (!raw) return ''
+
+  try {
+    const url = new URL(raw, API_URL)
+
+    if (url.hostname.includes('cloudinary')) {
+      const idx = url.href.indexOf('/upload/')
+      if (idx !== -1) {
+        const base = url.href.substring(0, idx + 8)
+        const rest = url.href.substring(idx + 8)
+        const verMatch = rest.match(/\/v\d+/)
+        if (verMatch) {
+          return base + 'f_auto,q_auto' + rest.substring(verMatch.index)
+        }
+      }
+    }
+
+    return url.href
+  } catch {
+    return ''
+  }
+}
+
+function renderPlaceholderImagen(texto) {
+  return `
+    <div class="producto-card-placeholder">
+      <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+        <circle cx="8.5" cy="8.5" r="1.5"/>
+        <polyline points="21 15 16 10 5 21"/>
+      </svg>
+      <span>${escaparHtml(texto || 'Sin imagen')}</span>
+    </div>
+  `
+}
+
+function abrirZoomImagen(productoId) {
+  const p = productosLista.find(x => x.id === productoId)
+  if (!p) return
+
+  const imgUrl = obtenerImagenOriginal(p)
+  if (!imgUrl) {
+    if (typeof jeshaToast === 'function') jeshaToast('Este producto no tiene imagen', 'warning')
+    return
+  }
+
+  const existing = document.getElementById('img-lightbox')
+  if (existing) existing.remove()
+
+  const overlay = document.createElement('div')
+  overlay.id = 'img-lightbox'
+  overlay.className = 'img-lightbox-overlay'
+
+  const backdrop = document.createElement('div')
+  backdrop.className = 'img-lightbox-backdrop'
+  overlay.appendChild(backdrop)
+
+  const card = document.createElement('div')
+  card.className = 'img-lightbox-card'
+
+  const closeBtn = document.createElement('button')
+  closeBtn.className = 'img-lightbox-close'
+  closeBtn.setAttribute('aria-label', 'Cerrar')
+  closeBtn.textContent = '\u00D7'
+  card.appendChild(closeBtn)
+
+  const body = document.createElement('div')
+  body.className = 'img-lightbox-body'
+
+  const img = document.createElement('img')
+  img.className = 'img-lightbox-image'
+  img.src = imgUrl
+  img.alt = p.nombre || 'Producto'
+  body.appendChild(img)
+  card.appendChild(body)
+
+  const footer = document.createElement('div')
+  footer.className = 'img-lightbox-footer'
+
+  const nameEl = document.createElement('strong')
+  nameEl.textContent = p.nombre || 'Producto'
+  footer.appendChild(nameEl)
+
+  const codeEl = document.createElement('span')
+  codeEl.textContent = p.codigoInterno || ''
+  footer.appendChild(codeEl)
+  card.appendChild(footer)
+
+  overlay.appendChild(card)
+  document.body.appendChild(overlay)
+
+  requestAnimationFrame(() => {
+    overlay.classList.add('active')
+  })
+
+  function cerrar() {
+    document.removeEventListener('keydown', escapeHandler)
+    overlay.classList.remove('active')
+    overlay.addEventListener('transitionend', function handler() {
+      overlay.removeEventListener('transitionend', handler)
+      if (overlay.parentNode) overlay.parentNode.removeChild(overlay)
+    })
+  }
+
+  backdrop.addEventListener('click', cerrar)
+  closeBtn.addEventListener('click', cerrar)
+
+  const escapeHandler = function (e) {
+    if (e.key === 'Escape') cerrar()
+  }
+  document.addEventListener('keydown', escapeHandler)
+}
+
+function renderProductoCard(p) {
+  const stock = p.inventario?.stockActual ?? 0
+  const minStock = p.inventario?.stockMinimoAlerta ?? 0
+
+  const stockNum = parseFloat(stock)
+  const minNum = parseFloat(minStock)
+
+  const sinStock = !stockNum || stockNum <= 0
+  const stockBajo = !sinStock && minNum > 0 && stockNum <= minNum
+
+  const catNombre = p.Categoria?.nombre || 'Sin categoría'
+  const deptoNombre = p.Categoria?.Departamento?.nombre || ''
+  const imagen = obtenerImagenProducto(p)
+
+  const estadoStockClass = sinStock
+    ? 'sin-stock'
+    : stockBajo
+      ? 'bajo-stock'
+      : 'con-stock'
+
+  const estadoStockTexto = sinStock
+    ? 'Sin stock'
+    : stockBajo
+      ? 'Bajo stock'
+      : 'Con stock'
+
+  const wrapClass = `producto-card-image-wrap${imagen ? '' : ' no-image'}`
+
+  let imgHtml
+  if (imagen) {
+    imgHtml = `<img class="producto-card-image" src="${escaparHtml(imagen)}" alt="${escaparHtml(p.nombre || 'Producto')}" loading="lazy" decoding="async" data-zoom-id="${p.id}">`
+  } else {
+    imgHtml = renderPlaceholderImagen('Sin imagen')
+  }
+
+  let accionesExtra = ''
+  if (ES_ADMIN && !imagen) {
+    accionesExtra = `<button class="btn-icon btn-agregar-imagen" data-id="${p.id}" title="Agregar imagen">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+        <circle cx="8.5" cy="8.5" r="1.5"/>
+        <polyline points="21 15 16 10 5 21"/>
+      </svg>
+    </button>`
+  }
+
+  return `
+    <article class="producto-card ${!p.activo ? 'is-inactive' : ''} ${estadoStockClass}" data-id="${p.id}">
+      
+      <div class="${wrapClass}">
+        ${imgHtml}
+
+        <div class="producto-card-badges">
+          <span class="stock-pill ${estadoStockClass}">${estadoStockTexto}</span>
+          ${p.esGranel ? `<span class="stock-pill granel">Granel</span>` : ''}
+          ${!p.activo ? `<span class="stock-pill inactivo">Inactivo</span>` : ''}
+        </div>
+      </div>
+
+      <div class="producto-card-body">
+        <div class="producto-card-category">
+          ${deptoNombre ? `<span>${escaparHtml(deptoNombre)}</span>` : ''}
+          <strong>${escaparHtml(catNombre)}</strong>
+        </div>
+
+        <h4 class="producto-card-name">${escaparHtml(p.nombre || 'Producto sin nombre')}</h4>
+
+        <div class="producto-card-code">
+          ${escaparHtml(p.codigoInterno || '-')}
+          ${p.codigoBarras ? `<small>${escaparHtml(p.codigoBarras)}</small>` : ''}
+        </div>
+
+        <div class="producto-card-bottom">
+          <div class="producto-card-price">
+            $${parseFloat(p.precioVenta || p.precioBase || 0).toFixed(2)}
+          </div>
+
+          <div class="producto-card-stock">
+            <strong>${fmtStock(stock)}</strong>
+            <span>/ Min. ${fmtStock(minStock)}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="producto-card-actions">
+        <div class="actions-cell">${accionesFila(p)}${accionesExtra}</div>
+      </div>
+    </article>
+  `
+}
+
+function hidratarImagenesGrid() {
+  document.querySelectorAll('#productos-grid .producto-card-image').forEach(img => {
+    const wrap = img.closest('.producto-card-image-wrap')
+    if (!wrap) return
+
+    const handlerLoad = () => {
+      wrap.classList.remove('no-image')
+      wrap.classList.add('has-image')
+    }
+
+    const handlerError = () => {
+      wrap.classList.remove('has-image')
+      wrap.classList.add('no-image', 'image-error')
+      img.remove()
+      wrap.insertAdjacentHTML('beforeend', renderPlaceholderImagen('Imagen no disponible'))
+    }
+
+    if (img.complete && img.naturalWidth > 0) {
+      handlerLoad()
+    } else if (img.complete) {
+      handlerError()
+    } else {
+      img.addEventListener('load', handlerLoad, { once: true })
+      img.addEventListener('error', handlerError, { once: true })
+    }
+  })
+}
+
+function renderizarGrid(productos) {
+  if (!productosGrid) return
+
+  if (!productos || productos.length === 0) {
+    productosGrid.innerHTML = `
+      <div class="empty-state grid-empty">
+        <p>No hay productos para mostrar</p>
+        <small>Ajusta los filtros o realiza una búsqueda diferente</small>
+      </div>
+    `
+    return
+  }
+
+  productosGrid.innerHTML = productos.map(p => renderProductoCard(p)).join('')
+  hidratarImagenesGrid()
+}
+
+function aplicarVistaActual() {
+  const esGrid = vistaActual === 'grid'
+
+  if (productosGrid) productosGrid.style.display = esGrid ? 'grid' : 'none'
+  if (productosListaWrap) productosListaWrap.style.display = esGrid ? 'none' : 'block'
+
+  btnVistaGrid?.classList.toggle('active', esGrid)
+  btnVistaLista?.classList.toggle('active', !esGrid)
+}
+
+function renderizarProductos(productos) {
+  aplicarVistaActual()
+
+  if (vistaActual === 'grid') {
+    renderizarGrid(productos)
+  } else {
+    renderizarTabla(productos)
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -1872,51 +2177,85 @@ function configurarEventos() {
     granelCheck.addEventListener('change', () => actualizarVisualGranel(granelCheck.checked))
   }
 
+  // ── Toggle vista Grid / Lista ──
+  btnVistaGrid?.addEventListener('click', () => {
+    if (vistaActual === 'grid') return
+    vistaActual = 'grid'
+    localStorage.setItem('jesha_productos_view_mode', vistaActual)
+    renderizarProductos(productosLista)
+  })
+
+  btnVistaLista?.addEventListener('click', () => {
+    if (vistaActual === 'lista') return
+    vistaActual = 'lista'
+    localStorage.setItem('jesha_productos_view_mode', vistaActual)
+    renderizarProductos(productosLista)
+  })
+
   // ═══════════════════════════════════════════════════════════════════
-  // FIX: DELEGACIÓN DE EVENTOS — reemplaza onclick inline en la tabla
+  // FIX: DELEGACIÓN DE EVENTOS — reemplaza onclick inline en tabla y grid
   // ═══════════════════════════════════════════════════════════════════
-  if (productosTbody) {
-    productosTbody.addEventListener('click', e => {
-      // Buscar el botón más cercano con data-id
-      const btnBasico = e.target.closest('.btn-editar-basico')
-      if (btnBasico) {
-        const id = parseInt(btnBasico.dataset.id)
-        if (id) abrirModalBasico(id)
-        return
-      }
+  function manejarClickAccionProducto(e) {
+    const imgZoom = e.target.closest('.producto-card-image[data-zoom-id]')
+    if (imgZoom) {
+      abrirZoomImagen(parseInt(imgZoom.dataset.zoomId))
+      return
+    }
 
-      const btnEditar = e.target.closest('.btn-editar-producto')
-      if (btnEditar) {
-        const id = parseInt(btnEditar.dataset.id)
-        if (id) editarProducto(id)
-        return
-      }
+    const btnBasico = e.target.closest('.btn-editar-basico')
+    if (btnBasico) {
+      const id = parseInt(btnBasico.dataset.id)
+      if (id) abrirModalBasico(id)
+      return
+    }
 
-      const btnAjuste = e.target.closest('.btn-ajuste-inv')
-      if (btnAjuste) {
-        e.stopPropagation()
-        const id = parseInt(btnAjuste.dataset.id)
-        if (id) abrirAjusteInventario(id)
-        return
-      }
+    const btnEditar = e.target.closest('.btn-editar-producto')
+    if (btnEditar) {
+      const id = parseInt(btnEditar.dataset.id)
+      if (id) editarProducto(id)
+      return
+    }
 
-      const btnEstado = e.target.closest('.btn-toggle-estado')
-      if (btnEstado) {
-        const id = parseInt(btnEstado.dataset.id)
-        const activoActual = btnEstado.dataset.activo === 'true'
-        const nombre = btnEstado.dataset.nombre || ''
-        if (id) toggleEstadoProducto(id, !activoActual, nombre)
-        return
-      }
+    const btnAjuste = e.target.closest('.btn-ajuste-inv')
+    if (btnAjuste) {
+      e.stopPropagation()
+      const id = parseInt(btnAjuste.dataset.id)
+      if (id) abrirAjusteInventario(id)
+      return
+    }
 
-      const btnPrecio = e.target.closest('.btn-editar-precio')
-      if (btnPrecio) {
-        const id = parseInt(btnPrecio.dataset.id)
-        if (id) abrirModalPrecios(id)
-        return
+    const btnEstado = e.target.closest('.btn-toggle-estado')
+    if (btnEstado) {
+      const id = parseInt(btnEstado.dataset.id)
+      const activoActual = btnEstado.dataset.activo === 'true'
+      const nombre = btnEstado.dataset.nombre || ''
+      if (id) toggleEstadoProducto(id, !activoActual, nombre)
+      return
+    }
+
+    const btnPrecio = e.target.closest('.btn-editar-precio')
+    if (btnPrecio) {
+      const id = parseInt(btnPrecio.dataset.id)
+      if (id) abrirModalPrecios(id)
+      return
+    }
+
+    const btnAgregarImg = e.target.closest('.btn-agregar-imagen')
+    if (btnAgregarImg) {
+      const id = parseInt(btnAgregarImg.dataset.id)
+      if (id) {
+        editarProducto(id)
+        setTimeout(() => {
+          const inputFile = document.getElementById('producto-imagen')
+          if (inputFile) inputFile.click()
+        }, 400)
       }
-    })
+      return
+    }
   }
+
+  if (productosTbody) productosTbody.addEventListener('click', manejarClickAccionProducto)
+  if (productosGrid) productosGrid.addEventListener('click', manejarClickAccionProducto)
 }
 
 // Visual del toggle de granel

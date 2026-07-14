@@ -247,6 +247,7 @@ function mapearProducto(fila) {
         esGranel,
         unidadVenta,
         activo: true,
+        imagenUrl: (fila['IMAGEN_URL'] || '').trim() || null,
         // Campos auxiliares — no van a BD directamente
         _stockInicial:     stockInicial,
         _stockMinimo:      stockMinimo,
@@ -522,6 +523,7 @@ exports.importarCSV = async (req, res) => {
                                 unidadSat:    dataSinAux.unidadSat,
                                 esGranel:     dataSinAux.esGranel,
                                 unidadVenta:  dataSinAux.unidadVenta,
+                                imagenUrl:    dataSinAux.imagenUrl,
                                 categoriaId,
                             }
                         })

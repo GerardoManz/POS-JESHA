@@ -262,6 +262,8 @@ async function listar(req, res) {
             where.InventarioSucursal = { some: { sucursalId: sucursalIdInventario, stockActual: { gt: 0 } } }
         } else if (stockFiltro === 'sin') {
             where.InventarioSucursal = { none: { sucursalId: sucursalIdInventario, stockActual: { gt: 0 } } }
+        } else if (stockFiltro === 'sin_imagen') {
+            where.imagenUrl = null
         }
         // 'bajo' se maneja post-query porque requiere comparar dos columnas
         // (stockActual <= stockMinimoAlerta) que Prisma no soporta en where
