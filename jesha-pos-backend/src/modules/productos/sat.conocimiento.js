@@ -683,6 +683,22 @@ const REGLAS_DIRECTAS = [
     razon: 'Martillo de bola identificado',
   },
 
+  // ── Specialized tools ──
+  {
+    id: 'llave_filtro_aceite',
+    claveSat: '27111749',
+    confianza: 93,
+    todos: [/\bllave\b/, /\bfiltro\b/, /\baceite\b/],
+    razon: 'Llave para filtro de aceite identificada como herramienta especializada',
+  },
+  {
+    id: 'llave_tanque_gas',
+    claveSat: '27111749',
+    confianza: 91,
+    todos: [/\bllave\b/, /\btanque\b/, /\bgas\b/],
+    razon: 'Llave para tanque de gas identificada como herramienta especializada',
+  },
+
   // ── New rules 2026-07-13 ──
   {
     id: 'broca_hss_metal',

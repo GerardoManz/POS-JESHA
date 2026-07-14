@@ -781,6 +781,19 @@ const FAMILIAS = [
     tokens: { pastilla: 2, termica: 1 },
     claves: ['39121600'],
   },
+  // ---- Familias de accesorios / seguridad ----
+  {
+    id: 'portaherramientas',
+    rama: RAMA.HERRAMIENTAS,
+    tokens: { portaherramientas: 2, cinturon: 1, herramienta: 1 },
+    claves: ['31162800'],
+  },
+  {
+    id: 'faja_lumbar',
+    rama: RAMA.SEGURIDAD,
+    tokens: { faja: 2, lumbar: 2, seguridad: 1 },
+    claves: ['46181700'],
+  },
   // ---- Familias sin clave confirmada todavía (solo gate + acotación) ----
   {
     id: 'plomeria_conexiones',
@@ -1055,8 +1068,9 @@ const FAMILIAS = [
   },
   {
     id: 'niveles_plomadas',
-    tokens: { nivel: 2, plomada: 2, burbuja: 1, tiralineas: 1, pendiente: 1 },
+    tokens: { nivel: 2, plomada: 2, burbuja: 1, tiralineas: 1, pendiente: 1, torpedo: 1 },
     claves: ['41111950'],
+    certificada: true,
   },
   {
     id: 'plomadas',
@@ -1114,21 +1128,24 @@ const FAMILIAS = [
   },
   {
     id: 'limas_escofinas',
-    tokens: { lima: 2, escofina: 2, limaton: 1 },
+    tokens: { lima: 2, escofina: 2, limaton: 1, triangular: 1, plano: 1, redondo: 1 },
     excluye: ['factor', 'tiempo', 'produccion', 'cadena', 'control', 'limon', 'fruta'],
     claves: ['27111919'],
+    certificada: true,
   },
   {
     id: 'cucharas_llanas',
-    tokens: { cuchara: 2, llana: 2, plana: 1, albanil: 1, construccion: 1 },
+    tokens: { cuchara: 2, llana: 2, plana: 1, albanil: 1, construccion: 1, filadelfia: 1 },
     excluye: ['cocina', 'comer', 'mesa', 'sopa', 'postre', 'cafe', 'taza'],
     claves: ['27112201'],
+    certificada: true,
   },
   {
     id: 'espatulas',
-    tokens: { espatula: 2, llana: 1, rasqueta: 1, albanil: 1 },
+    tokens: { espatula: 2, llana: 1, rasqueta: 1, albanil: 1, multiusos: 1 },
     requiere: ['espatula'],
     claves: ['52151613'],
+    certificada: true,
   },
   {
     id: 'timbres_campanas',
@@ -1155,10 +1172,11 @@ const FAMILIAS = [
   },
   {
     id: 'pistolas_riego',
-    tokens: { pistola: 2, riego: 2, jardin: 1, rociador: 2, rociadora: 2 },
+    tokens: { pistola: 2, riego: 2, jardin: 1, rociador: 2, rociadora: 2, funciones: 1, metalica: 1 },
     requiere: ['pistola'],
     requiereAlguno: ['riego', 'jardin', 'rociador', 'rociadora'],
     claves: ['27112903'],
+    certificada: true,
   },
   {
     id: 'compresor_accesorios',
@@ -1228,9 +1246,10 @@ const FAMILIAS = [
   },
   {
     id: 'tijeras_aviacion',
-    tokens: { tijera: 2, aviacion: 2 },
+    tokens: { tijera: 2, aviacion: 2, izquierdo: 1, derecho: 1 },
     requiere: ['tijera', 'aviacion'],
     claves: ['27111516'],
+    certificada: true,
   },
   {
     id: 'tijeras_alambre',
@@ -1881,7 +1900,7 @@ const FAMILIAS_NUEVAS = [
   { id: 'varillas_lisas', rama: RAMA.CONSTRUCCION, tokens: { varilla: 2, lisa: 2 }, claves: ['30102402'] },
   { id: 'mallas_electrosoldadas', rama: RAMA.CONSTRUCCION, tokens: { malla: 2, electrosoldada: 2 }, claves: ['30102403'] },
   { id: 'mallas_ciclon', rama: RAMA.CONSTRUCCION, tokens: { malla: 2, ciclon: 2 }, claves: ['30102404'] },
-  { id: 'alambre_recocido', rama: RAMA.CONSTRUCCION, tokens: { alambre: 2, recocido: 2 }, claves: ['30102405'] } ,
+  { id: 'alambre_recocido', rama: RAMA.CONSTRUCCION, tokens: { alambre: 2, recocido: 2 }, requiere: ['alambre', 'recocido'], claves: ['30102405'] } ,
   { id: 'alambre_puas', rama: RAMA.CONSTRUCCION, tokens: { alambre: 2, puas: 2, espino: 1 }, claves: ['30102406'] },
   { id: 'cemento_gris', rama: RAMA.CONSTRUCCION, tokens: { cemento: 2, gris: 2 }, claves: ['30111501'] },
   { id: 'cemento_blanco', rama: RAMA.CONSTRUCCION, tokens: { cemento: 2, blanco: 2 }, claves: ['30111502'] },
