@@ -583,11 +583,140 @@ function escaparHtml(valor = '') {
     .replace(/>/g, '&gt;')
 }
 
-function obtenerSrcImagenProducto(p) {
+function _limpiarTransformacionesCloudinary(raw, tipo) {
+  try {
+    const url = new URL(raw)
+    if (!url.hostname.includes('cloudinary')) return url.href
+
+    const idx = url.href.indexOf('/upload/')
+    if (idx === -1) return url.href
+
+    const base = url.href.substring(0, idx + 8)
+    const rest = url.href.substring(idx + 8)
+
+    const txRx = /^(c_|w_|h_|f_|q_|b_|g_|e_|fl_|dpr_|r_|ar_|x_|y_|z_|o_|co_|t_|q_auto|e_improve|e_auto_brightness|e_auto_contrast|e_vibrance|e_sharpen)/i
+
+    const parts = rest.split('/')
+    let txEnd = 0
+    for (let i = 0; i < parts.length; i++) {
+      if (txRx.test(parts[i]) || parts[i].includes(',')) {
+        txEnd = i + 1
+      } else {
+        break
+      }
+    }
+
+    const afterTx = parts.slice(txEnd).join('/')
+    if (!afterTx) return url.href
+
+    if (tipo === 'thumbnail') {
+      return base + 'c_pad,w_400,h_300,f_auto,q_auto,b_rgb:1a1f2b/' + afterTx
+    }
+
+    return base + 'f_auto,q_auto/' + afterTx
+  } catch {
+    return raw
+  }
+}
+
+function obtenerSrcImagenProducto(p, esDestacado = false) {
   const urlImagen = p.imagenUrl || p.Categoria?.imagenUrl || null
-  return urlImagen
-    ? (urlImagen.startsWith('http') ? urlImagen : API_URL + urlImagen)
-    : null
+  if (!urlImagen) return null
+
+  const raw = urlImagen.startsWith('http') ? urlImagen : API_URL + urlImagen
+
+  if (esDestacado) {
+    return _limpiarTransformacionesCloudinary(raw, 'original')
+  }
+
+  return _limpiarTransformacionesCloudinary(raw, 'thumbnail')
+}
+
+function obtenerImagenOriginal(p) {
+  const raw = p.imagenUrl || p.Categoria?.imagenUrl || ''
+  if (!raw) return ''
+  const url = raw.startsWith('http') ? raw : API_URL + raw
+  return _limpiarTransformacionesCloudinary(url, 'original')
+}
+
+function abrirZoomImagen(productoId) {
+  const p = productoCache.get(productoId)
+  if (!p) {
+    if (typeof mostrarToast === 'function') mostrarToast('Producto no disponible', 'warning')
+    return
+  }
+
+  const imgUrl = obtenerImagenOriginal(p)
+  if (!imgUrl) {
+    if (typeof mostrarToast === 'function') mostrarToast('Este producto no tiene imagen', 'warning')
+    return
+  }
+
+  const existing = document.getElementById('img-lightbox')
+  if (existing) existing.remove()
+
+  const overlay = document.createElement('div')
+  overlay.id = 'img-lightbox'
+  overlay.className = 'img-lightbox-overlay'
+
+  const backdrop = document.createElement('div')
+  backdrop.className = 'img-lightbox-backdrop'
+  overlay.appendChild(backdrop)
+
+  const card = document.createElement('div')
+  card.className = 'img-lightbox-card'
+
+  const closeBtn = document.createElement('button')
+  closeBtn.className = 'img-lightbox-close'
+  closeBtn.setAttribute('aria-label', 'Cerrar')
+  closeBtn.textContent = '\u00D7'
+  card.appendChild(closeBtn)
+
+  const body = document.createElement('div')
+  body.className = 'img-lightbox-body'
+
+  const img = document.createElement('img')
+  img.className = 'img-lightbox-image'
+  img.src = imgUrl
+  img.alt = p.nombre || 'Producto'
+  body.appendChild(img)
+  card.appendChild(body)
+
+  const footer = document.createElement('div')
+  footer.className = 'img-lightbox-footer'
+
+  const nameEl = document.createElement('strong')
+  nameEl.textContent = p.nombre || 'Producto'
+  footer.appendChild(nameEl)
+
+  const codeEl = document.createElement('span')
+  codeEl.textContent = p.codigoInterno || ''
+  footer.appendChild(codeEl)
+  card.appendChild(footer)
+
+  overlay.appendChild(card)
+  document.body.appendChild(overlay)
+
+  requestAnimationFrame(() => {
+    overlay.classList.add('active')
+  })
+
+  function cerrar() {
+    document.removeEventListener('keydown', escapeHandler)
+    overlay.classList.remove('active')
+    overlay.addEventListener('transitionend', function handler() {
+      overlay.removeEventListener('transitionend', handler)
+      if (overlay.parentNode) overlay.parentNode.removeChild(overlay)
+    })
+  }
+
+  const escapeHandler = (e) => {
+    if (e.key === 'Escape') cerrar()
+  }
+  document.addEventListener('keydown', escapeHandler)
+
+  closeBtn.addEventListener('click', cerrar)
+  backdrop.addEventListener('click', cerrar)
 }
 
 function formatearStockProducto(p) {
@@ -612,10 +741,22 @@ function renderBadgeGranel(p) {
 
 function renderTarjetaProducto(p) {
   const nombreSeguro = escaparHtml(p.nombre)
-  const srcImagen = obtenerSrcImagenProducto(p)
+  const srcImagen = obtenerSrcImagenProducto(p, false)
+
+  const imagenHtml = srcImagen
+    ? `<img src="${srcImagen}" alt="${nombreSeguro}" class="producto-imagen" loading="lazy" data-zoom-id="${p.id}" />`
+    : `<div class="producto-card-placeholder">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+          <circle cx="8.5" cy="8.5" r="1.5"/>
+          <polyline points="21 15 16 10 5 21"/>
+        </svg>
+        <span>Sin imagen</span>
+      </div>`
+
   return `
     <div class="tarjeta-producto" data-producto-id="${p.id}" style="cursor:pointer;">
-      ${srcImagen ? `<img src="${srcImagen}" alt="${nombreSeguro}" class="producto-imagen" />` : ''}
+      ${imagenHtml}
       <div class="producto-info">
         <h4>${nombreSeguro}</h4>
         <p class="producto-codigo">${escaparHtml(p.codigoInterno || '')}</p>
@@ -632,12 +773,23 @@ function renderTarjetaProducto(p) {
 
 function renderProductoDestacado(p) {
   const nombreSeguro = escaparHtml(p.nombre)
-  const srcImagen = obtenerSrcImagenProducto(p)
+  const srcImagen = obtenerSrcImagenProducto(p, true)
   const veces = parseInt(p.vecesEnTickets || 0, 10)
+
+  const imagenHtml = srcImagen
+    ? `<img src="${srcImagen}" alt="${nombreSeguro}" class="producto-destacado-imagen" data-zoom-id="${p.id}" />`
+    : `<div class="producto-destacado-placeholder">
+        <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+          <circle cx="8.5" cy="8.5" r="1.5"/>
+          <polyline points="21 15 16 10 5 21"/>
+        </svg>
+      </div>`
+
   return `
     <article class="producto-destacado" data-producto-id="${p.id}" style="cursor:pointer;">
       <div class="producto-destacado-media">
-        ${srcImagen ? `<img src="${srcImagen}" alt="${nombreSeguro}" class="producto-destacado-imagen" />` : '<div class="producto-destacado-placeholder">J</div>'}
+        ${imagenHtml}
       </div>
       <div class="producto-destacado-info">
         <div class="producto-destacado-topline">
@@ -657,6 +809,44 @@ function renderProductoDestacado(p) {
     </article>`
 }
 
+function reemplazarImagenRota(img) {
+  if (img.dataset._placeholderReplaced) return
+  img.dataset._placeholderReplaced = '1'
+
+  const isDestacado = !!img.closest('.producto-destacado')
+
+  if (isDestacado) {
+    const container = img.closest('.producto-destacado-media')
+    if (container) {
+      const placeholder = document.createElement('div')
+      placeholder.className = 'producto-destacado-placeholder'
+      placeholder.innerHTML = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>'
+      container.replaceChild(placeholder, img)
+    }
+    return
+  }
+
+  const container = img.closest('.tarjeta-producto')
+  if (container) {
+    const placeholder = document.createElement('div')
+    placeholder.className = 'producto-card-placeholder'
+    placeholder.innerHTML = '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg><span>Sin imagen</span>'
+    img.parentNode.insertBefore(placeholder, img)
+    img.parentNode.removeChild(img)
+  }
+}
+
+function hidratarImagenesPos(container) {
+  if (!container) container = productosGrid
+  const imgs = container.querySelectorAll('img[data-zoom-id]')
+  for (const img of imgs) {
+    img.addEventListener('error', function handler() {
+      img.removeEventListener('error', handler)
+      reemplazarImagenRota(img)
+    })
+  }
+}
+
 function mostrarProductos(productos) {
   if (productos.length === 0) {
     productosGrid.innerHTML = `<div class="sin-resultados">No se encontraron productos</div>`
@@ -666,6 +856,7 @@ function mostrarProductos(productos) {
   const hayBusquedaActiva = ((terminoBusquedaActual || searchProductos?.value || '').trim().length > 0)
   if (!hayBusquedaActiva) {
     productosGrid.innerHTML = productos.map(renderTarjetaProducto).join('')
+    hidratarImagenesPos(productosGrid)
     return
   }
 
@@ -681,6 +872,7 @@ function mostrarProductos(productos) {
           ${secundarios.map(renderTarjetaProducto).join('')}
         </div>` : ''}
     </div>`
+  hidratarImagenesPos(productosGrid)
 }
 
 function mostrarProductosYMas(productos) {
@@ -2553,6 +2745,15 @@ function configurarEventListeners() {
   // Los datos se leen del productoCache, NUNCA del HTML.
   // Esto elimina problemas con comillas, acentos, XSS, etc.
   productosGrid.addEventListener('click', (e) => {
+    if (e.target.closest('button, [data-action="ajustar"], .btn-ajustar-stock')) return
+
+    const zoomImg = e.target.closest('img[data-zoom-id]')
+    if (zoomImg) {
+      e.stopPropagation()
+      abrirZoomImagen(parseInt(zoomImg.dataset.zoomId, 10))
+      return
+    }
+
     const card = e.target.closest('[data-producto-id]')
     if (!card) return
     const id = parseInt(card.dataset.productoId, 10)

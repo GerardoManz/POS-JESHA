@@ -1330,16 +1330,12 @@
   margin: 8px 8px 0;
   border-radius: 10px;
   overflow: hidden;
-  background: #f3f5f8;
+  background: rgba(0,0,0,0.20);
   border: 1px solid rgba(255,255,255,0.08);
   display: flex;
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
-}
-
-.producto-card-image-wrap.has-image {
-  background: #f3f5f8;
 }
 
 .producto-card-image-wrap.no-image {
@@ -1360,7 +1356,6 @@
   display: block;
   padding: 10px;
   box-sizing: border-box;
-  background: #f3f5f8;
 }
 
 .producto-card-placeholder {
@@ -1514,7 +1509,7 @@
   justify-content: center;
   flex: 1;
   min-height: 200px;
-  background: #f3f5f8;
+  background: #11141c;
 }
 
 .img-lightbox-image {

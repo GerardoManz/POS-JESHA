@@ -681,7 +681,7 @@ function obtenerImagenProducto(p) {
     if (url.hostname.includes('cloudinary') && !url.href.includes('/upload/c_pad,')) {
       const parts = url.href.split('/upload/')
       if (parts.length === 2) {
-        return `${parts[0]}/upload/c_pad,w_400,h_300,f_auto,q_auto,b_rgb:f3f5f8/${parts[1]}`
+        return `${parts[0]}/upload/c_pad,w_400,h_300,f_auto,q_auto,b_rgb:1a1f2b/${parts[1]}`
       }
     }
 
