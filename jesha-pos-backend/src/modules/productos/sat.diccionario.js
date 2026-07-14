@@ -1966,6 +1966,7 @@ const FAMILIAS_NUEVAS = [
   { id: 'conos_seguridad', rama: RAMA.SEGURIDAD, tokens: { cono: 2, seguridad: 2 }, claves: ['46181503'] },
   { id: 'extintores_incendio', rama: RAMA.SEGURIDAD, tokens: { extintor: 2, incendio: 2 }, claves: ['46191501'] },
   { id: 'alarmas_seguridad', rama: RAMA.SEGURIDAD, tokens: { alarma: 2, seguridad: 2 }, claves: ['46171605'] },
+  { id: 'rodilleras_proteccion', rama: RAMA.SEGURIDAD, tokens: { rodillera: 2 }, claves: ['46181505'] },
 
   // ═══════════════════════════════════════
   // VARIOS (~30)

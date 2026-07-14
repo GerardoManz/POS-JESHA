@@ -760,6 +760,51 @@ const REGLAS_DIRECTAS = [
     excluye: [/\btira\b/, /\bpanel\b/, /\bluminario\b/, /\breflector\b/],
     razon: 'Foco LED identificado como iluminacion general',
   },
+
+  // ── Specialized tools / accessories ──
+  {
+    id: 'tapizadora',
+    claveSat: '27112153',
+    confianza: 95,
+    todos: [/\btapizadora\b/],
+    razon: 'Tapizadora identificada como engrapadora de banda',
+  },
+  {
+    id: 'barras_silicon',
+    claveSat: '31201602',
+    confianza: 90,
+    todos: [/\bsilicon\b/, /\bbarras?\b/],
+    excluye: [/\bliquido\b/, /\baceite\b/, /\blubricante\b/],
+    razon: 'Barras de silicon identificadas como pastas para pistola aplicadora',
+  },
+  {
+    id: 'gis_tiralineas',
+    claveSat: '27112311',
+    confianza: 95,
+    todos: [/\bgis\b/, /\btiralineas?\b/],
+    razon: 'GIS para tiralineas identificado como tiza para marcar',
+  },
+  {
+    id: 'cabeza_infladora',
+    claveSat: '24102208',
+    confianza: 88,
+    todos: [/\binflador[ao]\b/, /\bllantas?\b/],
+    razon: 'Cabeza infladora de llantas identificada como inflador de aire',
+  },
+  {
+    id: 'calibrador_bujias',
+    claveSat: '25191813',
+    confianza: 94,
+    todos: [/\bcalibrador\b/, /\bbujias?\b/],
+    razon: 'Calibrador de bujias identificado como tester de brecha',
+  },
+  {
+    id: 'cortador_vidrio',
+    claveSat: '27111514',
+    confianza: 95,
+    todos: [/\bcortador\b/, /\bvidrio\b/],
+    razon: 'Cortador de vidrio identificado como herramienta de corte',
+  },
 ];
 
 function detectarConocimiento(texto) {
