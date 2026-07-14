@@ -717,7 +717,7 @@ function filasBorradorHTML() {
       <tr id="brr-row-${it.tempId}" style="background:rgba(230,180,80,0.08);">
         <td>${it.nombre}</td>
         <td>${it.unidadVenta}</td>
-        <td><input type="number" class="brr-cant" data-tmp="${it.tempId}" value="${it.cantidad}" min="0.001" step="1" style="${inputStyle}"></td>
+        <td><input type="number" class="brr-cant" data-tmp="${it.tempId}" value="${it.cantidad}" min="1" step="1" style="${inputStyle}"></td>
         <td><input type="number" class="brr-precio" data-tmp="${it.tempId}" value="${it.precioUnitario}" min="0" step="0.01" style="${inputStyle.replace('width:64px', 'width:80px')}"></td>
         <td><strong>${formatMoney(subtotal)}</strong></td>
         <td>${it.fechaManual}</td>

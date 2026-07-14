@@ -284,10 +284,9 @@ function renderDetalle() {
     const yaCompleto   = cantRecibida >= cantPedida
     const rowStyle     = yaCompleto && recibiendo ? 'opacity:0.45;' : ''
     const unidad       = d.Producto?.unidadCompra || 'pza'
-    const granel       = d.Producto?.esGranel === true
-    const stepAttr     = granel ? '0.001' : '1'
-    const minAttr      = granel ? '0.001' : '1'
-    const imAttr       = granel ? 'decimal' : 'numeric'
+    const stepAttr     = '1'
+    const minAttr      = '1'
+    const imAttr       = 'numeric'
     // Factor/unidad de venta: el SNAPSHOT de la OC manda (es lo que el backend
     // aplicará al recibir); fallback al producto vivo para OCs legacy sin snapshot.
     const factor       = parseFloat(d.factorConversionSnapshot ?? d.Producto?.factorConversion ?? 1) || 1
@@ -331,7 +330,7 @@ function renderDetalle() {
                  min="${minAttr}" max="${pendiente}" step="${stepAttr}" inputmode="${imAttr}" value="${pendiente}"
                  data-factor="${factor}" data-uv="${unidadVenta}"
                  oninput="recRecalcularResumen(); recEquivalente('${d.id}')"
-                 style="width:${granel ? '76px' : '64px'};text-align:center;" />
+                  style="width:64px;text-align:center;" />
                 <span style="font-size:0.68rem;color:var(--muted);">máx ${pendiente} ${unidad}</span>
               </div>`
         : `<span style="color:${yaCompleto ? '#60d080' : cantRecibida > 0 ? '#ffc107' : 'var(--muted)'}">
@@ -658,7 +657,7 @@ function renderItemsEdicion() {
       </td>
       <td>${bloqueado
         ? `<span style="color:var(--muted);font-size:0.82rem;">${item.cantidad}</span>`
-        : `<input type="number" min="0.001" step="1" value="${item.cantidad}" oninput="editItem(${i},'cantidad',this.value)" />`
+        : `<input type="number" min="1" step="1" value="${item.cantidad}" oninput="editItem(${i},'cantidad',this.value)" />`
       }</td>
       <td><span style="color:var(--muted);">${fmt(item.costoNeto)}</span></td>
       <td><span id="item-sub-${i}">${fmt(subtotal)}</span></td>

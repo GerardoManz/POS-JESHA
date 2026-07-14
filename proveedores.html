@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <script>
+    if (!localStorage.getItem('jesha_token') || !localStorage.getItem('jesha_usuario')) {
+      window.location.replace('login.html')
+    }
+  </script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>JESHA POS - Proveedores</title>
+  <link rel="icon" type="image/x-icon" href="favicon.ico"/>
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png"/>
+  <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png"/>
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png"/>
+  <script src="theme.js"></script>
+  <link rel="stylesheet" href="dashboard.css" />
+  <link rel="stylesheet" href="proveedores.css" />
+</head>
+<body data-page="proveedores">
+<div class="app-shell">
+  <div id="sidebar-container"></div>
+  <main class="content">
+    <header class="content-header">
+      <h2>Proveedores</h2>
+      <p id="fecha-actual"></p>
+    </header>
+
+    <section class="toolbar">
+      <div class="search-group">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input type="text" id="search-input" placeholder="Nombre, alias, tel&eacute;fono o email..." class="search-input" />
+      </div>
+      <select id="filtro-activo" class="filter-select">
+        <option value="">Todos</option>
+        <option value="true">Activos</option>
+        <option value="false">Inactivos</option>
+      </select>
+      <button id="btn-nuevo" class="btn-primary">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Nuevo Proveedor
+      </button>
+    </section>
+
+    <section class="panel">
+      <div class="table-wrapper">
+        <table class="prov-table">
+          <thead>
+            <tr>
+              <th>Proveedor</th>
+              <th>Tel&eacute;fono</th>
+              <th>Celular</th>
+              <th>Email</th>
+              <th>Compras</th>
+              <th>Productos</th>
+              <th>Estado</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="prov-tbody">
+            <tr><td colspan="8" class="loading-cell"><div class="spinner"></div><p>Cargando proveedores...</p></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="pagination" id="pagination">
+        <button class="btn-pag" id="btn-prev" disabled>&#8592; Anterior</button>
+        <span class="pag-info" id="pag-info"></span>
+        <button class="btn-pag" id="btn-next">Siguiente &#8594;</button>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- ══ MODAL CREAR / EDITAR ══ -->
+<div id="modal-proveedor" class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3 id="modal-proveedor-titulo">Nuevo Proveedor</h3>
+      <button class="modal-close" id="prov-close">&times;</button>
+    </div>
+    <div class="modal-proveedor-form">
+      <div class="form-group full-width">
+        <label>Nombre oficial *</label>
+        <input type="text" id="prov-nombre" class="search-input" placeholder="Ej: Distribuidora TRUPER SA de CV" />
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Alias / Apodo</label><input type="text" id="prov-alias" class="search-input" placeholder="Ej: TRUPER" /></div>
+        <div class="form-group"><label>Email</label><input type="email" id="prov-email" class="search-input" placeholder="proveedor@ejemplo.com" /></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Tel&eacute;fono</label><input type="text" id="prov-telefono" class="search-input" /></div>
+        <div class="form-group"><label>Celular</label><input type="text" id="prov-celular" class="search-input" /></div>
+      </div>
+      <div id="prov-error" class="error-message"></div>
+      <div class="form-actions">
+        <button class="btn-secondary" id="prov-cancel">Cancelar</button>
+        <button class="btn-primary" id="prov-guardar">Guardar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL DETALLE ══ -->
+<div id="modal-detalle" class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <div class="modal-header-left">
+        <h3 id="det-nombre">Proveedor</h3>
+        <span id="det-badge" class="prov-badge activo">Activo</span>
+        <button class="btn-primary btn-sm" data-action="editar-proveedor">&#9998; Editar</button>
+      </div>
+      <button class="modal-close" id="det-close">&times;</button>
+    </div>
+    <div class="modal-body ver-body">
+      <div class="ver-meta">
+        <div class="meta-item"><span class="meta-label">Nombre oficial</span><span class="meta-valor" id="det-nombre-oficial">—</span></div>
+        <div class="meta-item"><span class="meta-label">Alias</span><span class="meta-valor" id="det-alias">—</span></div>
+        <div class="meta-item"><span class="meta-label">Tel&eacute;fono</span><span class="meta-valor" id="det-telefono">—</span></div>
+        <div class="meta-item"><span class="meta-label">Celular</span><span class="meta-valor" id="det-celular">—</span></div>
+        <div class="meta-item"><span class="meta-label">Email</span><span class="meta-valor" id="det-email">—</span></div>
+        <div class="meta-item"><span class="meta-label">Compras realizadas</span><span class="meta-valor" id="det-total-compras">0</span></div>
+        <div class="meta-item"><span class="meta-label">Productos vinculados</span><span class="meta-valor" id="det-total-productos">0</span></div>
+      </div>
+
+      <div class="det-section">
+        <div class="det-section-header">
+          <span>Productos que surte</span>
+        </div>
+        <div class="table-wrapper" id="det-productos-wrapper">
+          <table class="prov-table">
+            <thead>
+              <tr>
+                <th>Producto</th>
+                <th>C&oacute;digo</th>
+                <th>C&oacute;digo Proveedor</th>
+                <th>Precio Costo</th>
+              </tr>
+            </thead>
+            <tbody id="det-productos-tbody">
+              <tr><td colspan="4" class="loading-cell"><p class="muted-hint">Cargando...</p></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="det-section">
+        <div class="det-section-header">
+          <span>Historial de compras</span>
+        </div>
+        <div class="table-wrapper" id="det-compras-wrapper">
+          <table class="prov-table">
+            <thead>
+              <tr>
+                <th>Folio</th>
+                <th>Estado</th>
+                <th>Fecha</th>
+                <th>Sucursal</th>
+                <th>Total</th>
+              </tr>
+            </thead>
+            <tbody id="det-compras-tbody">
+              <tr><td colspan="5" class="loading-cell"><p class="muted-hint">Cargando...</p></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="ver-acciones">
+        <button class="btn-danger btn-sm" id="det-btn-activar" data-action="toggle-activo">Desactivar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<script src="config.js"></script>
+<script src="sidebar.js"></script>
+<script src="proveedores.js"></script>
+</body>
+</html>

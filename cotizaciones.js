@@ -493,7 +493,7 @@ function renderItemsProductos() {
 <td><input type="date" value="${item.fechaManual || ''}" style="width:90px" oninput="itemsEdicion[${i}].fechaManual=this.value" /></td>
       <td><div class="cot-item-desc">${item.nombre}</div></td>
       <td><input type="text" value="${item.unidad || 'PZA'}" style="width:58px" oninput="itemsEdicion[${i}].unidad=this.value" /></td>
-      <td><input type="number" min="1" value="${item.cantidad}" style="width:64px" oninput="actualizarCantidadItem(${i},this.value)" min="${item.esGranel ? 0.001 : 1}" step="1" /></td>
+      <td><input type="number" min="1" step="1" value="${item.cantidad}" style="width:64px" oninput="actualizarCantidadItem(${i},this.value)" /></td>
       <td><input type="number" min="0" step="0.01" value="${item.precio.toFixed(2)}" style="width:94px" oninput="actualizarPrecioItem(${i},this.value)" /></td>
       <td><input type="number" min="0" max="10" step="1" id="cot-item-desc-input-${i}" value="${item.descuentoPct || 0}" style="width:60px" oninput="actualizarDescuentoPorcentajeItem(${i},this.value)" placeholder="%" /></td>
       <td id="prod-total-${i}"><strong>${fmt(calcularTotalItem(item))}</strong></td>
@@ -515,7 +515,7 @@ function renderItemsServicios() {
       <td><input type="date" value="${item.fechaManual || ''}" style="width:120px" oninput="itemsEdicion[${i}].fechaManual=this.value" /></td>
       <td><input type="text" value="${item.concepto || ''}" placeholder="Descripción del servicio" style="width:100%;min-width:180px" oninput="itemsEdicion[${i}].concepto=this.value" /></td>
       <td><input type="text" value="${item.unidad || ''}" placeholder="m2" style="width:60px" oninput="itemsEdicion[${i}].unidad=this.value" /></td>
-      <td><input type="number" min="1" value="${item.cantidad}" style="width:52px" oninput="actualizarCantidadItem(${i},this.value)" min="${item.esGranel ? 0.001 : 1}" step="1" /></td>
+      <td><input type="number" min="1" step="1" value="${item.cantidad}" style="width:52px" oninput="actualizarCantidadItem(${i},this.value)" /></td>
       <td><input type="number" min="0" step="0.01" value="${item.precio.toFixed(2)}" style="width:82px" oninput="actualizarPrecioItem(${i},this.value)" /></td>
       <td id="srv-total-${i}"><strong>${fmt(item.precio * item.cantidad)}</strong></td>
       <td><button class="btn-icon" onclick="quitarItem(${i})" style="color:#f44336">&times;</button></td>

@@ -456,10 +456,9 @@ function renderTablaDevolucion() {
     const disponible    = d.cantidad - yaDevuelto
     const deshabilitado = disponible <= 0
 
-    const esGranel   = d.esGranel === true
     const unidad     = d.unidadVenta || ''
-    const pasoInput  = esGranel ? '0.001' : '1'
-    const anchoInput = esGranel ? '74px' : '60px'
+    const pasoInput  = '1'
+    const anchoInput = '60px'
 
     return `
       <tr id="dev-row-${d.productoId}" class="${deshabilitado ? 'dev-row-disabled' : ''}">

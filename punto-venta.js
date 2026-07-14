@@ -897,15 +897,9 @@ function abrirModalGranel(id, nombre, precio, unidadVenta, cantidadActual, facto
     _actualizarPreviewImporte()
   }
 
-  // Ajustar step según tipo de producto
   if (inputCant) {
-    if (esGranel) {
-      inputCant.min = '0.001'
-      inputCant.step = '0.001'
-    } else {
-      inputCant.min = '1'
-      inputCant.step = '1'
-    }
+    inputCant.min = '1'
+    inputCant.step = '1'
   }
 
   // Mostrar stock disponible
@@ -1223,8 +1217,8 @@ function actualizarCantidad(productoId, cantidad) {
     if (isNaN(cantParsed) || cantParsed <= 0) {
       eliminarDelCarrito(productoId)
     } else {
-      // ✅ Bloquear decimales para productos NO granel
-      if (!item.esGranel) cantParsed = Math.round(cantParsed)
+      // ✅ Unidades enteras siempre
+      cantParsed = Math.round(cantParsed)
 
       // ✅ Línea capturada por importe: al editar la cantidad manualmente el
       //    precio ajustado deja de ser válido → restaurar precio de catálogo
@@ -1280,7 +1274,7 @@ function actualizarCarrito(opciones = {}) {
           <div class="cart-qty-control">
             <button type="button" class="cart-qty-btn" onclick="ajustarCantidadCarrito(${item.id}, -1)" aria-label="Restar cantidad">−</button>
             <input type="number" value="${cantidadVisible}"
-                   min="${item.esGranel ? 0.001 : 1}" step="1"
+                   min="1" step="1"
                    class="cart-qty-input"
                    onchange="actualizarCantidad(${item.id}, this.value)" />
             <button type="button" class="cart-qty-btn" onclick="ajustarCantidadCarrito(${item.id}, 1)" aria-label="Sumar cantidad">+</button>
@@ -3442,7 +3436,7 @@ function abrirModalAjusteRapido(productoId, stockActual, esGranel, unidadVenta) 
 
   ajusteRapidoActual.textContent       = formatearStockAjuste(stockNum)
   ajusteRapidoNuevo.value              = ''
-  ajusteRapidoNuevo.step               = esGranel ? '0.001' : '1'
+  ajusteRapidoNuevo.step               = '1'
   ajusteRapidoDifLabel.innerHTML       = '&nbsp;'
   ajusteRapidoDifLabel.style.color     = '#9aa3b2'
   ajusteRapidoAviso.innerHTML          = '&nbsp;'

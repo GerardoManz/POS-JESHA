@@ -2351,16 +2351,10 @@ window.abrirAjusteInventario = function(id) {
   document.getElementById('ajuste-motivo').value      = ''
   document.getElementById('ajuste-error').style.display = 'none'
 
-  // Adaptar step para granel
   const inputStockNuevo = document.getElementById('ajuste-stock-nuevo')
   const inputMinNuevo   = document.getElementById('ajuste-min-nuevo')
-  if (producto.esGranel) {
-    if (inputStockNuevo) { inputStockNuevo.step = '0.001'; inputStockNuevo.min = '0' }
-    if (inputMinNuevo)   { inputMinNuevo.step = '0.001'; inputMinNuevo.min = '0' }
-  } else {
-    if (inputStockNuevo) { inputStockNuevo.step = '1'; inputStockNuevo.min = '0' }
-    if (inputMinNuevo)   { inputMinNuevo.step = '1'; inputMinNuevo.min = '0' }
-  }
+  if (inputStockNuevo) { inputStockNuevo.step = '1'; inputStockNuevo.min = '0' }
+  if (inputMinNuevo)   { inputMinNuevo.step = '1'; inputMinNuevo.min = '0' }
 
   document.getElementById('modal-ajuste-inv').style.display = 'flex'
   setTimeout(() => document.getElementById('ajuste-stock-nuevo').focus(), 80)
