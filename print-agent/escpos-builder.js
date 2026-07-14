@@ -148,7 +148,7 @@ function buildVentaTicket(printer, payload, printerCfg = {}, logoBuffer = null) 
     if (raster) {
       printer.alignCenter()
       printer.append(raster)
-      feed(printer, 3)
+      feed(printer, 1)
     }
   }
 
@@ -191,7 +191,7 @@ function buildVentaTicket(printer, payload, printerCfg = {}, logoBuffer = null) 
   if (payload.qrUrl) {
     printer.drawLine()
     printer.alignCenter()
-    printer.printQR(payload.qrUrl, { cellSize: 6, correction: 'M' })
+    printer.printQR(payload.qrUrl, { cellSize: 4, correction: 'M' })
     printer.newLine()
     pprintln(printer, 'Escanea para solicitar factura')
   }
@@ -231,7 +231,7 @@ function buildCorteTicket(printer, payload, printerCfg = {}, logoBuffer = null) 
     if (raster) {
       printer.alignCenter()
       printer.append(raster)
-      feed(printer, 3)
+      feed(printer, 1)
     }
   }
 
@@ -289,7 +289,7 @@ function buildAbonoTicket(printer, payload, printerCfg = {}, logoBuffer = null) 
     if (raster) {
       printer.alignCenter()
       printer.append(raster)
-      feed(printer, 3)
+      feed(printer, 1)
     }
   }
 
@@ -351,7 +351,7 @@ function buildRetiroTicket(printer, payload, printerCfg = {}, logoBuffer = null)
     if (raster) {
       printer.alignCenter()
       printer.append(raster)
-      feed(printer, 3)
+      feed(printer, 1)
     }
   }
 
