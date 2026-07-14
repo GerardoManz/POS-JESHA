@@ -8,19 +8,37 @@ const path = require('path')
 
 // Quita acentos para compatibilidad con firmware de clones POS58 que no
 // implementan correctamente las tablas de caracteres extendidas (PC850, PC860).
-// ñ → n, á → a, é → e, í → i, ó → o, ú → u, ü → u, etc.
+// n -> n, a -> a, e -> e, i -> i, o -> o, u -> u, u -> u, etc.
 function stripAccents(str) {
   if (typeof str !== 'string') return String(str ?? '')
   return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
 }
 
-// Versión segura de printer.println que quita acentos
+// Version segura de printer.println que quita acentos
 function pprintln(printer, txt) {
   printer.println(stripAccents(txt))
 }
 function pleftRight(printer, left, right) {
   printer.leftRight(stripAccents(left), stripAccents(right))
 }
+
+// ── Helpers modo compacto ──
+function isCompact(printerCfg = {}) {
+  return printerCfg.compactTicket !== false
+}
+function trunc(str, max) {
+  const s = stripAccents(str || '')
+  if (s.length <= max) return s
+  return s.slice(0, Math.max(0, max - 3)) + '...'
+}
+function lineLR(left, right, width) {
+  const l = stripAccents(left || '')
+  const r = stripAccents(right || '')
+  const w = width || 42
+  const space = Math.max(1, w - l.length - r.length)
+  return l + ' '.repeat(space) + r
+}
+// ── Fin helpers compactos ──
 
 const CODEPAGE = {
   PC850: CharacterSet.PC850_MULTILINGUAL,
@@ -29,19 +47,20 @@ const CODEPAGE = {
 }
 
 function makePrinter(printerCfg = {}) {
+  const compact = isCompact(printerCfg)
   return new ThermalPrinter({
     type: PrinterTypes.EPSON,
     interface: { execute: () => {} },
-    width: printerCfg.width || 32,
+    width: compact ? 42 : (printerCfg.width || 32),
     characterSet: CODEPAGE[printerCfg.codepage] || CharacterSet.PC850_MULTILINGUAL,
     removeSpecialCharacters: true,
     lineCharacter: '-'
   })
 }
 
-// Verifica si la impresora está en línea (no desconectada ni en offline manual).
+// Verifica si la impresora esta en linea (no desconectada ni en offline manual).
 // Usa WorkOffline (offline manual) y PrinterStatus (7=Offline).
-// Status 0 (Unknown) es común en POS58 USB incluso cuando funciona.
+// Status 0 (Unknown) es comun en POS58 USB incluso cuando funciona.
 function checkPrinterOnline(printerName) {
   try {
     const out = execFileSync('powershell', [
@@ -56,10 +75,10 @@ function checkPrinterOnline(printerName) {
   }
 }
 
-// Envía un buffer ESC/POS a la impresora Windows escribiendo a la ruta compartida
+// Envia un buffer ESC/POS a la impresora Windows escribiendo a la ruta compartida
 function printRaw(buffer, printerName) {
   const paths = [
-    `\\\\localhost\\POS58`,                          // share name más común
+    `\\\\localhost\\POS58`,                          // share name mas comun
     `\\\\localhost\\${printerName}`,                  // nombre exacto de la impresora
   ]
   for (const p of paths) {
@@ -135,12 +154,33 @@ function aplicarCorte(printer, cutMode) {
   // 'none' (default): no corta; el feed deja papel para corte manual
 }
 
+// ── Helpers de producto compactos ──
+function printProductoVentaCompacto(printer, p, width) {
+  const cantPrecio = `${qty(p.cantidad)}x${money(p.precioUnitario)}`
+  const total = money(p.subtotal)
+  const right = `${cantPrecio} ${total}`
+  const maxName = Math.max(8, width - right.length - 1)
+  const name = trunc(p.nombre || '', maxName)
+  pprintln(printer, lineLR(name, right, width))
+}
+function printProductoRetiroCompacto(printer, p, width) {
+  const cant = qty(p.cantidad)
+  const precio = p.precioUnitario != null ? money(p.precioUnitario) : ''
+  const right = `x${cant} ${precio}`.trim()
+  const maxName = Math.max(8, width - right.length - 1)
+  const name = trunc(p.nombre || '', maxName)
+  pprintln(printer, lineLR(name, right, width))
+}
+
 // ── Ticket de VENTA ──
 function buildVentaTicket(printer, payload, printerCfg = {}, logoBuffer = null) {
   const emp = payload.empresa || {}
   const v = payload.venta || {}
   const productos = Array.isArray(payload.productos) ? payload.productos : []
+  const compact = isCompact(printerCfg)
+  const w = compact ? 42 : (printerCfg.width || 32)
 
+  if (compact) printer.setTypeFontB()
   printer.bold(true)
 
   if (printerCfg.printLogo && logoBuffer) {
@@ -152,67 +192,119 @@ function buildVentaTicket(printer, payload, printerCfg = {}, logoBuffer = null) 
     }
   }
 
-  headerEmpresa(printer, emp)
+  if (compact) {
+    headerEmpresaCompacto(printer, emp)
 
-  printer.drawLine()
-  printer.alignLeft()
-  const folioCorto = v.folio ? v.folio.slice(-5) : ''
-  pleftRight(printer, v.fecha || '', `Folio: ${folioCorto}`)
-  if (payload.cajero) pprintln(printer, `Cajero: ${payload.cajero}`)
-  pprintln(printer, `Cliente: ${payload.cliente || 'Publico General'}`)
+    printer.alignLeft()
+    const folioCorto = v.folio ? v.folio.slice(-5) : ''
+    pprintln(printer, lineLR(v.fecha || '', `Folio: ${folioCorto}`, w))
+    const cli = trunc(`Cliente: ${payload.cliente || 'Publico General'}`, 27)
+    const caj = payload.cajero ? trunc(`Cajero: ${payload.cajero}`, 14) : ''
+    pprintln(printer, lineLR(cli, caj, w))
 
-  printer.drawLine()
-  pleftRight(printer, 'Descripcion', 'Importe')
-  for (const p of productos) {
-    pprintln(printer, String(p.nombre || ''))
-    pleftRight(printer, `  ${qty(p.cantidad)} x ${money(p.precioUnitario)}`, money(p.subtotal))
-  }
+    printer.drawLine()
 
-  printer.drawLine()
-  pleftRight(printer, 'Subtotal:', money(v.subtotal))
-  if (Number(v.descuento) > 0) {
-    pleftRight(printer, 'Descuento:', `-${money(v.descuento)}`)
-  }
-  printer.drawLine()
+    for (const p of productos) {
+      printProductoVentaCompacto(printer, p, w)
+    }
 
-  printer.setTextDoubleHeight()
-  pleftRight(printer, 'TOTAL', money(v.total))
-  printer.setTextNormal()
-  printer.drawLine()
+    if (Number(v.descuento) > 0) {
+      pprintln(printer, lineLR(`Subtotal: ${money(v.subtotal)}`, `Desc: -${money(v.descuento)}`, w))
+    } else {
+      pprintln(printer, lineLR('Subtotal:', money(v.subtotal), w))
+    }
 
-  pleftRight(printer, 'Metodo:', payload.metodoLabel || payload.metodoPago || '')
-  if (Number(payload.montoPagado) > 0) {
-    pleftRight(printer, 'Recibido:', money(payload.montoPagado))
-  }
-  if (Number(payload.cambio) > 0) {
-    pleftRight(printer, 'Cambio:', money(payload.cambio))
-  }
+    printer.drawLine()
 
-  if (payload.qrUrl) {
+    printer.setTypeFontA()
+    printer.bold(true)
+    pleftRight(printer, 'TOTAL', money(v.total))
+    printer.bold(false)
+    if (compact) printer.setTypeFontB()
+    printer.drawLine()
+
+    const metodo = payload.metodoLabel || payload.metodoPago || ''
+    const recibido = Number(payload.montoPagado) > 0 ? `Rec: ${money(payload.montoPagado)}` : ''
+    const cambio = Number(payload.cambio) > 0 ? `Cambio: ${money(payload.cambio)}` : ''
+    const pagoLine = [metodo, recibido, cambio].filter(Boolean).join('  ')
+    if (pagoLine) pprintln(printer, trunc(pagoLine, w))
+
+    if (payload.qrUrl) {
+      printer.drawLine()
+      printer.alignCenter()
+      printer.printQR(payload.qrUrl, { cellSize: 4, correction: 'M' })
+      pprintln(printer, 'Escanea factura')
+    }
+
+    printer.alignCenter()
+    pprintln(printer, 'Gracias por su compra')
+    pprintln(printer, 'Conserve su ticket para aclaraciones')
+    pprintln(printer, 'Factura dentro de 3 dias / No devoluciones por mal uso')
+
+  } else {
+
+    headerEmpresa(printer, emp)
+
+    printer.drawLine()
+    printer.alignLeft()
+    const folioCorto = v.folio ? v.folio.slice(-5) : ''
+    pleftRight(printer, v.fecha || '', `Folio: ${folioCorto}`)
+    if (payload.cajero) pprintln(printer, `Cajero: ${payload.cajero}`)
+    pprintln(printer, `Cliente: ${payload.cliente || 'Publico General'}`)
+
+    printer.drawLine()
+    pleftRight(printer, 'Descripcion', 'Importe')
+    for (const p of productos) {
+      pprintln(printer, String(p.nombre || ''))
+      pleftRight(printer, `  ${qty(p.cantidad)} x ${money(p.precioUnitario)}`, money(p.subtotal))
+    }
+
+    printer.drawLine()
+    pleftRight(printer, 'Subtotal:', money(v.subtotal))
+    if (Number(v.descuento) > 0) {
+      pleftRight(printer, 'Descuento:', `-${money(v.descuento)}`)
+    }
+    printer.drawLine()
+
+    printer.setTextDoubleHeight()
+    pleftRight(printer, 'TOTAL', money(v.total))
+    printer.setTextNormal()
+    printer.drawLine()
+
+    pleftRight(printer, 'Metodo:', payload.metodoLabel || payload.metodoPago || '')
+    if (Number(payload.montoPagado) > 0) {
+      pleftRight(printer, 'Recibido:', money(payload.montoPagado))
+    }
+    if (Number(payload.cambio) > 0) {
+      pleftRight(printer, 'Cambio:', money(payload.cambio))
+    }
+
+    if (payload.qrUrl) {
+      printer.drawLine()
+      printer.alignCenter()
+      printer.printQR(payload.qrUrl, { cellSize: 4, correction: 'M' })
+      printer.newLine()
+      pprintln(printer, 'Escanea para solicitar factura')
+    }
+
     printer.drawLine()
     printer.alignCenter()
-    printer.printQR(payload.qrUrl, { cellSize: 4, correction: 'M' })
-    printer.newLine()
-    pprintln(printer, 'Escanea para solicitar factura')
+    pprintln(printer, 'Gracias por su compra')
+    pprintln(printer, 'Conserve su ticket para')
+    pprintln(printer, 'aclaraciones')
+    printer.drawLine()
+    pprintln(printer, 'El cliente cuenta con 3 dias')
+    pprintln(printer, 'para realizar su factura.')
+    pprintln(printer, 'Pasado el plazo, JESHA no')
+    pprintln(printer, 'se hace responsable.')
+    pprintln(printer, 'No se aceptan devoluciones')
+    pprintln(printer, 'por mal uso.')
   }
 
-  printer.drawLine()
-  printer.alignCenter()
-  pprintln(printer, 'Gracias por su compra')
-  pprintln(printer, 'Conserve su ticket para')
-  pprintln(printer, 'aclaraciones')
-  printer.drawLine()
-  pprintln(printer, 'El cliente cuenta con 3 dias')
-  pprintln(printer, 'para realizar su factura.')
-  pprintln(printer, 'Pasado el plazo, JESHA no')
-  pprintln(printer, 'se hace responsable.')
-  pprintln(printer, 'No se aceptan devoluciones')
-  pprintln(printer, 'por mal uso.')
-
-  feed(printer, printerCfg.feedLinesAfterPrint || 4)
+  feed(printer, printerCfg.feedLinesAfterPrint ?? 2)
   aplicarCorte(printer, printerCfg.cutMode || 'none')
 
-  // Cajón: doble candado — habilitado en config Y solicitado en el payload
+  // Cajon: doble candado - habilitado en config Y solicitado en el payload
   if (printerCfg.openCashDrawerEnabled && payload.abrirCajon) {
     printer.openCashDrawer()
   }
@@ -223,7 +315,10 @@ function buildCorteTicket(printer, payload, printerCfg = {}, logoBuffer = null) 
   const emp = payload.empresa || {}
   const c = payload.corte || {}
   const movimientos = Array.isArray(payload.movimientos) ? payload.movimientos : []
+  const compact = isCompact(printerCfg)
+  const w = compact ? 42 : (printerCfg.width || 32)
 
+  if (compact) printer.setTypeFontB()
   printer.bold(true)
 
   if (printerCfg.printLogo && logoBuffer) {
@@ -235,45 +330,84 @@ function buildCorteTicket(printer, payload, printerCfg = {}, logoBuffer = null) 
     }
   }
 
-  headerEmpresa(printer, emp)
+  if (compact) {
+    headerEmpresaCompacto(printer, emp)
 
-  printer.drawLine()
-  printer.alignCenter()
-  printer.setTextDoubleHeight()
-  pprintln(printer, 'CORTE DE CAJA')
-  printer.setTextNormal()
-  printer.drawLine()
+    printer.drawLine()
+    printer.alignCenter()
+    pprintln(printer, 'CORTE DE CAJA')
+    printer.drawLine()
 
-  printer.alignLeft()
-  if (c.turnoId) pprintln(printer, `Turno: #${c.turnoId}`)
-  if (payload.cajero) pprintln(printer, `Cajero: ${payload.cajero}`)
-  pprintln(printer, `Fecha: ${c.fecha || ''}`)
-  if (c.sucursal) pprintln(printer, `Sucursal: ${c.sucursal}`)
+    printer.alignLeft()
+    const infos = []
+    if (c.turnoId) infos.push(`Turno: #${c.turnoId}`)
+    if (c.sucursal) infos.push(`Suc: ${c.sucursal}`)
+    if (payload.cajero) infos.push(`Cajero: ${payload.cajero}`)
+    infos.push(c.fecha || '')
+    pprintln(printer, infos.join('  '))
 
-  printer.drawLine()
-  pprintln(printer, 'Movimientos por metodo:')
-  for (const m of movimientos) {
-    pleftRight(printer, `  ${m.metodo || ''}`, money(m.monto))
-  }
+    pprintln(printer, 'Movimientos:')
+    for (const m of movimientos) {
+      pprintln(printer, lineLR(`  ${m.metodo || ''}`, money(m.monto), w))
+    }
 
-  printer.drawLine()
-  pleftRight(printer, 'Total calculado:', money(c.montoCalculado))
-  pleftRight(printer, 'Total declarado:', money(c.montoFinalDeclarado))
-  const diff = Number(c.diferencia) || 0
-  if (diff !== 0) {
-    pleftRight(printer, 'Diferencia:', diff > 0 ? `+${money(diff)}` : `-${money(Math.abs(diff))}`)
+    printer.drawLine()
+    pprintln(printer, lineLR('Calculado:', money(c.montoCalculado), w))
+    pprintln(printer, lineLR('Declarado:', money(c.montoFinalDeclarado), w))
+    const diff = Number(c.diferencia) || 0
+    if (diff !== 0) {
+      pprintln(printer, lineLR('Diferencia:', diff > 0 ? `+${money(diff)}` : `-${money(Math.abs(diff))}`, w))
+    } else {
+      pprintln(printer, lineLR('Diferencia:', '$0.00', w))
+    }
+
+    printer.drawLine()
+    printer.alignLeft()
+    pprintln(printer, 'Firma Cajero: ____________________')
+    pprintln(printer, 'Firma Supervisor: ________________')
+
   } else {
-    pleftRight(printer, 'Diferencia:', '$0.00')
+
+    headerEmpresa(printer, emp)
+
+    printer.drawLine()
+    printer.alignCenter()
+    printer.setTextDoubleHeight()
+    pprintln(printer, 'CORTE DE CAJA')
+    printer.setTextNormal()
+    printer.drawLine()
+
+    printer.alignLeft()
+    if (c.turnoId) pprintln(printer, `Turno: #${c.turnoId}`)
+    if (payload.cajero) pprintln(printer, `Cajero: ${payload.cajero}`)
+    pprintln(printer, `Fecha: ${c.fecha || ''}`)
+    if (c.sucursal) pprintln(printer, `Sucursal: ${c.sucursal}`)
+
+    printer.drawLine()
+    pprintln(printer, 'Movimientos por metodo:')
+    for (const m of movimientos) {
+      pleftRight(printer, `  ${m.metodo || ''}`, money(m.monto))
+    }
+
+    printer.drawLine()
+    pleftRight(printer, 'Total calculado:', money(c.montoCalculado))
+    pleftRight(printer, 'Total declarado:', money(c.montoFinalDeclarado))
+    const diff = Number(c.diferencia) || 0
+    if (diff !== 0) {
+      pleftRight(printer, 'Diferencia:', diff > 0 ? `+${money(diff)}` : `-${money(Math.abs(diff))}`)
+    } else {
+      pleftRight(printer, 'Diferencia:', '$0.00')
+    }
+
+    printer.drawLine()
+    printer.alignCenter()
+    pprintln(printer, 'Firma Cajero')
+    feed(printer, 2)
+    printer.drawLine()
+    pprintln(printer, 'Firma Supervisor')
   }
 
-  printer.drawLine()
-  printer.alignCenter()
-  pprintln(printer, 'Firma Cajero')
-  feed(printer, 2)
-  printer.drawLine()
-  pprintln(printer, 'Firma Supervisor')
-
-  feed(printer, printerCfg.feedLinesAfterPrint || 4)
+  feed(printer, printerCfg.feedLinesAfterPrint ?? 2)
   aplicarCorte(printer, printerCfg.cutMode || 'none')
 }
 
@@ -281,7 +415,10 @@ function buildCorteTicket(printer, payload, printerCfg = {}, logoBuffer = null) 
 function buildAbonoTicket(printer, payload, printerCfg = {}, logoBuffer = null) {
   const emp = payload.empresa || {}
   const a = payload.abono || {}
+  const compact = isCompact(printerCfg)
+  const w = compact ? 42 : (printerCfg.width || 32)
 
+  if (compact) printer.setTypeFontB()
   printer.bold(true)
 
   if (printerCfg.printLogo && logoBuffer) {
@@ -293,44 +430,83 @@ function buildAbonoTicket(printer, payload, printerCfg = {}, logoBuffer = null) 
     }
   }
 
-  headerEmpresa(printer, emp)
+  if (compact) {
+    headerEmpresaCompacto(printer, emp)
 
-  printer.drawLine()
-  printer.alignCenter()
-  printer.setTextDoubleHeight()
-  pprintln(printer, 'COMPROBANTE')
-  pprintln(printer, 'DE ABONO')
-  printer.setTextNormal()
-  printer.drawLine()
+    printer.drawLine()
+    printer.alignCenter()
+    pprintln(printer, 'COMPROBANTE DE ABONO')
+    printer.drawLine()
 
-  printer.alignLeft()
-  if (a.abonoId) pprintln(printer, `Abono No: ${a.abonoId}`)
-  pprintln(printer, `Fecha: ${a.fecha || ''}`)
-  if (payload.cajero) pprintln(printer, `Cajero: ${payload.cajero}`)
-  pprintln(printer, `Cliente: ${payload.cliente || 'No especificado'}`)
-  printer.drawLine()
+    printer.alignLeft()
+    const infos = []
+    if (a.abonoId) infos.push(`Abono: #${a.abonoId}`)
+    if (payload.cajero) infos.push(`Cajero: ${payload.cajero}`)
+    infos.push(a.fecha || '')
+    pprintln(printer, infos.join('  '))
+    pprintln(printer, `Cliente: ${payload.cliente || 'No especificado'}`)
 
-  pleftRight(printer, 'Metodo:', payload.metodoLabel || payload.metodoPago || '')
-  pleftRight(printer, 'Monto abonado:', money(a.monto))
+    printer.drawLine()
+    const metodo = payload.metodoLabel || payload.metodoPago || ''
+    pprintln(printer, lineLR(metodo, `Abonado: ${money(a.monto)}`, w))
 
-  printer.drawLine()
-  if (a.saldoAnterior != null) {
-    pleftRight(printer, 'Saldo anterior:', money(a.saldoAnterior))
-  }
-  if (a.saldoNuevo != null) {
-    const saldo = Number(a.saldoNuevo) || 0
-    if (saldo <= 0) {
-      pleftRight(printer, 'Estado:', 'LIQUIDADA')
-    } else {
-      pleftRight(printer, 'Saldo pendiente:', money(a.saldoNuevo))
+    if (a.saldoAnterior != null) {
+      pprintln(printer, lineLR('Saldo anterior:', money(a.saldoAnterior), w))
     }
+    if (a.saldoNuevo != null) {
+      const saldo = Number(a.saldoNuevo) || 0
+      if (saldo <= 0) {
+        pprintln(printer, lineLR('Saldo:', 'LIQUIDADA', w))
+      } else {
+        pprintln(printer, lineLR('Saldo pendiente:', money(a.saldoNuevo), w))
+      }
+    }
+
+    printer.drawLine()
+    printer.alignCenter()
+    pprintln(printer, 'Gracias por su pago')
+
+  } else {
+
+    headerEmpresa(printer, emp)
+
+    printer.drawLine()
+    printer.alignCenter()
+    printer.setTextDoubleHeight()
+    pprintln(printer, 'COMPROBANTE')
+    pprintln(printer, 'DE ABONO')
+    printer.setTextNormal()
+    printer.drawLine()
+
+    printer.alignLeft()
+    if (a.abonoId) pprintln(printer, `Abono No: ${a.abonoId}`)
+    pprintln(printer, `Fecha: ${a.fecha || ''}`)
+    if (payload.cajero) pprintln(printer, `Cajero: ${payload.cajero}`)
+    pprintln(printer, `Cliente: ${payload.cliente || 'No especificado'}`)
+    printer.drawLine()
+
+    pleftRight(printer, 'Metodo:', payload.metodoLabel || payload.metodoPago || '')
+    pleftRight(printer, 'Monto abonado:', money(a.monto))
+
+    printer.drawLine()
+    if (a.saldoAnterior != null) {
+      pleftRight(printer, 'Saldo anterior:', money(a.saldoAnterior))
+    }
+    if (a.saldoNuevo != null) {
+      const saldo = Number(a.saldoNuevo) || 0
+      if (saldo <= 0) {
+        pleftRight(printer, 'Estado:', 'LIQUIDADA')
+      } else {
+        pleftRight(printer, 'Saldo pendiente:', money(a.saldoNuevo))
+      }
+    }
+
+    printer.drawLine()
+    printer.alignCenter()
+    pprintln(printer, 'Gracias por su pago')
   }
 
-  printer.drawLine()
-  printer.alignCenter()
-  pprintln(printer, 'Gracias por su pago')
-
-  feed(printer, printerCfg.feedLinesAfterPrint || 4)
+  feed(printer, printerCfg.feedLinesAfterPrint ?? 2)
   aplicarCorte(printer, printerCfg.cutMode || 'none')
 
   if (printerCfg.openCashDrawerEnabled && payload.abrirCajon) {
@@ -343,7 +519,10 @@ function buildRetiroTicket(printer, payload, printerCfg = {}, logoBuffer = null)
   const emp = payload.empresa || {}
   const r = payload.retiro || {}
   const productos = Array.isArray(payload.productos) ? payload.productos : []
+  const compact = isCompact(printerCfg)
+  const w = compact ? 42 : (printerCfg.width || 32)
 
+  if (compact) printer.setTypeFontB()
   printer.bold(true)
 
   if (printerCfg.printLogo && logoBuffer) {
@@ -355,46 +534,81 @@ function buildRetiroTicket(printer, payload, printerCfg = {}, logoBuffer = null)
     }
   }
 
-  headerEmpresa(printer, emp)
+  if (compact) {
+    headerEmpresaCompacto(printer, emp)
 
-  printer.drawLine()
-  printer.alignCenter()
-  printer.setTextDoubleHeight()
-  pprintln(printer, 'RETIRO DE')
-  pprintln(printer, 'MATERIALES')
-  printer.setTextNormal()
-  printer.drawLine()
+    printer.drawLine()
+    printer.alignCenter()
+    pprintln(printer, 'RETIRO DE MATERIALES')
+    printer.drawLine()
 
-  printer.alignLeft()
-  if (r.retiroId) pprintln(printer, `Retiro No: ${r.retiroId}`)
-  pprintln(printer, `Fecha: ${r.fecha || ''}`)
-  if (payload.cajero) pprintln(printer, `Entregado por: ${payload.cajero}`)
-  if (r.trabajador) pprintln(printer, `Recibido por: ${r.trabajador}`)
+    printer.alignLeft()
+    const infos = []
+    if (r.retiroId) infos.push(`Retiro: #${r.retiroId}`)
+    infos.push(r.fecha || '')
+    if (payload.cajero) infos.push(`Entrega: ${payload.cajero}`)
+    if (r.trabajador) infos.push(`Recibe: ${r.trabajador}`)
+    pprintln(printer, infos.join('  '))
 
-  printer.drawLine()
-  pleftRight(printer, 'Producto', 'Cantidad')
-  for (const p of productos) {
-    pprintln(printer, String(p.nombre || ''))
-    pleftRight(printer, `  x ${qty(p.cantidad)}`, p.precioUnitario != null ? money(p.precioUnitario) : '')
+    for (const p of productos) {
+      printProductoRetiroCompacto(printer, p, w)
+    }
+
+    printer.drawLine()
+    printer.alignLeft()
+    pprintln(printer, 'Firma recibe: ____________________')
+
+  } else {
+
+    headerEmpresa(printer, emp)
+
+    printer.drawLine()
+    printer.alignCenter()
+    printer.setTextDoubleHeight()
+    pprintln(printer, 'RETIRO DE')
+    pprintln(printer, 'MATERIALES')
+    printer.setTextNormal()
+    printer.drawLine()
+
+    printer.alignLeft()
+    if (r.retiroId) pprintln(printer, `Retiro No: ${r.retiroId}`)
+    pprintln(printer, `Fecha: ${r.fecha || ''}`)
+    if (payload.cajero) pprintln(printer, `Entregado por: ${payload.cajero}`)
+    if (r.trabajador) pprintln(printer, `Recibido por: ${r.trabajador}`)
+
+    printer.drawLine()
+    pleftRight(printer, 'Producto', 'Cantidad')
+    for (const p of productos) {
+      pprintln(printer, String(p.nombre || ''))
+      pleftRight(printer, `  x ${qty(p.cantidad)}`, p.precioUnitario != null ? money(p.precioUnitario) : '')
+    }
+
+    printer.drawLine()
+    printer.alignCenter()
+    pprintln(printer, 'Firma de quien recibe')
+    feed(printer, 2)
+    printer.drawLine()
   }
 
-  printer.drawLine()
-  printer.alignCenter()
-  pprintln(printer, 'Firma de quien recibe')
-  feed(printer, 2)
-  printer.drawLine()
-
-  feed(printer, printerCfg.feedLinesAfterPrint || 4)
+  feed(printer, printerCfg.feedLinesAfterPrint ?? 2)
   aplicarCorte(printer, printerCfg.cutMode || 'none')
 }
 
-// ── Helper: header común de empresa ──
+// ── Helper: header comun de empresa (completo) ──
 function headerEmpresa(printer, emp) {
   printer.alignCenter()
   pprintln(printer, emp.nombre || '')
   if (emp.slogan) pprintln(printer, emp.slogan)
   if (emp.direccion) pprintln(printer, emp.direccion)
   if (emp.ciudad) pprintln(printer, emp.ciudad)
+  if (emp.rfc) pprintln(printer, `RFC: ${emp.rfc}`)
+  if (emp.telefono) pprintln(printer, `Tel: ${emp.telefono}`)
+}
+
+// ── Helper: header compacto (modo compacto) ──
+function headerEmpresaCompacto(printer, emp) {
+  printer.alignCenter()
+  pprintln(printer, emp.nombre || '')
   if (emp.rfc) pprintln(printer, `RFC: ${emp.rfc}`)
   if (emp.telefono) pprintln(printer, `Tel: ${emp.telefono}`)
 }
