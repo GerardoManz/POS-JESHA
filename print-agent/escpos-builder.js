@@ -616,6 +616,7 @@ function headerEmpresa(printer, emp) {
 function headerEmpresaCompacto(printer, emp) {
   printer.alignCenter()
   pprintln(printer, emp.nombre || '')
+  if (emp.direccion) pprintln(printer, emp.direccion)
   if (emp.rfc) pprintln(printer, `RFC: ${emp.rfc}`)
   if (emp.telefono) pprintln(printer, `Tel: ${emp.telefono}`)
 }
