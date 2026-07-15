@@ -6,6 +6,10 @@
 const prisma = require('../../lib/prisma')
 const getEmpresaId = require('../../helpers/getEmpresaId')
 const satMatcher = require('./sat.matcher')
+const {
+    normalizarCodigoBarras,
+    parsearErrorPrismaProducto
+} = require('./productos.helpers')
 
 // ═══════════════════════════════════════════════════════════════════
 // UTILIDADES DE PARSEO CSV
@@ -208,8 +212,8 @@ function mapearProducto(fila) {
     // FIX: limpiar comillas residuales y forzar null si vacío
     if (codigoBarras) {
         codigoBarras = codigoBarras.replace(/^[\"']+|[\"']+$/g, '').trim()
-        if (!codigoBarras) codigoBarras = null
     }
+    codigoBarras = normalizarCodigoBarras(codigoBarras)
 
     // Stock inicial y mínimo desde el CSV
     const stockInicial = parseFloat(fila['EXIST.']) || 0
@@ -479,6 +483,7 @@ exports.importarCSV = async (req, res) => {
         let actualizados = 0
         let vinculaciones = 0
         const erroresInsert = []
+        const advertenciasInsert = []
         const BATCH_SIZE = 50
 
         for (let i = 0; i < filasValidas.length; i += BATCH_SIZE) {
@@ -505,10 +510,7 @@ exports.importarCSV = async (req, res) => {
                     if (existente) {
                         const { _stockInicial, _stockMinimo, _stockMaximo, _proveedorNombre, _proveedorApodo, ...dataSinAux } = data
 
-                        // FIX: codigoBarras vacío "" viola @unique — forzar null
-                        if (!dataSinAux.codigoBarras || dataSinAux.codigoBarras.trim() === '') {
-                            dataSinAux.codigoBarras = null
-                        }
+                        dataSinAux.codigoBarras = normalizarCodigoBarras(dataSinAux.codigoBarras)
 
                         await prisma.producto.update({
                             where: { codigoInterno: dataSinAux.codigoInterno },
@@ -563,10 +565,7 @@ exports.importarCSV = async (req, res) => {
                         // Extraer campos auxiliares antes de insertar
                         const { _stockInicial, _stockMinimo, _stockMaximo, _proveedorNombre, _proveedorApodo, ...dataSinAux } = data
 
-                        // FIX: codigoBarras vacío "" viola @unique — forzar null
-                        if (!dataSinAux.codigoBarras || dataSinAux.codigoBarras.trim() === '') {
-                            dataSinAux.codigoBarras = null
-                        }
+                        dataSinAux.codigoBarras = normalizarCodigoBarras(dataSinAux.codigoBarras)
 
                         let productoCreado
                         try {
@@ -574,13 +573,22 @@ exports.importarCSV = async (req, res) => {
                                 data: { empresaId, ...dataSinAux, categoriaId }
                             })
                         } catch (createErr) {
-                            // Segundo intento sin codigoBarras (por si es duplicado)
+                            const barcodeOriginal = dataSinAux.codigoBarras
+                            // Segundo intento sin codigoBarras (por si es duplicado por race condition)
                             try {
                                 productoCreado = await prisma.producto.create({
                                     data: { empresaId, ...dataSinAux, codigoBarras: null, categoriaId }
                                 })
+                                if (barcodeOriginal) {
+                                    advertenciasInsert.push({
+                                        fila: numFila,
+                                        clave: dataSinAux.codigoInterno,
+                                        advertencia: `El código de barras "${barcodeOriginal}" ya existía. Producto creado sin código de barras.`
+                                    })
+                                }
                             } catch (createErr2) {
-                                throw new Error(`No se pudo crear: ${createErr2.message.substring(0, 200)}`)
+                                const parsed = parsearErrorPrismaProducto(createErr2)
+                                throw new Error(parsed ? parsed.error : `No se pudo crear el producto en la fila ${numFila}`)
                             }
                         }
 
@@ -648,13 +656,16 @@ exports.importarCSV = async (req, res) => {
             vinculaciones,
             omitidos: erroresValidacion.length,
             errores: erroresInsert.length,
-            detalleErrores: todosErrores.slice(0, 30)
+            detalleErrores: todosErrores.slice(0, 30),
+            advertencias: advertenciasInsert.length,
+            detalleAdvertencias: advertenciasInsert.slice(0, 30)
         })
 
     } catch (error) {
         console.error('❌ Error general en importación:', error)
+        const parsed = parsearErrorPrismaProducto(error)
         res.status(500).json({
-            error: 'Error en importación: ' + error.message,
+            error: parsed ? parsed.error : 'Error en la importación. Revisa el archivo e intenta de nuevo.',
             total: 0, creados: 0, errores: 0
         })
     }
@@ -738,6 +749,7 @@ exports.importarSoloNuevos = async (req, res) => {
         let omitidos       = 0
         let vinculaciones  = 0
         const erroresInsert    = []
+        const advertenciasInsert = []
         const detalleOmitidos  = []
         const BATCH_SIZE   = 50
 
@@ -802,10 +814,7 @@ exports.importarSoloNuevos = async (req, res) => {
 
                     const { _stockInicial, _stockMinimo, _stockMaximo, _proveedorNombre, _proveedorApodo, ...dataSinAux } = data
 
-                    // FIX: codigoBarras vacío "" viola @unique — forzar null
-                    if (!dataSinAux.codigoBarras || dataSinAux.codigoBarras.trim() === '') {
-                        dataSinAux.codigoBarras = null
-                    }
+                    dataSinAux.codigoBarras = normalizarCodigoBarras(dataSinAux.codigoBarras)
 
                     let productoCreado
                     try {
@@ -813,13 +822,22 @@ exports.importarSoloNuevos = async (req, res) => {
                             data: { empresaId, ...dataSinAux, categoriaId }
                         })
                     } catch (createErr) {
-                        // Segundo intento sin codigoBarras (por si es duplicado)
+                        const barcodeOriginal = dataSinAux.codigoBarras
+                        // Segundo intento sin codigoBarras (por si es duplicado por race condition)
                         try {
                             productoCreado = await prisma.producto.create({
                                 data: { empresaId, ...dataSinAux, codigoBarras: null, categoriaId }
                             })
+                            if (barcodeOriginal) {
+                                advertenciasInsert.push({
+                                    fila: numFila,
+                                    clave: dataSinAux.codigoInterno,
+                                    advertencia: `El código de barras "${barcodeOriginal}" ya existía. Producto creado sin código de barras.`
+                                })
+                            }
                         } catch (createErr2) {
-                            throw new Error(`No se pudo crear: ${createErr2.message.substring(0, 200)}`)
+                            const parsed = parsearErrorPrismaProducto(createErr2)
+                            throw new Error(parsed ? parsed.error : `No se pudo crear el producto en la fila ${numFila}`)
                         }
                     }
 
@@ -887,13 +905,16 @@ exports.importarSoloNuevos = async (req, res) => {
             vinculaciones,
             errores: erroresInsert.length,
             detalleErrores: todosErrores.slice(0, 30),
-            detalleOmitidos: detalleOmitidos.slice(0, 50)
+            detalleOmitidos: detalleOmitidos.slice(0, 50),
+            advertencias: advertenciasInsert.length,
+            detalleAdvertencias: advertenciasInsert.slice(0, 30)
         })
 
     } catch (error) {
         console.error('❌ Error general en importación Solo Nuevos:', error)
+        const parsed = parsearErrorPrismaProducto(error)
         res.status(500).json({
-            error: 'Error en importación: ' + error.message,
+            error: parsed ? parsed.error : 'Error en la importación. Revisa el archivo e intenta de nuevo.',
             total: 0, creados: 0, omitidos: 0, errores: 0
         })
     }

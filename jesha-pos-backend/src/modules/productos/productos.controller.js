@@ -12,6 +12,13 @@ const getEmpresaId = require('../../helpers/getEmpresaId')
 const { eliminarImagenProducto } = require('../../lib/cloudinary')
 const satMatcher = require('./sat.matcher')
 const { verificarStockPostOperacion } = require('../../helpers/verificarStock')
+const {
+    normalizarCodigoBarras,
+    normalizarCodigoInterno,
+    generarCodigoBarrasAutomatico,
+    validarCodigoBarrasDuplicado,
+    parsearErrorPrismaProducto
+} = require('./productos.helpers')
 
 // Valida si claveSat/unidadSat vienen vacíos o como "null"/"undefined"
 function satInvalido(valor) {
@@ -486,6 +493,10 @@ async function crear(req, res) {
         } = req.body
         const empresaId = getEmpresaId(req)
 
+        // Normalizar codigoBarras y codigoInterno
+        codigoBarras = normalizarCodigoBarras(codigoBarras)
+        codigoInterno = normalizarCodigoInterno(codigoInterno)
+
         if (!nombre || !codigoInterno || !categoriaId || !precioBase) {
             const faltantes = []
             if (!nombre) faltantes.push('nombre')
@@ -528,24 +539,23 @@ async function crear(req, res) {
         unidadSat = validacionSat.unidadSat
 
         // Auto-generar código de barras secuencial para productos físicos sin uno
-        if (!esServicio && !codigoBarras) {
-            const ultimoGen = await prisma.producto.findFirst({
-                where: { codigoBarras: { startsWith: 'GEN-' }, empresaId },
-                orderBy: { codigoBarras: 'desc' },
-                select: { codigoBarras: true }
-            })
-            let nextSeq = 1
-            if (ultimoGen?.codigoBarras) {
-                const partes = ultimoGen.codigoBarras.split('-')
-                const num = parseInt(partes[partes.length - 1], 10)
-                if (!isNaN(num)) nextSeq = num + 1
-            }
-            codigoBarras = `GEN-${String(nextSeq).padStart(8, '0')}`
+        const codigoBarrasFueAutogenerado = codigoBarras === null
+        if (!esServicio && codigoBarras === null) {
+            codigoBarras = await generarCodigoBarrasAutomatico(empresaId, prisma)
         }
 
+        // Validar duplicado de codigoInterno
         const existente = await prisma.producto.findUnique({ where: { empresaId_codigoInterno: { empresaId, codigoInterno } } })
         if (existente) {
-            return res.status(400).json({ success: false, error: 'El código interno ya existe' })
+            return res.status(409).json({ success: false, error: 'El código interno ya existe en esta empresa', campo: 'codigoInterno' })
+        }
+
+        // Validar duplicado de codigoBarras
+        if (codigoBarras !== null) {
+            const dupBarras = await validarCodigoBarrasDuplicado({ empresaId, codigoBarras, prismaClient: prisma })
+            if (dupBarras) {
+                return res.status(409).json({ success: false, error: 'El código de barras ya existe en esta empresa', campo: 'codigoBarras' })
+            }
         }
 
         // Factor de conversión: el form envía precio por caja; Producto.costo es por pieza
@@ -610,8 +620,12 @@ async function crear(req, res) {
             }
         })
     } catch (error) {
-        console.error('❌ Error creando producto:', error.message)
-        res.status(400).json({ success: false, error: error.message })
+        console.error('❌ Error creando producto:', error)
+        const prismaErr = parsearErrorPrismaProducto(error)
+        if (prismaErr) {
+            return res.status(prismaErr.status).json({ success: false, error: prismaErr.error })
+        }
+        res.status(400).json({ success: false, error: 'No se pudo guardar el producto. Revisa los datos e intenta de nuevo.' })
     }
 }
 
@@ -622,7 +636,7 @@ async function crear(req, res) {
 async function editar(req, res) {
     try {
         const { id } = req.params
-        const {
+        let {
             nombre, codigoInterno, codigoBarras, descripcion,
             costo, precioBase, precioVenta, categoriaId,
             unidadCompra, unidadVenta, factorConversion,
@@ -630,6 +644,10 @@ async function editar(req, res) {
             tipoFacturaProv, costoSinIvaProveedor,
             esGranel, tipo
         } = req.body
+
+        // Normalizar codigoBarras y codigoInterno
+        codigoBarras = normalizarCodigoBarras(codigoBarras)
+        codigoInterno = normalizarCodigoInterno(codigoInterno)
 
         if (!nombre || !codigoInterno || !categoriaId || !precioBase) {
             const faltantes = []
@@ -696,6 +714,15 @@ async function editar(req, res) {
             ? parseFloat(Math.min(((precioVtaNum / costoUnitVta - 1) * 100), 999.99).toFixed(2))
             : null
 
+        // Validar duplicado de codigoBarras si cambió
+        if (codigoBarras !== null && codigoBarras !== existente.codigoBarras) {
+            const empresaProducto = existente.empresaId
+            const dupBarras = await validarCodigoBarrasDuplicado({ empresaId: empresaProducto, codigoBarras, excluirId: parseInt(id), prismaClient: prisma })
+            if (dupBarras) {
+                return res.status(409).json({ success: false, error: 'El código de barras ya existe en esta empresa', campo: 'codigoBarras' })
+            }
+        }
+
         const producto = await prisma.producto.update({
             where: { id: parseInt(id) },
             data: {
@@ -746,8 +773,12 @@ async function editar(req, res) {
             }
         })
     } catch (error) {
-        console.error('❌ Error editando producto:', error.message)
-        res.status(400).json({ success: false, error: error.message })
+        console.error('❌ Error editando producto:', error)
+        const prismaErr = parsearErrorPrismaProducto(error)
+        if (prismaErr) {
+            return res.status(prismaErr.status).json({ success: false, error: prismaErr.error })
+        }
+        res.status(400).json({ success: false, error: 'No se pudo guardar el producto. Revisa los datos e intenta de nuevo.' })
     }
 }
 
@@ -1072,9 +1103,8 @@ async function editarDatosBasicos(req, res) {
         }
 
         const nombre        = typeof req.body.nombre        === 'string' ? req.body.nombre.trim()        : ''
-        const codigoInterno = typeof req.body.codigoInterno === 'string' ? req.body.codigoInterno.trim() : ''
-        let   codigoBarras  = typeof req.body.codigoBarras  === 'string' ? req.body.codigoBarras.trim()  : ''
-        if (codigoBarras === '') codigoBarras = null
+        const codigoInterno = normalizarCodigoInterno(req.body.codigoInterno)
+        const codigoBarras  = normalizarCodigoBarras(req.body.codigoBarras)
 
         if (!nombre)        return res.status(400).json({ success: false, error: 'El nombre es requerido' })
         if (!codigoInterno) return res.status(400).json({ success: false, error: 'El código interno es requerido' })
@@ -1097,21 +1127,20 @@ async function editarDatosBasicos(req, res) {
 
         const empresaProducto = existente.empresaId
 
+        // Validar duplicado de codigoInterno
         const dupInterno = await prisma.producto.findFirst({
             where: { empresaId: empresaProducto, codigoInterno, id: { not: id } },
             select: { id: true }
         })
         if (dupInterno) {
-            return res.status(400).json({ success: false, error: 'El código interno ya existe en otro producto', campo: 'codigoInterno' })
+            return res.status(409).json({ success: false, error: 'El código interno ya existe en esta empresa', campo: 'codigoInterno' })
         }
 
+        // Validar duplicado de codigoBarras
         if (codigoBarras !== null) {
-            const dupBarras = await prisma.producto.findFirst({
-                where: { empresaId: empresaProducto, codigoBarras, id: { not: id } },
-                select: { id: true }
-            })
+            const dupBarras = await validarCodigoBarrasDuplicado({ empresaId: empresaProducto, codigoBarras, excluirId: id, prismaClient: prisma })
             if (dupBarras) {
-                return res.status(400).json({ success: false, error: 'El código de barras ya existe en otro producto', campo: 'codigoBarras' })
+                return res.status(409).json({ success: false, error: 'El código de barras ya existe en esta empresa', campo: 'codigoBarras' })
             }
         }
 
@@ -1133,16 +1162,12 @@ async function editarDatosBasicos(req, res) {
             }
         })
     } catch (error) {
-        if (error.code === 'P2002') {
-            const target  = Array.isArray(error.meta?.target) ? error.meta.target.join(',') : String(error.meta?.target || '')
-            const esBarra = target.toLowerCase().includes('barras')
-            return res.status(400).json({
-                success: false,
-                error: esBarra ? 'El código de barras ya existe en otro producto' : 'El código interno ya existe en otro producto'
-            })
+        console.error('❌ Error editando datos básicos:', error)
+        const prismaErr = parsearErrorPrismaProducto(error)
+        if (prismaErr) {
+            return res.status(prismaErr.status).json({ success: false, error: prismaErr.error })
         }
-        console.error('❌ Error editando datos básicos:', error.message)
-        return res.status(400).json({ success: false, error: error.message })
+        return res.status(400).json({ success: false, error: 'No se pudo guardar el producto. Revisa los datos e intenta de nuevo.' })
     }
 }
 

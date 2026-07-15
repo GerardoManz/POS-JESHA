@@ -35,6 +35,11 @@ const { Prisma } = require('@prisma/client')
 const prisma = require('../../lib/prisma')
 const getEmpresaId = require('../../helpers/getEmpresaId')
 const satMatcher = require('./sat.matcher')
+const {
+    normalizarCodigoBarras,
+    validarCodigoBarrasDuplicado,
+    parsearErrorPrismaProducto
+} = require('./productos.helpers')
 
 const IVA_FACTOR = 1.16
 
@@ -77,9 +82,7 @@ exports.crearArticuloRapido = async (req, res) => {
     const codigoInternoLimpio = typeof codigoInternoIn === 'string'
       ? codigoInternoIn.trim()
       : ''
-    const codigoBarrasLimpio = typeof codigoBarrasIn === 'string'
-      ? codigoBarrasIn.trim()
-      : ''
+    const codigoBarrasLimpio = normalizarCodigoBarras(codigoBarrasIn) || ''
     const unidadVentaLimpia = typeof unidadVentaIn === 'string' && unidadVentaIn.trim() !== ''
       ? unidadVentaIn.trim()
       : 'pza'
@@ -180,9 +183,7 @@ exports.crearArticuloRapido = async (req, res) => {
     // Duplicado por codigoBarras (si viene)
     let codigoBarrasFinal = null
     if (codigoBarrasLimpio) {
-      const dupBarras = await prisma.producto.findUnique({
-        where: { empresaId_codigoBarras: { empresaId, codigoBarras: codigoBarrasLimpio } }
-      })
+      const dupBarras = await validarCodigoBarrasDuplicado({ empresaId, codigoBarras: codigoBarrasLimpio, prismaClient: prisma })
       if (dupBarras) {
         return res
           .status(409)
@@ -303,17 +304,11 @@ exports.crearArticuloRapido = async (req, res) => {
       }
     })
   } catch (err) {
-    if (err && err.code === 'P2002') {
-      const target = Array.isArray(err.meta?.target) ? err.meta.target.join(',') : String(err.meta?.target || '')
-      const esBarra = target.toLowerCase().includes('barras')
-      return res.status(409).json({
-        success: false,
-        error: esBarra
-          ? 'El código de barras ya existe en esta empresa'
-          : 'El código interno ya existe en esta empresa'
-      })
+    console.error('❌ Error artículo rápido:', err)
+    const prismaErr = parsearErrorPrismaProducto(err)
+    if (prismaErr) {
+      return res.status(prismaErr.status).json({ success: false, error: prismaErr.error })
     }
-    console.error('❌ Error artículo rápido:', err.message)
-    return res.status(500).json({ success: false, error: err.message || 'Error interno al crear artículo rápido' })
+    return res.status(500).json({ success: false, error: 'Error interno al crear artículo rápido' })
   }
 }
