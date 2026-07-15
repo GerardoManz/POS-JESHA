@@ -127,7 +127,11 @@
         <div class="det-section-title">Receptor</div>
         <div class="det-grid">
           <div class="det-item"><span class="det-label">RFC</span><input type="text" id="det-rfc" class="det-val det-field" disabled /></div>
-          <div class="det-item"><span class="det-label">Nombre</span><input type="text" id="det-nombre" class="det-val det-field" disabled /></div>
+          <div class="det-item"><span class="det-label">Nombre</span><input type="text" id="det-nombre" class="det-val det-field" disabled />
+            <div id="det-razon-warning" style="display:none;margin-top:4px;padding:6px 10px;background:rgba(255,160,0,0.1);border:1px solid rgba(255,160,0,0.3);border-radius:6px;font-size:0.72rem;color:var(--warning,#ffa000);line-height:1.4;">
+              CFDI 4.0 requiere que el nombre coincida exactamente con la Constancia de Situación Fiscal. Si falla el timbrado, intenta quitar el régimen societario como "S.A. DE C.V."
+            </div>
+          </div>
           <div class="det-item"><span class="det-label">Régimen</span><select id="det-regimen" class="det-val det-field" disabled><option value="">—</option></select></div>
           <div class="det-item"><span class="det-label">C.P.</span><input type="text" id="det-cp" class="det-val det-field" maxlength="5" disabled /></div>
           <div class="det-item"><span class="det-label">Uso CFDI</span><select id="det-uso" class="det-val det-field" disabled><option value="">—</option></select></div>

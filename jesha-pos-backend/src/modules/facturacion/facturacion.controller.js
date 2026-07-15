@@ -75,6 +75,16 @@ function validarRazonSocialSat(razonSocial) {
   return null
 }
 
+function normalizarRazonSocial(razon) {
+  if (!razon) return ''
+  return razon
+    .trim()
+    .toUpperCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+}
+
 function obtenerFacturaActivaDeVenta(venta) {
   const directas = Array.isArray(venta.FacturaCfdi) ? venta.FacturaCfdi : []
   const vinculadas = Array.isArray(venta.FacturaVenta)
@@ -125,8 +135,8 @@ function buildInvoicePayload({ rfc, razonSocial, regimenFiscal, codigoPostal, us
     }
   })
 
-  // Nombre para el customer
-  let nombreFinal = razonSocial.trim()
+  // Nombre para el customer — normalizado: uppercase, sin acentos, sin espacios dobles
+  let nombreFinal = normalizarRazonSocial(razonSocial)
 
   // ── FIX: Si es RFC genérico, asegurar que NO diga "PUBLICO EN GENERAL" ──
   // porque eso dispara la regla SAT de factura global (InformacionGlobal)
@@ -782,7 +792,12 @@ exports.timbrarManual = async (req, res) => {
           where: { id, ...whereScope },
           data: { procesandoTimbrado: false, procesandoTimbradoEn: null, ultimoErrorTimbrado: (fpErr.message || '').slice(0, 500) }
         }).catch(() => {})
-        return res.status(422).json({ error: 'Error de validación al timbrar: ' + fpErr.message, requiereCorreccion: true })
+        const mensajeFacturapi = fpErr.message || ''
+        const esErrorRazonSocial = /razón social|receptor|razon social/i.test(mensajeFacturapi)
+        const sugerencia = esErrorRazonSocial
+          ? '. Verifica que la razón social esté en mayúsculas, sin acentos y coincida exactamente con la Constancia de Situación Fiscal. En muchos casos CFDI 4.0 requiere quitar "S.A. DE C.V." u otro régimen societario.'
+          : ''
+        return res.status(422).json({ error: 'Error de validación al timbrar: ' + mensajeFacturapi + sugerencia, requiereCorreccion: true })
       }
 
       // INCIERTO → NO liberar lock (procesandoTimbrado sigue true) → revisión manual.

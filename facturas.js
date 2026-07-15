@@ -169,7 +169,9 @@ window.verDetalle = async function(id) {
     })
 
     document.getElementById('det-rfc').value     = f.rfcReceptor || ''
-    document.getElementById('det-nombre').value  = f.nombreReceptor || ''
+    const nombreInput = document.getElementById('det-nombre')
+    nombreInput.value = f.nombreReceptor || ''
+    actualizarAdvertenciaRazonSocial(nombreInput)
     document.getElementById('det-regimen').value = f.regimenFiscal || ''
     filtrarUsosPorRegimen(document.getElementById('det-regimen'), document.getElementById('det-uso'))
     document.getElementById('det-uso').value     = f.usoCfdi || ''
@@ -1235,7 +1237,16 @@ document.addEventListener('DOMContentLoaded', () => {
       this.value = upper
       if (typeof pos === 'number') this.setSelectionRange(pos, pos)
     }
+    actualizarAdvertenciaRazonSocial(this)
   })
+
+  function actualizarAdvertenciaRazonSocial(input) {
+    const warn = document.getElementById('det-razon-warning')
+    if (!warn) return
+    const v = (input.value || '').trim()
+    const tieneSufijo = /(?:S\.A\.(?:\s*DE\s*C\.V\.)?|SA\s+DE\s+CV|S\.DE\s*R\.L\.(?:\s*DE\s*C\.V\.)?|S\.A\.P\.I\.(?:\s*DE\s*C\.V\.)?|S\.C\.|A\.C\.|S\.N\.C\.|S\.C\.P\.)\s*$/.test(v)
+    warn.style.display = tieneSufijo ? 'block' : 'none'
+  }
 
   // Modal manual — timbrar
   document.getElementById('btn-facturar-manual')?.addEventListener('click', facturarManualDesdeModal)
