@@ -690,6 +690,7 @@ if (!document.getElementById('jesha-stock-banner-styles')) {
 
 window.mostrarBannerStockAlertas = function(stockAlerts) {
   if (!stockAlerts || stockAlerts.length === 0) return
+  window.Sonidos?.play?.('chime')
   document.getElementById('jesha-stock-banner')?.remove()
 
   const sinStock = stockAlerts.filter(a => a.estado === 'SIN_STOCK')

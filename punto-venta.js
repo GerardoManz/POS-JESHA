@@ -2223,6 +2223,7 @@ async function verificarPinVendedor(vendedorId) {
 function mostrarModalExito(ventaData, totalFinal) {
   const overlay = document.getElementById('modal-venta-exitosa')
   if (!overlay) return
+  window.Sonidos?.play?.('success')
 
   document.getElementById('exito-folio').textContent  = `Folio: ${ventaData.folio}`
   document.getElementById('exito-total').textContent  = `$${parseFloat(ventaData.total).toFixed(2)}`
@@ -2515,6 +2516,7 @@ async function confirmarVenta() {
     console.error('❌ Error:', err)
 
     if (err.sinStock && err.sinStock.length > 0) {
+      window.Sonidos?.play?.('error')
       const lineas = err.sinStock.map(p =>
         `• ${p.nombre}: necesitas ${p.solicitados}, hay ${p.disponibles}`
       ).join('<br>')
