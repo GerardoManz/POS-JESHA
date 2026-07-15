@@ -77,11 +77,11 @@ function validarRazonSocialSat(razonSocial) {
 
 function normalizarRazonSocial(razon) {
   if (!razon) return ''
+  const ACCENT_MAP = { 'Á': 'A', 'É': 'E', 'Í': 'I', 'Ó': 'O', 'Ú': 'U', 'Ü': 'U' }
   return razon
     .trim()
     .toUpperCase()
-    .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[ÁÉÍÓÚÜ]/g, ch => ACCENT_MAP[ch])
     .replace(/\s+/g, ' ')
 }
 
@@ -137,6 +137,9 @@ function buildInvoicePayload({ rfc, razonSocial, regimenFiscal, codigoPostal, us
 
   // Nombre para el customer — normalizado: uppercase, sin acentos, sin espacios dobles
   let nombreFinal = normalizarRazonSocial(razonSocial)
+  if (process.env.DEBUG_FACTURACION === 'true') {
+    console.log(`📤 Facturapi payload — RFC: ${rfcUpper}, Nombre original: "${razonSocial}", Nombre enviado: "${nombreFinal}"`)
+  }
 
   // ── FIX: Si es RFC genérico, asegurar que NO diga "PUBLICO EN GENERAL" ──
   // porque eso dispara la regla SAT de factura global (InformacionGlobal)
@@ -793,6 +796,9 @@ exports.timbrarManual = async (req, res) => {
           data: { procesandoTimbrado: false, procesandoTimbradoEn: null, ultimoErrorTimbrado: (fpErr.message || '').slice(0, 500) }
         }).catch(() => {})
         const mensajeFacturapi = fpErr.message || ''
+        if (process.env.DEBUG_FACTURACION === 'true') {
+          console.error(`❌ Error timbrado — RFC: ${factura.rfcReceptor}, Nombre: "${factura.nombreReceptor}", Error: ${mensajeFacturapi}`)
+        }
         const esErrorRazonSocial = /razón social|receptor|razon social/i.test(mensajeFacturapi)
         const sugerencia = esErrorRazonSocial
           ? '. Verifica que la razón social esté en mayúsculas, sin acentos y coincida exactamente con la Constancia de Situación Fiscal. En muchos casos CFDI 4.0 requiere quitar "S.A. DE C.V." u otro régimen societario.'
