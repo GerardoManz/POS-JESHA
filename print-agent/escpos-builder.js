@@ -217,8 +217,10 @@ function buildVentaTicket(printer, payload, printerCfg = {}, logoBuffer = null) 
 
     printer.setTypeFontA()
     printer.bold(true)
+    printer.setTextDoubleHeight()
     printer.alignCenter()
     pprintln(printer, `TOTAL ${money(v.total)}`)
+    printer.setTextNormal()
     printer.bold(false)
     if (compact) printer.setTypeFontB()
     printer.alignLeft()
@@ -236,13 +238,13 @@ function buildVentaTicket(printer, payload, printerCfg = {}, logoBuffer = null) 
       printer.alignCenter()
       printer.printQR(payload.qrUrl, { cellSize: 4, correction: 'M' })
       pprintln(printer, 'Escanea para solicitar factura')
+      pprintln(printer, 'Factura dentro de 3 dias')
       printer.drawLine()
     }
 
     printer.alignCenter()
     pprintln(printer, 'Gracias por su compra')
     pprintln(printer, 'Conserve su ticket para aclaraciones')
-    pprintln(printer, 'Factura dentro de 3 dias')
     pprintln(printer, 'No devoluciones por mal uso')
 
   } else {
@@ -617,6 +619,7 @@ function headerEmpresaCompacto(printer, emp) {
   printer.alignCenter()
   pprintln(printer, emp.nombre || '')
   if (emp.direccion) pprintln(printer, emp.direccion)
+  if (emp.ciudad) pprintln(printer, emp.ciudad)
   if (emp.rfc) pprintln(printer, `RFC: ${emp.rfc}`)
   if (emp.telefono) pprintln(printer, `Tel: ${emp.telefono}`)
 }
