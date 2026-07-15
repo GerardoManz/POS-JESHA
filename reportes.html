@@ -21,74 +21,138 @@
 <div class="app-shell">
   <div id="sidebar-container"></div>
   <main class="content">
+
+    <!-- ════════════════════════════════════════════════════════════════
+         HEADER
+         ════════════════════════════════════════════════════════════════ -->
     <header class="content-header">
       <h2>Reportes</h2>
       <p id="fecha-actual"></p>
     </header>
 
-    <!-- Selector de período -->
-    <section class="rep-toolbar">
-      <div class="rep-periodo">
-        <button class="btn-periodo active" data-periodo="hoy">Hoy</button>
-        <button class="btn-periodo" data-periodo="semana">Esta semana</button>
-        <button class="btn-periodo" data-periodo="mes">Este mes</button>
-        <button class="btn-periodo" data-periodo="custom">Personalizado</button>
+    <!-- ════════════════════════════════════════════════════════════════
+         TOOLBAR — Periodo + Filtros globales
+         ════════════════════════════════════════════════════════════════ -->
+    <section class="rep-toolbar" id="rep-toolbar">
+      <div class="rep-toolbar-left">
+        <div class="rep-periodo">
+          <button class="btn-periodo active" data-periodo="hoy">Hoy</button>
+          <button class="btn-periodo" data-periodo="semana">Esta semana</button>
+          <button class="btn-periodo" data-periodo="mes">Este mes</button>
+          <button class="btn-periodo" data-periodo="custom">Personalizado</button>
+        </div>
+        <div class="rep-custom" id="rep-custom" style="display:none;">
+          <div class="rep-custom-field">
+            <label class="filter-date-label">Desde</label>
+            <input type="date" id="rep-desde" class="filter-date" />
+          </div>
+          <div class="rep-custom-field">
+            <label class="filter-date-label">Hasta</label>
+            <input type="date" id="rep-hasta" class="filter-date" />
+          </div>
+          <button class="btn-primary btn-sm" id="btn-aplicar">Aplicar</button>
+        </div>
       </div>
-      <div class="rep-custom" id="rep-custom" style="display:none;">
-        <div style="display:flex;flex-direction:column;gap:2px;">
-          <label class="filter-date-label">Desde</label>
-          <input type="date" id="rep-desde" class="filter-date" />
+      <div class="rep-toolbar-right" id="rep-filtros-globales">
+        <div class="rep-filtro">
+          <label class="filter-date-label">Categoría</label>
+          <select id="filtro-categoria" class="filter-select"><option value="">Todas</option></select>
         </div>
-        <div style="display:flex;flex-direction:column;gap:2px;">
-          <label class="filter-date-label">Hasta</label>
-          <input type="date" id="rep-hasta" class="filter-date" />
+        <div class="rep-filtro">
+          <label class="filter-date-label">Vendedor</label>
+          <select id="filtro-vendedor" class="filter-select"><option value="">Todos</option></select>
         </div>
-        <button class="btn-primary btn-sm" id="btn-aplicar">Aplicar</button>
+        <div class="rep-filtro">
+          <label class="filter-date-label">Zona</label>
+          <select id="filtro-zona" class="filter-select"><option value="">Todas</option></select>
+        </div>
       </div>
     </section>
 
-    <!-- KPIs principales -->
+    <!-- ════════════════════════════════════════════════════════════════
+         KPIs SUPERIORES (4 CARDS)
+         ════════════════════════════════════════════════════════════════ -->
     <section class="kpi-grid" id="rep-kpis">
-      <article class="kpi-card">
+      <!-- Card 1: Ingresos -->
+      <article class="kpi-card kpi-card-ingresos" id="kpi-card-ingresos">
         <div class="kpi-icon blue"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6b9de8" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div>
-        <div class="kpi-label">Ingresos</div>
+        <div class="kpi-label">Ingresos <span class="kpi-comparativo" id="comp-ingresos"><span class="kpi-comp-label">vs ayer</span><span class="kpi-comp-val"></span></span></div>
         <div class="kpi-value" id="kpi-ingresos">$0.00</div>
         <div class="kpi-sub" id="kpi-ingresos-sub">0 ventas</div>
+        <div class="kpi-sparkline" id="sparkline-ingresos"></div>
       </article>
-      <article class="kpi-card">
+
+      <!-- Card 2: Ticket Promedio -->
+      <article class="kpi-card" id="kpi-card-ticket">
         <div class="kpi-icon indigo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8899cc" stroke-width="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg></div>
-        <div class="kpi-label">Ticket Promedio</div>
+        <div class="kpi-label">Ticket Promedio <span class="kpi-comparativo" id="comp-ticket"><span class="kpi-comp-label">vs ayer</span><span class="kpi-comp-val"></span></span></div>
         <div class="kpi-value" id="kpi-ticket">$0.00</div>
         <div class="kpi-sub">por venta</div>
+        <div class="kpi-sparkline" id="sparkline-ticket"></div>
       </article>
-      <article class="kpi-card">
-        <div class="kpi-icon gray"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9aa5b8" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></div>
-        <div class="kpi-label">Efectivo</div>
-        <div class="kpi-value" id="kpi-efectivo">$0.00</div>
-        <div class="kpi-sub" id="kpi-efectivo-sub">0 ventas</div>
+
+      <!-- Card 3: Margen Bruto -->
+      <article class="kpi-card" id="kpi-card-margen">
+        <div class="kpi-icon green"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#60d080" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></div>
+        <div class="kpi-label">Margen Bruto <span class="kpi-comparativo is-hidden" id="comp-margen"><span class="kpi-comp-label">vs ayer</span><span class="kpi-comp-val"></span></span></div>
+        <div class="kpi-value" id="kpi-margen">N/D</div>
+        <div class="kpi-sub" id="kpi-margen-sub">Sin datos de costo &mdash; margen no disponible</div>
+        <div class="kpi-sparkline" id="sparkline-margen"></div>
       </article>
-      <article class="kpi-card">
-        <div class="kpi-icon orange"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#e8710a" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg></div>
-        <div class="kpi-label">Tarjeta / Transf.</div>
-        <div class="kpi-value" id="kpi-tarjeta">$0.00</div>
-        <div class="kpi-sub" id="kpi-tarjeta-sub">0 ventas</div>
+
+      <!-- Card 4: Alertas Stock Crítico -->
+      <article class="kpi-card kpi-card-alertas" id="kpi-card-alertas" style="cursor:pointer;">
+        <div class="kpi-icon red"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ff6b6b" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div>
+        <div class="kpi-label">Alertas Stock Crítico</div>
+        <div class="kpi-value" id="kpi-alertas">—</div>
+        <div class="kpi-sub" id="kpi-alertas-sub">sin stock / stock bajo</div>
       </article>
     </section>
 
-    <!-- Paneles de detalle -->
-    <section class="panel-grid">
+    <!-- ════════════════════════════════════════════════════════════════
+         PANELES SUPERIORES (2 columnas)
+         ════════════════════════════════════════════════════════════════ -->
+    <section class="panel-grid rep-panels-top">
 
-      <!-- Ventas por método de pago -->
-      <article class="panel">
+      <!-- Panel: Donut — Ventas por método de pago -->
+      <article class="panel panel-donut">
         <div class="panel-header">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-          <h3>Ventas por Método de Pago</h3>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+          <h3>Ventas por método de pago</h3>
         </div>
-        <div id="rep-metodos" class="panel-empty">Cargando...</div>
+        <div id="rep-metodos" class="panel-donut-body">
+          <div class="donut-container">
+            <svg class="donut-svg" id="donut-svg" viewBox="0 0 100 100" width="180" height="180">
+              <circle class="donut-bg" cx="50" cy="50" r="42" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="14"/>
+              <g id="donut-segments"></g>
+            </svg>
+            <div class="donut-center" id="donut-center">
+              <span class="donut-total-label">Total</span>
+              <span class="donut-total-val" id="donut-total-val">$0</span>
+            </div>
+          </div>
+          <div class="donut-legend" id="donut-legend"></div>
+        </div>
       </article>
 
-      <!-- Top productos más vendidos -->
-      <article class="panel">
+      <!-- Panel: Ganancias por categoría -->
+      <article class="panel panel-categorias">
+        <div class="panel-header">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+          <h3>Análisis de ganancias por categoría</h3>
+        </div>
+        <div id="rep-categorias" class="panel-empty">Cargando...</div>
+      </article>
+
+    </section>
+
+    <!-- ════════════════════════════════════════════════════════════════
+         PANELES INFERIORES (2 columnas)
+         ════════════════════════════════════════════════════════════════ -->
+    <section class="panel-grid rep-panels-bottom">
+
+      <!-- Panel: Productos más vendidos -->
+      <article class="panel panel-productos">
         <div class="panel-header">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
           <h3>Productos más vendidos</h3>
@@ -96,24 +160,11 @@
         <div id="rep-productos" class="panel-empty">Cargando...</div>
       </article>
 
-    </section>
-
-    <section class="panel-grid" style="margin-top:14px;">
-
-      <!-- Ventas por día -->
-      <article class="panel">
-        <div class="panel-header">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-          <h3>Ventas por día</h3>
-        </div>
-        <div id="rep-por-dia" class="panel-empty">Cargando...</div>
-      </article>
-
-      <!-- Top clientes -->
-      <article class="panel">
+      <!-- Panel: Segmentación de clientes -->
+      <article class="panel panel-clientes">
         <div class="panel-header">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-          <h3>Top Clientes</h3>
+          <h3>Segmentación de clientes por valor</h3>
         </div>
         <div id="rep-clientes" class="panel-empty">Cargando...</div>
       </article>
@@ -121,105 +172,187 @@
     </section>
 
     <!-- ════════════════════════════════════════════════════════════════
-         REPORTE DE STOCK DIARIO
+         EXTRAS: Comparativo, Heatmap, Alertas inteligentes
          ════════════════════════════════════════════════════════════════ -->
-    <div class="stock-divider">
+    <section class="panel-grid rep-panels-extras" id="rep-panels-extras" style="display:none;">
+
+      <article class="panel panel-intel" id="panel-heatmap">
+        <div class="panel-header">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          <h3>Resumen por hora / día</h3>
+        </div>
+        <div id="rep-por-dia" class="panel-empty">Cargando...</div>
+      </article>
+
+      <article class="panel panel-intel" id="panel-intel">
+        <div class="panel-header">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+          <h3>Alertas inteligentes</h3>
+        </div>
+        <div id="rep-intel" class="panel-empty">Cargando...</div>
+      </article>
+
+    </section>
+
+    <!-- ════════════════════════════════════════════════════════════════
+         NUEVOS PANELES: Vendedores, clientes, tendencia, rentabilidad
+         ════════════════════════════════════════════════════════════════ -->
+    <section class="panel-grid" id="rep-panels-nuevos">
+
+      <!-- Panel 1: Ranking de vendedores -->
+      <article class="panel" id="panel-vendedores">
+        <div class="panel-header">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          <h3>Ranking de vendedores</h3>
+        </div>
+        <div id="rep-vendedores" class="panel-empty">Cargando...</div>
+      </article>
+
+      <!-- Panel 2: Clientes frecuentes Top 10 -->
+      <article class="panel" id="panel-clientes-frecuentes">
+        <div class="panel-header">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+          <h3>Clientes frecuentes</h3>
+        </div>
+        <div id="rep-clientes-frecuentes" class="panel-empty">Cargando...</div>
+      </article>
+
+      <!-- Panel 3: Tendencia de ventas -->
+      <article class="panel" id="panel-tendencia">
+        <div class="panel-header">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+          <h3>Tendencia de ventas</h3>
+        </div>
+        <div id="rep-tendencia" class="panel-empty">Cargando...</div>
+      </article>
+
+      <!-- Panel 4: Productos más rentables -->
+      <article class="panel" id="panel-rentables">
+        <div class="panel-header">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+          <h3>Productos más rentables</h3>
+        </div>
+        <div id="rep-rentables" class="panel-empty">Cargando...</div>
+      </article>
+
+      <!-- Panel 5: Ventas bajo costo (full-width) -->
+      <article class="panel panel-full" id="panel-bajocosto">
+        <div class="panel-header">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          <h3>Ventas bajo costo</h3>
+        </div>
+        <div id="rep-bajocosto" class="panel-empty">Cargando...</div>
+      </article>
+
+    </section>
+
+    <!-- ════════════════════════════════════════════════════════════════
+         STOCK — Sección colapsable (funcionalidad original intacta)
+         ════════════════════════════════════════════════════════════════ -->
+    <div class="stock-divider" id="stock-section-toggle">
       <hr/>
       <span>Reporte Diario de Stock</span>
+      <button class="stock-collapse-btn" id="stock-toggle-btn" title="Colapsar/Expandir">
+        <svg class="stock-chevron" id="stock-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
     </div>
 
-    <section class="stock-toolbar">
-      <div class="stock-row">
-        <div class="stock-field">
-          <label class="filter-date-label">Fecha</label>
-          <input type="date" id="stock-fecha" class="filter-date" />
-        </div>
-        <div class="stock-field">
-          <label class="filter-date-label">Sucursal</label>
-          <select id="stock-sucursal" class="filter-date stock-select"></select>
-        </div>
-        <div class="stock-actions">
-          <button class="btn-primary btn-sm" id="btn-stock-actualizar">Actualizar</button>
-          <button class="btn-primary btn-sm" id="btn-stock-excel" style="background:var(--green,#2e7d32)">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            Excel
-          </button>
-          <button class="btn-primary btn-sm" id="btn-stock-pdf" style="background:var(--orange,#e65100)">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-            Vista HTML
-          </button>
-        </div>
-      </div>
-    </section>
+    <div id="stock-section">
 
-    <!-- KPIs de stock -->
-    <section class="kpi-grid" id="stock-kpis" style="margin-bottom:14px;">
-      <article class="kpi-card">
-        <div class="kpi-icon" style="background:rgba(46,125,50,0.2)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4caf50" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div>
-        <div class="kpi-label">Con Stock</div>
-        <div class="kpi-value" id="skpi-con-stock">—</div>
-        <div class="kpi-sub">productos OK</div>
-      </article>
-      <article class="kpi-card">
-        <div class="kpi-icon" style="background:rgba(230,81,0,0.15)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ff9800" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div>
-        <div class="kpi-label">Stock Bajo</div>
-        <div class="kpi-value" id="skpi-stock-bajo">—</div>
-        <div class="kpi-sub" id="skpi-nuevos-bajo">nuevos hoy: —</div>
-      </article>
-      <article class="kpi-card">
-        <div class="kpi-icon" style="background:rgba(198,40,40,0.15)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ef5350" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg></div>
-        <div class="kpi-label">Sin Stock</div>
-        <div class="kpi-value" id="skpi-sin-stock">—</div>
-        <div class="kpi-sub" id="skpi-nuevos-sin">nuevos hoy: —</div>
-      </article>
-      <article class="kpi-card">
-        <div class="kpi-icon" style="background:rgba(31,58,102,0.2)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6b9de8" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></div>
-        <div class="kpi-label">Alertas Activas</div>
-        <div class="kpi-value" id="skpi-alertas">—</div>
-        <div class="kpi-sub" id="skpi-mov-dia">movs.: — ent. / — sal.</div>
-      </article>
-    </section>
-
-    <!-- NUEVOS HOY -->
-    <div id="stock-nuevos-hoy" style="display:none; margin-bottom:12px;"></div>
-
-    <!-- Panel de alertas -->
-    <section class="panel-grid" style="margin-bottom:14px;">
-      <article class="panel">
-        <div class="panel-header">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ef5350" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
-          <h3>Sin Stock</h3>
-          <span class="stock-badge danger" id="badge-sin-stock">0</span>
+      <section class="stock-toolbar">
+        <div class="stock-row">
+          <div class="stock-field">
+            <label class="filter-date-label">Fecha</label>
+            <input type="date" id="stock-fecha" class="filter-date" />
+          </div>
+          <div class="stock-field">
+            <label class="filter-date-label">Sucursal</label>
+            <select id="stock-sucursal" class="filter-date stock-select"></select>
+          </div>
+          <div class="stock-actions">
+            <button class="btn-primary btn-sm" id="btn-stock-actualizar">Actualizar</button>
+            <button class="btn-primary btn-sm" id="btn-stock-excel" style="background:var(--green,#2e7d32)">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Excel
+            </button>
+            <button class="btn-primary btn-sm" id="btn-stock-pdf" style="background:var(--orange,#e65100)">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+              Vista HTML
+            </button>
+          </div>
         </div>
-        <div id="stock-sin-stock" class="panel-empty">—</div>
-      </article>
-      <article class="panel">
-        <div class="panel-header">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ff9800" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-          <h3>Stock Bajo</h3>
-          <span class="stock-badge warning" id="badge-stock-bajo">0</span>
-        </div>
-        <div id="stock-stock-bajo" class="panel-empty">—</div>
-      </article>
-    </section>
+      </section>
 
-    <!-- Sugerencias de reorden -->
-    <section class="panel-grid">
-      <article class="panel" style="grid-column:1/-1;">
-        <div class="panel-header">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4a90e2" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
-          <h3>Sugerencias de Reorden</h3>
-          <span class="stock-badge info" id="badge-sugerencias">0</span>
-        </div>
-        <div id="stock-sugerencias" class="panel-empty">—</div>
-      </article>
-    </section>
+      <!-- KPIs de stock -->
+      <section class="kpi-grid" id="stock-kpis" style="margin-bottom:14px;">
+        <article class="kpi-card">
+          <div class="kpi-icon" style="background:rgba(46,125,50,0.2)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4caf50" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div>
+          <div class="kpi-label">Con Stock</div>
+          <div class="kpi-value" id="skpi-con-stock">—</div>
+          <div class="kpi-sub">productos OK</div>
+        </article>
+        <article class="kpi-card">
+          <div class="kpi-icon" style="background:rgba(230,81,0,0.15)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ff9800" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div>
+          <div class="kpi-label">Stock Bajo</div>
+          <div class="kpi-value" id="skpi-stock-bajo">—</div>
+          <div class="kpi-sub" id="skpi-nuevos-bajo">nuevos hoy: —</div>
+        </article>
+        <article class="kpi-card">
+          <div class="kpi-icon" style="background:rgba(198,40,40,0.15)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ef5350" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg></div>
+          <div class="kpi-label">Sin Stock</div>
+          <div class="kpi-value" id="skpi-sin-stock">—</div>
+          <div class="kpi-sub" id="skpi-nuevos-sin">nuevos hoy: —</div>
+        </article>
+        <article class="kpi-card">
+          <div class="kpi-icon" style="background:rgba(31,58,102,0.2)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6b9de8" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></div>
+          <div class="kpi-label">Alertas Activas</div>
+          <div class="kpi-value" id="skpi-alertas">—</div>
+          <div class="kpi-sub" id="skpi-mov-dia">movs.: — ent. / — sal.</div>
+        </article>
+      </section>
+
+      <!-- NUEVOS HOY -->
+      <div id="stock-nuevos-hoy" style="display:none; margin-bottom:12px;"></div>
+
+      <!-- Panel de alertas -->
+      <section class="panel-grid" style="margin-bottom:14px;">
+        <article class="panel">
+          <div class="panel-header">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ef5350" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+            <h3>Sin Stock</h3>
+            <span class="stock-badge danger" id="badge-sin-stock">0</span>
+          </div>
+          <div id="stock-sin-stock" class="panel-empty">—</div>
+        </article>
+        <article class="panel">
+          <div class="panel-header">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ff9800" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            <h3>Stock Bajo</h3>
+            <span class="stock-badge warning" id="badge-stock-bajo">0</span>
+          </div>
+          <div id="stock-stock-bajo" class="panel-empty">—</div>
+        </article>
+      </section>
+
+      <!-- Sugerencias de reorden -->
+      <section class="panel-grid">
+        <article class="panel" style="grid-column:1/-1;">
+          <div class="panel-header">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4a90e2" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+            <h3>Sugerencias de Reorden</h3>
+            <span class="stock-badge info" id="badge-sugerencias">0</span>
+          </div>
+          <div id="stock-sugerencias" class="panel-empty">—</div>
+        </article>
+      </section>
+
+    </div><!-- /stock-section -->
 
   </main>
 </div>
 <script src="config.js"></script>
 <script src="sonidos.js"></script>
-  <script src="sidebar.js"></script>
+<script src="sidebar.js"></script>
 <script src="reportes.js"></script>
 </body>
 </html>

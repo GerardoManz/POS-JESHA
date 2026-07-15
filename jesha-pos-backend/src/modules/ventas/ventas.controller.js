@@ -1245,7 +1245,7 @@ exports.obtenerReporteVentas = async (req, res) => {
 
     const sucursalId = resolverSucursalId(req)
 
-    // Query 1: Ventas resumidas (sin detalles)
+    // Query 1: Ventas con detalles + producto + categoría + usuario
     const ventasWhere = {
       creadaEn: { gte: desdeDate, lte: hastaDate },
       estado: { not: 'CANCELADA' }
@@ -1255,7 +1255,29 @@ exports.obtenerReporteVentas = async (req, res) => {
     const ventas = await prisma.venta.findMany({
       where: ventasWhere,
       include: {
-        Cliente: { select: { nombre: true } }
+        Cliente: { select: { nombre: true } },
+        Usuario: { select: { nombre: true } },
+        DetalleVenta: {
+          select: {
+            cantidad: true,
+            precioUnitario: true,
+            subtotal: true,
+            productoId: true,
+            Producto: {
+              select: {
+                nombre: true,
+                codigoInterno: true,
+                imagenUrl: true,
+                costo: true,
+                costoPromedio: true,
+                categoriaId: true,
+                Categoria: {
+                  select: { nombre: true }
+                }
+              }
+            }
+          }
+        }
       },
       orderBy: { creadaEn: 'desc' }
     })
@@ -1282,25 +1304,40 @@ exports.obtenerReporteVentas = async (req, res) => {
       take: 10
     })
 
-    // Obtener nombres de productos
+    // Obtener datos completos de productos del top
     const productoIds = topProductos.map(t => t.productoId)
     const productos = await prisma.producto.findMany({
       where: { id: { in: productoIds } },
-      select: { id: true, nombre: true, codigoInterno: true }
+      select: {
+        id: true,
+        nombre: true,
+        codigoInterno: true,
+        imagenUrl: true,
+        costo: true,
+        costoPromedio: true,
+        Categoria: { select: { nombre: true } }
+      }
     })
     const productoMap = productos.reduce((acc, p) => {
       acc[p.id] = p
       return acc
     }, {})
 
-    // Mapear top productos con nombres
-    const topProductosConNombre = topProductos.map(t => ({
-      productoId: t.productoId,
-      nombre: productoMap[t.productoId]?.nombre || '—',
-      codigo: productoMap[t.productoId]?.codigoInterno || '',
-      cantidad: parseFloat(t._sum.cantidad || 0),
-      importe: parseFloat(t._sum.subtotal || 0)
-    }))
+    // Mapear top productos con datos enriquecidos
+    const topProductosConNombre = topProductos.map(t => {
+      const prod = productoMap[t.productoId] || {}
+      return {
+        productoId: t.productoId,
+        nombre: prod.nombre || '—',
+        codigo: prod.codigoInterno || '',
+        cantidad: parseFloat(t._sum.cantidad || 0),
+        importe: parseFloat(t._sum.subtotal || 0),
+        imagenUrl: prod.imagenUrl || null,
+        categoriaNombre: prod.Categoria?.nombre || null,
+        costoPromedio: prod.costoPromedio ? parseFloat(prod.costoPromedio) : (prod.costo ? parseFloat(prod.costo) : null),
+        costo: prod.costo ? parseFloat(prod.costo) : null
+      }
+    })
 
     res.json({
       success: true,
@@ -1315,7 +1352,25 @@ exports.obtenerReporteVentas = async (req, res) => {
         estado: v.estado,
         clienteId: v.clienteId,
         cliente: v.Cliente?.nombre || 'Público general',
-        desglosePagos: v.desglosePagos
+        usuarioId: v.usuarioId,
+        sucursalId: v.sucursalId,
+        vendedorNombre: v.Usuario?.nombre || null,
+        desglosePagos: v.desglosePagos,
+        detalles: v.DetalleVenta.map(d => ({
+          productoId: d.productoId,
+          cantidad: parseFloat(d.cantidad),
+          precioUnitario: parseFloat(d.precioUnitario),
+          subtotal: parseFloat(d.subtotal),
+          producto: d.Producto ? {
+            nombre: d.Producto.nombre,
+            codigoInterno: d.Producto.codigoInterno,
+            imagenUrl: d.Producto.imagenUrl || null,
+            categoriaId: d.Producto.categoriaId,
+            categoriaNombre: d.Producto.Categoria?.nombre || null,
+            costo: d.Producto.costo ? parseFloat(d.Producto.costo) : null,
+            costoPromedio: d.Producto.costoPromedio ? parseFloat(d.Producto.costoPromedio) : null
+          } : null
+        }))
       })),
       topProductos: topProductosConNombre
     })
