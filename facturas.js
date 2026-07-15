@@ -1240,7 +1240,7 @@ document.addEventListener('DOMContentLoaded', () => {
     actualizarAdvertenciaRazonSocial(this)
   })
 
-  function actualizarAdvertenciaRazonSocial(input) {
+  window.actualizarAdvertenciaRazonSocial = function(input) {
     const warn = document.getElementById('det-razon-warning')
     if (!warn) return
     const v = (input.value || '').trim()
