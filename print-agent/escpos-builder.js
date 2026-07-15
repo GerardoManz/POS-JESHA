@@ -158,7 +158,7 @@ function aplicarCorte(printer, cutMode) {
 function printProductoVentaCompacto(printer, p, width) {
   const cantPrecio = `${qty(p.cantidad)}x${money(p.precioUnitario)}`
   const total = money(p.subtotal)
-  const right = `${cantPrecio} ${total}`
+  const right = `${cantPrecio}  ${total}`
   const maxName = Math.max(8, width - right.length - 1)
   const name = trunc(p.nombre || '', maxName)
   pprintln(printer, lineLR(name, right, width))
@@ -181,7 +181,6 @@ function buildVentaTicket(printer, payload, printerCfg = {}, logoBuffer = null) 
   const w = compact ? 42 : (printerCfg.width || 32)
 
   if (compact) printer.setTypeFontB()
-  printer.bold(true)
 
   if (printerCfg.printLogo && logoBuffer) {
     const raster = buildRasterImage(logoBuffer)
@@ -218,28 +217,33 @@ function buildVentaTicket(printer, payload, printerCfg = {}, logoBuffer = null) 
 
     printer.setTypeFontA()
     printer.bold(true)
-    pleftRight(printer, 'TOTAL', money(v.total))
+    printer.alignCenter()
+    pprintln(printer, `TOTAL ${money(v.total)}`)
     printer.bold(false)
     if (compact) printer.setTypeFontB()
+    printer.alignLeft()
     printer.drawLine()
 
     const metodo = payload.metodoLabel || payload.metodoPago || ''
+    if (metodo) pprintln(printer, `Metodo: ${metodo}`)
     const recibido = Number(payload.montoPagado) > 0 ? `Rec: ${money(payload.montoPagado)}` : ''
     const cambio = Number(payload.cambio) > 0 ? `Cambio: ${money(payload.cambio)}` : ''
-    const pagoLine = [metodo, recibido, cambio].filter(Boolean).join('  ')
-    if (pagoLine) pprintln(printer, trunc(pagoLine, w))
+    const pagoLine2 = [recibido, cambio].filter(Boolean).join('  ')
+    if (pagoLine2) pprintln(printer, trunc(pagoLine2, w))
 
     if (payload.qrUrl) {
       printer.drawLine()
       printer.alignCenter()
       printer.printQR(payload.qrUrl, { cellSize: 4, correction: 'M' })
-      pprintln(printer, 'Escanea factura')
+      pprintln(printer, 'Escanea para solicitar factura')
+      printer.drawLine()
     }
 
     printer.alignCenter()
     pprintln(printer, 'Gracias por su compra')
     pprintln(printer, 'Conserve su ticket para aclaraciones')
-    pprintln(printer, 'Factura dentro de 3 dias / No devoluciones por mal uso')
+    pprintln(printer, 'Factura dentro de 3 dias')
+    pprintln(printer, 'No devoluciones por mal uso')
 
   } else {
 
@@ -319,7 +323,6 @@ function buildCorteTicket(printer, payload, printerCfg = {}, logoBuffer = null) 
   const w = compact ? 42 : (printerCfg.width || 32)
 
   if (compact) printer.setTypeFontB()
-  printer.bold(true)
 
   if (printerCfg.printLogo && logoBuffer) {
     const raster = buildRasterImage(logoBuffer)
@@ -335,7 +338,9 @@ function buildCorteTicket(printer, payload, printerCfg = {}, logoBuffer = null) 
 
     printer.drawLine()
     printer.alignCenter()
+    printer.bold(true)
     pprintln(printer, 'CORTE DE CAJA')
+    printer.bold(false)
     printer.drawLine()
 
     printer.alignLeft()
@@ -419,7 +424,6 @@ function buildAbonoTicket(printer, payload, printerCfg = {}, logoBuffer = null) 
   const w = compact ? 42 : (printerCfg.width || 32)
 
   if (compact) printer.setTypeFontB()
-  printer.bold(true)
 
   if (printerCfg.printLogo && logoBuffer) {
     const raster = buildRasterImage(logoBuffer)
@@ -435,7 +439,9 @@ function buildAbonoTicket(printer, payload, printerCfg = {}, logoBuffer = null) 
 
     printer.drawLine()
     printer.alignCenter()
+    printer.bold(true)
     pprintln(printer, 'COMPROBANTE DE ABONO')
+    printer.bold(false)
     printer.drawLine()
 
     printer.alignLeft()
@@ -523,7 +529,6 @@ function buildRetiroTicket(printer, payload, printerCfg = {}, logoBuffer = null)
   const w = compact ? 42 : (printerCfg.width || 32)
 
   if (compact) printer.setTypeFontB()
-  printer.bold(true)
 
   if (printerCfg.printLogo && logoBuffer) {
     const raster = buildRasterImage(logoBuffer)
@@ -539,7 +544,9 @@ function buildRetiroTicket(printer, payload, printerCfg = {}, logoBuffer = null)
 
     printer.drawLine()
     printer.alignCenter()
+    printer.bold(true)
     pprintln(printer, 'RETIRO DE MATERIALES')
+    printer.bold(false)
     printer.drawLine()
 
     printer.alignLeft()
