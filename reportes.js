@@ -897,8 +897,6 @@ function renderTendencia(ventas) {
   const pico = puntos.reduce((best, p) => p.total > best.total ? p : best)
   const primero = puntos[0]
   const ultimo = puntos[puntos.length - 1]
-  const picoIndex = puntos.findIndex(p => p.key === pico.key)
-
   // Badge de tendencia
   let badgeCls = 'tendencia-badge-neu', badgeTxt = 'Sin cambio'
   if (puntos.length === 1) {
@@ -915,35 +913,9 @@ function renderTendencia(ventas) {
   const title = tipo === 'hora' ? 'Ventas por hora' : 'Ventas por día'
   const msgUnico = tipo === 'hora' ? 'Una hora con venta registrada' : 'Un día con venta registrado'
 
-  let chartContent = ''
-  if (puntos.length <= 2) {
-    chartContent = renderTendenciaBarras(puntos, maxTotal)
-    if (puntos.length === 1) {
-      chartContent += `<div class="tendencia-note">${escapeHTML(msgUnico)}</div>`
-    }
-  } else {
-    const W = 300, H = 90, PAD_X = 14, PAD_Y = 12
-    const baseY = H - PAD_Y, topY = PAD_Y, yRange = baseY - topY
-    const xStep = (W - PAD_X * 2) / (puntos.length - 1)
-    const pts = puntos.map((p, i) => {
-      const x = PAD_X + i * xStep
-      const y = baseY - (maxTotal > 0 ? (p.total / maxTotal * yRange) : 0)
-      return `${x.toFixed(1)},${y.toFixed(1)}`
-    })
-    const pointsStr = pts.join(' ')
-    const areaStr = `${PAD_X},${baseY} ${pts.join(' ')} ${W - PAD_X},${baseY}`
-    let svgContent = `
-      <defs><linearGradient id="tga" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="var(--accent-strong,#6b9de8)" stop-opacity="0.2"/><stop offset="100%" stop-color="var(--accent-strong,#6b9de8)" stop-opacity="0.01"/></linearGradient></defs>
-      <polygon points="${areaStr}" class="trend-area"/>
-      <polyline points="${pointsStr}" class="trend-line"/>
-      <polyline points="${pointsStr}" class="trend-line-glow"/>`
-    pts.forEach((pt, i) => {
-      const [x, y] = pt.split(',')
-      svgContent += i === picoIndex && maxTotal > 0
-        ? `<circle cx="${x}" cy="${y}" r="4" class="trend-point-peak"/>`
-        : `<circle cx="${x}" cy="${y}" r="2.5" class="trend-point"/>`
-    })
-    chartContent = `<svg class="tendencia-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">${svgContent}</svg>`
+  let chartContent = renderTendenciaBarras(puntos, maxTotal)
+  if (puntos.length === 1) {
+    chartContent += `<div class="tendencia-note">${escapeHTML(msgUnico)}</div>`
   }
 
   el.className = ''
