@@ -139,6 +139,11 @@ let paginaActual            = 1      // Página actual
 let totalPaginas            = 1      // Total de páginas (del backend)
 let isLoadingMore           = false  // Flag anti-doble-fetch
 let terminoBusquedaActual   = ''     // Para poder hacer "cargar más"
+let ultimoProductoAnimadoId = null   // ID del último producto agregado para animar su fila
+
+function prefersReducedMotion() {
+  return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
+}
 
 // ══════════════════════════════════════════════════════════════════
 //  PERSISTENCIA DEL CARRITO — sessionStorage
@@ -1024,6 +1029,7 @@ function agregarAlCarrito(productoId, nombre, precio, esGranel = false, unidadVe
     })
   }
 
+  ultimoProductoAnimadoId = idParsed
   actualizarCarrito({ scrollAlFinal: true })
 }
 
@@ -1293,6 +1299,7 @@ function _confirmarImporteGranel() {
   }
 
   cerrarModalGranel()
+  ultimoProductoAnimadoId = id
   actualizarCarrito({ scrollAlFinal: true })
 
   const detalle = `$${par.subtotal.toFixed(2)} = ${par.cantidad.toFixed(3)} ${unidadVenta || 'u.'}`
@@ -1374,6 +1381,7 @@ function confirmarCantidadGranel() {
   }
 
   cerrarModalGranel()
+  ultimoProductoAnimadoId = id
   actualizarCarrito({ scrollAlFinal: true })
 
   // Toast con info de lo agregado
@@ -1385,6 +1393,12 @@ function confirmarCantidadGranel() {
 
 function eliminarDelCarrito(productoId) {
   carrito = carrito.filter(item => item.id !== productoId)
+  const fila = carritoTbody?.querySelector(`.carrito-row[data-id="${productoId}"]`)
+  if (fila && !prefersReducedMotion()) {
+    fila.classList.add('carrito-row-removing')
+    setTimeout(actualizarCarrito, 150)
+    return
+  }
   actualizarCarrito()
 }
 
@@ -1450,7 +1464,7 @@ function actualizarCarrito(opciones = {}) {
       const unidadLabel = esEmpaque ? (item.unidadCompra || 'caja') : (item.unidadVenta || '')
       const sku = obtenerSkuCarrito(item)
       return `
-      <tr class="carrito-row">
+      <tr class="carrito-row" data-id="${item.id}">
         <td class="carrito-producto-nombre">
           <div class="cart-product-title">${escaparHtml(item.nombre)}</div>
           ${sku ? `<div class="cart-product-sku">SKU: ${escaparHtml(sku)}</div>` : ''}
@@ -1481,6 +1495,12 @@ function actualizarCarrito(opciones = {}) {
         </td>
       </tr>`
     }).join('')
+    // Animar solo la fila del producto recién agregado
+    if (ultimoProductoAnimadoId && !prefersReducedMotion()) {
+      const filaNueva = carritoTbody?.querySelector(`.carrito-row[data-id="${ultimoProductoAnimadoId}"]`)
+      if (filaNueva) filaNueva.classList.add('carrito-row-enter')
+      ultimoProductoAnimadoId = null
+    }
   }
 
   itemsCount.textContent = `${carrito.length}`

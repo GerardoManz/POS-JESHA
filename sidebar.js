@@ -619,7 +619,17 @@ function iniciarVersionChecker() {
 //       jeshaToast('Información', 'info')         → azul
 // ════════════════════════════════════════════════════════════════════
 window.jeshaToast = function(mensaje, tipo = 'error', duracion = 4000) {
-  document.getElementById('jesha-toast')?.remove()
+  let container = document.getElementById('jesha-toast-container')
+  if (!container) {
+    container = document.createElement('div')
+    container.id = 'jesha-toast-container'
+    Object.assign(container.style, {
+      position: 'fixed', top: '20px', right: '20px',
+      zIndex: '9999', display: 'flex', flexDirection: 'column',
+      gap: '8px', maxWidth: '420px', pointerEvents: 'none'
+    })
+    document.body.appendChild(container)
+  }
 
   const colores = {
     error:   { bg: 'rgba(255,107,107,0.12)', border: 'rgba(255,107,107,0.35)', texto: '#ff6b6b', icono: '✕' },
@@ -629,42 +639,47 @@ window.jeshaToast = function(mensaje, tipo = 'error', duracion = 4000) {
   }
   const col = colores[tipo] || colores.error
 
-  if (!document.getElementById('jesha-toast-style')) {
-    const st = document.createElement('style')
-    st.id = 'jesha-toast-style'
-    st.textContent = `@keyframes jeshaToastIn { from { opacity:0; transform:translateY(-8px) } to { opacity:1; transform:translateY(0) } }`
-    document.head.appendChild(st)
-  }
-
   const toast = document.createElement('div')
-  toast.id = 'jesha-toast'
-  Object.assign(toast.style, {
-    position: 'fixed', top: '20px', right: '20px', zIndex: '9999',
-    display: 'flex', alignItems: 'center', gap: '10px',
-    padding: '13px 18px',
-    background: col.bg,
-    border: `1px solid ${col.border}`,
-    borderRadius: '10px',
-    color: col.texto,
-    fontFamily: "'Barlow', sans-serif",
-    fontSize: '0.9rem', fontWeight: '600',
-    boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
-    maxWidth: '400px', lineHeight: '1.4',
-    animation: 'jeshaToastIn 0.2s ease',
-    transition: 'opacity 0.3s'
+  toast.style.cssText =
+    'display:flex;align-items:center;gap:10px;padding:13px 18px;' +
+    'border-radius:10px;font-family:\'Barlow\',sans-serif;font-size:0.9rem;' +
+    'font-weight:600;box-shadow:0 8px 24px rgba(0,0,0,0.4);line-height:1.4;' +
+    'pointer-events:auto;animation:jeshaToastIn 0.2s cubic-bezier(0.34,1.56,0.64,1);' +
+    'background:' + col.bg + ';border:1px solid ' + col.border + ';color:' + col.texto + ';'
+
+  const iconSpan = document.createElement('span')
+  iconSpan.style.cssText = 'font-size:1rem;flex-shrink:0;'
+  iconSpan.textContent = col.icono
+
+  const msgSpan = document.createElement('span')
+  msgSpan.textContent = mensaje
+
+  const closeBtn = document.createElement('button')
+  closeBtn.style.cssText =
+    'background:none;border:none;cursor:pointer;padding:0 0 0 6px;' +
+    'opacity:0.7;line-height:1;font-size:1.1rem;color:' + col.texto + ';'
+  closeBtn.textContent = '\u00D7'
+  closeBtn.addEventListener('click', function() {
+    toast.style.animation = 'jeshaToastOut 0.2s ease forwards'
+    setTimeout(function() { if (toast.parentElement) toast.remove() }, 200)
   })
-  toast.innerHTML = `
-    <span style="font-size:1rem;flex-shrink:0;">${col.icono}</span>
-    <span>${mensaje}</span>
-    <button onclick="this.parentElement.remove()" style="background:none;border:none;color:${col.texto};font-size:1.1rem;cursor:pointer;padding:0 0 0 6px;opacity:0.7;line-height:1;">&times;</button>
-  `
-  document.body.appendChild(toast)
-  setTimeout(() => {
+
+  toast.appendChild(iconSpan)
+  toast.appendChild(msgSpan)
+  toast.appendChild(closeBtn)
+  container.appendChild(toast)
+
+  setTimeout(function() {
     if (toast.parentElement) {
-      toast.style.opacity = '0'
-      setTimeout(() => toast.remove(), 300)
+      toast.style.animation = 'jeshaToastOut 0.2s ease forwards'
+      setTimeout(function() { if (toast.parentElement) toast.remove() }, 200)
     }
   }, duracion)
+
+  while (container.children.length > 3) {
+    var oldest = container.firstChild
+    if (oldest) oldest.remove()
+  }
 }
 
 // ════════════════════════════════════════════════════════════════════

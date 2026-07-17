@@ -16,6 +16,25 @@ if (!TOKEN) { window.location.href = 'login.html'; throw new Error('Sin auth') }
 const fmt      = v => `$${parseFloat(v||0).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})}`
 const fmtFecha = iso => iso ? new Date(iso).toLocaleString('es-MX',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : '—'
 
+function animarKPI(el, valorFinal, formateador, duracion) {
+  if (!el) return
+  const seguro = Number(valorFinal) || 0
+  if (typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    el.textContent = formateador(seguro); return
+  }
+  const ms = duracion || 380
+  const inicio = performance.now()
+  function step(ahora) {
+    const t = Math.min((ahora - inicio) / ms, 1)
+    const eased = 1 - Math.pow(1 - t, 3)
+    el.textContent = formateador(desde + (seguro - desde) * eased)
+    if (t < 1) requestAnimationFrame(step)
+    else el.textContent = formateador(seguro)
+  }
+  var desde = 0
+  requestAnimationFrame(step)
+}
+
 // ── Estado del filtro ──
 let sucursalSeleccionada = '' // '' = todas
 let listaSucursales      = []
@@ -118,17 +137,17 @@ async function cargarKPIs() {
     if (kpis.success) {
       // Ventas hoy
       const elVentasHoy = document.getElementById('kpi-ventas-hoy')
-      elVentasHoy.querySelector('.kpi-value').textContent = fmt(kpis.ventasHoy.total)
+      animarKPI(elVentasHoy.querySelector('.kpi-value'), kpis.ventasHoy.total, fmt, 380)
       elVentasHoy.querySelector('.kpi-sub').textContent = `${kpis.ventasHoy.count} transaccion${kpis.ventasHoy.count !== 1 ? 'es' : ''}`
 
       // Cobranza hoy (abonos a crédito)
       const elCobranzaHoy = document.getElementById('kpi-cobranza-hoy')
-      elCobranzaHoy.querySelector('.kpi-value').textContent = fmt(kpis.cobranzaHoy?.total || 0)
+      animarKPI(elCobranzaHoy.querySelector('.kpi-value'), kpis.cobranzaHoy?.total || 0, fmt, 380)
       elCobranzaHoy.querySelector('.kpi-sub').textContent = `${kpis.cobranzaHoy?.count || 0} abono${(kpis.cobranzaHoy?.count || 0) !== 1 ? 's' : ''}`
 
       // Total histórico
       const elTotalVentas = document.getElementById('kpi-total-ventas')
-      elTotalVentas.querySelector('.kpi-value').textContent = fmt(kpis.ventasHistorico.total)
+      animarKPI(elTotalVentas.querySelector('.kpi-value'), kpis.ventasHistorico.total, fmt, 380)
       elTotalVentas.querySelector('.kpi-sub').textContent = `${kpis.ventasHistorico.count} ventas totales`
 
       // Ventas recientes - renderizar directamente desde el response
@@ -155,17 +174,17 @@ async function cargarKPIs() {
 
     // KPI Con stock
     const elCon = document.getElementById('kpi-con-stock')
-    elCon.querySelector('.kpi-value').textContent = conStock.toLocaleString('es-MX')
+    animarKPI(elCon.querySelector('.kpi-value'), conStock, v => Math.round(v).toLocaleString('es-MX'), 380)
     elCon.querySelector('.kpi-sub').textContent   = `de ${totalActivos.toLocaleString('es-MX')} productos`
 
     // KPI Stock bajo
     const elBajo = document.getElementById('kpi-stock-bajo')
-    elBajo.querySelector('.kpi-value').textContent = stockBajo.toLocaleString('es-MX')
+    animarKPI(elBajo.querySelector('.kpi-value'), stockBajo, v => Math.round(v).toLocaleString('es-MX'), 380)
     elBajo.querySelector('.kpi-sub').textContent   = stockBajo > 0 ? 'Requieren reposición' : 'Stock suficiente ✓'
 
     // KPI Sin stock
     const elSin = document.getElementById('kpi-sin-stock')
-    elSin.querySelector('.kpi-value').textContent = sinStock.toLocaleString('es-MX')
+    animarKPI(elSin.querySelector('.kpi-value'), sinStock, v => Math.round(v).toLocaleString('es-MX'), 380)
     elSin.querySelector('.kpi-sub').textContent   = sinStock > 0 ? 'Agotados' : 'Sin agotados ✓'
 
   } catch (err) {
