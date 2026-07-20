@@ -2014,15 +2014,74 @@ function actualizarFecha() {
 // PAGINACIÓN — Renderizado de controles
 // ═══════════════════════════════════════════════════════════════════
 
+function generarBotonesPagina(actual, total) {
+  const botones = []
+  const maxVisibles = 7
+
+  if (total <= maxVisibles) {
+    for (let i = 1; i <= total; i++) botones.push(i)
+    return botones
+  }
+
+  botones.push(1)
+
+  let inicio = Math.max(2, actual - 1)
+  let fin = Math.min(total - 1, actual + 1)
+
+  if (actual <= 3) {
+    inicio = 2
+    fin = Math.min(5, total - 1)
+  } else if (actual >= total - 2) {
+    inicio = Math.max(total - 4, 2)
+    fin = total - 1
+  }
+
+  if (inicio > 2) botones.push('...')
+  for (let i = inicio; i <= fin; i++) botones.push(i)
+  if (fin < total - 1) botones.push('...')
+
+  botones.push(total)
+  return botones
+}
+
+function irAPaginaInput() {
+  const input = document.getElementById('pag-info-input')
+  const label = document.getElementById('pag-info-label')
+  if (!input || !label) return
+
+  const val = parseInt(input.value)
+  if (isNaN(val) || val < 1 || val > totalPaginas) {
+    input.style.display = 'none'
+    label.style.display = ''
+    return
+  }
+
+  input.style.display = 'none'
+  label.style.display = ''
+
+  if (val !== paginaActual) {
+    paginaActual = val
+    cargarProductos()
+  }
+}
+
+function cerrarInputPagina() {
+  const input = document.getElementById('pag-info-input')
+  const label = document.getElementById('pag-info-label')
+  if (input) input.style.display = 'none'
+  if (label) label.style.display = ''
+}
+
 function renderizarPaginacion() {
   const bar     = document.getElementById('paginacion-bar')
   const btnAnt  = document.getElementById('btn-pag-anterior')
   const btnSig  = document.getElementById('btn-pag-siguiente')
-  const info    = document.getElementById('pag-info')
+  const label   = document.getElementById('pag-info-label')
+  const input   = document.getElementById('pag-info-input')
+  const numCont = document.getElementById('pag-numeros')
 
   if (!bar) return
 
-  // Ocultar si solo hay 1 página o menos
   if (totalPaginas <= 1) {
     bar.style.display = 'none'
     return
@@ -2032,7 +2091,36 @@ function renderizarPaginacion() {
 
   if (btnAnt) btnAnt.disabled = paginaActual <= 1
   if (btnSig) btnSig.disabled = paginaActual >= totalPaginas
-  if (info)   info.textContent = `Página ${paginaActual} de ${totalPaginas} (${totalProductos} productos)`
+
+  if (label) label.textContent = `Página ${paginaActual} de ${totalPaginas} (${totalProductos} productos)`
+
+  if (input) input.style.display = 'none'
+  if (label) label.style.display = ''
+
+  if (numCont) {
+    numCont.innerHTML = ''
+    const botones = generarBotonesPagina(paginaActual, totalPaginas)
+    for (const b of botones) {
+      const btn = document.createElement('button')
+      btn.className = 'pag-num-btn'
+      if (b === '...') {
+        btn.className += ' ellipsis'
+        btn.textContent = '\u2026'
+        btn.disabled = true
+      } else {
+        btn.textContent = b
+        btn.dataset.pagina = b
+        if (b === paginaActual) btn.className += ' active'
+        btn.addEventListener('click', () => {
+          if (b !== paginaActual) {
+            paginaActual = b
+            cargarProductos()
+          }
+        })
+      }
+      numCont.appendChild(btn)
+    }
+  }
 }
 
 function ocultarPaginacion() {
@@ -2063,11 +2151,33 @@ function configurarEventos() {
   if (filtroActivo)      filtroActivo.addEventListener('change', aplicarFiltros)
   if (btnLimpiarFiltros) btnLimpiarFiltros.addEventListener('click', limpiarFiltros)
 
-  // ── Paginación ──
+  // ── Paginación: botones ──
   const btnPagAnt = document.getElementById('btn-pag-anterior')
   const btnPagSig = document.getElementById('btn-pag-siguiente')
   if (btnPagAnt) btnPagAnt.addEventListener('click', () => { if (paginaActual > 1) { paginaActual--; cargarProductos() } })
   if (btnPagSig) btnPagSig.addEventListener('click', () => { if (paginaActual < totalPaginas) { paginaActual++; cargarProductos() } })
+
+  // ── Paginación: label clickeable → input ──
+  const pagLabel = document.getElementById('pag-info-label')
+  const pagInput = document.getElementById('pag-info-input')
+  if (pagLabel) {
+    pagLabel.addEventListener('click', () => {
+      pagLabel.style.display = 'none'
+      if (pagInput) {
+        pagInput.value = paginaActual
+        pagInput.style.display = ''
+        pagInput.focus()
+        pagInput.select()
+      }
+    })
+  }
+  if (pagInput) {
+    pagInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') irAPaginaInput()
+      if (e.key === 'Escape') cerrarInputPagina()
+    })
+    pagInput.addEventListener('blur', () => irAPaginaInput())
+  }
 
   // Selects modal
   if (modalDeptoSelect) {

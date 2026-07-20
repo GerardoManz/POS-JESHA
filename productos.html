@@ -50,6 +50,69 @@
       font-weight: 500;
       user-select: none;
     }
+    .pag-info-clickable {
+      cursor: pointer;
+      text-decoration: underline dotted rgba(255,255,255,0.3);
+      transition: color 0.15s;
+    }
+    .pag-info-clickable:hover {
+      color: #e4e4e7;
+    }
+    .pag-numeros {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .pag-num-btn {
+      min-width: 32px;
+      height: 32px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      color: var(--muted, #71717a);
+      padding: 0 8px;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+      text-align: center;
+      line-height: 32px;
+    }
+    .pag-num-btn:hover:not(.active):not(.ellipsis) {
+      background: rgba(255,255,255,0.1);
+      color: #e4e4e7;
+    }
+    .pag-num-btn.active {
+      background: rgba(59,130,246,0.2);
+      border-color: rgba(59,130,246,0.4);
+      color: #60a5fa;
+      cursor: default;
+    }
+    .pag-num-btn.ellipsis {
+      background: none;
+      border: none;
+      color: var(--muted, #71717a);
+      cursor: default;
+      min-width: 20px;
+      padding: 0 2px;
+    }
+    .pag-input {
+      width: 60px;
+      height: 32px;
+      background: rgba(0,0,0,0.3);
+      border: 1px solid rgba(59,130,246,0.5);
+      color: #e4e4e7;
+      border-radius: 6px;
+      padding: 0 8px;
+      font-size: 0.82rem;
+      font-weight: 500;
+      text-align: center;
+      outline: none;
+    }
+    .pag-input:focus {
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 2px rgba(59,130,246,0.25);
+    }
   </style>
 </head>
 <body data-page="productos">
@@ -230,7 +293,9 @@
       <!-- ── PAGINACIÓN (compartida) ── -->
       <div id="paginacion-bar" class="paginacion-bar" style="display:none;">
         <button id="btn-pag-anterior" class="btn-pag" disabled>← Anterior</button>
-        <span id="pag-info" class="pag-info">Página 1 de 1</span>
+        <div id="pag-numeros" class="pag-numeros"></div>
+        <span id="pag-info-label" class="pag-info pag-info-clickable">Página 1 de 1</span>
+        <input type="number" id="pag-info-input" class="pag-input" min="1" style="display:none;">
         <button id="btn-pag-siguiente" class="btn-pag" disabled>Siguiente →</button>
       </div>
 
