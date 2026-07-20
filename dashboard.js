@@ -16,23 +16,40 @@ if (!TOKEN) { window.location.href = 'login.html'; throw new Error('Sin auth') }
 const fmt      = v => `$${parseFloat(v||0).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})}`
 const fmtFecha = iso => iso ? new Date(iso).toLocaleString('es-MX',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : '—'
 
+const kpiAnimationFrames = new WeakMap()
+
+function prefersReducedMotion() {
+  return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
+}
+
 function animarKPI(el, valorFinal, formateador, duracion) {
   if (!el) return
-  const seguro = Number(valorFinal) || 0
-  if (typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches) {
-    el.textContent = formateador(seguro); return
+  const final = Number(valorFinal) || 0
+  const anterior = Number(el.dataset.kpiValue) || 0
+  el.dataset.kpiValue = String(final)
+
+  const rafAnterior = kpiAnimationFrames.get(el)
+  if (rafAnterior) cancelAnimationFrame(rafAnterior)
+
+  if (prefersReducedMotion() || anterior === final) {
+    el.textContent = formateador(final)
+    kpiAnimationFrames.delete(el)
+    return
   }
   const ms = duracion || 380
   const inicio = performance.now()
   function step(ahora) {
     const t = Math.min((ahora - inicio) / ms, 1)
     const eased = 1 - Math.pow(1 - t, 3)
-    el.textContent = formateador(desde + (seguro - desde) * eased)
-    if (t < 1) requestAnimationFrame(step)
-    else el.textContent = formateador(seguro)
+    el.textContent = formateador(anterior + (final - anterior) * eased)
+    if (t < 1) {
+      kpiAnimationFrames.set(el, requestAnimationFrame(step))
+    } else {
+      el.textContent = formateador(final)
+      kpiAnimationFrames.delete(el)
+    }
   }
-  var desde = 0
-  requestAnimationFrame(step)
+  kpiAnimationFrames.set(el, requestAnimationFrame(step))
 }
 
 // ── Estado del filtro ──

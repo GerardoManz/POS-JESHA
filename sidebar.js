@@ -639,46 +639,105 @@ window.jeshaToast = function(mensaje, tipo = 'error', duracion = 4000) {
   }
   const col = colores[tipo] || colores.error
 
-  const toast = document.createElement('div')
+  const ariaMap = {
+    error:   { role: 'alert', live: 'assertive' },
+    warning: { role: 'alert', live: 'assertive' },
+    info:    { role: 'status', live: 'polite' },
+    success: { role: 'status', live: 'polite' }
+  }
+  const ac = ariaMap[tipo] || ariaMap.error
+
+  function cerrarToast(el) {
+    if (el._toastCerrando) return
+    el._toastCerrando = true
+    clearTimeout(el._toastTimer)
+    el.style.setProperty('--toast-height', el.scrollHeight + 'px')
+    el.style.animation = 'jeshaToastOut 0.2s ease forwards'
+    setTimeout(function() {
+      if (el.parentElement) {
+        el.parentElement.removeChild(el)
+        if (container && container.children.length === 0 && container.parentElement) {
+          container.parentElement.removeChild(container)
+        }
+      }
+    }, 200)
+  }
+
+  // Dedup: buscar toast existente con mismo mensaje + tipo
+  var existing = null
+  for (var i = 0; i < container.children.length; i++) {
+    var child = container.children[i]
+    if (child._toastKey === mensaje + '|' + tipo) {
+      existing = child
+      break
+    }
+  }
+  if (existing) {
+    var countEl = existing.querySelector('.jesha-toast-count')
+    if (countEl) {
+      var c = parseInt(countEl.dataset.count || '1') + 1
+      countEl.dataset.count = String(c)
+      countEl.textContent = '\u00D7' + c
+      countEl.style.animation = 'jeshaToastBump 0.2s ease'
+    }
+    clearTimeout(existing._toastTimer)
+    existing._toastTimer = setTimeout(function() { cerrarToast(existing) }, duracion)
+    return
+  }
+
+  var toast = document.createElement('div')
+  toast._toastKey = mensaje + '|' + tipo
+  toast.role = ac.role
+  toast.setAttribute('aria-live', ac.live)
+  toast.setAttribute('aria-atomic', 'true')
   toast.style.cssText =
-    'display:flex;align-items:center;gap:10px;padding:13px 18px;' +
+    'display:flex;align-items:center;gap:8px;padding:13px 18px;' +
     'border-radius:10px;font-family:\'Barlow\',sans-serif;font-size:0.9rem;' +
     'font-weight:600;box-shadow:0 8px 24px rgba(0,0,0,0.4);line-height:1.4;' +
     'pointer-events:auto;animation:jeshaToastIn 0.2s cubic-bezier(0.34,1.56,0.64,1);' +
     'background:' + col.bg + ';border:1px solid ' + col.border + ';color:' + col.texto + ';'
 
-  const iconSpan = document.createElement('span')
+  var iconSpan = document.createElement('span')
   iconSpan.style.cssText = 'font-size:1rem;flex-shrink:0;'
   iconSpan.textContent = col.icono
 
-  const msgSpan = document.createElement('span')
+  var msgSpan = document.createElement('span')
   msgSpan.textContent = mensaje
 
-  const closeBtn = document.createElement('button')
+  var countSpan = document.createElement('span')
+  countSpan.className = 'jesha-toast-count'
+  countSpan.dataset.count = '1'
+  countSpan.style.cssText = 'font-size:0.75rem;font-weight:700;opacity:0.7;flex-shrink:0;'
+  countSpan.textContent = ''
+
+  var closeBtn = document.createElement('button')
   closeBtn.style.cssText =
-    'background:none;border:none;cursor:pointer;padding:0 0 0 6px;' +
-    'opacity:0.7;line-height:1;font-size:1.1rem;color:' + col.texto + ';'
+    'background:none;border:none;cursor:pointer;padding:0 0 0 4px;' +
+    'opacity:0.7;line-height:1;font-size:1.1rem;color:' + col.texto + ';flex-shrink:0;'
   closeBtn.textContent = '\u00D7'
-  closeBtn.addEventListener('click', function() {
-    toast.style.animation = 'jeshaToastOut 0.2s ease forwards'
-    setTimeout(function() { if (toast.parentElement) toast.remove() }, 200)
-  })
+  closeBtn.addEventListener('click', function() { cerrarToast(toast) })
 
   toast.appendChild(iconSpan)
   toast.appendChild(msgSpan)
+  toast.appendChild(countSpan)
   toast.appendChild(closeBtn)
   container.appendChild(toast)
 
-  setTimeout(function() {
-    if (toast.parentElement) {
-      toast.style.animation = 'jeshaToastOut 0.2s ease forwards'
-      setTimeout(function() { if (toast.parentElement) toast.remove() }, 200)
-    }
-  }, duracion)
+  toast._toastTimer = setTimeout(function() { cerrarToast(toast) }, duracion)
+
+  var pausar = function() { clearTimeout(toast._toastTimer) }
+  var reanudar = function() {
+    clearTimeout(toast._toastTimer)
+    toast._toastTimer = setTimeout(function() { cerrarToast(toast) }, duracion)
+  }
+  toast.addEventListener('mouseenter', pausar)
+  toast.addEventListener('focusin', pausar)
+  toast.addEventListener('mouseleave', reanudar)
+  toast.addEventListener('focusout', reanudar)
 
   while (container.children.length > 3) {
     var oldest = container.firstChild
-    if (oldest) oldest.remove()
+    if (oldest) cerrarToast(oldest)
   }
 }
 

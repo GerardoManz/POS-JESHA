@@ -929,6 +929,11 @@ input[type="date"].filter-date:focus {
 }
 
 @keyframes jeshaToastOut {
-  from { opacity: 1; transform: scale(1); max-height: 80px; margin-bottom: 8px; }
+  from { opacity: 1; transform: scale(1); max-height: var(--toast-height, 80px); margin-bottom: 8px; }
   to   { opacity: 0; transform: scale(0.94); max-height: 0; margin-bottom: 0; padding-top: 0; padding-bottom: 0; overflow: hidden; }
+}
+
+@keyframes jeshaToastBump {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.04); }
 }

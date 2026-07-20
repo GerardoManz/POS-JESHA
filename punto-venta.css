@@ -811,12 +811,16 @@
   cursor: pointer;
   font-size: 0.78rem;
   font-weight: 500;
-  transition: all 0.2s;
+  transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.1s;
 }
 
 .metodo-btn:hover {
   border-color: var(--accent, #4a90e2);
   color: var(--accent, #4a90e2);
+}
+
+.metodo-btn:active {
+  transform: scale(0.97);
 }
 
 .metodo-btn.active {
@@ -1204,6 +1208,44 @@
 .carrito-row-removing {
   animation: cartRowOut 0.15s var(--ease-standard, cubic-bezier(0.4, 0, 0.2, 1)) forwards;
   pointer-events: none;
+}
+
+@keyframes jeshaCartRowUpdated {
+  from { background: rgba(96, 208, 128, 0.12); }
+  to   { background: transparent; }
+}
+
+@keyframes jeshaCartValueBump {
+  0%, 100% { transform: scale(1); }
+  40% { transform: scale(1.14); }
+}
+
+.carrito-row-updated {
+  animation: jeshaCartRowUpdated 0.55s ease;
+}
+
+.carrito-value-bump {
+  animation: jeshaCartValueBump 0.25s ease;
+}
+
+@keyframes jeshaBtnShake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-4px); }
+  40% { transform: translateX(4px); }
+  60% { transform: translateX(-3px); }
+  80% { transform: translateX(3px); }
+}
+
+.spinner-btn {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  vertical-align: middle;
+  margin-right: 4px;
 }
 
 /* El POS hereda el tema manual global definido por theme.js/dashboard.css. */

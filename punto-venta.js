@@ -134,15 +134,81 @@ let ventaEnProceso         = false
 let clientesLista          = []
 let cotIdActual            = null
 const productoCache        = new Map()
+
+const CONFIRMAR_BTN_HTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Confirmar venta'
+
+function setConfirmarVentaState(estado) {
+  if (!btnConfirmarVenta) return
+  if (estado === 'loading') {
+    btnConfirmarVenta.disabled = true
+    btnConfirmarVenta.setAttribute('aria-busy', 'true')
+    btnConfirmarVenta.innerHTML = '<span class="spinner-btn"></span> Procesando...'
+  } else if (estado === 'error') {
+    btnConfirmarVenta.disabled = false
+    btnConfirmarVenta.setAttribute('aria-busy', 'false')
+    btnConfirmarVenta.innerHTML = CONFIRMAR_BTN_HTML
+    if (!prefersReducedMotion()) {
+      btnConfirmarVenta.style.animation = 'none'
+      void btnConfirmarVenta.offsetWidth
+      btnConfirmarVenta.style.animation = 'jeshaBtnShake 0.3s ease'
+    }
+  } else {
+    btnConfirmarVenta.disabled = false
+    btnConfirmarVenta.setAttribute('aria-busy', 'false')
+    btnConfirmarVenta.innerHTML = CONFIRMAR_BTN_HTML
+    btnConfirmarVenta.style.animation = ''
+  }
+}
 let resultadosBusqueda      = []     // Acumula resultados de la búsqueda activa
 let paginaActual            = 1      // Página actual
 let totalPaginas            = 1      // Total de páginas (del backend)
 let isLoadingMore           = false  // Flag anti-doble-fetch
 let terminoBusquedaActual   = ''     // Para poder hacer "cargar más"
 let ultimoProductoAnimadoId = null   // ID del último producto agregado para animar su fila
+let _ultimoProductoExiste  = false  // el producto ya estaba en el carrito (feedback update vs enter)
+
+const montoAnimationFrames = new WeakMap()
 
 function prefersReducedMotion() {
   return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
+}
+
+function reiniciarAnimacionClase(elemento, clase) {
+  if (!elemento || prefersReducedMotion()) return
+  elemento.classList.remove(clase)
+  void elemento.offsetWidth
+  elemento.classList.add(clase)
+  elemento.addEventListener('animationend', function() { elemento.classList.remove(clase) }, { once: true })
+}
+
+function animarMonto(elemento, valorFinal, formateador, duracion) {
+  if (!elemento) return
+  var final = Number(valorFinal) || 0
+  var anterior = Number(elemento.dataset.totalValue) || 0
+  elemento.dataset.totalValue = String(final)
+
+  var rafAnterior = montoAnimationFrames.get(elemento)
+  if (rafAnterior) cancelAnimationFrame(rafAnterior)
+
+  if (prefersReducedMotion() || anterior === final) {
+    elemento.textContent = formateador(final)
+    montoAnimationFrames.delete(elemento)
+    return
+  }
+  var ms = duracion || 250
+  var inicio = performance.now()
+  function step(ahora) {
+    var t = Math.min((ahora - inicio) / ms, 1)
+    var eased = 1 - Math.pow(1 - t, 3)
+    elemento.textContent = formateador(anterior + (final - anterior) * eased)
+    if (t < 1) {
+      montoAnimationFrames.set(elemento, requestAnimationFrame(step))
+    } else {
+      elemento.textContent = formateador(final)
+      montoAnimationFrames.delete(elemento)
+    }
+  }
+  montoAnimationFrames.set(elemento, requestAnimationFrame(step))
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -208,7 +274,9 @@ function restaurarCarritoDeSession() {
     if (estado.metodoPagoSeleccionado) {
       metodoPagoSeleccionado = estado.metodoPagoSeleccionado
       document.querySelectorAll('.metodo-btn').forEach(b => {
-        b.classList.toggle('active', b.dataset.metodo === metodoPagoSeleccionado)
+        var esActivo = b.dataset.metodo === metodoPagoSeleccionado
+        b.classList.toggle('active', esActivo)
+        b.setAttribute('aria-pressed', esActivo ? 'true' : 'false')
       })
     }
 
@@ -1014,8 +1082,10 @@ function agregarAlCarrito(productoId, nombre, precio, esGranel = false, unidadVe
 
   if (existe) {
     existe.cantidad = existe.cantidad + 1
+    _ultimoProductoExiste = true
   } else {
     carrito.push({ id: idParsed, nombre, precio: parseFloat(precio), precioOriginal: parseFloat(precio), cantidad: 1, esGranel: false, unidadVenta: '', unidadCompra: '', factorConversion: 1, unidadElegida: 'base' })
+    _ultimoProductoExiste = false
   }
 
   if (!productoCache.get(idParsed)) {
@@ -1292,7 +1362,7 @@ function _confirmarImporteGranel() {
   }
 
   const existe = carrito.find(item => item.id === id)
-  if (existe) { Object.assign(existe, linea) } else { carrito.push(linea) }
+  if (existe) { Object.assign(existe, linea); _ultimoProductoExiste = true } else { carrito.push(linea); _ultimoProductoExiste = false }
 
   if (!productoCache.get(id)) {
     productoCache.set(id, { id, nombre, precioVenta: precio, precioBase: precio, stock: null, codigoInterno: '', esGranel: true, unidadVenta, unidadCompra, factorConversion: factorConversion || 1 })
@@ -1363,6 +1433,7 @@ function confirmarCantidadGranel() {
     existe.cantidad = cantFinal
     existe.unidadElegida = _unidadElegida
     existe.cantidadVisible = esGranel ? parseFloat(cantidad.toFixed(3)) : Math.round(cantidad)
+    _ultimoProductoExiste = true
   } else {
     carrito.push({
       id, nombre, precio, precioOriginal: precio,
@@ -1374,6 +1445,7 @@ function confirmarCantidadGranel() {
       factorConversion: factor,
       unidadElegida: _unidadElegida
     })
+    _ultimoProductoExiste = false
   }
 
   if (!productoCache.get(id)) {
@@ -1495,17 +1567,27 @@ function actualizarCarrito(opciones = {}) {
         </td>
       </tr>`
     }).join('')
-    // Animar solo la fila del producto recién agregado
+    // Animar fila: enter para producto nuevo, update para existente
     if (ultimoProductoAnimadoId && !prefersReducedMotion()) {
-      const filaNueva = carritoTbody?.querySelector(`.carrito-row[data-id="${ultimoProductoAnimadoId}"]`)
-      if (filaNueva) filaNueva.classList.add('carrito-row-enter')
+      const fila = carritoTbody?.querySelector(`.carrito-row[data-id="${ultimoProductoAnimadoId}"]`)
+      if (fila) {
+        if (_ultimoProductoExiste) {
+          reiniciarAnimacionClase(fila, 'carrito-row-updated')
+          const qtyEl = fila.querySelector('.cart-qty-input')
+          if (qtyEl) reiniciarAnimacionClase(qtyEl, 'carrito-value-bump')
+          const subEl = fila.querySelector('.cart-subtotal')
+          if (subEl) reiniciarAnimacionClase(subEl, 'carrito-value-bump')
+        } else {
+          reiniciarAnimacionClase(fila, 'carrito-row-enter')
+        }
+      }
       ultimoProductoAnimadoId = null
     }
   }
 
   itemsCount.textContent = `${carrito.length}`
   const total = carrito.reduce((sum, item) => sum + subtotalLinea(item), 0)
-  resumenTotal.textContent = `$${total.toFixed(2)}`
+  animarMonto(resumenTotal, total, v => `$${v.toFixed(2)}`, 250)
 
   btnCompletarVenta.disabled = !(carrito.length > 0 && turnoActivo && metodoPagoSeleccionado)
   const btnCotizar = document.getElementById('btn-cotizar-carrito')
@@ -1793,7 +1875,9 @@ function _aplicarEstadoVenta(p) {
   if (p.metodoPagoSeleccionado) {
     metodoPagoSeleccionado = p.metodoPagoSeleccionado
     document.querySelectorAll('.metodo-btn').forEach(b => {
-      b.classList.toggle('active', b.dataset.metodo === metodoPagoSeleccionado)
+      var esActivo = b.dataset.metodo === metodoPagoSeleccionado
+      b.classList.toggle('active', esActivo)
+      b.setAttribute('aria-pressed', esActivo ? 'true' : 'false')
     })
   }
 
@@ -2498,8 +2582,7 @@ async function confirmarVenta() {
       detalles
     }
 
-    btnConfirmarVenta.disabled  = true
-    btnConfirmarVenta.innerHTML = '⟳ Procesando...'
+    setConfirmarVentaState('loading')
 
     const response = await fetch(`${API_URL}/ventas`, {
       method:  'POST',
@@ -2528,12 +2611,13 @@ async function confirmarVenta() {
     resetVentaActual()
 
     // ── FIX: Resetear estado para permitir la siguiente venta ──
+    setConfirmarVentaState('idle')
     ventaEnProceso              = false
-    btnConfirmarVenta.disabled  = false
-    btnConfirmarVenta.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Confirmar venta`
 
   } catch (err) {
     console.error('❌ Error:', err)
+
+    setConfirmarVentaState('error')
 
     if (err.sinStock && err.sinStock.length > 0) {
       window.Sonidos?.play?.('error')
@@ -2546,8 +2630,6 @@ async function confirmarVenta() {
     }
 
     ventaEnProceso              = false
-    btnConfirmarVenta.disabled  = false
-    btnConfirmarVenta.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Confirmar venta`
   }
 }
 
@@ -2875,9 +2957,14 @@ function configurarEventListeners() {
 
   metodosPayButtons.forEach(btn => {
     btn.addEventListener('click', e => {
-      metodosPayButtons.forEach(b => b.classList.remove('active'))
-      e.target.closest('.metodo-btn').classList.add('active')
-      metodoPagoSeleccionado = e.target.closest('.metodo-btn').dataset.metodo
+      metodosPayButtons.forEach(b => {
+        b.classList.remove('active')
+        b.setAttribute('aria-pressed', 'false')
+      })
+      var target = e.target.closest('.metodo-btn')
+      target.classList.add('active')
+      target.setAttribute('aria-pressed', 'true')
+      metodoPagoSeleccionado = target.dataset.metodo
       montoEfectivoControl.style.display = metodoPagoSeleccionado === 'EFECTIVO' ? 'block' : 'none'
       actualizarCarrito()
     })

@@ -61,7 +61,7 @@
             border: 2px dashed #667eea;
             border-radius: 8px;
             background: #f8f9ff;
-            transition: all 0.3s ease;
+            transition: background-color 0.3s ease, border-color 0.3s ease;
             cursor: pointer;
         }
         .file-input-label:hover { background: #f0f2ff; border-color: #764ba2; }
@@ -83,7 +83,7 @@
             font-size: 1em;
             font-weight: 600;
             cursor: pointer;
-            transition: all 0.3s ease;
+            transition: background-color 0.3s ease, transform 0.3s ease, box-shadow 0.3s ease;
         }
         .btn-validate { background: #667eea; color: white; }
         .btn-validate:hover:not(:disabled) {
@@ -128,6 +128,18 @@
 
         @media (max-width: 600px) {
             .buttons-group { grid-template-columns: 1fr; }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          *,
+          *::before,
+          *::after {
+            animation-duration: 0.01ms !important;
+            animation-iteration-count: 1 !important;
+            transition-duration: 0.01ms !important;
+            transition-delay: 0ms !important;
+            scroll-behavior: auto !important;
+          }
         }
     </style>
 </head>

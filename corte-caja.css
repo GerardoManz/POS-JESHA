@@ -474,3 +474,40 @@
   .modal-content { max-width: calc(100vw - 24px) !important; }
   .pagination { flex-wrap: wrap; gap: 8px; }
 }
+
+/* ════════════════════════════════════════════════════════════════════
+   A1 — MODAL DE CORTE: ANIMACIÓN DE ENTRADA
+   ════════════════════════════════════════════════════════════════════ */
+@keyframes jeshaCashModalBackdropIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes jeshaCashModalContentIn {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+#modal-confirmar-cierre,
+#modal-resultado-cierre {
+  animation:
+    jeshaCashModalBackdropIn
+    var(--motion-fast, 120ms)
+    var(--ease-standard, ease)
+    both;
+}
+
+#modal-confirmar-cierre .modal-content,
+#modal-resultado-cierre .modal-content {
+  animation:
+    jeshaCashModalContentIn
+    var(--motion-base, 180ms)
+    var(--ease-out, ease-out)
+    both;
+}
