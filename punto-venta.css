@@ -2455,6 +2455,76 @@
   transform: rotate(90deg);
 }
 
+/* ── Botón Sugerir SAT ── */
+.modal-ar-btn-sugerir {
+  padding: 10px 14px;
+  background: rgba(107, 157, 232, 0.12);
+  border: 1px solid rgba(107, 157, 232, 0.25);
+  border-radius: 8px;
+  color: #9bbef0;
+  font-family: 'Barlow', sans-serif;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s;
+  flex-shrink: 0;
+}
+.modal-ar-btn-sugerir:hover {
+  background: rgba(107, 157, 232, 0.20);
+  border-color: rgba(107, 157, 232, 0.40);
+}
+.modal-ar-btn-sugerir:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ── Resultado sugerencia SAT ── */
+.modal-ar-sat-result {
+  display: none;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  background: rgba(107, 157, 232, 0.04);
+  border: 1px solid rgba(107, 157, 232, 0.10);
+  border-radius: 8px;
+}
+.modal-ar-sat-result.visible {
+  display: flex;
+}
+.ar-sat-badge {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+.ar-sat-badge strong {
+  color: #9bbef0;
+  font-family: monospace;
+  letter-spacing: 0.08em;
+}
+.ar-sat-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.ar-sat-chip {
+  padding: 3px 8px;
+  background: rgba(107, 157, 232, 0.10);
+  border: 1px solid rgba(107, 157, 232, 0.15);
+  border-radius: 4px;
+  font-size: 0.70rem;
+  color: #9bbef0;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.ar-sat-chip:hover {
+  background: rgba(107, 157, 232, 0.20);
+}
+.ar-sat-loading {
+  font-size: 0.75rem;
+  color: var(--muted);
+  font-style: italic;
+}
+
 /* ── Panel avanzadas (oculto por defecto) ── */
 .modal-ar-avanzadas {
   display: none;

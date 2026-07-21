@@ -200,20 +200,29 @@ exports.crearArticuloRapido = async (req, res) => {
     const usuarioId = req.usuario?.id ? parseInt(req.usuario.id) : null
     const unidadSatFinal = typeof unidadSat === 'string' && unidadSat.trim() !== ''
       ? unidadSat.trim().toUpperCase()
-      : 'H87'
-    const claveSatFinal = typeof claveSat === 'string' && claveSat.trim() !== ''
-      ? claveSat.trim()
-      : null
+      : ''
+
+    if (!unidadSatFinal) {
+      return res.status(400).json({ success: false, error: 'La unidad SAT es requerida', campo: 'unidadSat' })
+    }
 
     if (!satMatcher.validarUnidadSat(unidadSatFinal)) {
       return res.status(400).json({ success: false, error: `UNIDAD SAT ${unidadSatFinal} no existe en el catálogo SAT vigente`, campo: 'unidadSat' })
     }
 
-    if (claveSatFinal && !/^\d{8}$/.test(claveSatFinal)) {
+    const claveSatFinal = typeof claveSat === 'string' && claveSat.trim() !== ''
+      ? claveSat.trim()
+      : ''
+
+    if (!claveSatFinal) {
+      return res.status(400).json({ success: false, error: 'La clave SAT es requerida', campo: 'claveSat' })
+    }
+
+    if (!/^\d{8}$/.test(claveSatFinal)) {
       return res.status(400).json({ success: false, error: 'CLAVE SAT debe tener 8 dígitos', campo: 'claveSat' })
     }
 
-    if (claveSatFinal && !satMatcher.validarClaveSat(claveSatFinal)) {
+    if (!satMatcher.validarClaveSat(claveSatFinal)) {
       return res.status(400).json({ success: false, error: `CLAVE SAT ${claveSatFinal} no existe en el catálogo SAT vigente`, campo: 'claveSat' })
     }
 

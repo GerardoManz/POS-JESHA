@@ -557,8 +557,9 @@ const cancelar = async (req, res) => {
 // ── GET /compras/proveedores ──
 const listarProveedores = async (req, res) => {
   try {
+    const empresaId = getEmpresaId(req)
     const { buscar } = req.query
-    const where = { activo: true }
+    const where = { activo: true, empresaId }
     if (buscar) {
       where.OR = [
         { nombreOficial: { contains: buscar, mode: 'insensitive' } },

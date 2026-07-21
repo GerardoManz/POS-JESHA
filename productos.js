@@ -23,6 +23,12 @@ function fmtStock(val) {
   if (isNaN(n)) return '-'
   return Number.isInteger(n) ? n.toString() : n.toFixed(3).replace(/\.?0+$/, '')
 }
+
+function formatearPrecioInventario(valor) {
+  const numero = Number(valor)
+  if (!Number.isFinite(numero)) return '\u2014'
+  return '$' + numero.toFixed(2)
+}
 const API_URL = window.__JESHA_API_URL__ || 'http://localhost:3000'
 let TOKEN = localStorage.getItem('jesha_token')
 
@@ -46,6 +52,10 @@ let unidadesCompraMap  = new Map()
 // Total global
 let totalProductos = 0
 
+// Término de búsqueda actual (para highlight)
+let _terminoBusqueda = ''
+let _debounceBusqueda, _debounceAutosuggest
+
 // ── Estado de paginación ──
 let paginaActual   = 1
 const PRODUCTOS_POR_PAGINA = 50
@@ -54,10 +64,13 @@ let totalPaginas   = 1
 // Variables DOM
 let productosTbody, searchInput, filtroDepto, filtroCat
 let btnNuevoProducto, modal, modalTitle, btnCancelModal, btnCloseModal
-let filtroStock, filtroTipo, filtroActivo
+let filtroStock, filtroTipo, filtroActivo, filtroProveedor
 let formulario, inputImagen
 let imagenPreviewContainer, imagenPreview, btnCambiarPreview
 let btnLimpiarFiltros
+
+// Autosuggest
+let autosuggestDropdown
 
 // Grid / Vista
 let productosGrid, productosListaWrap, btnVistaGrid, btnVistaLista
@@ -87,6 +100,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   filtroStock      = document.getElementById('filtro-stock')
   filtroTipo       = document.getElementById('filtro-tipo')
   filtroActivo     = document.getElementById('filtro-activo')
+  filtroProveedor  = document.getElementById('filtro-proveedor')
+  autosuggestDropdown = document.getElementById('autosuggest-dropdown')
 
   // Capturar elementos DOM — MODAL
   modal              = document.getElementById('modal-producto')
@@ -118,7 +133,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   await cargarDepartamentos()
   await cargarCategorias()
   cargarUnidadesSat()
-  if (ES_ADMIN) await cargarProveedores()  // FIX: PRECIOS no usa el modal de producto, no necesita proveedores
+  if (ES_ADMIN) {
+    await cargarProveedores()
+    llenarSelectFiltroProveedores()
+  }
   await cargarProductos()
   aplicarPermisosProductos()
   configurarEventos()
@@ -353,6 +371,7 @@ async function cargarProductos() {
     params.set('limit', PRODUCTOS_POR_PAGINA)
 
     const busqueda = searchInput?.value?.trim()
+    _terminoBusqueda = busqueda || ''
     if (busqueda) params.set('buscar', busqueda)
 
     const catId = filtroCat?.value
@@ -369,6 +388,9 @@ async function cargarProductos() {
 
     const activoVal = filtroActivo?.value
     if (activoVal) params.set('activo', activoVal)
+
+    const provId = filtroProveedor?.value
+    if (provId) params.set('proveedorId', provId)
 
     const resultado = await apiFetch(`/productos?${params}`)
     productosLista = resultado.data || resultado
@@ -485,6 +507,18 @@ function llenarSelectProveedores() {
   console.log('📋 Select de proveedores rellenado con', proveedoresOrdenados.length, 'opciones')
 }
 
+function llenarSelectFiltroProveedores() {
+  if (!filtroProveedor) return
+  filtroProveedor.innerHTML = '<option value="">Todos</option>'
+  var ordenados = [...proveedoresLista].sort(function(a, b) { return a.nombreOficial.localeCompare(b.nombreOficial) })
+  ordenados.forEach(function(prov) {
+    var opt = document.createElement('option')
+    opt.value = String(prov.id)
+    opt.textContent = prov.alias && prov.alias !== prov.nombreOficial ? prov.nombreOficial + ' (' + prov.alias + ')' : prov.nombreOficial
+    filtroProveedor.appendChild(opt)
+  })
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // SELECTS — MODAL
 // ═══════════════════════════════════════════════════════════════════
@@ -586,13 +620,71 @@ function aplicarFiltros() {
   cargarProductos()
 }
 
+// ── Autosuggest ──
+function _ejecutarAutosuggest() {
+  if (!searchInput || !autosuggestDropdown) return
+  var q = searchInput.value.trim()
+  if (q.length < 2) { cerrarAutosuggest(); return }
+  var params = new URLSearchParams()
+  params.set('q', q)
+  if (filtroProveedor?.value)  params.set('proveedorId', filtroProveedor.value)
+  if (filtroCat?.value)        params.set('categoriaId', filtroCat.value)
+  if (filtroDepto?.value)      params.set('departamentoId', filtroDepto.value)
+  if (filtroStock?.value)      params.set('stock', filtroStock.value)
+  if (filtroTipo?.value)       params.set('tipo', filtroTipo.value)
+  if (filtroActivo?.value)     params.set('activo', filtroActivo.value)
+  apiFetch('/productos/sugerir?' + params.toString())
+    .then(function(resp) {
+      var items = resp.data || []
+      _renderizarAutosuggest(items)
+    })
+    .catch(function() { cerrarAutosuggest() })
+}
+
+function _renderizarAutosuggest(items) {
+  if (!autosuggestDropdown) return
+  autosuggestDropdown.innerHTML = ''
+  if (!items || items.length === 0) {
+    autosuggestDropdown.innerHTML = '<div class="autosuggest-empty">Sin resultados</div>'
+    autosuggestDropdown.style.display = ''
+    return
+  }
+  var frag = document.createDocumentFragment()
+  items.forEach(function(p) {
+    var el = document.createElement('div')
+    el.className = 'autosuggest-item'
+    el.innerHTML = '<span class="as-nombre">' + resaltar(p.nombre, _terminoBusqueda) + '</span>' +
+      '<span class="as-codigo">' + resaltar(p.codigoInterno || '', _terminoBusqueda) + '</span>' +
+      '<span class="as-precio">$' + parseFloat(p.precioVenta || 0).toFixed(2) + '</span>' +
+      '<span class="as-stock">' + parseFloat(p.stock || 0).toFixed(0) + ' pz</span>'
+    el.addEventListener('mousedown', function(e) {
+      e.preventDefault()
+      if (searchInput) searchInput.value = p.nombre
+      clearTimeout(_debounceBusqueda)
+      clearTimeout(_debounceAutosuggest)
+      cerrarAutosuggest()
+      aplicarFiltros()
+    })
+    frag.appendChild(el)
+  })
+  autosuggestDropdown.appendChild(frag)
+  autosuggestDropdown.style.display = ''
+}
+
+function cerrarAutosuggest() {
+  if (autosuggestDropdown) autosuggestDropdown.style.display = 'none'
+}
+
 function limpiarFiltros() {
-  if (filtroDepto)  filtroDepto.value  = ''
-  if (filtroStock)  filtroStock.value  = ''
-  if (filtroTipo)   filtroTipo.value   = ''
-  if (filtroActivo) filtroActivo.value = ''
-  if (filtroCat)    { filtroCat.value = ''; filtroCat.disabled = true }
-  if (searchInput)  searchInput.value  = ''
+  if (filtroDepto)     filtroDepto.value = ''
+  if (filtroStock)     filtroStock.value = ''
+  if (filtroTipo)      filtroTipo.value = ''
+  if (filtroActivo)    filtroActivo.value = ''
+  if (filtroProveedor) filtroProveedor.value = ''
+  if (filtroCat)       { filtroCat.value = ''; filtroCat.disabled = true }
+  if (searchInput)     searchInput.value = ''
+  _terminoBusqueda = ''
+  cerrarAutosuggest()
   actualizarCategoriasFiltroToolbar()
   paginaActual = 1
   cargarProductos()
@@ -615,7 +707,8 @@ function accionesFila(p) {
         data-id="${p.id}" data-activo="${p.activo}" data-nombre="${p.nombre}"
         title="${p.activo ? 'Desactivar producto — dejará de aparecer en el POS' : 'Activar producto — volverá a aparecer en el POS'}">
         ${p.activo ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>' : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>'}
-      </button>`
+      </button>
+      <button class="btn-icon btn-duplicar-producto" data-id="${p.id}" title="Duplicar producto">📋</button>`
   }
   if (ES_PRECIOS) {
     return `<button class="btn-icon btn-editar-precio" data-id="${p.id}" title="Editar precio">💲</button>`
@@ -651,17 +744,21 @@ function renderizarTabla(productos) {
     const deptoNombre = p.Categoria?.Departamento?.nombre || ''
     const catNombre   = p.Categoria?.nombre || '-'
     return `<tr>
-      <td>${p.codigoInterno || '-'}</td>
-      <td><strong>${p.nombre}</strong>${p.esGranel ? `<span style="display:inline-block;margin-left:6px;padding:1px 6px;font-size:0.65rem;font-weight:700;background:rgba(107,157,232,0.15);color:#6b9de8;border-radius:4px;vertical-align:middle;letter-spacing:0.03em;">GRANEL${p.unidadVenta ? ' · ' + p.unidadVenta : ''}</span>` : ''}${p.codigoBarras ? `<br/><small style="color:var(--muted)">${p.codigoBarras}</small>` : ''}</td>
+      <td>${resaltar(p.codigoInterno || '-', _terminoBusqueda)}</td>
+      <td><strong>${resaltar(p.nombre, _terminoBusqueda)}</strong>${p.esGranel ? `<span style="display:inline-block;margin-left:6px;padding:1px 6px;font-size:0.65rem;font-weight:700;background:rgba(107,157,232,0.15);color:#6b9de8;border-radius:4px;vertical-align:middle;letter-spacing:0.03em;">GRANEL${p.unidadVenta ? ' · ' + p.unidadVenta : ''}</span>` : ''}${p.codigoBarras ? `<br/><small style="color:var(--muted)">${resaltar(p.codigoBarras, _terminoBusqueda)}</small>` : ''}</td>
       <td class="col-categoria">${deptoNombre ? `<small style="color:var(--muted);display:block;font-size:0.7rem;">${deptoNombre}</small>` : ''}
           <span class="categoria-badge">${catNombre}</span></td>
-      <td>
-        <div style="font-weight:600">$${parseFloat(p.precioVenta || p.precioBase || 0).toFixed(2)}</div>
-        <div style="font-size:0.72rem;color:var(--muted)">Base: $${parseFloat(p.precioBase || 0).toFixed(2)}</div>
+      <td class="precio-cell">
+        <div class="precio-info precio-info--tabla">
+          <span class="precio-etiqueta">Precio venta</span>
+          <strong class="precio-principal">${formatearPrecioInventario(p.precioVenta)}</strong>
+          <span class="precio-secundario">Precio base: ${formatearPrecioInventario(p.precioBase)}</span>
+        </div>
       </td>
       <td style="color:${stockBajo ? '#ff9999' : 'inherit'}">${fmtStock(stock)}</td>
       <td class="col-min-stock">${fmtStock(minStock)}</td>
       <td class="col-estado"><span class="estado-badge ${p.activo ? 'activo' : 'inactivo'}">${p.activo ? 'Activo' : 'Inactivo'}</span></td>
+      <td class="col-sat"><span class="sat-mono" title="${p.claveSat || ''}">${p.claveSat || '-'}</span>${p.unidadSat ? `<small style="display:block;font-size:0.65rem;color:var(--muted)">${p.unidadSat}</small>` : ''}</td>
       ${(() => { const a = accionesFila(p); return a ? `<td><div class="actions-cell">${a}</div></td>` : '' })()}
     </tr>`
   }).join('')
@@ -871,16 +968,23 @@ function renderProductoCard(p) {
           <strong>${escaparHtml(catNombre)}</strong>
         </div>
 
-        <h4 class="producto-card-name">${escaparHtml(p.nombre || 'Producto sin nombre')}</h4>
+        <h4 class="producto-card-name">${resaltar(p.nombre, _terminoBusqueda) || 'Producto sin nombre'}</h4>
 
         <div class="producto-card-code">
-          ${escaparHtml(p.codigoInterno || '-')}
-          ${p.codigoBarras ? `<small>${escaparHtml(p.codigoBarras)}</small>` : ''}
+          ${resaltar(p.codigoInterno || '-', _terminoBusqueda)}
+          ${p.codigoBarras ? `<small>${resaltar(p.codigoBarras, _terminoBusqueda)}</small>` : ''}
+        </div>
+
+        <div class="producto-card-sat">
+          <span class="sat-mono">${p.claveSat || '-'}</span>
+          ${p.unidadSat ? `<small>${p.unidadSat}</small>` : ''}
         </div>
 
         <div class="producto-card-bottom">
-          <div class="producto-card-price">
-            $${parseFloat(p.precioVenta || p.precioBase || 0).toFixed(2)}
+          <div class="producto-card-price-info">
+            <span class="producto-card-price-label">Precio venta</span>
+            <strong class="producto-card-price-value">${formatearPrecioInventario(p.precioVenta)}</strong>
+            <span class="producto-card-price-base">Precio base: ${formatearPrecioInventario(p.precioBase)}</span>
           </div>
 
           <div class="producto-card-stock">
@@ -1035,6 +1139,16 @@ function initSugerirSat() {
     }
   })
 
+  document.addEventListener('keydown', function _f8SatHandler(e) {
+    if (e.key === 'F8') {
+      var modalProducto = document.getElementById('modal-producto')
+      if (modalProducto && modalProducto.classList.contains('active')) {
+        e.preventDefault()
+        btn.click()
+      }
+    }
+  })
+
   function mostrarEstadoSat(tipo, msg) {
     if (clavesEl) clavesEl.innerHTML = ''
     if (unidadesEl) unidadesEl.innerHTML = ''
@@ -1159,6 +1273,14 @@ function escaparHtml(s) {
   return String(s).replace(/[&<>"']/g, (m) => (
     { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]
   ))
+}
+
+function resaltar(texto, termino) {
+  var t = escaparHtml(String(texto))
+  if (!termino) return t
+  var safe = termino.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  var re = new RegExp('(' + safe + ')', 'gi')
+  return t.replace(re, '<mark class="highlight">$1</mark>')
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -1338,6 +1460,81 @@ function abrirModalNuevo() {
   resetSugerenciaSat()
   ocultarError()
   if (modal) modal.classList.add('active')
+}
+
+var _dupProductoId = null
+
+function abrirModalDuplicar(productoId) {
+  var p = productosLista.find(function(x) { return x.id === productoId })
+  if (!p) return
+  _dupProductoId = productoId
+  var origEl = document.getElementById('dup-producto-original')
+  var codEl = document.getElementById('dup-codigoInterno')
+  var barEl = document.getElementById('dup-codigoBarras')
+  var pvEl = document.getElementById('dup-precioVenta')
+  var pbEl = document.getElementById('dup-precioBase')
+  var coEl = document.getElementById('dup-costo')
+  var cpEl = document.getElementById('dup-costoPromedio')
+  var errEl = document.getElementById('dup-error')
+  if (origEl) origEl.value = (p.codigoInterno || '') + ' — ' + (p.nombre || '')
+  if (codEl) codEl.value = (p.codigoInterno || '').replace(/-\d+$/, '') + '-DUP'
+  if (barEl) barEl.value = ''
+  if (pvEl) pvEl.value = p.precioVenta !== undefined && p.precioVenta !== null ? parseFloat(p.precioVenta).toFixed(2) : ''
+  if (pbEl) pbEl.value = p.precioBase !== undefined && p.precioBase !== null ? parseFloat(p.precioBase).toFixed(2) : ''
+  if (coEl) coEl.value = p.costo !== undefined && p.costo !== null ? parseFloat(p.costo).toFixed(2) : ''
+  if (cpEl) cpEl.value = ''
+  if (errEl) { errEl.style.display = 'none'; errEl.textContent = '' }
+  var dupModal = document.getElementById('modal-duplicar')
+  if (dupModal) dupModal.style.display = 'flex'
+}
+
+function cerrarModalDuplicar() {
+  _dupProductoId = null
+  var dupModal = document.getElementById('modal-duplicar')
+  if (dupModal) dupModal.style.display = 'none'
+}
+
+async function enviarDuplicar(e) {
+  e.preventDefault()
+  if (!_dupProductoId) return
+  var codEl = document.getElementById('dup-codigoInterno')
+  var barEl = document.getElementById('dup-codigoBarras')
+  var pvEl = document.getElementById('dup-precioVenta')
+  var pbEl = document.getElementById('dup-precioBase')
+  var coEl = document.getElementById('dup-costo')
+  var cpEl = document.getElementById('dup-costoPromedio')
+  var errEl = document.getElementById('dup-error')
+
+  var body = {
+    codigoInterno: (codEl ? codEl.value : '').trim(),
+    codigoBarras: (barEl ? barEl.value : '').trim() || null,
+  }
+  var pv = pvEl ? parseFloat(pvEl.value) : null
+  if (!isNaN(pv) && pv > 0) body.precioVenta = pv
+  var pb = pbEl ? parseFloat(pbEl.value) : null
+  if (!isNaN(pb) && pb > 0) body.precioBase = pb
+  var co = coEl ? parseFloat(coEl.value) : null
+  if (!isNaN(co) && co > 0) body.costo = co
+  var cp = cpEl ? parseFloat(cpEl.value) : null
+  if (!isNaN(cp) && cp > 0) body.costoPromedio = cp
+
+  if (!body.codigoInterno) {
+    if (errEl) { errEl.textContent = 'El c\u00f3digo interno es requerido'; errEl.style.display = '' }
+    return
+  }
+
+  try {
+    var res = await apiFetch('/productos/' + _dupProductoId + '/duplicar', { method: 'POST', body: JSON.stringify(body) })
+    if (!res || res.error) {
+      if (errEl) { errEl.textContent = (res && res.error) || 'Error al duplicar'; errEl.style.display = '' }
+      return
+    }
+    if (typeof jeshaToast === 'function') jeshaToast('Producto duplicado exitosamente', 'success')
+    cerrarModalDuplicar()
+    cargarProductos()
+  } catch (err) {
+    if (errEl) { errEl.textContent = err.message || 'Error de conexi\u00f3n'; errEl.style.display = '' }
+  }
 }
 
 function cerrarModal() {
@@ -2062,6 +2259,7 @@ function irAPaginaInput() {
   if (val !== paginaActual) {
     paginaActual = val
     cargarProductos()
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 }
 
@@ -2115,6 +2313,7 @@ function renderizarPaginacion() {
           if (b !== paginaActual) {
             paginaActual = b
             cargarProductos()
+            window.scrollTo({ top: 0, behavior: 'smooth' })
           }
         })
       }
@@ -2142,20 +2341,40 @@ function configurarEventos() {
   if (filtroDepto) filtroDepto.addEventListener('change', () => { actualizarCategoriasFiltroToolbar(); aplicarFiltros() })
   if (filtroCat)   filtroCat.addEventListener('change', () => aplicarFiltros())
   if (searchInput) {
-    let debounce
-    searchInput.addEventListener('input', () => { clearTimeout(debounce); debounce = setTimeout(() => aplicarFiltros(), 400) })
-    searchInput.addEventListener('keypress', e => { if (e.key === 'Enter') { clearTimeout(debounce); aplicarFiltros() } })
+    searchInput.addEventListener('input', function() {
+      clearTimeout(_debounceBusqueda)
+      clearTimeout(_debounceAutosuggest)
+      _debounceBusqueda = setTimeout(function() { aplicarFiltros() }, 400)
+      _debounceAutosuggest = setTimeout(function() { _ejecutarAutosuggest() }, 250)
+    })
+    searchInput.addEventListener('keypress', function(e) {
+      if (e.key === 'Enter') {
+        clearTimeout(_debounceBusqueda)
+        clearTimeout(_debounceAutosuggest)
+        cerrarAutosuggest()
+        aplicarFiltros()
+      }
+    })
+    searchInput.addEventListener('blur', function() {
+      setTimeout(cerrarAutosuggest, 200)
+    })
+    searchInput.addEventListener('focus', function() {
+      if (this.value.trim().length >= 2 && autosuggestDropdown && autosuggestDropdown.children.length > 0) {
+        autosuggestDropdown.style.display = ''
+      }
+    })
   }
   if (filtroStock)       filtroStock.addEventListener('change', aplicarFiltros)
   if (filtroTipo)        filtroTipo.addEventListener('change', aplicarFiltros)
   if (filtroActivo)      filtroActivo.addEventListener('change', aplicarFiltros)
+  if (filtroProveedor)   filtroProveedor.addEventListener('change', function() { paginaActual = 1; cargarProductos() })
   if (btnLimpiarFiltros) btnLimpiarFiltros.addEventListener('click', limpiarFiltros)
 
   // ── Paginación: botones ──
   const btnPagAnt = document.getElementById('btn-pag-anterior')
   const btnPagSig = document.getElementById('btn-pag-siguiente')
-  if (btnPagAnt) btnPagAnt.addEventListener('click', () => { if (paginaActual > 1) { paginaActual--; cargarProductos() } })
-  if (btnPagSig) btnPagSig.addEventListener('click', () => { if (paginaActual < totalPaginas) { paginaActual++; cargarProductos() } })
+  if (btnPagAnt) btnPagAnt.addEventListener('click', () => { if (paginaActual > 1) { paginaActual--; cargarProductos(); window.scrollTo({ top: 0, behavior: 'smooth' }) } })
+  if (btnPagSig) btnPagSig.addEventListener('click', () => { if (paginaActual < totalPaginas) { paginaActual++; cargarProductos(); window.scrollTo({ top: 0, behavior: 'smooth' }) } })
 
   // ── Paginación: label clickeable → input ──
   const pagLabel = document.getElementById('pag-info-label')
@@ -2274,6 +2493,25 @@ function configurarEventos() {
   const formProveedor = document.getElementById('form-nuevo-proveedor')
   if (formProveedor) formProveedor.addEventListener('submit', guardarNuevoProveedor)
 
+  // ── Duplicar modal ──
+  document.getElementById('dup-close')?.addEventListener('click', cerrarModalDuplicar)
+  document.getElementById('dup-cancel')?.addEventListener('click', cerrarModalDuplicar)
+  document.getElementById('dup-form')?.addEventListener('submit', enviarDuplicar)
+  var dupModal = document.getElementById('modal-duplicar')
+  if (dupModal) {
+    dupModal.addEventListener('mousedown', function(e) {
+      if (e.target === dupModal) cerrarModalDuplicar()
+    })
+  }
+
+  // ── F8: abrir sugerencia SAT en modal ──
+  document.addEventListener('keydown', function _dupF8Handler(e) {
+    if (e.key === 'F8') {
+      var dupModalOpen = document.getElementById('modal-duplicar')
+      if (dupModalOpen && dupModalOpen.style.display === 'flex') return  // no hacer nada si hay modal abierto que usa F8
+    }
+  })
+
   // Cerrar modal al hacer click fuera
   const modalProveedor = document.getElementById('modal-nuevo-proveedor')
   if (modalProveedor) {
@@ -2340,6 +2578,13 @@ function configurarEventos() {
       const activoActual = btnEstado.dataset.activo === 'true'
       const nombre = btnEstado.dataset.nombre || ''
       if (id) toggleEstadoProducto(id, !activoActual, nombre)
+      return
+    }
+
+    const btnDuplicar = e.target.closest('.btn-duplicar-producto')
+    if (btnDuplicar) {
+      const id = parseInt(btnDuplicar.dataset.id)
+      if (id) abrirModalDuplicar(id)
       return
     }
 

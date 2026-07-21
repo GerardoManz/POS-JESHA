@@ -101,6 +101,12 @@ const arPreview                = document.getElementById('ar-preview')
 const arPreviewText            = document.getElementById('ar-preview-text')
 const arBtnAvanzadas           = document.getElementById('ar-btn-avanzadas')
 const arAvanzadas              = document.getElementById('ar-avanzadas')
+const arClaveSat               = document.getElementById('ar-claveSat')
+const btnArSugerirSat          = document.getElementById('btn-ar-sugerir-sat')
+const arSatResult              = document.getElementById('ar-sat-result')
+const arSatBadge               = document.getElementById('ar-sat-badge')
+const arSatChips               = document.getElementById('ar-sat-chips')
+const arSatLoading             = document.getElementById('ar-sat-loading')
 
 let _arCategoriasCache  = null
 let _arAvanzadasAbierto  = false
@@ -3126,6 +3132,25 @@ function configurarEventListeners() {
     if (e.target === modalArticuloRapido) cerrarModalArticuloRapido()
   })
 
+  // ── SAT rápido ──
+  btnArSugerirSat?.addEventListener('click', _arSugerirSat)
+  arClaveSat?.addEventListener('blur', function() {
+    if (arClaveSat) arClaveSat.value = arClaveSat.value.trim()
+  })
+  arUnidadSat?.addEventListener('blur', function() {
+    if (arUnidadSat) arUnidadSat.value = _arNormalizarUnidad(arUnidadSat.value)
+  })
+
+  // ── F8: Sugerir SAT rápido ──
+  document.addEventListener('keydown', function _arF8Handler(e) {
+    if (e.key === 'F8') {
+      e.preventDefault()
+      if (modalArticuloRapido && modalArticuloRapido.style.display === 'flex') {
+        _arSugerirSat()
+      }
+    }
+  })
+
   console.log('✅ Event listeners configurados')
 }
 
@@ -3287,6 +3312,71 @@ function _arInitUnidades() {
   }
 }
 
+var _arSatTimeoutId = null
+
+async function _arSugerirSat() {
+  if (!btnArSugerirSat || !arNombre || !arClaveSat || !arUnidad) return
+  var nombre = arNombre.value.trim()
+  var unidad = arUnidad.value.trim()
+  if (!nombre) {
+    if (arSatResult) arSatResult.classList.remove('visible')
+    return
+  }
+  btnArSugerirSat.disabled = true
+  if (arSatLoading) arSatLoading.style.display = ''
+  if (arSatChips) arSatChips.innerHTML = ''
+  if (arSatBadge) arSatBadge.textContent = ''
+  if (arSatResult) arSatResult.classList.add('visible')
+  try {
+    var res = await apiFetch('/productos/sat/sugerir', {
+      method: 'POST',
+      body: JSON.stringify({ nombre: nombre, unidadVenta: unidad, esGranel: arEsGranel ? arEsGranel.checked : false })
+    })
+    if (res && res.success === false) {
+      throw new Error(res.error || 'No se pudo obtener la sugerencia')
+    }
+    var data = res.data || res
+    if (!data || data.error) {
+      if (arSatBadge) arSatBadge.textContent = 'Sin resultados'
+      return
+    }
+    var candidatos = Array.isArray(data.candidatos) && data.candidatos.length
+      ? data.candidatos
+      : data.claveSat
+        ? [{ claveSat: data.claveSat, descripcion: data.descripcionSat || data.descripcion || '', unidadSat: data.unidadSat || '' }]
+        : []
+    if (candidatos.length === 0) {
+      if (arSatBadge) arSatBadge.textContent = 'Sin candidatos'
+      return
+    }
+    if (arSatBadge) arSatBadge.innerHTML = 'Selecciona una clave SAT:'
+    var frag = document.createDocumentFragment()
+    candidatos.slice(0, 8).forEach(function(c) {
+      var clave = (c.claveSat || '').trim()
+      if (!clave) return
+      var chip = document.createElement('button')
+      chip.type = 'button'
+      chip.className = 'ar-sat-chip'
+      var desc = c.descripcion || c.descripcionSat || ''
+      chip.textContent = clave + (desc ? ' - ' + desc : '')
+      chip.addEventListener('click', function() {
+        arClaveSat.value = clave
+        arUnidadSat.value = c.unidadSat || data.unidadSat || ''
+        _arActualizarPreview()
+        arSatResult.classList.remove('visible')
+      })
+      frag.appendChild(chip)
+    })
+    if (arSatChips) arSatChips.appendChild(frag)
+  } catch (err) {
+    console.error('Error sugiriendo SAT en artículo rápido:', err)
+    if (arSatBadge) arSatBadge.textContent = err.message || 'Error al consultar SAT'
+  } finally {
+    btnArSugerirSat.disabled = false
+    if (arSatLoading) arSatLoading.style.display = 'none'
+  }
+}
+
 function _arActualizarPreview() {
   if (!arPreview || !arPreviewText) return
   const nombre  = (arNombre?.value || '').trim()
@@ -3373,6 +3463,11 @@ async function abrirModalArticuloRapido() {
   if (arNombre)         arNombre.value = (searchProductos?.value || '').trim()
   if (arCodigo)         arCodigo.value = ''
   if (arCodigoBarras)   arCodigoBarras.value = ''
+  if (arClaveSat)       arClaveSat.value = ''
+  if (arUnidadSat)      arUnidadSat.value = ''
+  if (arSatResult)      arSatResult.classList.remove('visible')
+  if (arSatChips)       arSatChips.innerHTML = ''
+  if (arSatBadge)       arSatBadge.textContent = ''
   if (arPrecio)         arPrecio.value = ''
   if (arStock)          arStock.value = '1'
   if (arCantidad)       arCantidad.value = '1'
@@ -3421,6 +3516,7 @@ function _arValidar(data) {
   if (!data.cantidadVenta || data.cantidadVenta <= 0) return 'La cantidad a vender debe ser mayor a 0'
   if (data.cantidadVenta > data.stockInicial)        return 'La cantidad a vender no puede ser mayor a la existencia inicial'
   if (!data.categoriaId)                             return 'Selecciona una categoría'
+  if (!data.claveSat || data.claveSat.length !== 8)  return 'La clave SAT es requerida (8 d\u00edgitos)'
   return null
 }
 
@@ -3439,8 +3535,8 @@ async function enviarArticuloRapido(e) {
     esGranel:      !!arEsGranel?.checked,
     sucursalId:    resolverSucursalParaArticuloRapido(),
     turnoId:       turnoActivo?.id || null,
-    claveSat:      null,
-    unidadSat:     _arNormalizarUnidad(arUnidadSat?.value) || 'H87'
+    claveSat:      (arClaveSat?.value || '').trim(),
+    unidadSat:     _arNormalizarUnidad(arUnidadSat?.value) || ''
   }
 
   // Si el panel avanzadas está cerrado, stockInicial = cantidadVenta

@@ -106,6 +106,64 @@
   box-shadow: 0 0 0 3px rgba(31, 58, 102, 0.15);
 }
 
+/* ── AUTOSUGGEST ── */
+.autosuggest-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 0 0 8px 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+  max-height: 360px;
+  overflow-y: auto;
+}
+.autosuggest-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  cursor: pointer;
+  transition: background 0.1s;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.autosuggest-item:last-child {
+  border-bottom: none;
+}
+.autosuggest-item:hover,
+.autosuggest-item.active {
+  background: rgba(107,157,232,0.10);
+}
+.autosuggest-item .as-nombre {
+  flex: 1;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+.autosuggest-item .as-codigo {
+  font-size: 0.75rem;
+  color: var(--muted);
+  font-family: monospace;
+}
+.autosuggest-item .as-precio {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #6b9de8;
+  white-space: nowrap;
+}
+.autosuggest-item .as-stock {
+  font-size: 0.75rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.autosuggest-empty {
+  padding: 14px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
 /* ── BOTÓN LIMPIAR FILTROS ── */
 .btn-filter-reset {
   padding: 10px 14px;
@@ -258,10 +316,37 @@
   color: #f44336;
 }
 
+.col-sat {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.78rem;
+  text-align: center;
+  color: var(--muted);
+}
+
+.producto-card-sat {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 0 14px 8px;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+.producto-card-sat small {
+  color: inherit;
+  opacity: 0.7;
+}
+
 /* ── ACCIONES ── */
 .actions-cell {
   display: flex;
   gap: 8px;
+}
+
+mark.highlight {
+  background: rgba(107, 157, 232, 0.25);
+  color: #9bbef0;
+  padding: 0 2px;
+  border-radius: 2px;
 }
 
 .btn-icon {
@@ -1595,12 +1680,117 @@
   gap: 10px;
 }
 
-.producto-card-price {
-  font-family: 'Barlow Condensed', sans-serif;
-  font-size: 1.25rem;
+/* ── PRECIO OPCIÓN 2: ETIQUETA + IMPORTE GRANDE (TABLA) ── */
+
+.col-precio {
+  min-width: 126px;
+  text-align: right !important;
+}
+
+.precio-cell {
+  min-width: 126px;
+  text-align: right;
+}
+
+.precio-info {
+  font-variant-numeric: tabular-nums;
+}
+
+.precio-info--tabla {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  min-width: 104px;
+}
+
+.precio-etiqueta {
+  display: inline-flex;
+  align-items: center;
+  width: max-content;
+  margin-bottom: 4px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(107, 157, 232, 0.16);
+  color: #8fb9f2;
+  font-family: 'Barlow', sans-serif;
+  font-size: 0.56rem;
   font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.precio-principal {
+  display: block;
   color: #ffffff;
-  letter-spacing: 0.02em;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 1.32rem;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.015em;
+  white-space: nowrap;
+}
+
+.precio-secundario {
+  display: block;
+  margin-top: 5px;
+  color: #9daabd;
+  font-family: 'Barlow', sans-serif;
+  font-size: 0.68rem;
+  font-weight: 500;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+/* ── PRECIO OPCIÓN 2: ETIQUETA + IMPORTE GRANDE (GRID) ── */
+
+.producto-card-price-info {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  margin-top: auto;
+  padding-top: 7px;
+  font-variant-numeric: tabular-nums;
+}
+
+.producto-card-price-label {
+  display: inline-flex;
+  align-items: center;
+  width: max-content;
+  margin-bottom: 4px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(107, 157, 232, 0.16);
+  color: #8fb9f2;
+  font-family: 'Barlow', sans-serif;
+  font-size: 0.58rem;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.producto-card-price-value {
+  color: #ffffff;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 1.55rem;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.015em;
+  white-space: nowrap;
+}
+
+.producto-card-price-base {
+  display: block;
+  margin-top: 5px;
+  color: #9daabd;
+  font-family: 'Barlow', sans-serif;
+  font-size: 0.7rem;
+  font-weight: 500;
+  line-height: 1.1;
+  white-space: nowrap;
 }
 
 .producto-card-stock {
@@ -1702,13 +1892,34 @@
     font-size: 0.86rem;
   }
 
-  .producto-card-price {
-    font-size: 1.05rem;
+  .precio-principal {
+    font-size: 1.14rem;
+  }
+
+  .precio-secundario {
+    font-size: 0.62rem;
+  }
+
+  .producto-card-price-value {
+    font-size: 1.35rem;
+  }
+
+  .producto-card-price-base {
+    font-size: 0.65rem;
+  }
+
+  .col-precio,
+  .precio-cell {
+    min-width: 108px;
   }
 }
 
 @media (max-width: 420px) {
   .productos-grid {
     grid-template-columns: 1fr;
+  }
+
+  .producto-card-price-value {
+    font-size: 1.45rem;
   }
 }

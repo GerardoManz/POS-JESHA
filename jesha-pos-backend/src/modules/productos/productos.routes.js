@@ -79,6 +79,9 @@ router.get('/sat/unidades',        satController.listarUnidades)
 // POST /productos/articulo-rapido — alta rápida desde POS (cualquier usuario autenticado)
 router.post('/articulo-rapido',   productosRapidoController.crearArticuloRapido)
 
+// GET /productos/sugerir — Autocomplete (ANTES de /:id para que no capture "sugerir" como :id)
+router.get('/sugerir', productosController.sugerirNombres)
+
 // GET /productos/:id — Obtener producto individual
 router.get('/:id', productosController.obtener)
 
@@ -87,6 +90,7 @@ router.put('/:id',               requireRole('SUPERADMIN', 'ADMIN_SUCURSAL', 'PL
 router.patch('/:id/datos-basicos', requireRole('EMPLEADO', 'ADMIN_SUCURSAL', 'SUPERADMIN', 'PLATFORM_ADMIN'), productosController.editarDatosBasicos)
 router.patch('/:id/estado',      requireRole('SUPERADMIN', 'ADMIN_SUCURSAL', 'PLATFORM_ADMIN'), productosController.cambiarEstado)
 router.patch('/:id/inventario',  requireRole('SUPERADMIN', 'ADMIN_SUCURSAL', 'PLATFORM_ADMIN'), productosController.ajustarInventario)
+router.post('/:id/duplicar',     requireRole('SUPERADMIN', 'ADMIN_SUCURSAL', 'PLATFORM_ADMIN'), productosController.duplicarProducto)
 
 // ═══════════════════════════════════════════════════════════════════
 // SUGERENCIA SAT (read-only, sin requireRole: cualquier usuario autenticado)

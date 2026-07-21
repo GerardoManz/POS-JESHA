@@ -829,6 +829,29 @@
           <datalist id="ar-unidades-venta-list"></datalist>
         </div>
 
+        <!-- ── Clave SAT ── -->
+        <div class="modal-ar-field">
+          <label class="modal-ar-label" for="ar-claveSat">Clave SAT *</label>
+          <div style="display:flex;gap:6px;">
+            <input type="text" id="ar-claveSat" maxlength="8" placeholder="8 d&iacute;gitos" class="modal-ar-input" autocomplete="off" style="flex:1;font-family:monospace;letter-spacing:0.1em;" />
+            <button type="button" id="btn-ar-sugerir-sat" class="modal-ar-btn-sugerir" title="Sugerir SAT autom&aacute;ticamente">Sugerir SAT</button>
+          </div>
+        </div>
+
+        <!-- ── Unidad SAT ── -->
+        <div class="modal-ar-field">
+          <label class="modal-ar-label" for="ar-unidadSat">Unidad SAT *</label>
+          <input type="text" id="ar-unidadSat" class="modal-ar-input" list="ar-unidades-sat-list" placeholder="ej: H87" autocomplete="off" />
+          <datalist id="ar-unidades-sat-list"></datalist>
+        </div>
+
+        <!-- ── Resultado sugerencia SAT ── -->
+        <div id="ar-sat-result" class="modal-ar-sat-result">
+          <div class="ar-sat-badge" id="ar-sat-badge"></div>
+          <div class="ar-sat-chips" id="ar-sat-chips"></div>
+          <div class="ar-sat-loading" id="ar-sat-loading" style="display:none;">Consultando SAT&hellip;</div>
+        </div>
+
         <!-- ── Toggle: opciones avanzadas ── -->
         <button type="button" id="ar-btn-avanzadas" class="modal-ar-toggle" onclick="toggleArAvanzadas()">
           <span id="ar-toggle-icon">&#9654;</span> M&aacute;s opciones
@@ -846,11 +869,6 @@
           <div class="modal-ar-field">
             <label class="modal-ar-label" for="ar-stock">Existencia inicial</label>
             <input type="number" id="ar-stock" min="0" step="1" value="1" class="modal-ar-input" />
-          </div>
-          <div class="modal-ar-field">
-            <label class="modal-ar-label" for="ar-unidadSat">Unidad SAT</label>
-            <input type="text" id="ar-unidadSat" class="modal-ar-input" list="ar-unidades-sat-list" placeholder="ej: H87" autocomplete="off" />
-            <datalist id="ar-unidades-sat-list"></datalist>
           </div>
           <label class="modal-ar-check" style="display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;">
             <input type="checkbox" id="ar-esGranel" style="width:16px;height:16px;accent-color:#6b9de8;" />

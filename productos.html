@@ -181,12 +181,21 @@
         </select>
       </div>
 
+      <!-- PROVEEDOR -->
+      <div class="filter-group">
+        <label for="filtro-proveedor">🏭 Proveedor</label>
+        <select id="filtro-proveedor" class="filter-select">
+          <option value="">Todos</option>
+        </select>
+      </div>
+
       <!-- BÚSQUEDA -->
       <div class="search-group">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
         </svg>
-        <input type="text" id="search-input" placeholder="Buscar productos..." class="search-input" />
+        <input type="text" id="search-input" placeholder="Buscar productos..." class="search-input" autocomplete="off" />
+        <div id="autosuggest-dropdown" class="autosuggest-dropdown" style="display:none;"></div>
       </div>
 
       <!-- BOTÓN LIMPIAR FILTROS -->
@@ -272,16 +281,17 @@
               <th>CÓDIGO</th>
               <th>PRODUCTO</th>
               <th class="col-categoria">CATEGORÍA</th>
-              <th>PRECIO</th>
+              <th class="col-precio">PRECIO</th>
               <th>STOCK</th>
               <th class="col-min-stock">MÍN STOCK</th>
               <th class="col-estado">ESTADO</th>
+              <th class="col-sat">SAT</th>
               <th id="th-acciones">ACCIONES</th>
             </tr>
           </thead>
           <tbody id="productos-tbody">
             <tr class="loading-row">
-              <td colspan="8" style="text-align: center; padding: 40px;">
+              <td colspan="9" style="text-align: center; padding: 40px;">
                 <div class="spinner"></div>
                 <p style="margin-top: 12px; color: var(--muted);">Cargando productos...</p>
               </td>
@@ -801,6 +811,55 @@
       <div class="form-actions">
         <button type="button" class="btn-secondary" id="basico-cancel-btn">Cancelar</button>
         <button type="submit" class="btn-primary" id="basico-confirm-btn">Guardar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ══ MODAL DUPLICAR PRODUCTO ══ -->
+<div id="modal-duplicar" class="modal" style="display:none;">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3>Duplicar producto</h3>
+      <button class="modal-close" id="dup-close">&times;</button>
+    </div>
+    <form id="dup-form">
+      <div class="form-group full-width">
+        <label for="dup-producto-original">Producto original</label>
+        <input type="text" id="dup-producto-original" readonly style="opacity:0.7;" />
+      </div>
+      <div class="form-group full-width">
+        <label for="dup-codigoInterno">C&oacute;digo interno *</label>
+        <input type="text" id="dup-codigoInterno" placeholder="ej: HER-001-DUP" required />
+      </div>
+      <div class="form-group full-width">
+        <label for="dup-codigoBarras">C&oacute;digo de barras</label>
+        <input type="text" id="dup-codigoBarras" placeholder="Opcional" />
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label for="dup-precioVenta">Precio venta</label>
+          <input type="number" id="dup-precioVenta" step="0.01" min="0" placeholder="0.00" />
+        </div>
+        <div class="form-group">
+          <label for="dup-precioBase">Precio base (sin IVA)</label>
+          <input type="number" id="dup-precioBase" step="0.01" min="0" placeholder="0.00" />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label for="dup-costo">Costo</label>
+          <input type="number" id="dup-costo" step="0.01" min="0" placeholder="0.00" />
+        </div>
+        <div class="form-group">
+          <label for="dup-costoPromedio">Costo promedio</label>
+          <input type="number" id="dup-costoPromedio" step="0.01" min="0" placeholder="Igual al costo si se deja vac&iacute;o" />
+        </div>
+      </div>
+      <div id="dup-error" class="error-message" style="display:none;"></div>
+      <div class="form-actions">
+        <button type="button" class="btn-secondary" id="dup-cancel">Cancelar</button>
+        <button type="submit" class="btn-primary">Duplicar</button>
       </div>
     </form>
   </div>

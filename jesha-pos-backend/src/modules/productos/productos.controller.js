@@ -1172,6 +1172,188 @@ async function editarDatosBasicos(req, res) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// SUGERIR NOMBRES — Autocomplete ligero para el buscador
+// ═══════════════════════════════════════════════════════════════════
+
+const sugerirNombres = async (req, res) => {
+    try {
+        const empresaId = getEmpresaId(req)
+        const { q, proveedorId, categoriaId, departamentoId, stock, tipo, activo } = req.query
+        if (!q || q.trim().length < 2) {
+            return res.json({ success: true, data: [] })
+        }
+        const busqueda = q.trim()
+        const sucursalIdInt = parseInt(req.usuario?.sucursalId) || 0
+
+        const where = { empresaId }
+
+        if (activo === 'all') {
+            // no filter
+        } else if (activo !== undefined) {
+            where.activo = activo === 'true'
+        } else {
+            where.activo = true
+        }
+
+        if (proveedorId) {
+            where.ProveedorProducto = { some: { proveedorId: parseInt(proveedorId), activo: true } }
+        }
+
+        if (departamentoId) {
+            where.Categoria = { Departamento: { id: parseInt(departamentoId) } }
+        }
+
+        if (categoriaId) {
+            where.categoriaId = parseInt(categoriaId)
+        }
+
+        if (tipo && ['PRODUCTO', 'SERVICIO'].includes(tipo)) {
+            where.tipo = tipo
+        }
+
+        if (stock === 'con') {
+            where.InventarioSucursal = { some: { sucursalId: sucursalIdInt, stockActual: { gt: 0 } } }
+        } else if (stock === 'sin') {
+            where.InventarioSucursal = { none: { sucursalId: sucursalIdInt, stockActual: { gt: 0 } } }
+        }
+
+        const palabras = busqueda.split(/\s+/).filter(Boolean)
+        const condicionesTexto = palabras.map(p => ({
+            OR: [
+                { nombre:        { contains: p, mode: 'insensitive' } },
+                { codigoInterno: { contains: p, mode: 'insensitive' } },
+                { codigoBarras:  { contains: p, mode: 'insensitive' } }
+            ]
+        }))
+        where.AND = [
+            ...(Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : []),
+            ...condicionesTexto
+        ]
+
+        const productos = await prisma.producto.findMany({
+            where,
+            select: {
+                id: true,
+                nombre: true,
+                codigoInterno: true,
+                precioVenta: true,
+                unidadVenta: true,
+                InventarioSucursal: { where: { sucursalId: sucursalIdInt }, take: 1, select: { stockActual: true } }
+            },
+            take: 15,
+            orderBy: { nombre: 'asc' }
+        })
+        const data = productos.map(p => ({
+            id: p.id,
+            nombre: p.nombre,
+            codigoInterno: p.codigoInterno,
+            precioVenta: p.precioVenta ? parseFloat(p.precioVenta) : 0,
+            stock: p.InventarioSucursal?.[0]?.stockActual !== undefined ? parseFloat(p.InventarioSucursal[0].stockActual) : 0,
+            unidadVenta: p.unidadVenta
+        }))
+        res.json({ success: true, data })
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message })
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// DUPLICAR PRODUCTO
+// ═══════════════════════════════════════════════════════════════════
+
+const duplicarProducto = async (req, res) => {
+    try {
+        const empresaId = getEmpresaId(req)
+        const id = parseInt(req.params.id)
+        if (!id) return res.status(400).json({ success: false, error: 'ID requerido' })
+
+        const { codigoInterno, codigoBarras, precioVenta, precioBase, costo, costoPromedio } = req.body
+
+        if (!codigoInterno || !codigoInterno.trim()) {
+            return res.status(400).json({ success: false, error: 'Código interno requerido' })
+        }
+
+        const original = await prisma.producto.findUnique({ where: { id }, include: { Categoria: true } })
+        if (!original) return res.status(404).json({ success: false, error: 'Producto original no encontrado' })
+
+        const codigoInternoLimpio = normalizarCodigoInterno(codigoInterno)
+        const codigoBarrasLimpio = codigoBarras ? normalizarCodigoBarras(codigoBarras) : null
+
+        const dupInterno = await prisma.producto.findFirst({
+            where: { empresaId, codigoInterno: codigoInternoLimpio }
+        })
+        if (dupInterno) {
+            return res.status(409).json({ success: false, error: 'El código interno ya existe en esta empresa', campo: 'codigoInterno' })
+        }
+
+        if (codigoBarrasLimpio) {
+            const dupBarras = await validarCodigoBarrasDuplicado({ empresaId, codigoBarras: codigoBarrasLimpio, prismaClient: prisma })
+            if (dupBarras) {
+                return res.status(409).json({ success: false, error: 'El código de barras ya existe en esta empresa', campo: 'codigoBarras' })
+            }
+        }
+
+        const precioVentaNum = precioVenta !== undefined && precioVenta !== null ? parseFloat(precioVenta) : parseFloat(original.precioVenta)
+        const precioBaseNum = precioBase !== undefined && precioBase !== null ? parseFloat(precioBase) : parseFloat(original.precioBase || 0)
+        const costoNum = costo !== undefined && costo !== null ? parseFloat(costo) : null
+        const costoPromedioNum = costoPromedio !== undefined && costoPromedio !== null
+            ? parseFloat(costoPromedio)
+            : (costoNum !== null ? costoNum : null)
+
+        const resultado = await prisma.$transaction(async (tx) => {
+            const nuevo = await tx.producto.create({
+                data: {
+                    empresaId,
+                    nombre:               original.nombre,
+                    codigoInterno:         codigoInternoLimpio,
+                    codigoBarras:          codigoBarrasLimpio,
+                    descripcion:           original.descripcion,
+                    categoriaId:           original.categoriaId,
+                    unidadCompra:          original.unidadCompra,
+                    unidadVenta:           original.unidadVenta,
+                    factorConversion:      original.factorConversion || 1,
+                    precioBase:            precioBaseNum,
+                    precioVenta:           precioVentaNum,
+                    costo:                 costoNum,
+                    costoPromedio:         costoPromedioNum,
+                    claveSat:              original.claveSat,
+                    unidadSat:             original.unidadSat,
+                    esGranel:              original.esGranel,
+                    esServicio:            original.esServicio,
+                    activo:                true,
+                    stockMinimoAlerta:     original.stockMinimoAlerta,
+                    tipo:                  original.tipo,
+                    tipoCfdi:              original.tipoCfdi,
+                    tipoFacturaProv:       original.tipoFacturaProv,
+                    ieps:                  original.ieps,
+                    tazaIeps:              original.tazaIeps,
+                    margen:                original.margen !== null ? original.margen : null
+                }
+            })
+
+            await tx.auditoria.create({
+                data: {
+                    accion: 'DUPLICAR_PRODUCTO',
+                    modulo: 'PRODUCTOS',
+                    referencia: `Original: ${original.codigoInterno} → Nuevo: ${codigoInternoLimpio}`,
+                    usuarioId: req.usuario?.id ? parseInt(req.usuario.id) : null,
+                    sucursalId: req.usuario?.sucursalId ? parseInt(req.usuario.sucursalId) : null
+                }
+            })
+
+            return nuevo
+        })
+
+        res.status(201).json({ success: true, data: resultado })
+    } catch (err) {
+        if (err.code === 'P2002') {
+            return res.status(409).json({ success: false, error: 'El código interno ya existe en esta empresa (conflicto concurrente)', campo: 'codigoInterno' })
+        }
+        res.status(500).json({ success: false, error: err.message })
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // EXPORTS
 // ═══════════════════════════════════════════════════════════════════
 
@@ -1189,5 +1371,7 @@ module.exports = {
     actualizarImagen,
     eliminarImagen,
     ajustarInventario,
-    editarDatosBasicos
+    editarDatosBasicos,
+    sugerirNombres,
+    duplicarProducto
 }
