@@ -2729,3 +2729,32 @@
   color: rgba(255,255,255,0.45);
   font-weight: 400;
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   TOTAL DEL POS — LIGHT MODE
+   ═══════════════════════════════════════════════════════════════ */
+:root[data-theme="light"] .resumen-total .monto,
+:root[data-theme="light"] #resumen-total,
+[data-theme="light"] .resumen-total .monto,
+[data-theme="light"] #resumen-total {
+  color: #000000;
+  text-shadow: none;
+}
+
+:root[data-theme="light"] .resumen-total-label,
+[data-theme="light"] .resumen-total-label {
+  color: #111827;
+}
+
+:root[data-theme="light"] .resumen-total-nota,
+[data-theme="light"] .resumen-total-nota {
+  color: #4b5563;
+}
+
+:root[data-theme="light"] .cart-subtotal,
+[data-theme="light"] .cart-subtotal {
+  color: #065f46;
+  border-color: #6ee7b7;
+  background: linear-gradient(135deg, #d1fae5 0%, #ecfdf5 100%);
+  box-shadow: 0 6px 16px rgba(6, 95, 70, 0.12), inset 0 1px 0 rgba(255,255,255,0.6);
+}

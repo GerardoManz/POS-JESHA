@@ -978,6 +978,26 @@ WHERE d.datname = 'jesha_db';
 - **Bug 3**: Sin `unhandledRejection`/`uncaughtException` → crash silencioso en producción
 - **Fix**: Pool con timeouts explícitos + crash handlers + `/health/db` + `statement_timeout` a nivel PostgreSQL
 
+### productos.css — Light mode en Inventario
+- **Problema**: Precio invisible en light mode por `color: #ffffff` hardcodeado. Tarjetas, imagen, tabla, inputs con colores rgba que funcionaban solo en fondo oscuro.
+- **Fix (precios)**: Overrides `[data-theme="light"]` — precio principal `#173f7a`, precio base `#59677a`, etiqueta fondo `#dcebff` texto `#2864ae`.
+- **Fix (tarjetas, B2)**: `[data-theme="light"] .producto-card` con `background: #ffffff`, border variable, sombra sutil. Dark mode conserva su gradient original.
+- **Fix (imagen)**: `[data-theme="light"]` area de imagen `#eef2f7` con borde `#d6dee9`.
+- **Fix (tabla/inputs)**: 8 reemplazos de rgba por variables (`--surface-hover`, `--bg-secondary`, `--muted`) que funcionan en ambos temas.
+
+### productos.css — Alineación SAT en card grid
+- **Bug**: `.producto-card-sat` comenzaba 12px más a la derecha que el nombre/código/precio por tener `padding: 0 12px` estando dentro de `.producto-card-body` (que ya da 12px de padding horizontal).
+- **Bug 2**: `align-items: center` + `<small>` con tamaño distinto → clave SAT y unidad no compartían línea base.
+- **Fix**: `padding: 0 0 6px` (hereda padding horizontal del body). `align-items: baseline`. Monospace + `tabular-nums`. Hijos con `line-height: inherit`.
+
+### punto-venta.css — Total y subtotal en light mode
+- **Bug**: `.resumen-total .monto` con `color: #f8fbff` y `text-shadow` azul → invisible en light mode sobre gradient lavado.
+- **Bug 2**: `.cart-subtotal` mismo color blanco sobre fondo azul → ilegible en light.
+- **Fix (total)**: `:root[data-theme="light"]` + `[data-theme="light"]` duplicado para máxima especificidad, `color: #000000`, `text-shadow: none`.
+- **Fix (etiqueta/nota)**: TOTAL `#111827`, IVA `#4b5563`.
+- **Fix (subtotal)**: Verde oscuro `#065f46`, fondo gradient `#d1fae5 → #ecfdf5`, borde `#6ee7b7`.
+- Sin modificar reglas base (dark mode intacto).
+
 ## API Endpoints Testeados (2026-05-13)
 
 | Endpoint | Método | Estado |

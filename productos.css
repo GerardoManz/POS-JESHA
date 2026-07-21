@@ -46,12 +46,12 @@
 }
 
 .filter-select:hover:not(:disabled) {
-  background-color: rgba(255, 255, 255, 0.05);
+  background-color: var(--surface-hover);
   border-color: var(--accent);
 }
 
 .filter-select:focus {
-  background-color: rgba(255, 255, 255, 0.06);
+  background-color: var(--surface-hover);
   border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(31, 58, 102, 0.15);
 }
@@ -97,11 +97,11 @@
 }
 
 .search-input::placeholder {
-  color: rgba(255, 255, 255, 0.3);
+  color: var(--muted);
 }
 
 .search-input:focus {
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--surface-hover);
   border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(31, 58, 102, 0.15);
 }
@@ -251,7 +251,7 @@
 }
 
 .productos-table thead {
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--bg-secondary);
   border-bottom: 1px solid var(--panel-border);
 }
 
@@ -276,7 +276,7 @@
 }
 
 .productos-table tbody tr:hover {
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--surface-hover);
 }
 
 .productos-table tbody tr:last-child td {
@@ -325,15 +325,27 @@
 
 .producto-card-sat {
   display: flex;
-  gap: 6px;
-  align-items: center;
-  padding: 0 14px 8px;
-  font-size: 0.72rem;
+  align-items: baseline;
+  gap: 8px;
+  padding: 0 0 6px;
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.68rem;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
   color: var(--muted);
 }
+
+.producto-card-sat > span,
+.producto-card-sat > small {
+  display: inline-block;
+  margin: 0;
+  line-height: inherit;
+}
+
 .producto-card-sat small {
-  color: inherit;
-  opacity: 0.7;
+  font-size: 0.64rem;
+  opacity: 0.72;
 }
 
 /* ── ACCIONES ── */
@@ -365,7 +377,7 @@ mark.highlight {
 }
 
 .btn-icon:hover {
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--surface-hover);
   border-color: var(--accent);
   color: var(--accent);
 }
@@ -1396,6 +1408,13 @@ mark.highlight {
   box-shadow: 0 14px 34px rgba(0,0,0,0.28);
 }
 
+/* ── TARJETAS: LIGHT MODE ── */
+[data-theme="light"] .producto-card {
+  background: #ffffff;
+  border-color: var(--panel-border);
+  box-shadow: 0 2px 8px rgba(15,23,42,0.07);
+}
+
 .producto-card.is-inactive {
   opacity: 0.58;
 }
@@ -1431,6 +1450,13 @@ mark.highlight {
 .producto-card-image-wrap.image-error {
   background: rgba(244,67,54,0.06);
   border-color: rgba(244,67,54,0.15);
+}
+
+/* ── IMAGEN: LIGHT MODE ── */
+[data-theme="light"] .producto-card-image-wrap,
+[data-theme="light"] .producto-card-image-wrap.no-image {
+  background: #eef2f7;
+  border-color: #d6dee9;
 }
 
 .producto-card-image {
@@ -1668,7 +1694,7 @@ mark.highlight {
 
 .producto-card-code small {
   display: block;
-  color: rgba(255,255,255,0.38);
+  color: var(--muted);
   margin-top: 2px;
 }
 
@@ -1791,6 +1817,23 @@ mark.highlight {
   font-weight: 500;
   line-height: 1.1;
   white-space: nowrap;
+}
+
+/* ── PRECIOS: LIGHT MODE ── */
+[data-theme="light"] .precio-principal,
+[data-theme="light"] .producto-card-price-value {
+  color: #173f7a;
+}
+
+[data-theme="light"] .precio-secundario,
+[data-theme="light"] .producto-card-price-base {
+  color: #59677a;
+}
+
+[data-theme="light"] .precio-etiqueta,
+[data-theme="light"] .producto-card-price-label {
+  background: #dcebff;
+  color: #2864ae;
 }
 
 .producto-card-stock {
