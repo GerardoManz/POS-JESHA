@@ -18,6 +18,7 @@ const prisma = require('../../lib/prisma')
 const resolverEmpresaScope = require('../../helpers/resolverEmpresaScope')
 const resolverDatosEmisor = require('../../helpers/resolverDatosEmisor')
 const { getFacturapi } = require('../../lib/facturapi')
+const { trackFacturapi, isEnabled } = require('../../lib/debug')
 
 const TASA_IVA   = parseFloat(process.env.TASA_IVA || '0.16')
 const IVA_FACTOR = 1 + TASA_IVA
@@ -543,14 +544,14 @@ exports.solicitarFactura = async (req, res) => {
     let selladoOk = false
     const datosEmisor = resolverDatosEmisor(empresaId)
     try {
-      invoice = await fp.invoices.create({
+      invoice = await trackFacturapi('invoices.create', { facturaId: factura.id }, () => fp.invoices.create({
         ...buildInvoicePayload({
           rfc: rfcUpper, razonSocial: nombreReceptor, regimenFiscal, codigoPostal,
           usoCfdi, email: emailTrimmed, metodoPago: venta.metodoPago,
           detalles: venta.DetalleVenta, datosEmisor
         }),
         idempotency_key: idempotencyKey
-      })
+      }))
       selladoOk = true
 
       // ── 3) Éxito → TIMBRADA + venta FACTURADA ──
@@ -570,7 +571,7 @@ exports.solicitarFactura = async (req, res) => {
       ])
 
       const emailsEnvio = [emailTrimmed, sec1, sec2].filter(Boolean)
-      try { await fp.invoices.sendByEmail(invoice.id, { email: emailsEnvio }) } catch (e) { console.warn('⚠️  No se pudo enviar email:', e.message) }
+      try { await trackFacturapi('invoices.sendByEmail', { facturaId: factura.id }, () => fp.invoices.sendByEmail(invoice.id, { email: emailsEnvio })) } catch (e) { console.warn('⚠️  No se pudo enviar email:', e.message) }
 
       console.log(`✅ CFDI timbrado: ${invoice.uuid} | ${venta.folio} | ${rfcUpper}`)
       return res.json({
@@ -737,14 +738,14 @@ exports.timbrarManual = async (req, res) => {
 
       // ── Timbrar con idempotency_key ──
       const datosEmisor = resolverDatosEmisor(scope.empresaId)
-      invoice = await fp.invoices.create({
+      invoice = await trackFacturapi('invoices.create', { facturaId: id }, () => fp.invoices.create({
         ...buildInvoicePayload({
           rfc: f.rfcReceptor, razonSocial: f.nombreReceptor, regimenFiscal: f.regimenFiscal,
           codigoPostal: f.cpReceptor, usoCfdi: f.usoCfdi, email: f.emailReceptor,
           metodoPago: venta.metodoPago, detalles: venta.DetalleVenta, datosEmisor
         }),
         idempotency_key: f.idempotencyKey
-      })
+      }))
       selladoOk = true
 
       // ── Éxito ──
@@ -764,7 +765,7 @@ exports.timbrarManual = async (req, res) => {
       ])
 
       const emailsManual = [f.emailReceptor, f.emailSecundario1, f.emailSecundario2].filter(Boolean)
-      try { await fp.invoices.sendByEmail(invoice.id, { email: emailsManual }) } catch (e) { console.warn('⚠️  No se pudo enviar email:', e.message) }
+      try { await trackFacturapi('invoices.sendByEmail', { facturaId: id }, () => fp.invoices.sendByEmail(invoice.id, { email: emailsManual })) } catch (e) { console.warn('⚠️  No se pudo enviar email:', e.message) }
 
       console.log(`✅ Timbrado manual: ${invoice.uuid} | factura ${id}`)
       return res.json({ success: true, uuid: invoice.uuid, data: actualizada, cfdi: invoice })
@@ -840,7 +841,7 @@ exports.descargarPdf = async (req, res) => {
     const fp = getFacturapi()
     if (!fp) return res.status(503).json({ error: 'Facturapi no configurada' })
 
-    const stream = await fp.invoices.downloadPdf(factura.facturapiId)
+    const stream = await trackFacturapi('invoices.downloadPdf', { facturaId: factura.id }, () => fp.invoices.downloadPdf(factura.facturapiId))
     res.setHeader('Content-Type', 'application/pdf')
     res.setHeader('Content-Disposition', `inline; filename="factura_${factura.folioFiscal || factura.id}.pdf"`)
     stream.pipe(res)
@@ -867,7 +868,7 @@ exports.descargarXml = async (req, res) => {
     const fp = getFacturapi()
     if (!fp) return res.status(503).json({ error: 'Facturapi no configurada' })
 
-    const stream = await fp.invoices.downloadXml(factura.facturapiId)
+    const stream = await trackFacturapi('invoices.downloadXml', { facturaId: factura.id }, () => fp.invoices.downloadXml(factura.facturapiId))
     res.setHeader('Content-Type', 'application/xml')
     res.setHeader('Content-Disposition', `attachment; filename="factura_${factura.folioFiscal || factura.id}.xml"`)
     stream.pipe(res)
@@ -895,7 +896,7 @@ exports.enviarEmail = async (req, res) => {
     if (!fp) return res.status(503).json({ error: 'Facturapi no configurada' })
 
     const emailsReenvio = [factura.emailReceptor, factura.emailSecundario1, factura.emailSecundario2].filter(Boolean)
-    await fp.invoices.sendByEmail(factura.facturapiId, { email: emailsReenvio })
+    await trackFacturapi('invoices.sendByEmail', { facturaId: factura.id }, () => fp.invoices.sendByEmail(factura.facturapiId, { email: emailsReenvio }))
     console.log(`📧 Email reenviado: factura ${factura.id} → ${emailsReenvio.join(', ')}`)
     res.json({ success: true, mensaje: `Email enviado a ${emailsReenvio.join(', ')}` })
   } catch (err) {

@@ -1,5 +1,6 @@
 const jwt    = require('jsonwebtoken')
 const prisma = require('../lib/prisma')
+const debug = require('../lib/debug')
 
 // ═══════════════════════════════════════════════════════════════════
 // REQUIREAUTH - Verificar que el usuario tiene token válido
@@ -23,6 +24,7 @@ const requireAuth = async (req, res, next) => {
   }
 
   if (!token) {
+    if (debug.isEnabled()) debug.recordAuth401('missing', req.path)
     return res.status(401).json({ error: 'Token requerido' })
   }
 
@@ -42,6 +44,10 @@ const requireAuth = async (req, res, next) => {
     next()
   } catch (err) {
     if (err.name === 'JsonWebTokenError' || err.name === 'TokenExpiredError') {
+      if (debug.isEnabled()) {
+        const reason = err.name === 'TokenExpiredError' ? 'expired' : 'invalid'
+        debug.recordAuth401(reason, req.path)
+      }
       return res.status(401).json({ error: 'Token inválido o expirado' })
     }
     console.error('Error en requireAuth:', err)

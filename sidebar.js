@@ -275,18 +275,49 @@ document.addEventListener('DOMContentLoaded', () => {
 window.apiFetch = async function(path, opts = {}) {
   const token  = localStorage.getItem('jesha_token')
   const apiUrl = window.__JESHA_API_URL__ || 'http://localhost:3000'
+  const debugOn = localStorage.getItem('jesha_debug') === '1'
+  const start = Date.now()
+  const safePath = String(path).split('?')[0]
 
   // Soporte FormData: no forzar Content-Type, dejar que el navegador lo ponga con boundary
   const esFormData = opts.body instanceof FormData
 
-  const res = await fetch(`${apiUrl}${path}`, {
-    ...opts,
-    headers: {
-      ...(esFormData ? {} : { 'Content-Type': 'application/json' }),
-      'Authorization': `Bearer ${token}`,
-      ...(opts.headers || {})
+  let res
+  try {
+    res = await fetch(`${apiUrl}${path}`, {
+      ...opts,
+      headers: {
+        ...(esFormData ? {} : { 'Content-Type': 'application/json' }),
+        'Authorization': `Bearer ${token}`,
+        ...(opts.headers || {})
+      }
+    })
+  } catch (err) {
+    if (debugOn) {
+      console.debug(JSON.stringify({
+        event: 'fetch_error',
+        method: opts.method || 'GET',
+        path: safePath,
+        durationMs: Date.now() - start,
+        errorType: 'network',
+      }))
     }
-  })
+    throw err
+  }
+
+  if (debugOn) {
+    console.debug(JSON.stringify({
+      event: 'fetch',
+      method: opts.method || 'GET',
+      path: safePath,
+      status: res.status,
+      durationMs: Date.now() - start,
+      requestId: res.headers.get('X-Request-Id') || null,
+    }))
+    if (res.status === 401) {
+      console.debug(JSON.stringify({ event: 'fetch_401', path: safePath }))
+    }
+  }
 
   // Intentar parsear JSON de forma segura (fallback: null si es HTML/texto)
   const data = await res.json().catch(() => null)

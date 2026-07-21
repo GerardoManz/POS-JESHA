@@ -34,6 +34,38 @@ setInterval(() => {
   cleanupStaleJobs().catch((e) => console.error('[impresion] cleanup:', e))
 }, 60000).unref()
 
+// ── Debug instrumentation (solo si DEBUG_INCIDENT_WINDOW=true) ──
+const debug = require('./lib/debug')
+if (debug.isEnabled()) {
+  const { monitorEventLoopDelay } = require('perf_hooks')
+  const histogram = monitorEventLoopDelay({ resolution: 10 })
+  histogram.enable()
+  const pool = require('./lib/prisma').pool
+
+  setInterval(() => {
+    debug.flushAuthSummary()
+    debug.logJSON({
+      event: 'metrics',
+      ...debug.buildBase(),
+      ...debug.getMemMetrics(),
+      eventLoop: debug.getEventLoopLag(histogram),
+      pool: debug.getPoolMetrics(pool),
+      concurrency: debug.getConcurrencyMetrics(),
+    })
+  }, 60000).unref()
+
+  process.on('uncaughtExceptionMonitor', (err, origin) => {
+    debug.logJSON({
+      event: 'uncaught_exception',
+      error: debug.safeError(err),
+      origin,
+      stack: debug.safeStack(err),
+      ...debug.buildBase(),
+      ...debug.getMemMetrics(),
+    })
+  })
+}
+
 process.on('unhandledRejection', (reason) => {
   console.error('UNHANDLED REJECTION:', reason)
 })

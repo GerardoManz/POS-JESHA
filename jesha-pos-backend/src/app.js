@@ -9,6 +9,10 @@ const cors    = require('cors')
 const path    = require('path')
 const app     = express()
 
+// Debug instrumentation
+const debug = require('./lib/debug')
+const THRESHOLD_MS = parseInt(process.env.DEBUG_SLOW_REQUEST_MS || '2000', 10)
+
 // Orígenes permitidos — agrega tu URL de ngrok aquí si la necesitas
 const ALLOWED_ORIGINS = [
   'http://localhost:3000',
@@ -36,8 +40,61 @@ app.use(cors({
     callback(new Error(`CORS bloqueado: ${origin}`))
   },
   methods:        ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
-  allowedHeaders: ['Content-Type','Authorization']
+  allowedHeaders: ['Content-Type','Authorization'],
+  exposedHeaders: ['X-Request-Id']
 }))
+// ── Request ID middleware (antes de json y auth) ──
+app.use((req, res, next) => {
+  if (!debug.isEnabled()) return next()
+  req.requestId = debug.makeRequestId()
+  res.setHeader('X-Request-Id', req.requestId)
+  next()
+})
+
+// ── Request duration + active HTTP counter (antes de json y rutas) ──
+app.use((req, res, next) => {
+  if (!debug.isEnabled()) return next()
+  const start = Date.now()
+  debug.incrementHttpRequests()
+  let finished = false
+  let finalized = false
+
+  const finalize = (reason) => {
+    if (finalized) return
+    finalized = true
+    debug.decrementHttpRequests()
+    const dur = Date.now() - start
+
+    if (reason === 'aborted') {
+      debug.logJSON({
+        event: 'request_aborted',
+        requestId: req.requestId,
+        method: req.method,
+        path: debug.normalizeRoute(req),
+        durationMs: dur,
+        ...debug.buildBase(),
+      })
+      return
+    }
+
+    if (dur > THRESHOLD_MS || res.statusCode >= 500) {
+      debug.logJSON({
+        event: res.statusCode >= 500 ? 'response_5xx' : 'slow_request',
+        requestId: req.requestId,
+        method: req.method,
+        path: debug.normalizeRoute(req),
+        status: res.statusCode,
+        durationMs: dur,
+        ...debug.buildBase(),
+      })
+    }
+  }
+
+  res.on('finish', () => { finished = true; finalize('finished') })
+  res.on('close', () => { finalize(finished ? 'finished' : 'aborted') })
+  next()
+})
+
 app.use(express.json())
 
 // ── Archivos estáticos del frontend ──
@@ -94,16 +151,40 @@ app.use('/imagenes', express.static(path.join(__dirname, 'public/imagenes')))
 // ── Health checks ──
 app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }))
 
-app.get('/health/db', async (req, res) => {
-  try {
-    const prisma = require('./lib/prisma')
-    await prisma.$queryRaw`SELECT 1`
-    res.json({ status: 'ok', db: 'connected', timestamp: new Date().toISOString() })
-  } catch (err) {
-    console.error('Health/DB error:', err.message)
-    res.status(503).json({ status: 'error', db: 'disconnected', error: err.message })
-  }
-})
+// /health/db solo se monta cuando el modo debug está activo
+if (debug.isEnabled()) {
+  app.get('/health/db', async (req, res) => {
+    let timeoutId
+    try {
+      const prisma = require('./lib/prisma')
+      const start = Date.now()
+      await Promise.race([
+        prisma.$queryRaw`SELECT 1`,
+        new Promise((_, reject) => {
+          timeoutId = setTimeout(() => reject(new Error('health_db_timeout')), 5000)
+        }),
+      ])
+      debug.logJSON({
+        event: 'health_db',
+        status: 'ok',
+        durationMs: Date.now() - start,
+        requestId: req.requestId,
+        ...debug.buildBase(),
+      })
+      res.json({ status: 'ok', db: 'connected' })
+    } catch (err) {
+      debug.logJSON({
+        event: 'health_db',
+        status: 'timeout',
+        requestId: req.requestId,
+        ...debug.buildBase(),
+      })
+      res.status(503).json({ status: 'error', db: 'timeout' })
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId)
+    }
+  })
+}
 
 // ── Error handler ──
 app.use((err, req, res, next) => {

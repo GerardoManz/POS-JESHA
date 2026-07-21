@@ -16,6 +16,7 @@ const resolverEmpresaScope = require('../../helpers/resolverEmpresaScope')
 const resolverDatosEmisor = require('../../helpers/resolverDatosEmisor')
 const getEmpresaId = require('../../helpers/getEmpresaId')
 const { getFacturapi, modoActivo } = require('../../lib/facturapi')
+const { trackFacturapi } = require('../../lib/debug')
 const { buildGlobalInvoicePayload, METODOS_GLOBALES, PERIODICIDAD_FACTURAPI } = require('../facturacion/facturacion.controller')
 
 // ════════════════════════════════════════════════════════════════════
@@ -239,7 +240,7 @@ exports.cancelar = async (req, res) => {
 
     let invoiceRemoto
     try {
-      invoiceRemoto = await fp.invoices.retrieve(factura.facturapiId)
+      invoiceRemoto = await trackFacturapi('invoices.retrieve', { facturaId: id }, () => fp.invoices.retrieve(factura.facturapiId))
     } catch (fpErr) {
       const noEncontrado = fpErr?.status === 404 || /not\s*found|no\s*(se\s*)?encontr/i.test(fpErr?.message || '')
       if (!noEncontrado) {
@@ -287,7 +288,7 @@ exports.cancelar = async (req, res) => {
     // B2: viva en el SAT → cancelar en el SAT.
     let resultadoCancel
     try {
-      resultadoCancel = await fp.invoices.cancel(factura.facturapiId, { motive: motivoCancelacion })
+      resultadoCancel = await trackFacturapi('invoices.cancel', { facturaId: id }, () => fp.invoices.cancel(factura.facturapiId, { motive: motivoCancelacion }))
     } catch (fpErr) {
       console.error(`❌ cancel() falló (factura ${id}):`, fpErr.message)
       return res.status(502).json({ error: 'No se pudo cancelar el CFDI en el SAT: ' + fpErr.message })
