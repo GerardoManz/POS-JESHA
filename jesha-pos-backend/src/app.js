@@ -108,6 +108,10 @@ app.get('/health/db', async (req, res) => {
 // ── Error handler ──
 app.use((err, req, res, next) => {
   console.error('Error:', err)
+  const status = typeof err.status === 'number' ? err.status : 500
+  if (status < 500 && err.expose) {
+    return res.status(status).json({ error: err.message })
+  }
   res.status(500).json({ error: 'Error interno' })
 })
 
