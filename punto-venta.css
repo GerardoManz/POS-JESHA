@@ -795,6 +795,16 @@
 }
 
 /* ── MÉTODOS DE PAGO ── */
+
+/* Variables de color por método */
+.metodo-btn[data-metodo="EFECTIVO"]        { --btn-hl: #60d080; }
+.metodo-btn[data-metodo="CREDITO"]         { --btn-hl: #f0a030; }
+.metodo-btn[data-metodo="DEBITO"]          { --btn-hl: #8b6cf0; }
+.metodo-btn[data-metodo="TRANSFERENCIA"]   { --btn-hl: #4a90e2; }
+.metodo-btn[data-metodo="CREDITO_CLIENTE"] { --btn-hl: #1D9E75; }
+.metodo-btn[data-metodo="MIXTO"]           { --btn-hl: #e8710a; }
+
+/* Grid contenedor — con stagger entrance */
 .metodos-pago {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -802,6 +812,8 @@
 }
 
 .metodo-btn {
+  position: relative;
+  overflow: hidden;
   min-height: 34px;
   padding: 5px 6px;
   border: 1px solid var(--border-color, #333);
@@ -811,29 +823,148 @@
   cursor: pointer;
   font-size: 0.78rem;
   font-weight: 500;
-  transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.1s;
+  transition:
+    background 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+    color 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 0.2s ease;
+  animation: metodoEnter 0.3s var(--ease-pop, cubic-bezier(0.34, 1.56, 0.64, 1)) both;
+}
+.metodo-btn:nth-child(2) { animation-delay: 40ms; }
+.metodo-btn:nth-child(3) { animation-delay: 80ms; }
+.metodo-btn:nth-child(4) { animation-delay: 120ms; }
+.metodo-btn:nth-child(5) { animation-delay: 160ms; }
+.metodo-btn:nth-child(6) { animation-delay: 200ms; }
+
+@keyframes metodoEnter {
+  from { opacity: 0; transform: translateY(8px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
+/* Hover: color del método */
 .metodo-btn:hover {
-  border-color: var(--accent, #4a90e2);
-  color: var(--accent, #4a90e2);
+  border-color: var(--btn-hl, var(--accent, #4a90e2));
+  color: var(--btn-hl, var(--accent, #4a90e2));
 }
 
+/* Press: escala ligera + ripple base */
 .metodo-btn:active {
-  transform: scale(0.97);
+  transform: scale(0.96);
 }
 
+/* Ripple sutil con pseudo-elemento */
+.metodo-btn::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at var(--ripple-x, 50%) var(--ripple-y, 50%), rgba(255,255,255,0.25) 0%, transparent 65%);
+  opacity: 0;
+  transition: opacity 0.4s ease-out;
+  pointer-events: none;
+  border-radius: inherit;
+}
+
+/* Active: fondo sólido + glow + icono animado */
 .metodo-btn.active {
-  background: var(--accent, #4a90e2);
-  border-color: var(--accent, #4a90e2);
+  background: var(--btn-hl, var(--accent, #4a90e2));
+  border-color: var(--btn-hl, var(--accent, #4a90e2));
   color: white;
+  box-shadow: 0 0 14px color-mix(in srgb, var(--btn-hl, #4a90e2) 45%, transparent);
+  transform: scale(1.04);
 }
 
+.metodo-btn.active::after {
+  opacity: 1;
+  transition-duration: 0.15s;
+}
+
+.metodo-icon {
+  display: inline-block;
+}
+.metodo-btn.active .metodo-icon {
+  animation: metodoIconBounce 0.35s var(--ease-pop, cubic-bezier(0.34, 1.56, 0.64, 1));
+}
+
+@keyframes metodoIconBounce {
+  0%   { transform: scale(1); }
+  35%  { transform: scale(1.35); }
+  60%  { transform: scale(0.88); }
+  100% { transform: scale(1); }
+}
+
+/* Botones no activos se atenúan ligeramente */
+.metodo-btn:not(.active) {
+  opacity: 0.7;
+}
+.metodo-btn.active ~ .metodo-btn:not(.active) {
+  opacity: 0.5;
+}
+
+/* ── Collapse animado para secciones condicionales ── */
+.metodo-section-collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+              margin-top 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.metodo-section-collapse > .metodo-section-inner {
+  overflow: hidden;
+  min-height: 0;
+}
+.metodo-section-collapse.open {
+  grid-template-rows: 1fr;
+}
+
+/* Info de crédito cliente */
 #credito-cliente-info {
-  margin-top: 6px !important;
-  padding: 6px 10px !important;
-  font-size: 0.74rem !important;
+  margin-top: 0;
+  padding: 6px 10px;
+  font-size: 0.74rem;
   line-height: 1.25;
+  border-radius: 8px;
+}
+#credito-cliente-info .metodo-section-inner {
+  display: flex;
+  align-items: center;
+}
+
+/* Botón crédito cliente: oculto → sale del grid */
+#btn-metodo-credito-cliente:not(.visible) {
+  display: none;
+}
+#btn-metodo-credito-cliente.visible {
+  animation: creditBtnAppear 0.3s var(--ease-pop, cubic-bezier(0.34, 1.56, 0.64, 1)) both;
+}
+@keyframes creditBtnAppear {
+  from { opacity: 0; transform: scale(0.85); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+/* Monto efectivo control */
+#monto-efectivo-control {
+  min-height: 0;
+}
+
+/* ── Shake de validación (sin método seleccionado) ── */
+.metodos-pago.validation-shake {
+  animation: metodoValidationShake 0.5s var(--ease-standard, cubic-bezier(0.4, 0, 0.2, 1));
+}
+.metodos-pago.validation-shake .metodo-btn {
+  border-color: var(--danger, #ff6b6b) !important;
+  color: var(--danger, #ff6b6b) !important;
+  transition-delay: 0s;
+}
+
+@keyframes metodoValidationShake {
+  0%, 100% { transform: translateX(0); }
+  15%      { transform: translateX(-5px); }
+  30%      { transform: translateX(5px); }
+  45%      { transform: translateX(-4px); }
+  60%      { transform: translateX(4px); }
+  75%      { transform: translateX(-2px); }
+  90%      { transform: translateX(2px); }
 }
 
 /* ── CAMBIO ── */

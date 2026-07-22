@@ -1651,7 +1651,7 @@ function resetVentaActual() {
 
   metodoPagoSeleccionado = null
   document.querySelectorAll('.metodo-btn').forEach(b => b.classList.remove('active'))
-  if (montoEfectivoControl) montoEfectivoControl.style.display = 'none'
+  if (montoEfectivoControl) montoEfectivoControl.classList.remove('open')
 
   cerrarDropdownClientes()
   mostrarEstadoInicial()
@@ -1885,6 +1885,9 @@ function _aplicarEstadoVenta(p) {
       b.classList.toggle('active', esActivo)
       b.setAttribute('aria-pressed', esActivo ? 'true' : 'false')
     })
+    if (montoEfectivoControl) {
+      montoEfectivoControl.classList.toggle('open', metodoPagoSeleccionado === 'EFECTIVO')
+    }
   }
 
   actualizarCarrito() // re-persiste el estado activo en sessionStorage
@@ -2035,9 +2038,10 @@ async function completarVenta() {
   if (!metodoPagoSeleccionado) {
     const metodos = document.querySelector('.metodos-pago')
     if (metodos) {
-      metodos.style.outline = '2px solid #e8710a'
-      metodos.style.borderRadius = '8px'
-      setTimeout(() => { metodos.style.outline = ''; metodos.style.borderRadius = '' }, 1500)
+      metodos.classList.remove('validation-shake')
+      void metodos.offsetWidth
+      metodos.classList.add('validation-shake')
+      setTimeout(() => metodos.classList.remove('validation-shake'), 600)
     }
     mostrarToast('Selecciona el método de pago antes de continuar', 'warning')
     return
@@ -2796,10 +2800,10 @@ async function verificarCreditoCliente(clienteId) {
 
       creditoCliente = { limite, saldo, disponible }
 
-      if (btnCredito) btnCredito.style.display = 'inline-flex'
+      if (btnCredito) btnCredito.classList.add('visible')
       if (infoCredito && textoCredit) {
         textoCredit.textContent = `Crédito: $${disponible.toFixed(2)} disponible de $${limite.toFixed(2)}`
-        infoCredito.style.display = 'block'
+        infoCredito.classList.add('open')
         infoCredito.style.borderColor = disponible > 0
           ? 'rgba(29,158,117,0.2)' : 'rgba(232,113,10,0.2)'
         infoCredito.style.background  = disponible > 0
@@ -2817,8 +2821,8 @@ async function verificarCreditoCliente(clienteId) {
 function ocultarCreditoCliente() {
   const btn  = document.getElementById('btn-metodo-credito-cliente')
   const info = document.getElementById('credito-cliente-info')
-  if (btn)  btn.style.display  = 'none'
-  if (info) info.style.display = 'none'
+  if (btn)  btn.classList.remove('visible')
+  if (info) info.classList.remove('open')
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -2968,10 +2972,23 @@ function configurarEventListeners() {
         b.setAttribute('aria-pressed', 'false')
       })
       var target = e.target.closest('.metodo-btn')
+
+      // ── Ripple ──
+      const rect = target.getBoundingClientRect()
+      const x = ((e.clientX - rect.left) / rect.width * 100).toFixed(0)
+      const y = ((e.clientY - rect.top) / rect.height * 100).toFixed(0)
+      target.style.setProperty('--ripple-x', x + '%')
+      target.style.setProperty('--ripple-y', y + '%')
+
       target.classList.add('active')
       target.setAttribute('aria-pressed', 'true')
       metodoPagoSeleccionado = target.dataset.metodo
-      montoEfectivoControl.style.display = metodoPagoSeleccionado === 'EFECTIVO' ? 'block' : 'none'
+
+      // ── Secciones condicionales ──
+      if (montoEfectivoControl) {
+        montoEfectivoControl.classList.toggle('open', metodoPagoSeleccionado === 'EFECTIVO')
+      }
+
       actualizarCarrito()
     })
   })

@@ -125,33 +125,37 @@
           <label class="control-label">Método de Pago</label>
           <div class="metodos-pago">
             <button class="metodo-btn" data-metodo="EFECTIVO">
-              💵 Efectivo
+              <span class="metodo-icon">💵</span> Efectivo
             </button>
             <button class="metodo-btn" data-metodo="CREDITO">
-              💳 T. Crédito
+              <span class="metodo-icon">💳</span> T. Crédito
             </button>
             <button class="metodo-btn" data-metodo="DEBITO">
-              💳 T. Débito
+              <span class="metodo-icon">💳</span> T. Débito
             </button>
             <button class="metodo-btn" data-metodo="TRANSFERENCIA">
-              🔄 Transf.
+              <span class="metodo-icon">🔄</span> Transf.
             </button>
-            <button class="metodo-btn metodo-credito-cliente" data-metodo="CREDITO_CLIENTE" id="btn-metodo-credito-cliente" style="display:none;">
-              🏦 Crédito
+            <button class="metodo-btn metodo-credito-cliente" data-metodo="CREDITO_CLIENTE" id="btn-metodo-credito-cliente">
+              <span class="metodo-icon">🏦</span> Crédito
             </button>
             <button class="metodo-btn" data-metodo="MIXTO">
-              🔀 Mixto
+              <span class="metodo-icon">🔀</span> Mixto
             </button>
           </div>
           <!-- Aviso crédito disponible -->
-          <div id="credito-cliente-info" style="display:none;margin-top:8px;padding:8px 12px;background:rgba(29,158,117,0.08);border:1px solid rgba(29,158,117,0.2);border-radius:8px;font-size:0.8rem;color:#1D9E75;">
-            <span id="credito-cliente-texto"></span>
+          <div id="credito-cliente-info" class="metodo-section-collapse">
+            <div class="metodo-section-inner">
+              <span id="credito-cliente-texto"></span>
+            </div>
           </div>
         </div>
 
         <!-- MONTO RECIBIDO — movido al modal de confirmación -->
         <input type="hidden" id="monto-recibido" value="" />
-        <div id="monto-efectivo-control" style="display:none;"></div>
+        <div id="monto-efectivo-control" class="metodo-section-collapse">
+          <div class="metodo-section-inner"></div>
+        </div>
 
         <!-- DIVIDER -->
         <div class="carrito-divider"></div>
