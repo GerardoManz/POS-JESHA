@@ -19,4 +19,28 @@ function puedeGestionar(rolSolicitante, rolObjetivo) {
   return JERARQUIA_ROLES[rolSolicitante] > JERARQUIA_ROLES[rolObjetivo]
 }
 
-module.exports = { JERARQUIA_ROLES, puedeGestionar }
+const ROLES_VALIDOS = new Set(Object.keys(JERARQUIA_ROLES))
+
+const PLATFORM_ROLES = new Set([
+  'PLATFORM_ADMIN'
+])
+
+const ENTERPRISE_ROLES = new Set([
+  'SUPERADMIN',
+  'ADMIN_SUCURSAL',
+  'EMPLEADO',
+  'PRECIOS'
+])
+
+const ROLES_REQUIEREN_SUCURSAL = new Set([
+  'EMPLEADO'
+])
+
+module.exports = {
+  JERARQUIA_ROLES,
+  ROLES_VALIDOS,
+  PLATFORM_ROLES,
+  ENTERPRISE_ROLES,
+  ROLES_REQUIEREN_SUCURSAL,
+  puedeGestionar
+}
