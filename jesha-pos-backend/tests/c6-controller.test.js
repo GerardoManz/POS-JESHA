@@ -1,6 +1,17 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 
+// Cloudinary lanza error al importar si faltan env vars.
+// Inyectar dummy antes del require (solo para tests que no tocan Cloudinary).
+const CLOUDINARY_ENV_BACKUP = {
+  CLOUDINARY_CLOUD_NAME: process.env.CLOUDINARY_CLOUD_NAME,
+  CLOUDINARY_API_KEY:    process.env.CLOUDINARY_API_KEY,
+  CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET
+}
+if (!process.env.CLOUDINARY_CLOUD_NAME) process.env.CLOUDINARY_CLOUD_NAME = 'test'
+if (!process.env.CLOUDINARY_API_KEY)    process.env.CLOUDINARY_API_KEY    = 'test'
+if (!process.env.CLOUDINARY_API_SECRET) process.env.CLOUDINARY_API_SECRET = 'test'
+
 const {
     construirDataEdicion,
     crear,
@@ -10,6 +21,11 @@ const {
     cambiarEstado,
     duplicarProducto
 } = require('../src/modules/productos/productos.controller')
+
+// Restaurar env vars originales después de importar
+if (CLOUDINARY_ENV_BACKUP.CLOUDINARY_CLOUD_NAME === undefined) delete process.env.CLOUDINARY_CLOUD_NAME
+if (CLOUDINARY_ENV_BACKUP.CLOUDINARY_API_KEY    === undefined) delete process.env.CLOUDINARY_API_KEY
+if (CLOUDINARY_ENV_BACKUP.CLOUDINARY_API_SECRET === undefined) delete process.env.CLOUDINARY_API_SECRET
 
 const {
     normalizarUnidadVenta,
