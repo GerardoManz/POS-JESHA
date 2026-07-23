@@ -10,6 +10,7 @@ const getEmpresaId = require('../../helpers/getEmpresaId')
 const { EMPRESA } = require('../../../config/empresa')
 const { buildAbonoSnapshot, buildRetiroSnapshot, formatFechaTicket } = require('../impresion/impresion.snapshot')
 const { encolarImpresion } = require('../impresion/impresion.service')
+const { normalizarUnidadVenta } = require('../../helpers/unidades.helper')
 
 // ── Auditoría ──
 async function audit(usuarioId, sucursalId, accion, ref, empresaId, valorDespues = null) {
@@ -89,6 +90,9 @@ const BITACORA_SELECT = {
       inventarioDescontado: true, notas: true, creadoEn: true,
       fechaManual: true, responsableId: true, retiroBitacoraId: true,
       recibeTrabajadorId: true, recibeNombre: true,
+      unidadVentaSnapshot: true, unidadCapturadaSnapshot: true, esGranelSnapshot: true,
+      factorConversionSnapshot: true, modoCapturaSnapshot: true,
+      cantidadCapturadaSnapshot: true, importeCapturadoSnapshot: true,
       Venta:            { select: { id: true, folio: true, creadaEn: true } },
       Producto:         { select: { id: true, nombre: true, codigoInterno: true, unidadVenta: true } },
       Responsable:      { select: { id: true, nombre: true } },
@@ -768,7 +772,7 @@ const agregarProducto = async (req, res) => {
     // ── Producto + inventario ──
     const producto = await prisma.producto.findUnique({
       where: { id: parseInt(productoId) },
-      select: { id: true, nombre: true, codigoInterno: true, precioVenta: true, activo: true }
+      select: { id: true, nombre: true, codigoInterno: true, precioVenta: true, activo: true, unidadVenta: true, esGranel: true }
     })
     if (!producto || !producto.activo)      return res.status(404).json({ success: false, error: 'Producto no encontrado o inactivo' })
 
@@ -795,7 +799,14 @@ const agregarProducto = async (req, res) => {
           fechaManual:          fechaManualDate,
           responsableId:        responsable.id,
           recibeTrabajadorId:   trabajador.id,
-          recibeNombre:         nombreTrabajador(trabajador)
+          recibeNombre:         nombreTrabajador(trabajador),
+          unidadVentaSnapshot:       normalizarUnidadVenta(producto.unidadVenta, false) || null,
+          unidadCapturadaSnapshot:   normalizarUnidadVenta(producto.unidadVenta, false) || null,
+          esGranelSnapshot:          producto.esGranel,
+          factorConversionSnapshot:  null,
+          modoCapturaSnapshot:       'CANTIDAD',
+          cantidadCapturadaSnapshot: cant,
+          importeCapturadoSnapshot:  null
         }
       })
 
