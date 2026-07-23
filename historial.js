@@ -217,15 +217,17 @@ window.verDetalle = async function(id) {
     badge.textContent = estadoLabel[v.estado] || v.estado
     badge.className   = `estado-badge ${v.estado.toLowerCase()}`
 
-    document.getElementById('det-items-tbody').innerHTML = (v.detalles || []).map(d => `
+    document.getElementById('det-items-tbody').innerHTML = (v.detalles || []).map(d => {
+      const unidad = d.unidadVenta
+      return `
       <tr>
         <td>${d.nombre}</td>
         <td style="color:var(--muted);font-size:0.8rem">${d.codigo}</td>
-        <td style="text-align:center">${d.cantidad}</td>
+        <td style="text-align:center">${d.cantidad}${unidad ? ' ' + unidad : ' <span style="color:#ff6b6b;font-size:0.7rem">SIN UNIDAD</span>'}</td>
         <td>${fmt(d.precioUnitario)}</td>
         <td><strong>${fmt(d.subtotal)}</strong></td>
-      </tr>
-    `).join('')
+      </tr>`
+    }).join('')
 
     document.getElementById('det-subtotal').textContent  = fmt(v.subtotal)
     document.getElementById('det-descuento').textContent = fmt(v.descuento)
@@ -456,7 +458,7 @@ function renderTablaDevolucion() {
     const disponible    = d.cantidad - yaDevuelto
     const deshabilitado = disponible <= 0
 
-    const unidad     = d.unidadVenta || ''
+    const unidad     = d.unidadVenta
     const pasoInput  = '1'
     const anchoInput = '60px'
 

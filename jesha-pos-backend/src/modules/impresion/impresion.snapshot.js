@@ -56,7 +56,8 @@ function buildVentaSnapshot({
       nombre: String(p.nombre || ''),
       cantidad: num(p.cantidad),
       precioUnitario: num(p.precioUnitario),
-      subtotal: num(p.subtotal)
+      subtotal: num(p.subtotal),
+      unidad: p.unidad ?? null
     })),
     metodoPago: metodoPago || null,
     metodoLabel: metodoLabel || metodoPago || '',

@@ -374,7 +374,8 @@ ${bitacora.notas ? `<p style="font-size:8px;color:#555;margin-top:2mm;padding:2m
 
 function filaProductoHTML(d) {
   const nombre = d.Producto?.nombre || '—'
-  const unidad = d.Producto?.unidadVenta || 'pz'
+  const unidadRaw = d.unidadVentaSnapshot ?? d.Producto?.unidadVenta ?? null
+  const unidad   = unidadRaw || 'SIN UNIDAD'
   const cantidad = parseFloat(d.cantidad || 0)
   const precio   = parseFloat(d.precioUnitario || 0)
   const subtotal = parseFloat(d.subtotal || 0)

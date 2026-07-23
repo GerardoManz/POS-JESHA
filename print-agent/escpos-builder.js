@@ -156,7 +156,8 @@ function aplicarCorte(printer, cutMode) {
 
 // ── Helpers de producto compactos ──
 function printProductoVentaCompacto(printer, p, width) {
-  const cantPrecio = `${qty(p.cantidad)}x${money(p.precioUnitario)}`
+  const unidad   = p.unidad ? ` ${p.unidad} ` : ' '
+  const cantPrecio = `${qty(p.cantidad)}${unidad}x${money(p.precioUnitario)}`
   const total = money(p.subtotal)
   const right = `${cantPrecio}  ${total}`
   const maxName = Math.max(8, width - right.length - 1)
@@ -167,6 +168,15 @@ function printProductoRetiroCompacto(printer, p, width) {
   const cant = qty(p.cantidad)
   const precio = p.precioUnitario != null ? money(p.precioUnitario) : ''
   const right = `x${cant} ${precio}`.trim()
+  if (p.unidad) {
+    // Retiro con unidad: "x5 PZA" en lugar de "x5"
+    const cantUnidad = `${qty(p.cantidad)} ${p.unidad}`
+    const rightU = `${cantUnidad} ${precio}`.trim()
+    const maxNameU = Math.max(8, width - rightU.length - 1)
+    const nameU = trunc(p.nombre || '', maxNameU)
+    pprintln(printer, lineLR(nameU, rightU, width))
+    return
+  }
   const maxName = Math.max(8, width - right.length - 1)
   const name = trunc(p.nombre || '', maxName)
   pprintln(printer, lineLR(name, right, width))
@@ -262,7 +272,10 @@ function buildVentaTicket(printer, payload, printerCfg = {}, logoBuffer = null) 
     pleftRight(printer, 'Descripcion', 'Importe')
     for (const p of productos) {
       pprintln(printer, String(p.nombre || ''))
-      pleftRight(printer, `  ${qty(p.cantidad)} x ${money(p.precioUnitario)}`, money(p.subtotal))
+      const detalle = p.unidad
+        ? `  ${qty(p.cantidad)} ${p.unidad} x ${money(p.precioUnitario)}`
+        : `  ${qty(p.cantidad)} x ${money(p.precioUnitario)}`
+      pleftRight(printer, detalle, money(p.subtotal))
     }
 
     printer.drawLine()

@@ -76,7 +76,8 @@ const generarTicketMateriales = async (req, res) => {
         select: {
           id: true, bitacoraId: true, cantidad: true, precioUnitario: true, subtotal: true,
           fechaManual: true, recibeNombre: true,
-          Producto: { select: { nombre: true } },
+          unidadVentaSnapshot: true,
+          Producto: { select: { nombre: true, unidadVenta: true } },
           Responsable: { select: { nombre: true } }
         },
         orderBy: { creadoEn: 'asc' }
@@ -89,8 +90,9 @@ const generarTicketMateriales = async (req, res) => {
         const cant = parseFloat(d.cantidad || 0)
         const prec = parseFloat(d.precioUnitario || 0)
         const subt = parseFloat(d.subtotal || 0)
+        const unidad = d.unidadVentaSnapshot ?? d.Producto?.unidadVenta ?? null
         totalRetiro = parseFloat((totalRetiro + subt).toFixed(2))
-        return { nombre: d.Producto?.nombre || '—', cant, prec, subt }
+        return { nombre: d.Producto?.nombre || '—', cant, prec, subt, unidad }
       })
 
       const recibeSet = [...new Set(detalles.map(d => d.recibeNombre).filter(Boolean))]
@@ -179,7 +181,8 @@ const generarTicketRetiro = async (req, res) => {
           orderBy: { creadoEn: 'asc' },
           select: {
             id: true, cantidad: true, precioUnitario: true, subtotal: true,
-            Producto: { select: { nombre: true } }
+            unidadVentaSnapshot: true,
+            Producto: { select: { nombre: true, unidadVenta: true } }
           }
         }
       }
@@ -192,7 +195,8 @@ const generarTicketRetiro = async (req, res) => {
       nombre: d.Producto?.nombre || '—',
       cant: parseFloat(d.cantidad || 0),
       prec: parseFloat(d.precioUnitario || 0),
-      subt: parseFloat(d.subtotal || 0)
+      subt: parseFloat(d.subtotal || 0),
+      unidad: d.unidadVentaSnapshot ?? d.Producto?.unidadVenta ?? null
     }))
 
     const totalRetiro = parseFloat(filas.reduce((s, f) => parseFloat((s + f.subt).toFixed(2)), 0))
@@ -222,11 +226,16 @@ function generarHTML(filas, totalRetiro, deudaAnterior, nuevaDeuda, totalAbonado
     ? ` (${descuentoValor}%)`
     : ''
 
-  const filasHTML = filas.map(f => `
+  const filasHTML = filas.map(f => {
+    const detalle = f.unidad
+      ? `${f.cant} ${f.unidad} x ${fmt(f.prec)}`
+      : `${f.cant} x ${fmt(f.prec)}`
+    return `
     <tr>
-      <td class="td-prod">${f.nombre}<br><span class="td-det">${f.cant} x ${fmt(f.prec)}</span></td>
+      <td class="td-prod">${f.nombre}<br><span class="td-det">${detalle}</span></td>
       <td class="td-imp">${fmt(f.subt)}</td>
-    </tr>`).join('')
+    </tr>`
+  }).join('')
 
   return `<!DOCTYPE html>
 <html lang="es">

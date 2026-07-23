@@ -645,7 +645,8 @@ function renderDetalleItems(detalles) {
 // ── Renderizar una fila de producto guardado ──
 function filaProductoGuardadoHTML(d, editable) {
   const nombre   = d.Producto?.nombre || '—'
-  const unidad   = d.Producto?.unidadVenta || 'pz'
+  const unidadRaw = d.unidadVentaSnapshot ?? d.Producto?.unidadVenta ?? null
+  const unidad   = unidadRaw || 'SIN UNIDAD'
   const cantidad = parseFloat(d.cantidad)
   const todoDevuelto = cantidad <= 0.001
   const filaStyle = todoDevuelto ? 'opacity:0.45;text-decoration:line-through;' : ''

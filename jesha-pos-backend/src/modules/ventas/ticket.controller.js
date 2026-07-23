@@ -115,8 +115,10 @@ function generarHTMLTicket(venta, qrDataUrl, fechaStr, pagos) {
     const qty      = parseFloat(d.cantidad || 1)
     const qtyStr   = Number.isInteger(qty) ? qty.toString() : qty.toFixed(3).replace(/\.?0+$/, '')
     const precio   = parseFloat(d.precioUnitario || 0)
+    const unidad   = d.unidadVentaSnapshot ?? d.Producto?.unidadVenta ?? null
+    const detalle  = unidad ? `${qtyStr} ${unidad} x ${fmt(precio)}` : `${qtyStr} x ${fmt(precio)}`
     return `<tr>
-      <td class="td-prod">${nombre}<br><span class="td-det">${qtyStr} x ${fmt(precio)}</span></td>
+      <td class="td-prod">${nombre}<br><span class="td-det">${detalle}</span></td>
       <td class="td-imp">${fmt(subtotal)}</td>
     </tr>`
   }).join('')
