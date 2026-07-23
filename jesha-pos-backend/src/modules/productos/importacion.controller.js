@@ -230,23 +230,48 @@ function mapearProducto(fila) {
     if (codigoBarras && esNotacionCientifica(codigoBarras)) {
         codigoBarras = null
     }
-    // FIX: limpiar comillas residuales y forzar null si vacío
     if (codigoBarras) {
         codigoBarras = codigoBarras.replace(/^[\"']+|[\"']+$/g, '').trim()
     }
     codigoBarras = normalizarCodigoBarras(codigoBarras)
 
-    // Stock inicial y mínimo desde el CSV
     const stockInicial = parseFloat(fila['EXIST.']) || 0
     const stockMinimo  = parseFloat(fila['INV_MIN']) || 5
     const stockMaximo  = parseFloat(fila['INV_MAX']) || null
     const esGranel     = (fila['GRANEL (S/N)'] || '').toUpperCase().trim() === 'S'
 
-    // Inferir unidad de venta: helper central con prioridad explícita
-    const tipoGranelCSV = (fila['TIPO DE GRANEL'] || '').trim()
-    const unidadVenta   = inferirUnidadVenta(fila['DESCRIPCION'], esGranel, tipoGranelCSV)
+    // ── Columna TIPO (compatible hacia atrás) ──
+    const rawTipo = (fila['TIPO'] || fila['TIPO DE PRODUCTO'] || '').trim()
+    const tipo = rawTipo === '' ? 'PRODUCTO' : rawTipo.toUpperCase()
 
-    // Proveedor — se normaliza y se pasa como campo auxiliar
+    // ── SERVICIO: null out physical fields ──
+    let unidadVenta, unidadCompra, factorConversion, esGranelFinal
+    if (tipo === 'SERVICIO') {
+        if (esGranel || (fila['TIPO DE GRANEL'] || '').trim()) {
+            return { _error: 'Un servicio no puede tener configuración de granel' }
+        }
+        if ((fila['UNIDAD'] || fila['UNIDAD VENTA'] || '').trim()) {
+            return { _error: 'Un servicio no puede tener unidad de venta' }
+        }
+        if ((fila['UNIDAD COMPRA'] || '').trim()) {
+            return { _error: 'Un servicio no puede tener unidad de compra' }
+        }
+        if ((fila['FACTOR CONVERSIÓN'] || fila['FACTOR_CONVERSION'] || '').trim()) {
+            return { _error: 'Un servicio no puede tener factor de conversión' }
+        }
+        unidadVenta = null
+        unidadCompra = null
+        factorConversion = null
+        esGranelFinal = false
+    } else {
+        // Inferir unidad de venta: helper central con prioridad explícita
+        const tipoGranelCSV = (fila['TIPO DE GRANEL'] || '').trim()
+        unidadVenta = inferirUnidadVenta(fila['DESCRIPCION'], esGranel, tipoGranelCSV)
+        unidadCompra = null
+        factorConversion = null
+        esGranelFinal = esGranel
+    }
+
     const _proveedorNombre = normalizarNombreProveedor(fila['PROVEEDOR'])
     const _proveedorApodo = (fila['APODO_PROVEEDOR'] || '').trim() || null
 
@@ -260,17 +285,39 @@ function mapearProducto(fila) {
         costo:       fila['PRECIO COMPRA'] ? parseFloat(fila['PRECIO COMPRA']) : null,
         claveSat:  (fila['CLAVE SAT'] || '').trim() || null,
         unidadSat: (fila['UNIDAD SAT'] || '').trim().toUpperCase() || null,
-        esGranel,
+        esGranel:  esGranelFinal,
         unidadVenta,
+        tipo,
         activo: true,
         imagenUrl: (fila['IMAGEN_URL'] || '').trim() || null,
-        // Campos auxiliares — no van a BD directamente
         _stockInicial:     stockInicial,
         _stockMinimo:      stockMinimo,
         _stockMaximo:      stockMaximo,
-        _proveedorNombre,  // nombre normalizado para buscar/crear en ProveedorProducto
-        _proveedorApodo,   // apodo del proveedor desde CSV
+        _proveedorNombre,
+        _proveedorApodo,
     }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// VALIDACIÓN DE INVARIANTES (antes de prisma.producto.create/update)
+// ═══════════════════════════════════════════════════════════════════
+
+function validarUnidadVentaInvariante(data, numFila) {
+    if (data._error) {
+        return { valido: false, error: data._error }
+    }
+    const tipo = data.tipo || 'PRODUCTO'
+    if (tipo === 'SERVICIO') {
+        return { valido: true }
+    }
+    if (!data.unidadVenta) {
+        const desc = (data.nombre || '').substring(0, 80)
+        return {
+            valido: false,
+            error: `Producto granel sin unidad de venta explícita o inferible: "${desc}"`
+        }
+    }
+    return { valido: true }
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -432,6 +479,7 @@ function obtenerCategoriaIdDelCache(cacheCats, nombreDepto, nombreCat, fallbackI
 // ═══════════════════════════════════════════════════════════════════
 
 exports.inferirUnidadVenta = inferirUnidadVenta
+exports.validarUnidadVentaInvariante = validarUnidadVentaInvariante
 
 // ═══════════════════════════════════════════════════════════════════
 // HANDLER PRINCIPAL — IMPORTAR CSV (recibe archivo via multer)
@@ -511,6 +559,12 @@ exports.importarCSV = async (req, res) => {
                 const numFila = i + j + 2
                 try {
                     const data = mapearProducto(fila)
+
+                    // Validar invariantes antes de upsert
+                    const inv = validarUnidadVentaInvariante(data, numFila)
+                    if (!inv.valido) {
+                        throw new Error(inv.error)
+                    }
 
                     // Obtener categoría del cache (sin queries, sin race condition)
                     const categoriaId = obtenerCategoriaIdDelCache(
@@ -778,6 +832,12 @@ exports.importarSoloNuevos = async (req, res) => {
                 const numFila = i + j + 2
                 try {
                     const data = mapearProducto(fila)
+
+                    // Validar invariantes antes de crear
+                    const inv = validarUnidadVentaInvariante(data, numFila)
+                    if (!inv.valido) {
+                        throw new Error(inv.error)
+                    }
 
                     // ══════════════════════════════════════════════════
                     // BÚSQUEDA DE EXISTENCIA — doble: codigoInterno Y codigoBarras
