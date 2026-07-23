@@ -7,6 +7,7 @@ const { requireAuth, requireRole } = require('./middlewares/auth.middleware')
 const express = require('express')
 const cors    = require('cors')
 const path    = require('path')
+const { randomUUID } = require('node:crypto')
 const app     = express()
 
 // Debug instrumentation
@@ -31,6 +32,15 @@ const ALLOWED_ORIGINS = [
   // En producción este comodín NO aplica: todo pasa por ALLOWED_ORIGINS/FRONTEND_URL.
   const LAN_ORIGIN_REGEX = /^http:\/\/(localhost|127\.0\.0\.1|192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}):(3000|5500)$/
 
+// ── Request ID global ──
+// Se genera internamente y nunca se confía en X-Request-Id enviado por el cliente.
+app.use((req, res, next) => {
+  const requestId = randomUUID()
+  req.requestId = requestId
+  res.setHeader('X-Request-Id', requestId)
+  next()
+})
+
 app.use(cors({
   origin: (origin, callback) => {
     // Permitir requests sin origin (Postman, apps nativas, mismo servidor)
@@ -43,13 +53,6 @@ app.use(cors({
   allowedHeaders: ['Content-Type','Authorization'],
   exposedHeaders: ['X-Request-Id']
 }))
-// ── Request ID middleware (antes de json y auth) ──
-app.use((req, res, next) => {
-  if (!debug.isEnabled()) return next()
-  req.requestId = debug.makeRequestId()
-  res.setHeader('X-Request-Id', req.requestId)
-  next()
-})
 
 // ── Request duration + active HTTP counter (antes de json y rutas) ──
 app.use((req, res, next) => {
