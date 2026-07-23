@@ -1067,6 +1067,102 @@ function calcularParExacto(importe, precioBase) {
 }
 
 // ══════════════════════════════════════════════════════════════════
+//  CONSTRUIR DETALLE VENTA PAYLOAD — P3 Snapshots
+//  Extraído como función testeable. Cada modo define su contrato.
+// ══════════════════════════════════════════════════════════════════
+
+function construirDetalleVentaPayload(item) {
+  if (!item || !item.id || !item.nombre) {
+    throw new Error('Producto inválido: falta ID o nombre')
+  }
+
+  const productoId     = Number(item.id)
+  const precioUnitario = Number(item.precio)
+  const esGranel       = !!item.esGranel
+  const unidadVenta    = item.unidadVenta || ''
+  const unidadCompra   = item.unidadCompra || ''
+  const factor         = Number(item.factorConversion) || 1
+  const unidadElegida  = item.unidadElegida || 'base'
+  const nombre         = item.nombre
+
+  if (!Number.isFinite(productoId) || productoId <= 0) {
+    throw new Error(`"${nombre}": ID de producto inválido`)
+  }
+  if (!Number.isFinite(precioUnitario) || precioUnitario < 0) {
+    throw new Error(`"${nombre}": precio inválido`)
+  }
+
+  if (item.capturadoPorImporte) {
+    const importeCapturado = Number(item.importeCapturado)
+    if (!Number.isFinite(importeCapturado) || importeCapturado <= 0) {
+      throw new Error(`"${nombre}": importe capturado inválido`)
+    }
+    const cantidad = Number(item.cantidad)
+    if (!Number.isFinite(cantidad) || cantidad <= 0) {
+      throw new Error(`"${nombre}": cantidad inválida para importe`)
+    }
+
+    return {
+      productoId,
+      cantidad,
+      precioUnitario,
+      subtotal:           Number(importeCapturado.toFixed(2)),
+      modoCaptura:        'IMPORTE',
+      cantidadCapturada:  null,
+      importeCapturado:   Number(importeCapturado.toFixed(2)),
+      unidadCapturada:    null,
+      unidadVenta,
+      esGranel
+    }
+  }
+
+  if (unidadElegida === 'empaque' && factor > 1) {
+    const cantidadVisible = Number(item.cantidadVisible ?? item.cantidad)
+    if (!Number.isFinite(cantidadVisible) || cantidadVisible <= 0) {
+      throw new Error(`"${nombre}": cantidad capturada inválida`)
+    }
+    const cantidadFinal = Number((cantidadVisible * factor).toFixed(3))
+    if (!Number.isFinite(cantidadFinal) || cantidadFinal <= 0) {
+      throw new Error(`"${nombre}": cantidad final inválida (factor ${factor})`)
+    }
+
+    return {
+      productoId,
+      cantidad:           cantidadFinal,
+      precioUnitario,
+      subtotal:           Number((cantidadFinal * precioUnitario).toFixed(2)),
+      modoCaptura:        'CONVERSION',
+      cantidadCapturada:  cantidadVisible,
+      importeCapturado:   null,
+      unidadCapturada:    unidadCompra,
+      unidadVenta,
+      esGranel
+    }
+  }
+
+  const cantidad = esGranel
+    ? Number(item.cantidadVisible ?? item.cantidad)
+    : Number(item.cantidad)
+  if (!Number.isFinite(cantidad) || cantidad <= 0) {
+    throw new Error(`"${nombre}": cantidad inválida`)
+  }
+  const cantidadFinal = Number((esGranel ? cantidad : Math.round(cantidad)).toFixed(3))
+
+  return {
+    productoId,
+    cantidad:           cantidadFinal,
+    precioUnitario,
+    subtotal:           Number((cantidadFinal * precioUnitario).toFixed(2)),
+    modoCaptura:        'CANTIDAD',
+    cantidadCapturada:  esGranel ? cantidad : cantidadFinal,
+    importeCapturado:   null,
+    unidadCapturada:    unidadVenta || null,
+    unidadVenta,
+    esGranel
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════
 //  CARRITO
 // ══════════════════════════════════════════════════════════════════
 
@@ -2517,12 +2613,16 @@ async function confirmarVenta() {
     }
 
     const total    = carrito.reduce((sum, item) => sum + subtotalLinea(item), 0)
-    const detalles = carrito.map(item => ({
-      productoId:     parseInt(item.id),
-      cantidad:       parseFloat(item.cantidad),
-      precioUnitario: parseFloat(item.precio),
-      subtotal:       parseFloat((parseFloat(item.precio) * parseFloat(item.cantidad)).toFixed(2))
-    }))
+
+    let detalles
+    try {
+      detalles = carrito.map(construirDetalleVentaPayload)
+    } catch (err) {
+      ventaEnProceso = false
+      setConfirmarVentaState('idle')
+      mostrarToast(err.message, 'error')
+      return
+    }
 
     const selVend            = document.getElementById('confirm-vendedor-select')
     const vendId             = selVend ? parseInt(selVend.value) : USUARIO.id

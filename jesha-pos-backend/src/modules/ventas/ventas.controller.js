@@ -10,6 +10,7 @@ const { buildVentaSnapshot, formatFechaTicket } = require('../impresion/impresio
 const { encolarImpresion } = require('../impresion/impresion.service')
 const { EMPRESA, LOGO_URL } = require('../../../config/empresa')
 const { verificarStockPostOperacion } = require('../../helpers/verificarStock')
+const { normalizarUnidadVenta, normalizarUnidadCompra } = require('../../helpers/unidades.helper')
 
 function getLanIp() {
   const interfaces = os.networkInterfaces()
@@ -60,6 +61,18 @@ function fechaLocalZacatecasComoDbDate(date) {
   ))
 }
 
+// ════════════════════════════════════════════════════════════════════
+//  HELPER CENTRAL: Resolver unidad de un detalle
+//  Prioridad: unidadVentaSnapshot >> Producto.unidadVenta >> null
+//  Normaliza mediante unidades.helper.js
+// ════════════════════════════════════════════════════════════════════
+
+function resolverUnidad(detalle) {
+  const raw = detalle.unidadVentaSnapshot ?? detalle.Producto?.unidadVenta ?? null
+  if (!raw) return null
+  return normalizarUnidadVenta(raw, false) || raw
+}
+
 /**
  * POST /ventas
  */
@@ -108,6 +121,29 @@ exports.crearVenta = async (req, res) => {
       }
     }
 
+    // ── Validar cotización, si se especifica (debe existir y pertenecer a la empresa) ──
+    let cotizacionValida = null
+    if (cotizacionId) {
+      const cotId = parseInt(cotizacionId)
+      if (isNaN(cotId)) {
+        return res.status(400).json({ error: 'cotizacionId inválido' })
+      }
+      const cot = await prisma.cotizacion.findUnique({
+        where: { id: cotId },
+        select: { id: true, empresaId: true, estado: true }
+      })
+      if (!cot) {
+        return res.status(404).json({ error: 'Cotización no encontrada' })
+      }
+      if (cot.empresaId !== empresaId) {
+        return res.status(403).json({ error: 'Cotización no pertenece a esta empresa' })
+      }
+      if (cot.estado !== 'PENDIENTE') {
+        return res.status(400).json({ error: `Cotización en estado "${cot.estado}", no puede convertirse a venta` })
+      }
+      cotizacionValida = cot
+    }
+
     // ── Validar desglose de pagos mixtos ─────────────────────────
     const desglosePagos = req.body.desglosePagos || null
     if (metodoPago === 'MIXTO') {
@@ -125,10 +161,23 @@ exports.crearVenta = async (req, res) => {
       }
     }
 
+    // ── Cargar productos para validación y snapshots ──────────────
+    const productoIdsUnicos = [...new Set(detalles.map(d => parseInt(d.productoId)))]
+    const productosVenta = await prisma.producto.findMany({
+      where: { id: { in: productoIdsUnicos }, empresaId },
+      select: { id: true, unidadVenta: true, esGranel: true, factorConversion: true, tipo: true, unidadCompra: true }
+    })
+    const productoMap = new Map(productosVenta.map(p => [p.id, p]))
+
+    // Determinar si la venta proviene de cotización (origen legacy sin metadata de captura)
+    const esLegacy = !!cotizacionValida
+
     let totalRecalculado = 0
     const detallesValidados = []
-    for (const detalle of detalles) {
-      const { productoId, cantidad, precioUnitario } = detalle
+    const detallesMetadata = []
+    for (let i = 0; i < detalles.length; i++) {
+      const detalle = detalles[i]
+      const { productoId, cantidad, precioUnitario, modoCaptura, cantidadCapturada, importeCapturado, unidadCapturada } = detalle
       if (!productoId || !cantidad || !precioUnitario) {
         return res.status(400).json({ error: 'Detalle incompleto', detalle })
       }
@@ -136,13 +185,127 @@ exports.crearVenta = async (req, res) => {
         return res.status(400).json({ error: 'Cantidad debe ser > 0', producto: productoId })
       }
       const cantidadFloat   = parseFloat(cantidad)
-      const subtotalDetalle = parseFloat((cantidadFloat * precioUnitario).toFixed(2))
+      const subtotalDetalle = parseFloat((cantidadFloat * parseFloat(precioUnitario)).toFixed(2))
       totalRecalculado += subtotalDetalle
+
+      const prod = productoMap.get(parseInt(productoId))
+
+      // ── modoCaptura: null sin modo = legacy/cotización o error si no es legacy ──
+      const modo = (modoCaptura !== undefined && modoCaptura !== null)
+        ? String(modoCaptura).toUpperCase() : null
+
+      if (modoCaptura === undefined || modoCaptura === null) {
+        if (!esLegacy) {
+          return res.status(400).json({
+            error: 'modoCaptura es obligatorio para venta POS directa',
+            producto: productoId, detalleIdx: i
+          })
+        }
+        // Legacy/cotización: snapshots de metadata null, solo inferir unidadVenta/esGranel
+        const unidadVentaSnapLegacy = prod && prod.tipo !== 'SERVICIO'
+          ? (normalizarUnidadVenta(prod.unidadVenta, false) || null)
+          : null
+        const esGranelSnapLegacy = prod && prod.tipo !== 'SERVICIO' ? prod.esGranel : false
+
+        detallesValidados.push({
+          productoId:     parseInt(productoId),
+          cantidad:       cantidadFloat,
+          precioUnitario: parseFloat(precioUnitario),
+          subtotal:       subtotalDetalle
+        })
+        detallesMetadata.push({
+          unidadVentaSnapshot:       unidadVentaSnapLegacy,
+          unidadCapturadaSnapshot:   null,
+          esGranelSnapshot:          esGranelSnapLegacy,
+          factorConversionSnapshot:  null,
+          modoCapturaSnapshot:       null,
+          cantidadCapturadaSnapshot: null,
+          importeCapturadoSnapshot:  null
+        })
+        continue
+      }
+
+      const METODOS_VALIDOS = { CANTIDAD: true, IMPORTE: true, CONVERSION: true }
+      if (!METODOS_VALIDOS[modo]) {
+        return res.status(400).json({ error: `Modo de captura inválido: "${modoCaptura}"`, producto: productoId, detalleIdx: i })
+      }
+
+      let unidadVentaSnap = null
+      let unidadCapturadaSnap = null
+      let esGranelSnap = null
+      let factorConversionSnap = null
+      let cantidadCapturadaSnap = null
+      let importeCapturadoSnap = null
+
+      if (prod) {
+        if (prod.tipo !== 'SERVICIO') {
+          unidadVentaSnap = normalizarUnidadVenta(prod.unidadVenta, false) || null
+          esGranelSnap = prod.esGranel
+          if (!unidadVentaSnap && prod.unidadVenta) {
+            console.warn(`[P3] Producto ${prod.id}: unidadVenta "${prod.unidadVenta}" no se pudo normalizar.`)
+          }
+
+          if (modo === 'CANTIDAD') {
+            if (!prod.esGranel && !Number.isInteger(cantidadFloat)) {
+              return res.status(400).json({ error: 'Producto discreto no admite fracciones', producto: productoId })
+            }
+            cantidadCapturadaSnap = cantidadCapturada !== null && cantidadCapturada !== undefined ? parseFloat(cantidadCapturada) : cantidadFloat
+            importeCapturadoSnap = null
+            unidadCapturadaSnap = normalizarUnidadVenta(unidadCapturada || prod.unidadVenta, false) || unidadVentaSnap
+          } else if (modo === 'IMPORTE') {
+            if (!prod.esGranel) {
+              return res.status(400).json({ error: 'Modo IMPORTE solo permitido para productos granel', producto: productoId })
+            }
+            cantidadCapturadaSnap = null
+            importeCapturadoSnap = (importeCapturado !== null && importeCapturado !== undefined && Number.isFinite(Number(importeCapturado)))
+              ? parseFloat(importeCapturado) : null
+            if (!importeCapturadoSnap || importeCapturadoSnap <= 0) {
+              return res.status(400).json({ error: 'importeCapturado debe ser un número positivo', producto: productoId })
+            }
+            if (Math.abs(importeCapturadoSnap - subtotalDetalle) > 0.01) {
+              return res.status(400).json({ error: `importeCapturado (${importeCapturadoSnap}) no coincide con subtotal (${subtotalDetalle})`, producto: productoId })
+            }
+            unidadCapturadaSnap = null
+            factorConversionSnap = null
+          } else if (modo === 'CONVERSION') {
+            if (!prod.unidadCompra) {
+              return res.status(400).json({ error: 'Producto sin unidad de compra, no admite CONVERSION', producto: productoId })
+            }
+            if (!prod.factorConversion || !Number.isFinite(Number(prod.factorConversion)) || Number(prod.factorConversion) <= 0) {
+              return res.status(400).json({ error: 'Producto sin factor de conversión válido para CONVERSION', producto: productoId })
+            }
+            const uc = normalizarUnidadCompra(unidadCapturada || prod.unidadCompra, false) || null
+            if (uc && uc !== normalizarUnidadCompra(prod.unidadCompra, false)) {
+              return res.status(400).json({ error: `unidadCapturada "${unidadCapturada}" no coincide con unidadCompra del producto`, producto: productoId })
+            }
+            cantidadCapturadaSnap = cantidadCapturada !== null && cantidadCapturada !== undefined ? parseFloat(cantidadCapturada) : cantidadFloat
+            importeCapturadoSnap = null
+            unidadCapturadaSnap = normalizarUnidadCompra(unidadCapturada || prod.unidadCompra, false) || null
+            factorConversionSnap = parseFloat(prod.factorConversion)
+            const esperado = parseFloat((cantidadCapturadaSnap * factorConversionSnap).toFixed(3))
+            if (Math.abs(esperado - cantidadFloat) > 0.001) {
+              return res.status(400).json({ error: `cantidad final (${cantidadFloat}) no coincide con cantidadCapturada × factor (${esperado})`, producto: productoId })
+            }
+          }
+        }
+      } else {
+        console.warn(`[P3] Producto ${productoId} no encontrado en empresa ${empresaId}, snapshots null.`)
+      }
+
       detallesValidados.push({
         productoId:     parseInt(productoId),
         cantidad:       cantidadFloat,
         precioUnitario: parseFloat(precioUnitario),
         subtotal:       subtotalDetalle
+      })
+      detallesMetadata.push({
+        unidadVentaSnapshot: unidadVentaSnap,
+        unidadCapturadaSnapshot: unidadCapturadaSnap,
+        esGranelSnapshot: esGranelSnap,
+        factorConversionSnapshot: factorConversionSnap,
+        modoCapturaSnapshot: modo,
+        cantidadCapturadaSnapshot: cantidadCapturadaSnap,
+        importeCapturadoSnapshot: importeCapturadoSnap
       })
     }
     totalRecalculado = parseFloat(totalRecalculado.toFixed(2))
@@ -264,12 +427,13 @@ exports.crearVenta = async (req, res) => {
           facturaEstado,
           ...(facturaLimite ? { facturaLimite } : {}),
           DetalleVenta: {
-            create: detallesValidados.map(d => ({
+            create: detallesValidados.map((d, idx) => ({
               productoId:     d.productoId,
               cantidad:       d.cantidad,
               precioUnitario: d.precioUnitario,
               subtotal:       d.subtotal,
-              descuento:      0
+              descuento:      0,
+              ...detallesMetadata[idx]
             }))
           }
         },
@@ -413,7 +577,9 @@ exports.crearVenta = async (req, res) => {
         }
 
         // Agregar detalles de esta venta a la bitácora (siempre, exista o no)
-        for (const d of detallesValidados) {
+        for (let di = 0; di < detallesValidados.length; di++) {
+          const d = detallesValidados[di]
+          const md = detallesMetadata[di]
           await tx.detalleBitacora.create({
             data: {
               bitacoraId:           bitacora.id,
@@ -422,10 +588,17 @@ exports.crearVenta = async (req, res) => {
               cantidad:             d.cantidad,
               precioUnitario:       d.precioUnitario,
               subtotal:             d.subtotal,
-              inventarioDescontado: true,              // ya se descontó en la venta
+              inventarioDescontado: true,
               notas:                `Venta ${folio}`,
               fechaManual:          fechaLocalZacatecasComoDbDate(ventaCreada.creadaEn),
-              responsableId:        usuarioId
+              responsableId:        usuarioId,
+              unidadVentaSnapshot:       md.unidadVentaSnapshot,
+              unidadCapturadaSnapshot:   md.unidadCapturadaSnapshot,
+              esGranelSnapshot:          md.esGranelSnapshot,
+              factorConversionSnapshot:  md.factorConversionSnapshot,
+              modoCapturaSnapshot:       md.modoCapturaSnapshot,
+              cantidadCapturadaSnapshot: md.cantidadCapturadaSnapshot,
+              importeCapturadoSnapshot:  md.importeCapturadoSnapshot
             }
           })
         }
@@ -443,19 +616,13 @@ exports.crearVenta = async (req, res) => {
         }
       })
 
-      // Convertir cotización origen a CONVERTIDA (best-effort)
-      if (cotizacionId) {
+      // Convertir cotización origen a CONVERTIDA
+      if (cotizacionValida) {
         try {
-          const cot = await tx.cotizacion.findUnique({
-            where: { id: parseInt(cotizacionId) },
-            select: { id: true, estado: true }
+          await tx.cotizacion.update({
+            where: { id: cotizacionValida.id },
+            data: { estado: 'CONVERTIDA' }
           })
-          if (cot && cot.estado === 'PENDIENTE') {
-            await tx.cotizacion.update({
-              where: { id: cot.id },
-              data: { estado: 'CONVERTIDA' }
-            })
-          }
         } catch (e) {
           console.warn('⚠️ No se pudo convertir cotización:', e.message)
         }
@@ -504,7 +671,8 @@ exports.crearVenta = async (req, res) => {
           nombre:         d.Producto?.nombre,
           cantidad:       d.cantidad,
           precioUnitario: d.precioUnitario,
-          subtotal:       d.subtotal
+          subtotal:       d.subtotal,
+          unidad:         resolverUnidad(d)
         })),
         metodoPago,
         metodoLabel,
@@ -689,8 +857,14 @@ exports.obtenerVenta = async (req, res) => {
           cantidad:       d.cantidad,
           precioUnitario: d.precioUnitario,
           subtotal:       d.subtotal,
-          esGranel:       d.Producto.esGranel || false,
-          unidadVenta:    d.Producto.unidadVenta || ''
+          esGranel:       (d.esGranelSnapshot ?? d.Producto?.esGranel) || false,
+          unidadVenta:    d.unidadVentaSnapshot ?? d.Producto?.unidadVenta ?? null,
+          unidadCapturadaSnapshot:   d.unidadCapturadaSnapshot,
+          esGranelSnapshot:          d.esGranelSnapshot,
+          factorConversionSnapshot:  d.factorConversionSnapshot,
+          modoCapturaSnapshot:       d.modoCapturaSnapshot,
+          cantidadCapturadaSnapshot: d.cantidadCapturadaSnapshot,
+          importeCapturadoSnapshot:  d.importeCapturadoSnapshot
         }))
       }
     })
@@ -755,7 +929,15 @@ exports.obtenerVentaPorFolio = async (req, res) => {
           codigo:         d.Producto.codigoInterno,
           cantidad:       d.cantidad,
           precioUnitario: d.precioUnitario,
-          subtotal:       d.subtotal
+          subtotal:       d.subtotal,
+          esGranel:       (d.esGranelSnapshot ?? d.Producto?.esGranel) || false,
+          unidadVenta:    d.unidadVentaSnapshot ?? d.Producto?.unidadVenta ?? null,
+          unidadCapturadaSnapshot:   d.unidadCapturadaSnapshot,
+          esGranelSnapshot:          d.esGranelSnapshot,
+          factorConversionSnapshot:  d.factorConversionSnapshot,
+          modoCapturaSnapshot:       d.modoCapturaSnapshot,
+          cantidadCapturadaSnapshot: d.cantidadCapturadaSnapshot,
+          importeCapturadoSnapshot:  d.importeCapturadoSnapshot
         }))
       }
     })
