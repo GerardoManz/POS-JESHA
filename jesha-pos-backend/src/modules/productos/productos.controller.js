@@ -645,6 +645,133 @@ async function crear(req, res) {
 // ═══════════════════════════════════════════════════════════════════
 
 // ═══════════════════════════════════════════════════════════════════
+// CONSTRUIR DATA DE EDICIÓN — función pura para testing
+// Toma el body del request y el producto existente, devuelve:
+//   { data }  o  { error: { status, body } }
+// ═══════════════════════════════════════════════════════════════════
+
+function construirDataEdicion(body, existente, esServ, claveSatFinal, unidadSatFinal) {
+    const has = Object.prototype.hasOwnProperty.bind(body)
+    const data = {}
+
+    data.nombre = body.nombre
+    data.codigoInterno = body.codigoInterno
+    data.categoriaId = parseInt(body.categoriaId)
+    data.precioBase = parseFloat(body.precioBase)
+    data.claveSat = claveSatFinal
+    data.unidadSat = unidadSatFinal
+
+    if (has('codigoBarras')) {
+        data.codigoBarras = body.codigoBarras
+    }
+
+    if (has('descripcion')) {
+        data.descripcion = body.descripcion || null
+    }
+
+    if (has('precioVenta')) {
+        data.precioVenta = (body.precioVenta !== null && body.precioVenta !== undefined && body.precioVenta !== '')
+            ? parseFloat(body.precioVenta) : null
+    }
+
+    const fc = has('factorConversion') ? body.factorConversion : existente.factorConversion
+    const sf = esServ ? 1 : ((Number.isFinite(parseFloat(fc)) && parseFloat(fc) > 0) ? parseFloat(fc) : 1)
+
+    if (has('costo')) {
+        data.costo = body.costo ? parseFloat((parseFloat(body.costo) / sf).toFixed(4)) : null
+    }
+
+    const costoUsar = has('costo') ? data.costo : existente.costo
+    const pvUsar = has('precioVenta')
+        ? ((body.precioVenta !== null && body.precioVenta !== undefined && body.precioVenta !== '') ? parseFloat(body.precioVenta) : null)
+        : existente.precioVenta
+    if (has('costo') || has('precioVenta') || has('factorConversion')) {
+        if (costoUsar && costoUsar > 0 && pvUsar && pvUsar > 0) {
+            data.margen = parseFloat(Math.min(((pvUsar / costoUsar - 1) * 100), 999.99).toFixed(2))
+        } else {
+            data.margen = null
+        }
+    }
+
+    if (has('unidadVenta')) {
+        const raw = body.unidadVenta
+        if (esServ) {
+            data.unidadVenta = raw === null || raw === undefined ? null : (normalizarUnidadVenta(raw, true) || raw || null)
+        } else {
+            if (raw === null || raw === undefined) {
+                return { error: { status: 400, body: { success: false, error: 'unidadVenta no puede ser null para productos físicos', campo: 'unidadVenta' } } }
+            }
+            if (typeof raw === 'string' && raw.trim() === '') {
+                return { error: { status: 400, body: { success: false, error: 'unidadVenta no puede estar vacía para productos físicos', campo: 'unidadVenta' } } }
+            }
+            const normalizada = normalizarUnidadVenta(raw, false)
+            if (!normalizada) {
+                return { error: { status: 400, body: { success: false, error: `Unidad de venta no válida: "${raw}". Usa una del catálogo.`, campo: 'unidadVenta' } } }
+            }
+            data.unidadVenta = normalizada
+        }
+    }
+
+    if (has('unidadCompra')) {
+        const raw = body.unidadCompra
+        if (esServ) {
+            data.unidadCompra = raw === null || raw === undefined ? null : (normalizarUnidadCompra(raw, true) || raw || null)
+        } else {
+            if (raw === null || raw === undefined) {
+                data.unidadCompra = null
+            } else if (typeof raw === 'string' && raw.trim() === '') {
+                return { error: { status: 400, body: { success: false, error: 'unidadCompra no puede estar vacía para productos físicos', campo: 'unidadCompra' } } }
+            } else {
+                const normalizada = normalizarUnidadCompra(raw, false)
+                if (!normalizada) {
+                    return { error: { status: 400, body: { success: false, error: `Unidad de compra no válida: "${raw}".`, campo: 'unidadCompra' } } }
+                }
+                data.unidadCompra = normalizada
+            }
+        }
+    }
+
+    if (has('factorConversion')) {
+        const raw = body.factorConversion
+        if (esServ || raw === null || raw === undefined || String(raw).trim() === '') {
+            data.factorConversion = null
+        } else {
+            const parsed = Number(raw)
+            if (!Number.isFinite(parsed) || parsed <= 0) {
+                return { error: { status: 400, body: { success: false, error: 'factorConversion debe ser un número positivo mayor a 0', campo: 'factorConversion' } } }
+            }
+            data.factorConversion = parsed
+        }
+    }
+
+    if (has('esGranel')) {
+        data.esGranel = esServ ? false : (body.esGranel === true || body.esGranel === 'true')
+    }
+
+    if (has('tipoFacturaProv')) {
+        data.tipoFacturaProv = body.tipoFacturaProv || null
+    }
+
+    if (has('costoSinIvaProveedor')) {
+        const raw = body.costoSinIvaProveedor
+        if (raw === null || raw === undefined || raw === '') {
+            data.costoSinIvaProveedor = null
+        } else {
+            const parsed = Number(raw)
+            if (!Number.isFinite(parsed)) {
+                return { error: { status: 400, body: { success: false, error: 'costoSinIvaProveedor debe ser un número válido', campo: 'costoSinIvaProveedor' } } }
+            }
+            if (parsed < 0) {
+                return { error: { status: 400, body: { success: false, error: 'costoSinIvaProveedor no puede ser negativo', campo: 'costoSinIvaProveedor' } } }
+            }
+            data.costoSinIvaProveedor = parsed
+        }
+    }
+
+    return { data }
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // EDITAR
 // ═══════════════════════════════════════════════════════════════════
 
@@ -715,134 +842,21 @@ async function editar(req, res) {
         claveSatFinal = validacionSat.claveSat
         unidadSatFinal = validacionSat.unidadSat
 
-        // ── Construir data CONDICIONALMENTE ──
-        const has = Object.prototype.hasOwnProperty.bind(req.body)
-        const data = {}
-
-        // Siempre presentes (campos requeridos del form)
-        data.nombre = nombre
-        data.codigoInterno = codigoInterno
-        data.categoriaId = parseInt(categoriaId)
-        data.precioBase = parseFloat(precioBase)
-        data.claveSat = claveSatFinal
-        data.unidadSat = unidadSatFinal
-
-        // codigoBarras — omitido → preservar
-        if (has('codigoBarras')) {
-            data.codigoBarras = codigoBarras
+        // ── Construir data CONDICIONALMENTE (delegado a función pura) ──
+        const resultado = construirDataEdicion(req.body, existente, esServ, claveSatFinal, unidadSatFinal)
+        if (resultado.error) {
+            return res.status(resultado.error.status).json(resultado.error.body)
         }
-
-        // descripcion — omitido → preservar
-        if (has('descripcion')) {
-            data.descripcion = descripcion || null
-        }
-
-        // precioVenta — null explícito → null; omitido → preservar
-        if (has('precioVenta')) {
-            data.precioVenta = (precioVenta !== null && precioVenta !== undefined && precioVenta !== '')
-                ? parseFloat(precioVenta) : null
-        }
-
-        // Factor de conversión para recálculo de costo unitario
-        const fc = has('factorConversion') ? factorConversion : existente.factorConversion
-        const sf = esServ ? 1 : ((Number.isFinite(parseFloat(fc)) && parseFloat(fc) > 0) ? parseFloat(fc) : 1)
-
-        // costo — omitido → preservar; presente → recalcula unitario
-        if (has('costo')) {
-            data.costo = costo ? parseFloat((parseFloat(costo) / sf).toFixed(4)) : null
-        }
-
-        // Margen — recalcular si cambiaron costo, precioVenta o factorConversion
-        const costoUsar = has('costo') ? data.costo : existente.costo
-        const pvUsar = has('precioVenta')
-            ? ((precioVenta !== null && precioVenta !== undefined && precioVenta !== '') ? parseFloat(precioVenta) : null)
-            : existente.precioVenta
-        if (has('costo') || has('precioVenta') || has('factorConversion')) {
-            if (costoUsar && costoUsar > 0 && pvUsar && pvUsar > 0) {
-                data.margen = parseFloat(Math.min(((pvUsar / costoUsar - 1) * 100), 999.99).toFixed(2))
-            } else {
-                data.margen = null
-            }
-        }
+        const data = resultado.data
 
         // ── Validar duplicado de codigoBarras si cambió ──
+        const has = Object.prototype.hasOwnProperty.bind(req.body)
         if (has('codigoBarras') && codigoBarras !== null && codigoBarras !== existente.codigoBarras) {
             const empresaProducto = existente.empresaId
             const dupBarras = await validarCodigoBarrasDuplicado({ empresaId: empresaProducto, codigoBarras, excluirId: parseInt(id), prismaClient: prisma })
             if (dupBarras) {
                 return res.status(409).json({ success: false, error: 'El código de barras ya existe en esta empresa', campo: 'codigoBarras' })
             }
-        }
-
-        // ── Validar y asignar unidadVenta ──
-        if (has('unidadVenta')) {
-            const raw = req.body.unidadVenta
-            if (esServ) {
-                data.unidadVenta = raw === null || raw === undefined ? null : (normalizarUnidadVenta(raw, true) || raw || null)
-            } else {
-                if (raw === null || raw === undefined) {
-                    return res.status(400).json({ success: false, error: 'unidadVenta no puede ser null para productos físicos', campo: 'unidadVenta' })
-                }
-                if (typeof raw === 'string' && raw.trim() === '') {
-                    return res.status(400).json({ success: false, error: 'unidadVenta no puede estar vacía para productos físicos', campo: 'unidadVenta' })
-                }
-                const normalizada = normalizarUnidadVenta(raw, false)
-                if (!normalizada) {
-                    return res.status(400).json({ success: false, error: `Unidad de venta no válida: "${raw}". Usa una del catálogo.`, campo: 'unidadVenta' })
-                }
-                data.unidadVenta = normalizada
-            }
-        }
-
-        // ── Validar y asignar unidadCompra ──
-        if (has('unidadCompra')) {
-            const raw = req.body.unidadCompra
-            if (esServ) {
-                data.unidadCompra = raw === null || raw === undefined ? null : (normalizarUnidadCompra(raw, true) || raw || null)
-            } else {
-                if (raw === null || raw === undefined) {
-                    data.unidadCompra = null
-                } else if (typeof raw === 'string' && raw.trim() === '') {
-                    return res.status(400).json({ success: false, error: 'unidadCompra no puede estar vacía para productos físicos', campo: 'unidadCompra' })
-                } else {
-                    const normalizada = normalizarUnidadCompra(raw, false)
-                    if (!normalizada) {
-                        return res.status(400).json({ success: false, error: `Unidad de compra no válida: "${raw}".`, campo: 'unidadCompra' })
-                    }
-                    data.unidadCompra = normalizada
-                }
-            }
-        }
-
-        // ── Validar y asignar factorConversion — omitido → preservar ──
-        if (has('factorConversion')) {
-            const raw = req.body.factorConversion
-            if (esServ || raw === null || raw === undefined) {
-                data.factorConversion = null
-            } else if (raw === '' || raw === 0) {
-                data.factorConversion = null
-            } else {
-                const parsed = parseFloat(raw)
-                if (!Number.isFinite(parsed) || parsed < 0) {
-                    return res.status(400).json({ success: false, error: 'factorConversion debe ser un número positivo', campo: 'factorConversion' })
-                }
-                data.factorConversion = parsed
-            }
-        }
-
-        // ── Validar y asignar esGranel — omitido → preservar ──
-        if (has('esGranel')) {
-            data.esGranel = esServ ? false : (esGranel === true || esGranel === 'true')
-        }
-
-        // ── tipoFacturaProv — omitido → preservar ──
-        if (has('tipoFacturaProv')) {
-            data.tipoFacturaProv = tipoFacturaProv || null
-        }
-
-        // ── costoSinIvaProveedor — omitido → preservar ──
-        if (has('costoSinIvaProveedor')) {
-            data.costoSinIvaProveedor = costoSinIvaProveedor ? parseFloat(costoSinIvaProveedor) : null
         }
 
         const producto = await prisma.producto.update({
@@ -1472,5 +1486,6 @@ module.exports = {
     ajustarInventario,
     editarDatosBasicos,
     sugerirNombres,
-    duplicarProducto
+    duplicarProducto,
+    construirDataEdicion
 }
