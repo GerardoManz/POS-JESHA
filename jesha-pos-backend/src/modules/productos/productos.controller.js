@@ -20,6 +20,15 @@ const {
     parsearErrorPrismaProducto
 } = require('./productos.helpers')
 
+const {
+    normalizarUnidadVenta,
+    normalizarUnidadCompra,
+    esUnidadVentaValida,
+    esUnidadCompraValida,
+    UNIDADES_VENTA,
+    UNIDADES_COMPRA,
+} = require('../../helpers/unidades.helper')
+
 // Valida si claveSat/unidadSat vienen vacíos o como "null"/"undefined"
 function satInvalido(valor) {
     if (valor === null || valor === undefined) return true
@@ -630,77 +639,10 @@ async function crear(req, res) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  UNIDADES DE VENTA — catálogo operativo (inline hasta P1)
+//  UNIDADES DE VENTA — importadas del helper central (P1)
+//  Catálogo completo, aliases, normalización y validación en:
+//  src/helpers/unidades.helper.js
 // ═══════════════════════════════════════════════════════════════════
-
-const UNIDADES_VENTA_VALIDAS = new Set([
-  'PZA', 'MT', 'CM', 'KG', 'G', 'LT', 'ML', 'M2', 'M3',
-  'PAQUETE', 'PAR', 'KIT', 'JUEGO', 'CAJA', 'ROLLO', 'BOLSA',
-  'BULTO', 'SACO', 'BOTE', 'CUBETA', 'BOTELLA', 'LATA',
-  'TAMBOR', 'TRAMO', 'DOCENA', 'VIAJE',
-])
-
-const ALIASES_UNIDAD_VENTA = {
-  PZ: 'PZA', PZAS: 'PZA', PIEZA: 'PZA', PIEZAS: 'PZA',
-  M: 'MT', MTS: 'MT', METRO: 'MT', METROS: 'MT',
-  CM: 'CM', CENTIMETRO: 'CM', CENTIMETROS: 'CM',
-  KG: 'KG', KILO: 'KG', KILOS: 'KG',
-  G: 'G', GR: 'G', GRAMO: 'G',
-  L: 'LT', LTS: 'LT', LITRO: 'LT', LITROS: 'LT',
-  ML: 'ML', MILILITRO: 'ML', MILILITROS: 'ML',
-  M2: 'M2', M3: 'M3', M: 'M',
-  PAQ: 'PAQUETE', PACK: 'PAQUETE',
-  PR: 'PAR', PARES: 'PAR',
-  VJE: 'VIAJE', VIAJES: 'VIAJE',
-  SACO: 'SACO', SACOS: 'SACO',
-  BOTE: 'BOTE', BOTES: 'BOTE',
-}
-
-const UNIDADES_COMPRA_VALIDAS = new Set([
-  'PZA', 'CAJA', 'BULTO', 'ROLLO', 'PAQUETE', 'MT', 'KG', 'LT',
-  'TAMBOR', 'CILINDRO', 'CUBETA', 'LATA', 'BOLSA', 'BOTELLA',
-  'PAR', 'KIT', 'JUEGO', 'SACO', 'TRAMO', 'DOCENA', 'VIAJE',
-])
-
-function esUnidadVentaValida(valor, esServicio) {
-  if (esServicio) return valor === null || valor === undefined
-  if (valor === null || valor === undefined) return false
-  if (typeof valor !== 'string') return false
-  const t = valor.trim().toUpperCase()
-  if (t === '') return false
-  if (UNIDADES_VENTA_VALIDAS.has(t)) return true
-  return t in ALIASES_UNIDAD_VENTA
-}
-
-function normalizarUnidadVenta(valor, esServicio) {
-  if (esServicio) return valor || null
-  if (valor === null || valor === undefined) return null
-  if (typeof valor !== 'string') return null
-  const t = valor.trim().toUpperCase()
-  if (t === '') return null
-  if (UNIDADES_VENTA_VALIDAS.has(t)) return t
-  return ALIASES_UNIDAD_VENTA[t] || null
-}
-
-function esUnidadCompraValida(valor, esServicio) {
-  if (esServicio) return valor === null || valor === undefined
-  if (valor === null || valor === undefined) return true
-  if (typeof valor !== 'string') return false
-  const t = valor.trim().toUpperCase()
-  if (t === '') return false
-  if (UNIDADES_COMPRA_VALIDAS.has(t)) return true
-  return t in ALIASES_UNIDAD_VENTA
-}
-
-function normalizarUnidadCompra(valor, esServicio) {
-  if (esServicio) return valor || null
-  if (valor === null || valor === undefined) return null
-  if (typeof valor !== 'string') return null
-  const t = valor.trim().toUpperCase()
-  if (t === '') return null
-  if (UNIDADES_COMPRA_VALIDAS.has(t)) return t
-  return ALIASES_UNIDAD_VENTA[t] || null
-}
 
 // ═══════════════════════════════════════════════════════════════════
 // EDITAR

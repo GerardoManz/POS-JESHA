@@ -2,67 +2,18 @@
 const assert = require('node:assert/strict')
 const { describe, it } = require('node:test')
 
-// ── Replicar las funciones inline del controller para probar P0 ──
-// Estas se migrarán al helper en P1
-
-const UNIDADES_VENTA_VALIDAS = new Set([
-  'PZA', 'MT', 'CM', 'KG', 'G', 'LT', 'ML', 'M2', 'M3',
-  'PAQUETE', 'PAR', 'KIT', 'JUEGO', 'CAJA', 'ROLLO', 'BOLSA',
-  'BULTO', 'SACO', 'BOTE', 'CUBETA', 'BOTELLA', 'LATA',
-  'TAMBOR', 'TRAMO', 'DOCENA', 'VIAJE',
-])
-
-const ALIASES_UNIDAD_VENTA = {
-  PZ: 'PZA', PZAS: 'PZA', PIEZA: 'PZA', PIEZAS: 'PZA',
-  M: 'MT', MTS: 'MT', METRO: 'MT', METROS: 'MT',
-  CM: 'CM', CENTIMETRO: 'CM', CENTIMETROS: 'CM',
-  KG: 'KG', KILO: 'KG', KILOS: 'KG',
-  G: 'G', GR: 'G', GRAMO: 'G',
-  L: 'LT', LTS: 'LT', LITRO: 'LT', LITROS: 'LT',
-  ML: 'ML', MILILITRO: 'ML', MILILITROS: 'ML',
-  M2: 'M2', M3: 'M3',
-  PAQ: 'PAQUETE', PACK: 'PAQUETE',
-  PR: 'PAR', PARES: 'PAR',
-  VJE: 'VIAJE', VIAJES: 'VIAJE',
-  SACO: 'SACO', SACOS: 'SACO',
-  BOTE: 'BOTE', BOTES: 'BOTE',
-}
-
-const UNIDADES_COMPRA_VALIDAS = new Set([
-  'PZA', 'CAJA', 'BULTO', 'ROLLO', 'PAQUETE', 'MT', 'KG', 'LT',
-  'TAMBOR', 'CILINDRO', 'CUBETA', 'LATA', 'BOLSA', 'BOTELLA',
-  'PAR', 'KIT', 'JUEGO', 'SACO', 'TRAMO', 'DOCENA', 'VIAJE',
-])
-
-function normalizarUnidadVenta(valor, esServicio) {
-  if (esServicio) return valor || null
-  if (valor === null || valor === undefined) return null
-  if (typeof valor !== 'string') return null
-  const t = valor.trim().toUpperCase()
-  if (t === '') return null
-  if (UNIDADES_VENTA_VALIDAS.has(t)) return t
-  return ALIASES_UNIDAD_VENTA[t] || null
-}
-
-function esUnidadVentaValida(valor, esServicio) {
-  if (esServicio) return valor === null || valor === undefined
-  if (valor === null || valor === undefined) return false
-  if (typeof valor !== 'string') return false
-  const t = valor.trim().toUpperCase()
-  if (t === '') return false
-  if (UNIDADES_VENTA_VALIDAS.has(t)) return true
-  return t in ALIASES_UNIDAD_VENTA
-}
-
-function normalizarUnidadCompra(valor, esServicio) {
-  if (esServicio) return valor || null
-  if (valor === null || valor === undefined) return null
-  if (typeof valor !== 'string') return null
-  const t = valor.trim().toUpperCase()
-  if (t === '') return null
-  if (UNIDADES_COMPRA_VALIDAS.has(t)) return t
-  return ALIASES_UNIDAD_VENTA[t] || null
-}
+const {
+  normalizarUnidadVenta,
+  normalizarUnidadCompra,
+  esUnidadVentaValida,
+  esUnidadCompraValida,
+  esFraccionable,
+  esDiscreta,
+  obtenerLabelUnidadVenta,
+  obtenerUnidadSat,
+  inferirUnidadPorNombre,
+  clasificarProducto,
+} = require('../src/helpers/unidades.helper')
 
 // ── Tests ──
 
@@ -147,9 +98,9 @@ describe('P0 — normalizarUnidadVenta', () => {
     assert.equal(normalizarUnidadVenta(undefined, true), null)
   })
 
-  it('servicio pasa string sin normalizar', () => {
+  it('servicio normaliza string igual que producto', () => {
     assert.equal(normalizarUnidadVenta('PZA', true), 'PZA')
-    assert.equal(normalizarUnidadVenta('kg', true), 'kg')
+    assert.equal(normalizarUnidadVenta('kg', true), 'KG')
   })
 
   it('número como string no canónico no es válido', () => {
@@ -196,5 +147,192 @@ describe('P0 — normalizarUnidadCompra', () => {
 
   it('null para producto es válido (compra opcional)', () => {
     assert.equal(normalizarUnidadCompra(null, false), null)
+  })
+})
+
+// ── P1: Clasificación ──
+
+describe('P1 — esFraccionable / esDiscreta', () => {
+
+  it('fraccionable: MT, KG, LT, M2, M3, CM, G, ML', () => {
+    assert.equal(esFraccionable('MT'), true)
+    assert.equal(esFraccionable('KG'), true)
+    assert.equal(esFraccionable('LT'), true)
+    assert.equal(esFraccionable('M2'), true)
+    assert.equal(esFraccionable('M3'), true)
+    assert.equal(esFraccionable('CM'), true)
+    assert.equal(esFraccionable('G'), true)
+    assert.equal(esFraccionable('ML'), true)
+  })
+
+  it('fraccionable con alias', () => {
+    assert.equal(esFraccionable('KILO'), true)
+    assert.equal(esFraccionable('METRO'), true)
+    assert.equal(esFraccionable('m'), true)
+  })
+
+  it('discreta: PZA, CAJA, ROLLO, BOLSA, etc.', () => {
+    assert.equal(esDiscreta('PZA'), true)
+    assert.equal(esDiscreta('CAJA'), true)
+    assert.equal(esDiscreta('ROLLO'), true)
+    assert.equal(esDiscreta('BOLSA'), true)
+    assert.equal(esDiscreta('BULTO'), true)
+    assert.equal(esDiscreta('SACO'), true)
+    assert.equal(esDiscreta('BOTE'), true)
+    assert.equal(esDiscreta('CUBETA'), true)
+    assert.equal(esDiscreta('BOTELLA'), true)
+    assert.equal(esDiscreta('LATA'), true)
+    assert.equal(esDiscreta('TAMBOR'), true)
+    assert.equal(esDiscreta('TRAMO'), true)
+    assert.equal(esDiscreta('DOCENA'), true)
+    assert.equal(esDiscreta('VIAJE'), true)
+    assert.equal(esDiscreta('PAR'), true)
+    assert.equal(esDiscreta('KIT'), true)
+    assert.equal(esDiscreta('JUEGO'), true)
+    assert.equal(esDiscreta('PAQUETE'), true)
+  })
+
+  it('PZA no es fraccionable', () => {
+    assert.equal(esFraccionable('PZA'), false)
+  })
+
+  it('KG no es discreta', () => {
+    assert.equal(esDiscreta('KG'), false)
+  })
+
+  it('null/undefined no es nada', () => {
+    assert.equal(esFraccionable(null), false)
+    assert.equal(esDiscreta(undefined), false)
+  })
+})
+
+describe('P1 — obtenerLabelUnidadVenta', () => {
+
+  it('labels canónicos', () => {
+    assert.equal(obtenerLabelUnidadVenta('PZA'), 'pza')
+    assert.equal(obtenerLabelUnidadVenta('MT'), 'm')
+    assert.equal(obtenerLabelUnidadVenta('KG'), 'kg')
+    assert.equal(obtenerLabelUnidadVenta('LT'), 'L')
+    assert.equal(obtenerLabelUnidadVenta('M2'), 'm²')
+    assert.equal(obtenerLabelUnidadVenta('M3'), 'm³')
+  })
+
+  it('label desde alias', () => {
+    assert.equal(obtenerLabelUnidadVenta('KILO'), 'kg')
+    assert.equal(obtenerLabelUnidadVenta('m'), 'm')
+  })
+
+  it('valor desconocido se devuelve tal cual', () => {
+    assert.equal(obtenerLabelUnidadVenta('INVENTADO'), 'INVENTADO')
+  })
+
+  it('null devuelve string vacío', () => {
+    assert.equal(obtenerLabelUnidadVenta(null), '')
+  })
+})
+
+describe('P1 — obtenerUnidadSat', () => {
+
+  it('retorna unidad SAT correcta', () => {
+    assert.equal(obtenerUnidadSat('PZA'), 'H87')
+    assert.equal(obtenerUnidadSat('MT'), 'MTR')
+    assert.equal(obtenerUnidadSat('KG'), 'KGM')
+    assert.equal(obtenerUnidadSat('LT'), 'LTR')
+    assert.equal(obtenerUnidadSat('M2'), 'MTK')
+    assert.equal(obtenerUnidadSat('M3'), 'MTQ')
+    assert.equal(obtenerUnidadSat('CAJA'), 'XBX')
+    assert.equal(obtenerUnidadSat('ROLLO'), 'XRO')
+  })
+
+  it('null devuelve null', () => {
+    assert.equal(obtenerUnidadSat(null), null)
+  })
+})
+
+describe('P1 — inferirUnidadPorNombre', () => {
+
+  it('presentación fija: BOLSA', () => {
+    const r = inferirUnidadPorNombre('BOLSA CON 100 PIJAS 6X1')
+    assert.equal(r.unidadSugerida, 'BOLSA')
+    assert.equal(r.regla, 'PRESENTACION_FIJA')
+    assert.equal(r.confianza, 'ALTA')
+  })
+
+  it('presentación fija: CAJA', () => {
+    const r = inferirUnidadPorNombre('CAJA DE CLAVOS 2 PULG')
+    assert.equal(r.unidadSugerida, 'CAJA')
+    assert.equal(r.confianza, 'ALTA')
+  })
+
+  it('presentación fija: ROLLO', () => {
+    const r = inferirUnidadPorNombre('ROLLO POLIDUCTO NARANJA 1/2 100MT')
+    assert.equal(r.unidadSugerida, 'ROLLO')
+  })
+
+  it('presentación fija: KIT', () => {
+    const r = inferirUnidadPorNombre('KIT DE CONEXIONES SECADORA')
+    assert.equal(r.unidadSugerida, 'KIT')
+  })
+
+  it('presentación fija: BULTO', () => {
+    const r = inferirUnidadPorNombre('BULTO DE CEMENTO 50KG')
+    assert.equal(r.unidadSugerida, 'BULTO')
+  })
+
+  it('fraccionable: X KG', () => {
+    const r = inferirUnidadPorNombre('CLAVO 2 PULG X KG')
+    assert.equal(r.unidadSugerida, 'KG')
+    assert.equal(r.regla, 'FRACCIONABLE')
+    assert.equal(r.confianza, 'ALTA')
+  })
+
+  it('fraccionable: POR METRO', () => {
+    const r = inferirUnidadPorNombre('CABLE THW-LS 10 CAL X METRO')
+    assert.equal(r.unidadSugerida, 'MT')
+  })
+
+  it('fraccionable: POR LITRO', () => {
+    const r = inferirUnidadPorNombre('PINTURA VINIL VINIMEX POR LITRO')
+    assert.equal(r.unidadSugerida, 'LT')
+  })
+
+  it('PZA_PROBABLE para producto físico sin patrón', () => {
+    const r = inferirUnidadPorNombre('MARTILLO 16 OZ')
+    assert.equal(r.unidadSugerida, 'PZA')
+    assert.equal(r.regla, 'PZA_PROBABLE')
+    assert.equal(r.confianza, 'PROBABLE')
+  })
+
+  it('PZA_PROBABLE para ferretería fina', () => {
+    const r = inferirUnidadPorNombre('TUERCA 1/4')
+    assert.equal(r.unidadSugerida, 'PZA')
+    assert.equal(r.regla, 'PZA_PROBABLE')
+  })
+
+  it('sin nombre devuelve SIN_NOMBRE', () => {
+    const r = inferirUnidadPorNombre(null)
+    assert.equal(r.regla, 'SIN_NOMBRE')
+    assert.equal(r.unidadSugerida, null)
+  })
+})
+
+describe('P1 — clasificarProducto', () => {
+
+  it('PZA_PROBABLE + unidadSat=H87 → PZA con confianza MEDIA', () => {
+    const r = clasificarProducto({ nombre: 'MARTILLO 16 OZ', esGranel: false, unidadSat: 'H87' })
+    assert.equal(r.unidadSugerida, 'PZA')
+    assert.equal(r.confianza, 'MEDIA')
+    assert.equal(r.regla, 'PZA_SAT_H87')
+  })
+
+  it('presentación fija no se modifica por unidadSat', () => {
+    const r = clasificarProducto({ nombre: 'BOLSA CON 100 PIJAS', esGranel: false, unidadSat: 'H87' })
+    assert.equal(r.unidadSugerida, 'BOLSA')
+  })
+
+  it('unidadSat divergente genera advertencia', () => {
+    const r = clasificarProducto({ nombre: 'MARTILLO 16 OZ', esGranel: false, unidadSat: 'KGM' })
+    assert.equal(r.unidadSugerida, 'PZA')
+    assert.ok(r.advertencias.length > 0)
   })
 })
