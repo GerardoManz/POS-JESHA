@@ -630,6 +630,79 @@ async function crear(req, res) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
+//  UNIDADES DE VENTA — catálogo operativo (inline hasta P1)
+// ═══════════════════════════════════════════════════════════════════
+
+const UNIDADES_VENTA_VALIDAS = new Set([
+  'PZA', 'MT', 'CM', 'KG', 'G', 'LT', 'ML', 'M2', 'M3',
+  'PAQUETE', 'PAR', 'KIT', 'JUEGO', 'CAJA', 'ROLLO', 'BOLSA',
+  'BULTO', 'SACO', 'BOTE', 'CUBETA', 'BOTELLA', 'LATA',
+  'TAMBOR', 'TRAMO', 'DOCENA', 'VIAJE',
+])
+
+const ALIASES_UNIDAD_VENTA = {
+  PZ: 'PZA', PZAS: 'PZA', PIEZA: 'PZA', PIEZAS: 'PZA',
+  M: 'MT', MTS: 'MT', METRO: 'MT', METROS: 'MT',
+  CM: 'CM', CENTIMETRO: 'CM', CENTIMETROS: 'CM',
+  KG: 'KG', KILO: 'KG', KILOS: 'KG',
+  G: 'G', GR: 'G', GRAMO: 'G',
+  L: 'LT', LTS: 'LT', LITRO: 'LT', LITROS: 'LT',
+  ML: 'ML', MILILITRO: 'ML', MILILITROS: 'ML',
+  M2: 'M2', M3: 'M3', M: 'M',
+  PAQ: 'PAQUETE', PACK: 'PAQUETE',
+  PR: 'PAR', PARES: 'PAR',
+  VJE: 'VIAJE', VIAJES: 'VIAJE',
+  SACO: 'SACO', SACOS: 'SACO',
+  BOTE: 'BOTE', BOTES: 'BOTE',
+}
+
+const UNIDADES_COMPRA_VALIDAS = new Set([
+  'PZA', 'CAJA', 'BULTO', 'ROLLO', 'PAQUETE', 'MT', 'KG', 'LT',
+  'TAMBOR', 'CILINDRO', 'CUBETA', 'LATA', 'BOLSA', 'BOTELLA',
+  'PAR', 'KIT', 'JUEGO', 'SACO', 'TRAMO', 'DOCENA', 'VIAJE',
+])
+
+function esUnidadVentaValida(valor, esServicio) {
+  if (esServicio) return valor === null || valor === undefined
+  if (valor === null || valor === undefined) return false
+  if (typeof valor !== 'string') return false
+  const t = valor.trim().toUpperCase()
+  if (t === '') return false
+  if (UNIDADES_VENTA_VALIDAS.has(t)) return true
+  return t in ALIASES_UNIDAD_VENTA
+}
+
+function normalizarUnidadVenta(valor, esServicio) {
+  if (esServicio) return valor || null
+  if (valor === null || valor === undefined) return null
+  if (typeof valor !== 'string') return null
+  const t = valor.trim().toUpperCase()
+  if (t === '') return null
+  if (UNIDADES_VENTA_VALIDAS.has(t)) return t
+  return ALIASES_UNIDAD_VENTA[t] || null
+}
+
+function esUnidadCompraValida(valor, esServicio) {
+  if (esServicio) return valor === null || valor === undefined
+  if (valor === null || valor === undefined) return true
+  if (typeof valor !== 'string') return false
+  const t = valor.trim().toUpperCase()
+  if (t === '') return false
+  if (UNIDADES_COMPRA_VALIDAS.has(t)) return true
+  return t in ALIASES_UNIDAD_VENTA
+}
+
+function normalizarUnidadCompra(valor, esServicio) {
+  if (esServicio) return valor || null
+  if (valor === null || valor === undefined) return null
+  if (typeof valor !== 'string') return null
+  const t = valor.trim().toUpperCase()
+  if (t === '') return null
+  if (UNIDADES_COMPRA_VALIDAS.has(t)) return t
+  return ALIASES_UNIDAD_VENTA[t] || null
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // EDITAR
 // ═══════════════════════════════════════════════════════════════════
 
@@ -645,7 +718,6 @@ async function editar(req, res) {
             esGranel, tipo
         } = req.body
 
-        // Normalizar codigoBarras y codigoInterno
         codigoBarras = normalizarCodigoBarras(codigoBarras)
         codigoInterno = normalizarCodigoInterno(codigoInterno)
 
@@ -661,7 +733,6 @@ async function editar(req, res) {
             })
         }
 
-        // Validar CLAVE SAT y UNIDAD SAT solo si vienen en el body
         if ('claveSat' in req.body && satInvalido(claveSat)) {
             return res.status(400).json({
                 success: false,
@@ -683,16 +754,13 @@ async function editar(req, res) {
             return res.status(404).json({ success: false, error: 'Producto no encontrado' })
         }
 
-        // tipo es inmutable tras crear: cambiarlo dejaría inventario huérfano.
         if (tipo && tipo !== existente.tipo) {
             return res.status(400).json({ success: false, error: 'El tipo no se puede cambiar después de crear el producto. Crea uno nuevo.', campo: 'tipo' })
         }
         const esServ = existente.tipo === 'SERVICIO'
 
-        // Preservar SAT si el PUT no reenvía el campo (un update parcial no debe borrarlo).
         let claveSatFinal  = ('claveSat'  in req.body) ? (claveSat  || null) : existente.claveSat
         let unidadSatFinal = ('unidadSat' in req.body) ? (unidadSat || null) : existente.unidadSat
-        // Servicio sin SAT → auto-asignar default confiable (defensa)
         if (esServ) {
             claveSatFinal  = claveSatFinal  || '78101800'
             unidadSatFinal = unidadSatFinal || 'E48'
@@ -705,17 +773,58 @@ async function editar(req, res) {
         claveSatFinal = validacionSat.claveSat
         unidadSatFinal = validacionSat.unidadSat
 
-        // Factor de conversión: el form envía precio por caja; Producto.costo es por pieza
-        const factorRaw    = factorConversion ? parseFloat(factorConversion) : 1
-        const safeFactor   = esServ ? 1 : ((Number.isFinite(factorRaw) && factorRaw > 0) ? factorRaw : 1)
-        const costoUnitVta = costo ? parseFloat((parseFloat(costo) / safeFactor).toFixed(4)) : null
-        const precioVtaNum = precioVenta ? parseFloat(precioVenta) : null
-        const margenProd   = (costoUnitVta && costoUnitVta > 0 && precioVtaNum && precioVtaNum > 0)
-            ? parseFloat(Math.min(((precioVtaNum / costoUnitVta - 1) * 100), 999.99).toFixed(2))
-            : null
+        // ── Construir data CONDICIONALMENTE ──
+        const has = Object.prototype.hasOwnProperty.bind(req.body)
+        const data = {}
 
-        // Validar duplicado de codigoBarras si cambió
-        if (codigoBarras !== null && codigoBarras !== existente.codigoBarras) {
+        // Siempre presentes (campos requeridos del form)
+        data.nombre = nombre
+        data.codigoInterno = codigoInterno
+        data.categoriaId = parseInt(categoriaId)
+        data.precioBase = parseFloat(precioBase)
+        data.claveSat = claveSatFinal
+        data.unidadSat = unidadSatFinal
+
+        // codigoBarras — omitido → preservar
+        if (has('codigoBarras')) {
+            data.codigoBarras = codigoBarras
+        }
+
+        // descripcion — omitido → preservar
+        if (has('descripcion')) {
+            data.descripcion = descripcion || null
+        }
+
+        // precioVenta — null explícito → null; omitido → preservar
+        if (has('precioVenta')) {
+            data.precioVenta = (precioVenta !== null && precioVenta !== undefined && precioVenta !== '')
+                ? parseFloat(precioVenta) : null
+        }
+
+        // Factor de conversión para recálculo de costo unitario
+        const fc = has('factorConversion') ? factorConversion : existente.factorConversion
+        const sf = esServ ? 1 : ((Number.isFinite(parseFloat(fc)) && parseFloat(fc) > 0) ? parseFloat(fc) : 1)
+
+        // costo — omitido → preservar; presente → recalcula unitario
+        if (has('costo')) {
+            data.costo = costo ? parseFloat((parseFloat(costo) / sf).toFixed(4)) : null
+        }
+
+        // Margen — recalcular si cambiaron costo, precioVenta o factorConversion
+        const costoUsar = has('costo') ? data.costo : existente.costo
+        const pvUsar = has('precioVenta')
+            ? ((precioVenta !== null && precioVenta !== undefined && precioVenta !== '') ? parseFloat(precioVenta) : null)
+            : existente.precioVenta
+        if (has('costo') || has('precioVenta') || has('factorConversion')) {
+            if (costoUsar && costoUsar > 0 && pvUsar && pvUsar > 0) {
+                data.margen = parseFloat(Math.min(((pvUsar / costoUsar - 1) * 100), 999.99).toFixed(2))
+            } else {
+                data.margen = null
+            }
+        }
+
+        // ── Validar duplicado de codigoBarras si cambió ──
+        if (has('codigoBarras') && codigoBarras !== null && codigoBarras !== existente.codigoBarras) {
             const empresaProducto = existente.empresaId
             const dupBarras = await validarCodigoBarrasDuplicado({ empresaId: empresaProducto, codigoBarras, excluirId: parseInt(id), prismaClient: prisma })
             if (dupBarras) {
@@ -723,34 +832,86 @@ async function editar(req, res) {
             }
         }
 
+        // ── Validar y asignar unidadVenta ──
+        if (has('unidadVenta')) {
+            const raw = req.body.unidadVenta
+            if (esServ) {
+                data.unidadVenta = raw === null || raw === undefined ? null : (normalizarUnidadVenta(raw, true) || raw || null)
+            } else {
+                if (raw === null || raw === undefined) {
+                    return res.status(400).json({ success: false, error: 'unidadVenta no puede ser null para productos físicos', campo: 'unidadVenta' })
+                }
+                if (typeof raw === 'string' && raw.trim() === '') {
+                    return res.status(400).json({ success: false, error: 'unidadVenta no puede estar vacía para productos físicos', campo: 'unidadVenta' })
+                }
+                const normalizada = normalizarUnidadVenta(raw, false)
+                if (!normalizada) {
+                    return res.status(400).json({ success: false, error: `Unidad de venta no válida: "${raw}". Usa una del catálogo.`, campo: 'unidadVenta' })
+                }
+                data.unidadVenta = normalizada
+            }
+        }
+
+        // ── Validar y asignar unidadCompra ──
+        if (has('unidadCompra')) {
+            const raw = req.body.unidadCompra
+            if (esServ) {
+                data.unidadCompra = raw === null || raw === undefined ? null : (normalizarUnidadCompra(raw, true) || raw || null)
+            } else {
+                if (raw === null || raw === undefined) {
+                    data.unidadCompra = null
+                } else if (typeof raw === 'string' && raw.trim() === '') {
+                    return res.status(400).json({ success: false, error: 'unidadCompra no puede estar vacía para productos físicos', campo: 'unidadCompra' })
+                } else {
+                    const normalizada = normalizarUnidadCompra(raw, false)
+                    if (!normalizada) {
+                        return res.status(400).json({ success: false, error: `Unidad de compra no válida: "${raw}".`, campo: 'unidadCompra' })
+                    }
+                    data.unidadCompra = normalizada
+                }
+            }
+        }
+
+        // ── Validar y asignar factorConversion — omitido → preservar ──
+        if (has('factorConversion')) {
+            const raw = req.body.factorConversion
+            if (esServ || raw === null || raw === undefined) {
+                data.factorConversion = null
+            } else if (raw === '' || raw === 0) {
+                data.factorConversion = null
+            } else {
+                const parsed = parseFloat(raw)
+                if (!Number.isFinite(parsed) || parsed < 0) {
+                    return res.status(400).json({ success: false, error: 'factorConversion debe ser un número positivo', campo: 'factorConversion' })
+                }
+                data.factorConversion = parsed
+            }
+        }
+
+        // ── Validar y asignar esGranel — omitido → preservar ──
+        if (has('esGranel')) {
+            data.esGranel = esServ ? false : (esGranel === true || esGranel === 'true')
+        }
+
+        // ── tipoFacturaProv — omitido → preservar ──
+        if (has('tipoFacturaProv')) {
+            data.tipoFacturaProv = tipoFacturaProv || null
+        }
+
+        // ── costoSinIvaProveedor — omitido → preservar ──
+        if (has('costoSinIvaProveedor')) {
+            data.costoSinIvaProveedor = costoSinIvaProveedor ? parseFloat(costoSinIvaProveedor) : null
+        }
+
         const producto = await prisma.producto.update({
             where: { id: parseInt(id) },
-            data: {
-                nombre,
-                codigoInterno,
-                codigoBarras:        codigoBarras     || null,
-                descripcion:         descripcion      || null,
-                costo:               costoUnitVta,
-                margen:              margenProd,
-                precioBase:          parseFloat(precioBase),
-                precioVenta:         precioVenta ? parseFloat(precioVenta) : null,
-                categoriaId:         parseInt(categoriaId),
-                unidadCompra:        esServ ? null : (unidadCompra || null),
-                unidadVenta:         unidadVenta      || null,
-                factorConversion:    esServ ? null : (factorConversion ? parseFloat(factorConversion) : null),
-                claveSat:            claveSatFinal,
-                unidadSat:           unidadSatFinal,
-                tipoFacturaProv:     tipoFacturaProv  || 'NETO',
-                costoSinIvaProveedor: costoSinIvaProveedor ? parseFloat(costoSinIvaProveedor) : null,
-                esGranel:            esServ ? false : (esGranel === true || esGranel === 'true'),
-            },
+            data,
             include: {
                 Categoria: { include: { Departamento: true } },
                 InventarioSucursal: { where: { sucursalId: 1 }, take: 1 }
             }
         })
 
-        // Upsert ProveedorProducto: solo toca el proveedor en contexto, sin borrar otros
         if (proveedorId && proveedorId !== '' && proveedorId !== 'null') {
             const ppProveedorId = parseInt(proveedorId)
             const ppProductoId  = parseInt(id)
@@ -759,12 +920,8 @@ async function editar(req, res) {
                 update: { precioCosto: costo ? parseFloat(costo) : 0, activo: true, actualizadoEn: new Date() },
                 create: { proveedorId: ppProveedorId, productoId: ppProductoId, precioCosto: costo ? parseFloat(costo) : 0, activo: true }
             })
-            console.log(`✅ Proveedor ${proveedorId} vinculado al producto ${id}`)
-        } else {
-            console.log(`ℹ️ Producto ${id} actualizado sin proveedor`)
         }
 
-        console.log(`✅ Producto actualizado: ${nombre}`)
         res.json({
             success: true,
             data: {
