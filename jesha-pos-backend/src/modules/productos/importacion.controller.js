@@ -11,6 +11,11 @@ const {
     parsearErrorPrismaProducto
 } = require('./productos.helpers')
 
+const {
+    normalizarUnidadVenta,
+    inferirUnidadPorNombre,
+} = require('../../helpers/unidades.helper')
+
 // ═══════════════════════════════════════════════════════════════════
 // UTILIDADES DE PARSEO CSV
 // ═══════════════════════════════════════════════════════════════════
@@ -170,21 +175,37 @@ function validarFila(fila, idx) {
 
 // ═══════════════════════════════════════════════════════════════════
 // INFERIR UNIDAD DE VENTA desde descripción del producto
+// Usa el helper central de unidades (P1). Prioridad:
+//   1. Unidad explícita en CSV (TIPO DE GRANEL)
+//   2. Normalización de alias
+//   3. Presentación fija inequívoca (BOLSA, CAJA, ROLLO, etc.)
+//   4. Unidad fraccionable inequívoca (X KG, POR METRO, etc.)
+//   5. Producto físico normal sin contradicciones → PZA
+//   6. Servicio → null
+//   7. Granel sin unidad inferible → warning
+//   8. Conflicto → warning, no importar silenciosamente
 // ═══════════════════════════════════════════════════════════════════
 
-function inferirUnidadVenta(descripcion, esGranel) {
-    if (!esGranel) return null
-    const desc = (descripcion || '').toUpperCase()
+function inferirUnidadVenta(descripcion, esGranel, tipoGranelCSV) {
+    // Prioridad 1: unidad explícita desde el CSV
+    if (tipoGranelCSV) {
+        const normalizada = normalizarUnidadVenta(tipoGranelCSV, false)
+        if (normalizada) return normalizada
+    }
 
-    if (/X METRO|XM$|POR METRO|X MTS| XM |X M /.test(desc))  return 'm'
-    if (/X KG|X KILO|POR KG|POR KILO|X GR|POR GR/.test(desc)) return 'kg'
-    if (/POR LITRO|X LITRO|X LT/.test(desc))                   return 'l'
-    if (/METRO CUBICO|METRO CÚB/.test(desc))                   return 'm³'
-    if (/VIAJE/.test(desc))                                     return 'vje'
-    if (/ROLLO/.test(desc))                                     return 'rollo'
-    if (/BOTE/.test(desc))                                      return 'bote'
+    // Prioridad 2-5: usar helper de inferencia por nombre
+    if (!descripcion) return null
 
-    return 'pza' // default para granel sin unidad clara
+    const inferencia = inferirUnidadPorNombre(descripcion)
+
+    // Granel sin patrón claro → null (no inferir PZA default)
+    if (esGranel && inferencia.regla === 'PZA_PROBABLE') return null
+
+    if (inferencia.unidadSugerida) {
+        return inferencia.unidadSugerida
+    }
+
+    return null
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -221,18 +242,9 @@ function mapearProducto(fila) {
     const stockMaximo  = parseFloat(fila['INV_MAX']) || null
     const esGranel     = (fila['GRANEL (S/N)'] || '').toUpperCase().trim() === 'S'
 
-    // TIPO DE GRANEL tiene prioridad sobre inferirUnidadVenta si viene con valor
-    const MAPA_UNIDADES = {
-        'kg': 'kg', 'kilo': 'kg', 'kilos': 'kg', 'k': 'kg',
-        'm': 'm', 'metro': 'm', 'metros': 'm', 'mts': 'm', 'mt': 'm',
-        'l': 'l', 'litro': 'l', 'litros': 'l', 'lt': 'l',
-        'g': 'g', 'gramo': 'g', 'gramos': 'g',
-        'rollo': 'rollo', 'bote': 'bote', 'pza': 'pza', 'pieza': 'pza'
-    }
-    const tipoGranelCSV = (fila['TIPO DE GRANEL'] || '').trim().toLowerCase()
-    const unidadVenta   = esGranel && tipoGranelCSV
-        ? (MAPA_UNIDADES[tipoGranelCSV] || tipoGranelCSV)
-        : inferirUnidadVenta(fila['DESCRIPCION'], esGranel)
+    // Inferir unidad de venta: helper central con prioridad explícita
+    const tipoGranelCSV = (fila['TIPO DE GRANEL'] || '').trim()
+    const unidadVenta   = inferirUnidadVenta(fila['DESCRIPCION'], esGranel, tipoGranelCSV)
 
     // Proveedor — se normaliza y se pasa como campo auxiliar
     const _proveedorNombre = normalizarNombreProveedor(fila['PROVEEDOR'])
@@ -414,6 +426,12 @@ function obtenerCategoriaIdDelCache(cacheCats, nombreDepto, nombreCat, fallbackI
     const key = `${nombreDepto.toUpperCase().trim()}|${nombreCat.trim()}`
     return cacheCats.get(key) || fallbackId
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// EXPORTS (funciones auxiliares + handlers)
+// ═══════════════════════════════════════════════════════════════════
+
+exports.inferirUnidadVenta = inferirUnidadVenta
 
 // ═══════════════════════════════════════════════════════════════════
 // HANDLER PRINCIPAL — IMPORTAR CSV (recibe archivo via multer)
