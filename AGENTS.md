@@ -28,7 +28,8 @@ Ferreteria JESHA/
 │   │   ├── app.js                                        # Express routes (public + protected) + /health + /health/db
 │   │   ├── server.js                                      # Server entry point
 │   │   ├── helpers/
-│   │   │   └── getEmpresaId.js                           # Tenant extraction from JWT (all creates)
+│   │   │   ├── getEmpresaId.js                           # Tenant extraction from JWT (all creates)
+│   │   │   └── unidades.helper.js                       # Catálogo de unidades + normalización + inferencia
 │   │   ├── middlewares/auth.middleware.js                # JWT auth + role guards + sucursal access
 │   │   ├── lib/prisma.js, cloudinary.js                 # Prisma + Cloudinary clients
 │   │   ├── utils/
@@ -47,6 +48,7 @@ Ferreteria JESHA/
 │   │       ├── devoluciones/                            # Returns
 │   │       ├── facturacion/                             # Facturapi (public)
 │   │       ├── facturas/                                # Invoice records
+│   │       ├── impresion/                               # PrintJob management + snapshot builders
 │   │       └── sucursal/                                # Branch helper + GET endpoint (CRUD parcial)
 │   └── prisma/
 │       └── schema.prisma                                # Full database schema
@@ -59,7 +61,7 @@ Ferreteria JESHA/
 - **Default: trabajo directo sobre `main`.** Los cambios de rutina (correcciones, ajustes de lógica, fixes puntuales) se commitean en `main` local y se empujan a `origin/main`. No se crean ramas para esto.
 - **Excepción deliberada: rama + PR.** Solo para features grandes y aislables que el usuario pida explícitamente (ej. PR2 pago mixto ya integrado; PR3/PR4 de granel/pausadas/hover pendientes). Tras el merge, limpiar la rama local y remota como se hizo en PR2.
 - **Regla de oro ante errores: NUNCA crear una rama para escapar de un problema.** Si algo sale mal, se resuelve sobre `main` con `stash`, `rebase` o `revert`. La proliferación de ramas divergentes es exactamente lo que se quiere evitar.
-- **Producción es en vivo.** Cada push a `origin/main` despliega automáticamente: backend a Render, frontend a Cloudflare, golpeando a las cajeras reales. En push directo no hay gate de revisión, así que **probar en Brave contra el entorno local antes de empujar es obligatorio.**
+- **Producción es en vivo.** Cada push a `origin/main` despliega automáticamente el backend en Render. El frontend NO se despliega solo: requiere build manual (`build-frontend.ps1` en Windows, `build-frontend.sh` en Linux/macOS) + `npx wrangler deploy`. En push directo no hay gate de revisión, así que **probar en Brave contra el entorno local antes de empujar es obligatorio.**
 
 ### 1. Pre-flight (antes de tocar cualquier archivo)
 
@@ -194,7 +196,7 @@ git status --short --branch        # ## main...origin/main, sin ahead
 git --no-pager log --oneline -3
 ```
 
-Luego verificar el deploy: Render (backend) y Cloudflare (frontend) reconstruyen solos. Si tocaste frontend, revisar el banner de versión y la checklist de "Cloudflare Workers - Deploy Seguro".
+Luego verificar el deploy: Render reconstruye solo el backend. Si tocaste frontend, revisar el banner de versión, ejecutar build manual y `npx wrangler deploy` siguiendo la sección "Cloudflare Workers - Deploy Seguro".
 
 ---
 
@@ -409,7 +411,7 @@ PLATFORM_ADMIN          → Todas las empresas, todas las sucursales
 
 ## API Configuration
 
-- **config.js** auto-detects environment: `localhost` / `127.0.0.1` / `192.168.0.190` → local API (`http://localhost:3000`)
+- **config.js** auto-detects environment: `localhost` / `127.0.0.1` / IP privadas (`192.168.x.x`, `10.x.x.x`, `172.16-31.x.x`) → local API (`http://localhost:3000`)
 - Otherwise → production API (`https://jesha-pos-api.onrender.com`)
 - IVA rate: `0.16` (16%) — stored in `CONFIG.IVA`
 
@@ -417,7 +419,7 @@ PLATFORM_ADMIN          → Todas las empresas, todas las sucursales
 
 El Worker de produccion se llama `jeshapos` y es assets-only. `wrangler.toml` debe mantenerse sin `main` y con `[assets] directory = "./dist"`, `html_handling = "auto-trailing-slash"` y `not_found_handling = "404-page"`.
 
-Regla de oro: **whitelist, no denylist**. `build-frontend.sh` copia solo lo explicitamente permitido: `*.html`, `*.css`, `*.js` del primer nivel, `Imagenes/` y `version.json`. Cualquier archivo o carpeta nueva queda fuera por defecto. Para publicar algo nuevo, agregarlo conscientemente a la whitelist; nunca publicar por descarte.
+Regla de oro: **whitelist, no denylist**. `build-frontend.sh` (Linux/macOS) y `build-frontend.ps1` (Windows) copian solo lo explicitamente permitido: `*.html`, `*.css`, `*.js` del primer nivel, `Imagenes/` y `version.json`. Cualquier archivo o carpeta nueva queda fuera por defecto. Para publicar algo nuevo, agregarlo conscientemente a la whitelist en ambos scripts; nunca publicar por descarte.
 
 Prohibiciones operativas:
 
@@ -557,12 +559,17 @@ FRONTEND_URL=...
 | `jesha-pos-backend/src/middlewares/auth.middleware.js` | JWT validation + user active check + role guards |
 | `jesha-pos-backend/src/utils/roles.js` | Role hierarchy (`JERARQUIA_ROLES`, `puedeGestionar`) |
 | `jesha-pos-backend/src/modules/auth/auth.controller.js` | Login — includes `empresaId` in JWT payload |
-| `jesha-pos-backend/src/modules/ventas/ventas.controller.js` | Sales business logic + dashboard KPIs |
-| `jesha-pos-backend/src/modules/bitacora/bitacora.controller.js` | Customer ledger logic |
+| `jesha-pos-backend/src/modules/ventas/ventas.controller.js` | Sales business logic + dashboard KPIs + P3 snapshots (`construirDetalleVentaPayload`) |
+| `jesha-pos-backend/src/modules/bitacora/bitacora.controller.js` | Customer ledger logic + P3 snapshots en creación de detalles |
 | `jesha-pos-backend/src/modules/devoluciones/devoluciones.controller.js` | Returns with deduplicated products + parseFloat |
 | `jesha-pos-backend/src/modules/sucursal/sucursal.helper.js` | Centralized `resolverSucursalId(req)` helper |
 | `jesha-pos-backend/src/modules/sucursal/sucursal.controller.js` | GET /sucursales — lista sucursales activas por empresa |
 | `jesha-pos-backend/src/modules/sucursal/sucursal.routes.js` | Router de sucursales (GET /) |
+| `jesha-pos-backend/src/helpers/unidades.helper.js` | Catálogo de unidades con 27 valores + alias + normalización + inferencia |
+| `jesha-pos-backend/src/modules/impresion/impresion.snapshot.js` | Construcción de payload para print-agent (tickets, cortes, abonos, retiros) |
+| `jesha-pos-backend/prisma.config.ts` | Configuración del cliente Prisma (datasource) |
+| `jesha-pos-backend/tests/p3-snapshots.test.js` | Tests de snapshots P3: 3 modos, legacy, cotización, cleanup |
+| `print-agent/escpos-builder.js` | Construcción de comandos ESC/POS para impresión térmica |
 | `config.js` | Frontend API URL + IVA config |
 | `sidebar.js` | Global nav + auth guard + apiFetch con parseo JSON seguro |
 | `punto-venta.js` | POS cart logic |
@@ -584,11 +591,317 @@ npx prisma generate  # Regenerar el cliente Prisma tras un cambio de esquema
 
 > ⚠️ **NO usar `npm run migrate`, `prisma migrate` ni `prisma db push` en este proyecto.** Los cambios de esquema se aplican como `ALTER TABLE` manual: primero en local (pgAdmin), luego en producción (DBeaver), siempre dentro de una transacción con verificación `SELECT COUNT(*)` antes del `COMMIT`. Después de aplicar el SQL, ejecutar `npx prisma generate` para sincronizar el cliente.
 >
-> Aunque `package.json` contenga scripts `migrate`/`build` que invoquen `prisma migrate`, no se ejecutan manualmente. **Pendiente de verificar:** si el build de Render dispara `prisma migrate` automáticamente, eso contradice el protocolo de ALTER manual y debe revisarse.
+> `npm run build` en Render ejecuta `npx prisma generate`. Esto solo regenera el cliente Prisma a partir del schema ya existente; **no modifica la base de datos ni aplica migraciones**. Render no ejecuta migraciones automáticamente. El `package.json` contiene un script `"migrate": "npx prisma migrate dev"` que está disponible localmente pero está prohibido su uso en este proyecto (ver protocolo ALTER manual arriba).
 
 ---
 
-## Prisma 7.4 Naming Conventions
+## Orden de Despliegue
+
+El orden correcto de operaciones depende de si el cambio modifica o no el esquema de base de datos.
+
+### Cambios con modificación de schema (nuevas columnas, tablas, enums)
+
+| Paso | Acción | Quién | ¿Bloqueante? |
+|------|--------|-------|-------------|
+| 1 | Preparar migración versionada (`prisma migrate dev --create-only` local) | Dev local | Sí |
+| 2 | Revisar el SQL generado: sin DROP, DELETE o UPDATE inesperados | Dev local | Sí |
+| 3 | Confirmar respaldo de producción (DBeaver: Backup o pg_dump) | DBA | Sí |
+| 4 | Aplicar ALTER TABLE manual en producción (DBeaver, transacción) | DBA | Sí |
+| 5 | Verificar enum, columnas, tipos, precisión y nullable | DBA | Sí |
+| 6 | Hacer commit y push a `origin/main` | Dev | No falla si el schema ya está |
+| 7 | Render despliega automáticamente el backend (detecta el push) | Auto | No |
+| 8 | Construir y desplegar frontend manualmente (`build-frontend.ps1` + `wrangler deploy`) | Dev | Si el frontend se modificó |
+| 9 | Actualizar print-agent en terminales cuando aplique | Local | Si `escpos-builder.js` cambió |
+| 10 | Ejecutar smoke test productivo | Dev | Recomendado |
+| 11 | Monitorear logs de Render por errores post-deploy | Dev | Recomendado |
+
+**Razón del orden:** El paso 4 (migrar BD) debe ocurrir ANTES del paso 6 (push), porque Render auto-despliega al detectar el push. Si el backend nuevo espera columnas que aún no existen, las queries fallan con errores de columna inexistente.
+
+### Cambios sin modificación de schema (solo lógica, frontend, configuración)
+
+1. Pruebas locales (backend + frontend).
+2. Commit y push a `origin/main`.
+3. Render auto-deploy.
+4. Frontend manual si fue modificado.
+5. Print-agent local si fue modificado.
+
+---
+
+## Pre-push Checklist para Cambios de Schema
+
+Antes de hacer push cuando el commit incluye cambios de esquema, verificar:
+
+- [ ] Migración versionada revisada (SQL generado sin sorpresas).
+- [ ] Sin DROP TABLE, DELETE FROM o UPDATE sin WHERE en la migración.
+- [ ] Precisiones Decimal correctas (10,2 para dinero; 10,3 para cantidades; 10,4 para factores).
+- [ ] Columnas nuevas son NULLABLE cuando se requiere compatibilidad con registros existentes.
+- [ ] Respaldo de producción confirmado antes de aplicar el ALTER.
+- [ ] Procedimiento productivo definido (DBeaver transacción manual, no `prisma db push`).
+- [ ] Frontend compatible preparado (consume los campos nuevos como opcionales con `??` fallback).
+- [ ] Rollback de código definido (commit revert preparado por si la migración falla).
+- [ ] Smoke tests locales aprobados (incluyendo legacy data sin los campos nuevos).
+- [ ] No se hará push antes de aplicar el schema productivo — Render auto-despliega inmediatamente.
+
+---
+
+## Print Agent
+
+### ¿Qué es?
+
+Proceso local independiente que corre en cada terminal de la ferretería en Windows. Consume `PrintJobs` desde el backend vía API REST, construye los comandos ESC/POS y los envía a la impresora térmica POS58.
+
+### Ubicación en el repositorio
+
+```
+print-agent/
+├── agent.js              # Proceso principal (loop de polling + dispatch)
+├── escpos-builder.js     # Construcción de comandos ESC/POS (tickets)
+├── config.json           # Config: API URL, impresora, intervalos, logo
+├── package.json          # Dependencias: node-thermal-printer, dotenv
+├── package-lock.json
+├── .env                  # JESHA_AGENT_TOKEN + JESHA_API_URL (NO subir a Git)
+├── watchdog.bat          # Script de reinicio automático (loop infinito)
+└── node_modules/         # Dependencias instaladas
+```
+
+### Dependencias
+
+- Node.js 22+ (usa `fetch` global nativo).
+- `node-thermal-printer ^4.6.0` — librería de comandos ESC/POS.
+- `dotenv ^16.4.5` — variables de entorno.
+- Impresora térmica POS58 (o compatible) instalada como impresora del sistema Windows.
+
+### Dónde corre
+
+En la computadora local de la ferretería, NO en el servidor. Ruta esperada: `C:\JESHA\print-agent\` (según `watchdog.bat`).
+
+### Archivos que deben copiarse al actualizar
+
+Solo los archivos del repositorio que cambiaron. Normalmente:
+- `escpos-builder.js` — cuando se modifica el formato de tickets.
+- `agent.js` — cuando cambia la lógica de polling, confirmación o tipos de ticket.
+
+**NO copiar:**
+- `.env` — contiene credenciales locales. Se conserva en la terminal.
+- `node_modules/` — se regenera con `npm install`.
+- `config.json` — contiene configuración local de la impresora. Se conserva.
+
+### Procedimiento de actualización
+
+1. Clonar o hacer pull del repositorio en la terminal (o copiar archivos vía USB/red).
+2. Si `package.json` cambió: ejecutar `npm install` en `print-agent/`.
+3. Si solo cambió `escpos-builder.js` o `agent.js`: reemplazar el archivo, no necesita `npm install`.
+4. El `.env` local se conserva — **nunca sobrescribirlo**.
+5. Reiniciar el agente (ver abajo).
+
+### Configuración
+
+**`config.json`** (archivo local, no se sobrescribe automáticamente):
+```json
+{
+  "apiUrl": "https://jesha-pos-api.onrender.com",
+  "printer": {
+    "interface": "printer:POS58 Printer",
+    "width": 32,
+    "codepage": "PC437",
+    "cutMode": "full"
+  },
+  "pollIntervalMs": 2000,
+  "networkTimeoutMs": 8000,
+  "skipOldJobs": true,
+  "oldJobThresholdMinutes": 120,
+  "resetOnStart": false
+}
+```
+
+**`.env`** (archivo local, nunca en Git):
+```
+JESHA_AGENT_TOKEN=...
+JESHA_API_URL=https://jesha-pos-api.onrender.com
+```
+
+### Cómo iniciar
+
+```powershell
+cd C:\JESHA\print-agent
+node agent.js
+```
+
+Modos disponibles:
+| Comando | Efecto |
+|---------|--------|
+| `node agent.js` | Loop normal: polling continuo de PrintJobs |
+| `node agent.js --list` | Lista impresoras disponibles en el sistema y sale |
+| `node agent.js --hello` | Imprime ticket de prueba "HOLA MUNDO" y sale |
+| `node agent.js --drawer` | Abre el cajón de dinero y sale |
+
+### Cómo detener
+
+`Ctrl + C` en la ventana donde corre el agente.
+
+### Cómo reiniciar
+
+```powershell
+Ctrl + C  # detener
+node agent.js  # iniciar de nuevo
+```
+
+### Inicio automático
+
+El archivo `watchdog.bat` en `print-agent/` implementa un loop infinito que reinicia el agente automáticamente si se cierra. Se ejecuta típicamente al inicio de Windows (acceso en `Inicio` o tarea programada).
+
+Contenido de `watchdog.bat`:
+```batch
+@echo off
+title JESHA Print Agent
+cd /d C:\JESHA\print-agent
+:loop
+echo [%date% %time%] Iniciando print-agent...
+node agent.js
+echo [%date% %time%] Agente detenido. Reiniciando en 10 segundos...
+timeout /t 10 /nobreak >nul
+goto loop
+```
+
+### Cómo verificar que está funcionando
+
+- La ventana del agente muestra logs en vivo: `Print Agent | API ... | impresora "..."`.
+- Cada ticket procesado muestra: `Job <id> | VENTA/ABONO/CORTE/RETIRO` seguido de `-> ENVIADO_A_IMPRESORA`.
+- Monitor de impresora cada 30s: `[monitor] Impresora "..." ONLINE/OFFLINE`.
+- Comando rápido: `node agent.js --hello`.
+
+### Cómo revisar logs
+
+Los logs se escriben en `stdout` de la ventana donde corre el agente. Si se usa `watchdog.bat`, se acumulan en la misma ventana. No hay archivo de log persistente por defecto. Para persistir:
+
+```powershell
+node agent.js > agent.log 2>&1
+```
+
+### Cómo actualizar `escpos-builder.js`
+
+1. Reemplazar el archivo en `C:\JESHA\print-agent\escpos-builder.js`.
+2. Verificar que el `.env` y `config.json` existan (no se modifican).
+3. Reiniciar el agente.
+4. Probar con `node agent.js --hello`.
+
+### Cómo conservar el `.env` local
+
+- **Nunca sobrescribir** el `.env` de la terminal al actualizar.
+- El `.env` del repositorio contiene valores de ejemplo o desarrollo.
+- Al copiar archivos, excluir explícitamente `.env`.
+
+### Cómo revertir a la versión anterior
+
+1. Conservar una copia del `escpos-builder.js` anterior antes de reemplazar.
+2. Si el agente falla, restaurar el respaldo y reiniciar.
+3. Para cambios mayores (`agent.js` completo): usar `git checkout HEAD~1 -- print-agent/agent.js` desde el repo clonado para obtener la versión previa, copiar y reiniciar.
+
+### Puertos utilizados
+
+Ninguno. El print-agent no abre puertos de red. Solo realiza peticiones HTTP salientes al backend (agente → servidor).
+
+### Mecanismo de conexión con impresora
+
+Usa PowerShell (`Write-Printer`) escribiendo un buffer ESC/POS directamente a la ruta compartida de Windows: `\\localhost\POS58`. Ver `escpos-builder.js:printRaw()`.
+
+---
+
+## P3 — ModoCapturaDetalle
+
+Versión implementada: **2026-07-24** (commit `827c285`)
+
+### Enum `ModoCapturaDetalle`
+
+| Valor | Descripción |
+|-------|-------------|
+| `CANTIDAD` | Usuario captura cantidad en la unidad base del producto |
+| `IMPORTE` | Usuario captura el importe en pesos; el sistema calcula la cantidad |
+| `CONVERSION` | Usuario captura empaques; el sistema convierte usando `factorConversion` |
+
+### Snapshots en `DetalleVenta` y `DetalleBitacora`
+
+Ambas tablas tienen las mismas 7 columnas snapshot, todas NULLABLE para compatibilidad con registros legacy:
+
+| Columna | Tipo | Precisión | Propósito |
+|---------|------|-----------|-----------|
+| `unidadVentaSnapshot` | TEXT | — | Unidad de venta al momento de la captura (PZA, MT, KG, etc.) |
+| `unidadCapturadaSnapshot` | TEXT | — | Unidad que el usuario vio/ingresó (solo CONVERSION) |
+| `esGranelSnapshot` | BOOLEAN | — | Si el producto era granel al momento de la venta |
+| `factorConversionSnapshot` | DECIMAL | (10,4) | Factor de conversión aplicado (solo CONVERSION) |
+| `modoCapturaSnapshot` | `ModoCapturaDetalle` | — | Modo usado en la captura |
+| `cantidadCapturadaSnapshot` | DECIMAL | (10,3) | Cantidad original capturada |
+| `importeCapturadoSnapshot` | DECIMAL | (10,2) | Importe original capturado (solo IMPORTE) |
+
+### Semántica por modo
+
+**CANTIDAD:**
+- `cantidadCapturadaSnapshot = cantidad` (la misma que el campo `cantidad` del detalle).
+- `importeCapturadoSnapshot = null`.
+- Sin conversión: lo que capturó el usuario es directamente la cantidad en unidad base.
+- Ejemplo: usuario captura "2" de producto PZA → `cantidadCapturadaSnapshot = 2`.
+
+**IMPORTE:**
+- Usuario captura el importe en pesos (ej. $50 de producto cuyo precio es $25 → cantidad = 2).
+- `cantidadCapturadaSnapshot = null`.
+- `importeCapturadoSnapshot` contiene el importe original capturado.
+- El sistema valida que `importeCapturado ≈ cantidad × precioUnitario` (tolerancia 0.01).
+- Ejemplo: usuario captura "$50", sistema calcula cantidad = 2 → `importeCapturadoSnapshot = 50`.
+
+**CONVERSION:**
+- Usuario captura empaques (ej. 2 cajas, cada caja = 12 piezas → cantidad final = 24).
+- `cantidadCapturadaSnapshot` contiene la cantidad de empaques capturada.
+- `factorConversionSnapshot` contiene el factor de conversión aplicado (ej. 12).
+- El sistema valida que `cantidad = cantidadCapturada × factorConversion`.
+- `unidadCapturadaSnapshot` contiene la unidad del empaque (ej. CAJA).
+
+### Prioridad de resolución de unidad (backend)
+
+```
+1. detalle.unidadVentaSnapshot   ← snapshot al momento de la venta
+2. Producto.unidadVenta          ← valor actual del producto
+3. null                          ← sin unidad asignada
+```
+
+**Regla:** El backend es autoritativo. El frontend nunca debe inventar unidades. En vistas administrativas (historial, bitácora, reportes), cuando no hay unidad = `SIN UNIDAD`.
+
+### Compatibilidad histórica
+
+- Los registros anteriores a P3 tienen todas las columnas snapshot en `null`.
+- `ventas.controller.js` legacy path (sin `modoCaptura`): escribe `modoCapturaSnapshot = null`, todos los snapshots en `null`.
+- No existe backfill histórico de detalles. No ejecutar backfill de Producto como parte de P3.
+- Cotizaciones legacy pueden tener metadata de captura `null`.
+- El fallback `??` (no `||`) es obligatorio para evitar que strings vacíos se traguen el fallback.
+
+### Archivos involucrados
+
+| Archivo | Rol |
+|---------|-----|
+| `prisma/migrations/20260723150503_add_snapshots_unidad_venta/migration.sql` | Migración: enum + 14 columnas |
+| `prisma/schema.prisma` | Schema: enum + campos en DetalleVenta y DetalleBitacora |
+| `src/helpers/unidades.helper.js` | Catálogo de unidades con 27 valores + alias + normalización |
+| `src/modules/ventas/ventas.controller.js` | Validación + construcción de snapshots en `construirDetalleVentaPayload` |
+| `src/modules/bitacora/bitacora.controller.js` | Snapshots en creación de detalles de bitácora |
+| `src/modules/compras/compras.controller.js` | Snapshots de unidad en compras (factorConversionSnapshot, unidadVentaSnapshot) |
+| `src/modules/ventas/ticket.controller.js` | Ticket HTML: `unidadVentaSnapshot ?? Producto.unidadVenta ?? null` |
+| `src/modules/bitacora/ticketMateriales.controller.js` | Ticket materiales: misma resolución de unidad |
+| `src/modules/bitacora/reporte.controller.js` | Reporte bitácora: `unidadVentaSnapshot ?? Producto?.unidadVenta` |
+| `src/modules/impresion/impresion.snapshot.js` | Construcción de payload para print-agent (incluye `unidad`) |
+| `print-agent/escpos-builder.js` | Render de unidad en tickets ESC/POS (compacto y no-compacto) |
+| `tests/p3-snapshots.test.js` | 40 tests: 3 modos, legacy, cotización, cleanup |
+
+### Reglas de validación (backend)
+
+| Condición | Código | Respuesta |
+|-----------|--------|-----------|
+| `modoCaptura` presente sin `CANTIDAD/IMPORTE/CONVERSION` | 400 | `error: modoCaptura inválido` |
+| `IMPORTE` sin `importeCapturado` positivo | 400 | `importeCapturado debe ser un número positivo` |
+| `IMPORTE` con `importeCapturado ≠ subtotal` (tolerancia 0.01) | 400 | `importeCapturado no coincide con subtotal` |
+| `CONVERSION` sin `cantidadCapturada` | — | Se usa `cantidad` como `cantidadCapturada` |
+| `CONVERSION`: `cantidad ≠ cantidadCapturada × factor` | 400 | `cantidad final no coincide con cantidadCapturada × factor` |
+| `modoCaptura` ausente (legacy) | — | Todos los snapshots en `null`, flujo normal |
+
+---
 
 **CRITICAL**: Prisma 7.4 uses PascalCase for ALL relation names in `select:`, `include:`, and `data:` objects. Using camelCase will cause runtime errors like `Argument 'X' is missing`.
 
@@ -910,6 +1223,20 @@ WHERE d.datname = 'jesha_db';
 - `src/server.js` — crash handlers (unhandledRejection, uncaughtException) + HTTP timeouts (keepAliveTimeout=65s, headersTimeout=66s)
 - `src/app.js` — nuevo endpoint GET /health/db (SELECT 1 real, responde 503 si BD no accesible)
 
+**2026-07-24 - P3 ModoCapturaDetalle (commit 827c285)**:
+- `prisma/migrations/20260723150503_add_snapshots_unidad_venta/` — migración: enum ModoCapturaDetalle + 14 columnas snapshot nullable en DetalleVenta y DetalleBitacora
+- `src/helpers/unidades.helper.js` — catálogo de 27 unidades, alias, normalización, inferencia por nombre
+- `src/modules/ventas/ventas.controller.js` — validación modoCaptura (CANTIDAD/IMPORTE/CONVERSION), construcción de snapshots en `construirDetalleVentaPayload`, resolución de unidad (snapshot → Producto → null)
+- `src/modules/bitacora/bitacora.controller.js` — snapshots en creación de detalles de bitácora
+- `src/modules/compras/compras.controller.js` — snapshots de unidad en compras (factorConversionSnapshot, unidadVentaSnapshot)
+- `src/modules/ventas/ticket.controller.js` — resolución de unidad con `??` en ticket HTML
+- `src/modules/bitacora/ticketMateriales.controller.js` — unidad en ticket de materiales
+- `src/modules/bitacora/reporte.controller.js` — unidad en reporte de bitácora
+- `src/modules/impresion/impresion.snapshot.js` — payload de unidad para print-agent
+- `print-agent/escpos-builder.js` — render de unidad en tickets ESC/POS (compacto y no-compacto)
+- `tests/p3-snapshots.test.js` — 40 tests: CANTIDAD, IMPORTE, CONVERSION, legacy, cotización, cleanup
+- Frontend: `punto-venta.js` — enviar modoCaptura, cantidadCapturada, importeCapturado, unidadCapturada
+
 ### Notes
 - **dashboard.js**: `producto.InventarioSucursal` (PascalCase), NOT `producto.inventarios`
 - **historial-cortes**: Uses `.toolbar` / `.panel` / `.pagination` patterns (same as compras)
@@ -999,6 +1326,8 @@ WHERE d.datname = 'jesha_db';
 - Sin modificar reglas base (dark mode intacto).
 
 ## API Endpoints Testeados (2026-05-13)
+
+> La siguiente lista es una muestra operativa y no constituye un inventario exhaustivo de todos los endpoints.
 
 | Endpoint | Método | Estado |
 |----------|--------|--------|
