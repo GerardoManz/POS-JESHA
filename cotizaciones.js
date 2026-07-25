@@ -990,10 +990,12 @@ window.cargarEnPos = async function(id) {
       fuente: 'cotizacion', cotFolio: cot.folio, cotId: cot.id,
       clienteId: cot.Cliente?.id || null, clienteNombre: cot.Cliente?.nombre || '',
       items: cot.DetalleCotizacion.map(d => ({
-        id:       d.Producto?.id ?? d.productoId,
-        nombre:   d.Producto?.nombre || '—',
-        precio:   parseFloat(d.precioUnitario),
-        cantidad: parseFloat(d.cantidad) || 1
+        id:          d.Producto?.id ?? d.productoId,
+        nombre:      d.Producto?.nombre || '—',
+        precio:      parseFloat(d.precioUnitario),
+        cantidad:    parseFloat(d.cantidad) || 1,
+        esGranel:    d.Producto?.esGranel ?? false,
+        unidadVenta: d.Producto?.unidadVenta || ''
       }))
     }
     localStorage.setItem('pos_cotizacion', JSON.stringify(posPayload))

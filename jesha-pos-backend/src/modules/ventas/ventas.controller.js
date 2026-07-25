@@ -10,7 +10,7 @@ const { buildVentaSnapshot, formatFechaTicket } = require('../impresion/impresio
 const { encolarImpresion } = require('../impresion/impresion.service')
 const { EMPRESA, LOGO_URL } = require('../../../config/empresa')
 const { verificarStockPostOperacion } = require('../../helpers/verificarStock')
-const { normalizarUnidadVenta, normalizarUnidadCompra } = require('../../helpers/unidades.helper')
+const { normalizarUnidadVenta, normalizarUnidadCompra, esFraccionable } = require('../../helpers/unidades.helper')
 
 function getLanIp() {
   const interfaces = os.networkInterfaces()
@@ -246,7 +246,8 @@ exports.crearVenta = async (req, res) => {
           }
 
           if (modo === 'CANTIDAD') {
-            if (!prod.esGranel && !Number.isInteger(cantidadFloat)) {
+            const permiteFracciones = prod.esGranel || (prod.unidadVenta ? esFraccionable(prod.unidadVenta) : false)
+            if (!permiteFracciones && !Number.isInteger(cantidadFloat)) {
               return res.status(400).json({ error: 'Producto discreto no admite fracciones', producto: productoId })
             }
             cantidadCapturadaSnap = cantidadCapturada !== null && cantidadCapturada !== undefined ? parseFloat(cantidadCapturada) : cantidadFloat

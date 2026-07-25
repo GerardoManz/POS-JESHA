@@ -55,7 +55,7 @@ const COTIZACION_SELECT = {
       subtotal: true, concepto: true, unidad: true, fechaManual: true,
       Producto: {
         select: { id: true, nombre: true, codigoInterno: true,
-                  codigoBarras: true, unidadVenta: true, imagenUrl: true }
+                  codigoBarras: true, unidadVenta: true, imagenUrl: true, esGranel: true }
       }
     }
   }

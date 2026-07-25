@@ -1140,13 +1140,15 @@ function construirDetalleVentaPayload(item) {
     }
   }
 
-  const cantidad = esGranel
+  const UNIDADES_FRACCIONABLES = new Set(['KG','G','LT','L','ML','MT','M','CM','M2','M3'])
+  const permiteFracciones = esGranel || UNIDADES_FRACCIONABLES.has((item.unidadVenta || '').trim().toUpperCase())
+  const cantidad = permiteFracciones
     ? Number(item.cantidadVisible ?? item.cantidad)
     : Number(item.cantidad)
   if (!Number.isFinite(cantidad) || cantidad <= 0) {
     throw new Error(`"${nombre}": cantidad inválida`)
   }
-  const cantidadFinal = Number((esGranel ? cantidad : Math.round(cantidad)).toFixed(3))
+  const cantidadFinal = Number((permiteFracciones ? cantidad : Math.round(cantidad)).toFixed(3))
 
   return {
     productoId,
