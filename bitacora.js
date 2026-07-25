@@ -623,7 +623,7 @@ function renderDetalleItems(detalles) {
   tbody.querySelectorAll('.btn-ticket-retiro').forEach(btn => {
     btn.addEventListener('click', e => {
       e.stopPropagation()
-      imprimirTicketRetiro(parseInt(btn.dataset.retiroId))
+      enviarAImpresora(parseInt(btn.dataset.retiroId), 'RETIRO', 'IMPRIMIR', e.currentTarget)
     })
   })
   tbody.querySelectorAll('.brr-cant').forEach(inp => {
@@ -690,22 +690,28 @@ function filaProductoGuardadoHTML(d, editable) {
   </tr>`
 }
 
-// ── Encolar ticket de retiro al agente ──
-async function imprimirTicketRetiro(retiroId) {
+// ── Encolar ticket al agente vía apiFetch (sin API_URL/TOKEN) ──
+const _imprimiendo = new Set()
+
+async function enviarAImpresora(entidadId, tipo, accion, btn) {
+  const key = `${tipo}:${entidadId}`
+  if (_imprimiendo.has(key)) return
+  _imprimiendo.add(key)
+
+  if (btn) btn.disabled = true
+
   try {
-    const r = await fetch(`${API_URL}/impresion/job`, {
+    const campo = tipo === 'ABONO' ? 'abonoId' : 'retiroId'
+    await apiFetch('/impresion/job', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
-      body: JSON.stringify({ tipo: 'RETIRO', retiroId })
+      body: JSON.stringify({ tipo, [campo]: entidadId, accion })
     })
-    if (r.ok) {
-      jeshaToast('✅ Vale de retiro enviado a impresora', 'success')
-    } else {
-      const d = await r.json().catch(() => ({}))
-      jeshaToast(d.error || 'Error al imprimir', 'warning')
-    }
+    jeshaToast('✅ Comprobante enviado a impresora', 'success')
   } catch (e) {
-    jeshaToast('❌ Error de conexión', 'error')
+    jeshaToast(`❌ ${e.message || 'Error de conexión'}`, 'error')
+  } finally {
+    if (btn) btn.disabled = false
+    _imprimiendo.delete(key)
   }
 }
 
@@ -953,7 +959,7 @@ function renderAbonos(abonos) {
   cont.querySelectorAll('.btn-reimprimir').forEach(btn => {
     btn.addEventListener('click', e => {
       e.stopPropagation()
-      abrirTicketAbono(parseInt(btn.dataset.abonoId))
+      enviarAImpresora(parseInt(btn.dataset.abonoId), 'ABONO', 'IMPRIMIR', e.currentTarget)
     })
   })
 }
@@ -1292,24 +1298,6 @@ async function registrarAbono() {
   }
 }
 
-async function abrirTicketAbono(abonoId) {
-  try {
-    const r = await fetch(`${API_URL}/impresion/job`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
-      body: JSON.stringify({ tipo: 'ABONO', abonoId })
-    })
-    if (r.ok) {
-      jeshaToast('✅ Comprobante enviado a impresora', 'success')
-    } else {
-      const d = await r.json().catch(() => ({}))
-      jeshaToast(d.error || 'Error al imprimir', 'warning')
-    }
-  } catch (e) {
-    jeshaToast('❌ Error de conexión', 'error')
-  }
-}
-
 // ── Modal estilizado para preguntar si imprimir ──
 function mostrarModalImprimir(monto, abonoId) {
   // Crear modal si no existe
@@ -1343,8 +1331,13 @@ function mostrarModalImprimir(monto, abonoId) {
   document.getElementById('imp-close').onclick    = cerrar
   document.getElementById('imp-cancelar').onclick = cerrar
   document.getElementById('imp-imprimir').onclick = () => {
+    const btn = document.getElementById('imp-imprimir')
+    btn.disabled = true
+    btn.textContent = '🖨️ Enviando...'
     cerrar()
-    abrirTicketAbono(abonoId)
+    enviarAImpresora(abonoId, 'ABONO', 'IMPRIMIR', btn).finally(() => {
+      btn.textContent = '🖨️ Imprimir comprobante'
+    })
   }
 }
 

@@ -1453,9 +1453,12 @@ const registrarAbono = async (req, res) => {
     // ── Obtener bitácora CON origen ──
     const bitacora = await prisma.bitacora.findUnique({
       where: { id: parseInt(id) },
-      select: { id: true, folio: true, estado: true, origen: true, totalAbonado: true, totalMateriales: true, saldoPendiente: true, descuentoMonto: true, clienteId: true, Cliente: { select: { nombre: true } } }
+      select: { id: true, empresaId: true, sucursalId: true, folio: true, estado: true, origen: true, totalAbonado: true, totalMateriales: true, saldoPendiente: true, descuentoMonto: true, clienteId: true, Cliente: { select: { nombre: true } } }
     })
     if (!bitacora) return res.status(404).json({ success: false, error: 'Bitácora no encontrada' })
+    if (bitacora.empresaId !== empresaId) {
+      return res.status(404).json({ success: false, error: 'Bitácora no encontrada' })
+    }
     if (bitacora.estado !== 'ABIERTA') {
       return res.status(400).json({ success: false, error: `No se pueden registrar abonos en estado ${bitacora.estado}`, codigo: 'ESTADO_INVALIDO' })
     }
@@ -1465,9 +1468,26 @@ const registrarAbono = async (req, res) => {
     if (!turnoIdFinal || isNaN(turnoIdFinal)) {
       return res.status(400).json({ success: false, error: 'Se requiere turno de caja abierto para registrar abonos', codigo: 'SIN_TURNO' })
     }
-    const turno = await prisma.turnoCaja.findUnique({ where: { id: turnoIdFinal } })
+    const turno = await prisma.turnoCaja.findUnique({
+      where: { id: turnoIdFinal },
+      select: { id: true, abierto: true, empresaId: true, sucursalId: true }
+    })
     if (!turno || !turno.abierto) {
       return res.status(403).json({ success: false, error: 'Turno cerrado o no existe', codigo: 'TURNO_CERRADO' })
+    }
+    if (turno.empresaId !== empresaId) {
+      return res.status(403).json({ success: false, error: 'Turno no válido', codigo: 'TURNO_INVALIDO' })
+    }
+    if (turno.sucursalId !== bitacora.sucursalId) {
+      return res.status(403).json({ success: false, error: 'Turno no válido', codigo: 'TURNO_INVALIDO' })
+    }
+
+    // ── Validar acceso a la sucursal (roles no globales) ──
+    const { rol, sucursalId: usuarioSucursalId } = req.usuario
+    if (!['SUPERADMIN', 'PLATFORM_ADMIN'].includes(rol)) {
+      if (usuarioSucursalId !== bitacora.sucursalId) {
+        return res.status(403).json({ success: false, error: 'No tienes acceso a esta bitácora', codigo: 'SIN_ACCESO' })
+      }
     }
 
     const saldoActual = parseFloat(bitacora.saldoPendiente)
