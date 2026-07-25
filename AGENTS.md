@@ -179,7 +179,21 @@ git status --short
 
 Si existe `.gitattributes` con `eol=lf`, avisos como `CRLF will be replaced by LF` son normales en Windows. `git diff --check` debe terminar con código 0; si reporta whitespace errors, corregir antes de commitear.
 
-### 3. Commit y push
+### 3. Clasificar cambios ANTES de commitear
+
+Antes de hacer `git add`, identificar qué tipo de archivos se modificaron:
+
+| Tipo de archivo | Ejemplos | ¿Requiere deploy extra? |
+|----------------|----------|------------------------|
+| Backend `.js` en `jesha-pos-backend/src/` | `ventas.controller.js`, `unidades.helper.js` | No — Render auto-despliega en cada push |
+| Frontend `.js` / `.css` / `.html` en raíz | `punto-venta.js`, `cotizaciones.js`, `dashboard.css` | Sí — requiere `build-frontend.ps1` + `npx wrangler deploy` |
+| Ambos | Cualquier combinación de los anteriores | Sí — backend por push, frontend manual |
+| Schema / prisma | `schema.prisma`, migraciones | No aplicar con push — ver "Orden de Despliegue" |
+| `dist/` | — | **NUNCA** incluir en commits. `dist/` se genera con `build-frontend.ps1` |
+
+Si tocaste **frontend**, planifica el deploy extra después del push. No lo olvides.
+
+### 4. Commit y push
 
 ```powershell
 git add <archivos-específicos>                     # nunca "git add ." a ciegas
@@ -189,14 +203,48 @@ git push origin main
 
 `git push origin main` debe aceptarse como fast-forward.
 
-### 4. Confirmar después del push
+**Importante**: NUNCA hacer `git add dist/`. `dist/` es output de build, no se versiona.
+
+### 5. Post-push: Backend listo, falta frontend
 
 ```powershell
 git status --short --branch        # ## main...origin/main, sin ahead
 git --no-pager log --oneline -3
 ```
 
-Luego verificar el deploy: Render reconstruye solo el backend. Si tocaste frontend, revisar el banner de versión, ejecutar build manual y `npx wrangler deploy` siguiendo la sección "Cloudflare Workers - Deploy Seguro".
+**Render ya desplegó el backend** automáticamente al recibir el push (tarda ~1-2 min). Verificar:
+
+```powershell
+curl.exe -sS https://jesha-pos-api.onrender.com/health
+```
+
+### 6. Deploy frontend a Cloudflare Workers (solo si tocaste archivos frontend)
+
+Si el paso 3 detectó archivos frontend modificados, ejecutar en orden:
+
+```powershell
+# Paso A: Build — copia archivos a dist/ y genera version.json
+.\build-frontend.ps1
+
+# Paso B: Validar que dist/ solo contiene lo permitido
+Test-Path dist\jesha-pos-backend    # debe ser False
+Test-Path dist\repomix-output.xml   # debe ser False
+Test-Path dist\AGENTS.md            # debe ser False
+Test-Path dist\SAT                  # debe ser False
+Test-Path dist\version.json         # debe ser True
+
+# Paso C: Dry-run — verificar antes del deploy real
+npx wrangler deploy --dry-run
+
+# Paso D: Deploy real
+npx wrangler deploy
+```
+
+Verificar en el navegador que el banner de versión en la esquina superior derecha coincida con el nuevo `builtAt`.
+
+**Contrato**: El commit se pushea a `origin/main` primero (backend en vivo), y luego se despliega el frontend manualmente. El orden no es intercambiable: primero backend, luego frontend.
+
+
 
 ---
 
