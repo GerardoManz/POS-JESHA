@@ -2,7 +2,7 @@
 const crypto = require('crypto')
 const prisma = require('../../lib/prisma')
 const service = require('./impresion.service')
-const { buildAbonoSnapshot, buildRetiroSnapshot, formatFechaTicket } = require('./impresion.snapshot')
+const { buildVentaSnapshot, buildCorteSnapshot, buildAbonoSnapshot, buildRetiroSnapshot, formatFechaTicket } = require('./impresion.snapshot')
 const getEmpresaId = require('../../helpers/getEmpresaId')
 
 // Mapea tipo -> nombre de campo de entidad en PrintJob.
@@ -161,6 +161,83 @@ async function construirSnapshotImpresion(req, tipo, entidadId) {
     })
   }
 
+  if (tipo === 'VENTA') {
+    const venta = await prisma.venta.findFirst({
+      where: { id: entidadId, empresaId },
+      include: {
+        Usuario: { select: { nombre: true } },
+        Cliente: { select: { nombre: true } },
+        Sucursal: { select: { direccion: true } },
+        DetalleVenta: {
+          include: { Producto: { select: { nombre: true, unidadVenta: true } } }
+        }
+      }
+    })
+    if (!venta) {
+      const err = new Error('Venta no encontrada')
+      err.status = 404
+      err.expose = true
+      throw err
+    }
+    const metodoLabel = {
+      EFECTIVO: 'Efectivo', DEBITO: 'T. Débito', CREDITO: 'T. Crédito',
+      TRANSFERENCIA: 'Transferencia', CREDITO_CLIENTE: 'Crédito Cliente', MIXTO: 'Mixto'
+    }[venta.metodoPago] || venta.metodoPago
+    return buildVentaSnapshot({
+      empresa: {
+        nombre: empresa.nombreComercial, slogan: null,
+        direccion: venta.Sucursal?.direccion || null, ciudad: null,
+        rfc: empresa.rfc, telefono: empresa.whatsapp
+      },
+      folio: venta.folio,
+      fecha: formatFechaTicket(venta.creadaEn),
+      subtotal: venta.subtotal, descuento: venta.descuento, total: venta.total,
+      productos: (venta.DetalleVenta || []).map(d => ({
+        nombre: d.Producto?.nombre || '',
+        cantidad: d.cantidad, precioUnitario: d.precioUnitario,
+        subtotal: d.subtotal, unidad: d.Producto?.unidadVenta ?? null
+      })),
+      metodoPago: venta.metodoPago, metodoLabel,
+      montoPagado: venta.montoPagado, cambio: venta.cambio,
+      cajero: venta.Usuario?.nombre || null,
+      cliente: venta.Cliente?.nombre || null,
+      qrUrl: null, logoUrl: null, abrirCajon: false
+    })
+  }
+
+  if (tipo === 'CORTE') {
+    // Buscar ORIGINAL existente (creado por turnos-caja) y reusar su payload
+    const original = await prisma.printJob.findFirst({
+      where: { empresaId, tipo: 'CORTE', modo: 'ORIGINAL', turnoId: entidadId },
+      orderBy: { creadoEn: 'desc' }
+    })
+    if (original && original.payload && typeof original.payload === 'object' && original.payload.tipo === 'CORTE') {
+      // Reconstruir snapshot fresco pero manteniendo empresa real de DB
+      const prev = original.payload
+      return buildCorteSnapshot({
+        empresa: {
+          nombre: empresa.nombreComercial, slogan: null,
+          direccion: prev.empresa?.direccion || null, ciudad: prev.empresa?.ciudad || null,
+          rfc: empresa.rfc, telefono: empresa.whatsapp
+        },
+        turnoId: prev.corte?.turnoId ?? entidadId,
+        fecha: prev.corte?.fecha || formatFechaTicket(new Date()),
+        cajero: prev.cajero || null,
+        sucursal: prev.corte?.sucursal || null,
+        montoCalculado: prev.corte?.montoCalculado ?? 0,
+        montoFinalDeclarado: prev.corte?.montoFinalDeclarado ?? 0,
+        diferencia: prev.corte?.diferencia ?? 0,
+        movimientos: (prev.movimientos || []).map(m => ({
+          metodo: m.metodo || '', monto: m.monto ?? 0
+        }))
+      })
+    }
+    const err = new Error('No hay ticket original de CORTE para reimprimir')
+    err.status = 404
+    err.expose = true
+    throw err
+  }
+
   const err = new Error('Tipo no soportado')
   err.status = 400
   err.expose = true
@@ -229,8 +306,10 @@ const encolarManual = wrap(async (req, res) => {
     return res.json({ ok: true, printJobId: id, modo: 'ORIGINAL', creado: false })
   }
 
-  // ── CASO 4: ENVIADO_A_IMPRESORA → crear COPIA ──
-  if (estado === 'ENVIADO_A_IMPRESORA') {
+  // ── CASO 4: ENVIADO_A_IMPRESORA ──
+  // ── CASO 5: FALLIDO           ──
+  // Ambos crean COPIA (nuevo snapshot fresco, agente no saltea COPIA por antigüedad)
+  if (estado === 'ENVIADO_A_IMPRESORA' || estado === 'FALLIDO') {
     const copiasPrevias = await prisma.printJob.count({
       where: { empresaId, tipo, modo: 'COPIA', ...idFilter }
     })
@@ -258,24 +337,6 @@ const encolarManual = wrap(async (req, res) => {
       }
       throw err
     }
-  }
-
-  // ── CASO 5: FALLIDO — reencolar con snapshot reconstruido ──
-  if (estado === 'FALLIDO') {
-    const snapshot = await construirSnapshotImpresion(req, tipo, entidadId)
-    const resetIntents = base.intentos >= service.MAX_INTENTOS
-    await prisma.printJob.update({
-      where: { id },
-      data: {
-        estado: 'PENDIENTE',
-        intentos: resetIntents ? 0 : undefined,
-        error: null,
-        enviadoEn: null,
-        ultimoIntentoEn: null,
-        payload: snapshot
-      }
-    })
-    return res.json({ ok: true, printJobId: id, modo: 'ORIGINAL', reencolado: true })
   }
 
   // ── CASO 6: CANCELADO — reencolar mismo registro (idempotencyKey única) ──
