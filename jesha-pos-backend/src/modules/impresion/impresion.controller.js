@@ -260,16 +260,15 @@ const encolarManual = wrap(async (req, res) => {
     }
   }
 
-  // ── CASO 5: FALLIDO — reencolar si no superó máximos ──
+  // ── CASO 5: FALLIDO — reencolar con snapshot reconstruido ──
   if (estado === 'FALLIDO') {
-    if (base.intentos >= service.MAX_INTENTOS) {
-      return res.status(409).json({ error: 'El trabajo falló definitivamente. Consulte al administrador.' })
-    }
     const snapshot = await construirSnapshotImpresion(req, tipo, entidadId)
+    const resetIntents = base.intentos >= service.MAX_INTENTOS
     await prisma.printJob.update({
       where: { id },
       data: {
         estado: 'PENDIENTE',
+        intentos: resetIntents ? 0 : undefined,
         error: null,
         enviadoEn: null,
         ultimoIntentoEn: null,
