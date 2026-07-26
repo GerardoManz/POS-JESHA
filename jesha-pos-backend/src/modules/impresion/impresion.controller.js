@@ -60,7 +60,7 @@ async function construirSnapshotImpresion(req, tipo, entidadId) {
   }
 
   if (tipo === 'ABONO') {
-    const abono = await prisma.abonoBitacora.findUnique({
+    const abono = await prisma.abonoBitacora.findFirst({
       where: { id: entidadId, empresaId },
       include: {
         Usuario: { select: { nombre: true } },
@@ -112,7 +112,7 @@ async function construirSnapshotImpresion(req, tipo, entidadId) {
   }
 
   if (tipo === 'RETIRO') {
-    const retiro = await prisma.retiroBitacora.findUnique({
+    const retiro = await prisma.retiroBitacora.findFirst({
       where: { id: entidadId, empresaId },
       include: {
         Usuario: { select: { nombre: true } },

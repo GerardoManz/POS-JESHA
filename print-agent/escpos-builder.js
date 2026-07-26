@@ -205,7 +205,7 @@ function buildVentaTicket(printer, payload, printerCfg = {}, logoBuffer = null) 
     headerEmpresaCompacto(printer, emp)
 
     printer.alignLeft()
-    const folioCorto = v.folio ? v.folio.slice(-5) : ''
+    const folioCorto = String(v.folio ?? '').slice(-5)
     pprintln(printer, lineLR(v.fecha || '', `Folio: ${folioCorto}`, w))
     const cli = trunc(`Cliente: ${payload.cliente || 'Publico General'}`, 27)
     const caj = payload.cajero ? trunc(`Cajero: ${payload.cajero}`, 14) : ''
@@ -263,7 +263,7 @@ function buildVentaTicket(printer, payload, printerCfg = {}, logoBuffer = null) 
 
     printer.drawLine()
     printer.alignLeft()
-    const folioCorto = v.folio ? v.folio.slice(-5) : ''
+    const folioCorto = String(v.folio ?? '').slice(-5)
     pleftRight(printer, v.fecha || '', `Folio: ${folioCorto}`)
     if (payload.cajero) pprintln(printer, `Cajero: ${payload.cajero}`)
     pprintln(printer, `Cliente: ${payload.cliente || 'Publico General'}`)
