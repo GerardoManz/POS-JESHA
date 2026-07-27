@@ -1,6 +1,6 @@
 const bcrypt = require('bcryptjs')
 const prisma  = require('../../lib/prisma')
-const { puedeGestionar } = require('../../utils/roles')
+const { puedeGestionar, ROLES_ASIGNABLES_POR_SUPERADMIN } = require('../../utils/roles')
 const getEmpresaId = require('../../helpers/getEmpresaId')
 
 async function registrarAudit(solicitante, accion, referencia, ip) {
@@ -50,6 +50,13 @@ const crear = async (req, res) => {
     // Validaciones básicas
     if (!nombre || !username || !password || !rol) return res.status(400).json({ error: 'Faltan campos obligatorios' })
     if (password !== confirmarPassword) return res.status(400).json({ error: 'Las contraseñas no coinciden' })
+
+    // --- Whitelist de roles asignables (P0-01P1B) ---
+    if (!ROLES_ASIGNABLES_POR_SUPERADMIN.has(rol)) {
+      return res.status(403).json({
+        error: 'No tienes permisos para crear este tipo de usuario'
+      })
+    }
 
     // --- Verificaciones de permisos (jerarquía) ---
     if (!puedeGestionar(solicitante.rol, rol)) {
@@ -133,16 +140,27 @@ const editar = async (req, res) => {
     const solicitante = req.usuario
     const objetivo = await prisma.usuario.findUnique({ where: { id: parseInt(id) } })
     if (!objetivo) return res.status(404).json({ error: 'Usuario no encontrado' })
-    // Verificar jerarquía: no se puede editar a un usuario de igual o mayor nivel
+
+    // P0-01P1B: Calcular rolFinal siempre (incluso si no se envía rol en el body)
+    const rolFinal = rol !== undefined ? rol : objetivo.rol
+
+    // 1. El solicitante puede gestionar al usuario objetivo (rol actual)
     if (!puedeGestionar(solicitante.rol, objetivo.rol)) {
       return res.status(403).json({ error: 'No tienes permisos para editar este usuario' })
     }
-    // ADMIN_SUCURSAL: no puede cambiarse su propio rol
-    if (solicitante.rol === 'ADMIN_SUCURSAL' && parseInt(id) === solicitante.id && rol && rol !== objetivo.rol) {
-      return res.status(403).json({ error: 'No puedes cambiar tu propio rol' })
+
+    // 2. El rol final debe estar en whitelist (incluso si no cambia)
+    if (!ROLES_ASIGNABLES_POR_SUPERADMIN.has(rolFinal)) {
+      return res.status(403).json({ error: 'No tienes permisos para asignar o administrar este rol' })
     }
+
+    // 3. El solicitante puede gestionar el rol final (si cambió)
+    if (!puedeGestionar(solicitante.rol, rolFinal)) {
+      return res.status(403).json({ error: 'No tienes permisos para asignar este rol' })
+    }
+
     const data = { nombre, username }
-    if (rol)                    data.rol        = rol
+    if (rol !== undefined)      data.rol        = rolFinal
     if (sucursalId !== undefined) data.sucursalId = sucursalId ? parseInt(sucursalId) : null
     // ── Contraseña opcional ──
     if (password) {

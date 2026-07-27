@@ -2,7 +2,7 @@
 ;(function() {
   try {
     const rol = JSON.parse(localStorage.getItem('jesha_usuario') || '{}').rol
-    const ROLES_PERMITIDOS = ['SUPERADMIN', 'PLATFORM_ADMIN']
+    const ROLES_PERMITIDOS = ['SUPERADMIN']
     if (!ROLES_PERMITIDOS.includes(rol)) {
       window.location.replace('dashboard.html')
     }
@@ -182,6 +182,7 @@ function renderizarTabla() {
     const ultimoLogin = usuario.ultimoLogin 
       ? new Date(usuario.ultimoLogin).toLocaleDateString('es-MX')
       : 'Nunca'
+    const cuentaProtegida = ['SUPERADMIN', 'PLATFORM_ADMIN'].includes(usuario.rol)
     
     return `
       <tr>
@@ -205,7 +206,9 @@ function renderizarTabla() {
             : '<em>Nunca ha iniciado sesión</em>'}
         </td>
         <td>
-          <div class="actions">
+          ${cuentaProtegida
+            ? '<span style="color:var(--muted);font-style:italic;">Cuenta protegida</span>'
+            : `<div class="actions">
             <button class="btn-icon" onclick="editarUsuario(${usuario.id})" title="Editar">✏️</button>
             <button class="btn-icon" title="${usuario.tienePin ? 'PIN configurado ✓' : 'Sin PIN — click para asignar'}"
               style="${usuario.tienePin ? 'color:#60d080;border-color:rgba(96,208,128,0.3)' : 'color:#e8710a;border-color:rgba(232,113,10,0.3)'}"
@@ -215,7 +218,8 @@ function renderizarTabla() {
               title="${usuario.activo ? 'Desactivar' : 'Activar'}">
               ${usuario.activo ? '👁️' : '🔒'}
             </button>
-          </div>
+          </div>`
+          }
         </td>
       </tr>
     `
