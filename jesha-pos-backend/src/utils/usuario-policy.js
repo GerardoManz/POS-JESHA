@@ -133,7 +133,7 @@ function validarEstadoUsuarioPorRol({
       sucursal.empresaId <= 0 ||
       sucursal.empresaId !== empresaId
     ) {
-      throw crearErrorPoliticaUsuario('SUCURSAL_EMPRESA_INCOHERENTE', 'La sucursal no pertenece a la empresa del usuario')
+      throw crearErrorPoliticaUsuario('SUCURSAL_NO_PERTENECE_A_EMPRESA', 'La sucursal no pertenece a la empresa del usuario')
     }
   } else if (ROLES_REQUIEREN_SUCURSAL.has(rol)) {
     throw crearErrorPoliticaUsuario('SUCURSAL_REQUERIDA', 'El rol del usuario requiere una sucursal asignada')

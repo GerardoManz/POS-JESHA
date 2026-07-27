@@ -1,7 +1,20 @@
 const bcrypt = require('bcryptjs')
 const prisma  = require('../../lib/prisma')
 const { puedeGestionar, ROLES_ASIGNABLES_POR_SUPERADMIN } = require('../../utils/roles')
+const {
+  validarEstadoUsuarioPorRol,
+  normalizarIdPositivo,
+  crearErrorPoliticaUsuario
+} = require('../../utils/usuario-policy')
 const getEmpresaId = require('../../helpers/getEmpresaId')
+
+function policyError(code, message) {
+  const err = new Error(message)
+  err.name = 'UserPolicyError'
+  err.code = code
+  err.expose = true
+  return err
+}
 
 async function registrarAudit(solicitante, accion, referencia, ip) {
   try {
@@ -12,7 +25,131 @@ async function registrarAudit(solicitante, accion, referencia, ip) {
   } catch (e) { console.error('Audit error:', e.message) }
 }
 
-// GET /usuarios
+async function prevalidarActor(actorUsuarioId) {
+  const actor = await prisma.usuario.findUnique({
+    where: { id: actorUsuarioId },
+    select: { id: true, activo: true, rol: true, empresaId: true }
+  })
+  if (!actor || !actor.activo) throw policyError('ACTOR_NO_AUTORIZADO', 'No autorizado')
+  if (actor.rol !== 'SUPERADMIN') throw policyError('ACTOR_NO_AUTORIZADO', 'No autorizado')
+  if (!actor.empresaId || !Number.isSafeInteger(Number(actor.empresaId)) || Number(actor.empresaId) <= 0) {
+    throw policyError('ACTOR_SIN_EMPRESA', 'No autorizado')
+  }
+  const empresa = await prisma.empresa.findUnique({
+    where: { id: Number(actor.empresaId) },
+    select: { id: true, activa: true }
+  })
+  if (!empresa || !empresa.activa) throw policyError('EMPRESA_INACTIVA', 'Operación no disponible')
+}
+
+async function rehidratarActorEnTx(tx, actorUsuarioId) {
+  const actorRows = await tx.$queryRaw`
+    SELECT id, rol, activo, "empresaId"
+    FROM "Usuario"
+    WHERE id = ${actorUsuarioId}
+    FOR SHARE
+  `
+  if (!Array.isArray(actorRows) || actorRows.length === 0) {
+    throw policyError('ACTOR_NO_AUTORIZADO', 'No autorizado')
+  }
+  const actor = actorRows[0]
+  const empresaId = Number(actor.empresaId)
+  if (!actor.activo) throw policyError('ACTOR_NO_AUTORIZADO', 'No autorizado')
+  if (actor.rol !== 'SUPERADMIN') throw policyError('ACTOR_NO_AUTORIZADO', 'No autorizado')
+  if (!actor.empresaId || !Number.isSafeInteger(empresaId) || empresaId <= 0) {
+    throw policyError('ACTOR_SIN_EMPRESA', 'No autorizado')
+  }
+  const empRows = await tx.$queryRaw`
+    SELECT id, activa
+    FROM "Empresa"
+    WHERE id = ${empresaId}
+    FOR SHARE
+  `
+  if (!Array.isArray(empRows) || empRows.length === 0 || !empRows[0].activa) {
+    throw policyError('EMPRESA_INACTIVA', 'Operación no disponible')
+  }
+  return { actorEmpresaId: empresaId, empresa: empRows[0] }
+}
+
+function construirDataCreacion(body) {
+  const permitido = ['nombre', 'username', 'password', 'confirmarPassword', 'rol', 'sucursalId']
+  const extra = Object.keys(body).filter(k => !permitido.includes(k))
+  if (extra.length > 0) {
+    if (extra.includes('empresaId')) throw policyError('EMPRESA_NO_MODIFICABLE', 'No puedes modificar la empresa del usuario')
+  }
+  const data = {
+    nombre: body.nombre,
+    username: body.username,
+    password: body.password,
+    confirmarPassword: body.confirmarPassword,
+    rol: body.rol
+  }
+  if (Object.prototype.hasOwnProperty.call(body, 'sucursalId')) {
+    data.sucursalId = body.sucursalId
+  }
+  return data
+}
+
+function construirDataEdicion(body) {
+  const permitido = ['nombre', 'username', 'password', 'confirmarPassword', 'rol', 'sucursalId']
+  const extra = Object.keys(body).filter(k => !permitido.includes(k))
+  if (extra.length > 0) {
+    if (extra.includes('empresaId')) throw policyError('EMPRESA_NO_MODIFICABLE', 'No puedes modificar la empresa del usuario')
+  }
+  return body
+}
+
+function extractSucursalIdCrear(body) {
+  const tiene = Object.prototype.hasOwnProperty.call(body, 'sucursalId')
+  if (!tiene) return null
+  const val = body.sucursalId
+  if (val === null) return null
+  if (typeof val !== 'number') {
+    throw policyError('SUCURSAL_INVALIDA', 'Sucursal inválida')
+  }
+  return normalizarIdPositivo(val, { codigo: 'SUCURSAL_INVALIDA', mensaje: 'Sucursal inválida' })
+}
+
+function extractSucursalIdEditar(body) {
+  const tiene = Object.prototype.hasOwnProperty.call(body, 'sucursalId')
+  if (!tiene) return undefined
+  const val = body.sucursalId
+  if (val === null) return null
+  if (typeof val !== 'number') {
+    throw policyError('SUCURSAL_INVALIDA', 'Sucursal inválida')
+  }
+  return normalizarIdPositivo(val, { codigo: 'SUCURSAL_INVALIDA', mensaje: 'Sucursal inválida' })
+}
+
+async function consultarSucursalEnTenant(tx, sucursalId, actorEmpresaId) {
+  if (sucursalId === null || sucursalId === undefined) return null
+  const sucursal = await tx.sucursal.findFirst({
+    where: { id: sucursalId, empresaId: actorEmpresaId },
+    select: { id: true, empresaId: true, activa: true }
+  })
+  if (!sucursal) throw policyError('SUCURSAL_INVALIDA', 'Sucursal inválida')
+  if (!sucursal.activa) throw policyError('SUCURSAL_INACTIVA', 'La sucursal del usuario está inactiva')
+  return sucursal
+}
+
+function mapearErrorController(err, res) {
+  if (err.code === 'P2002') {
+    return res.status(409).json({ error: 'El nombre de usuario ya existe en esta empresa' })
+  }
+  if (err.code === 'P2034') {
+    return res.status(409).json({ error: 'Conflicto de concurrencia. Intenta de nuevo.' })
+  }
+  if (err.name === 'UserPolicyError') {
+    if (err.code === 'USUARIO_NO_ENCONTRADO') {
+      return res.status(404).json({ error: 'Usuario no encontrado' })
+    }
+    const status = err.code === 'ACTOR_NO_AUTORIZADO' || err.code === 'ACTOR_SIN_EMPRESA' || err.code === 'EMPRESA_INACTIVA' || err.code === 'USUARIO_PROTEGIDO' ? 403 : 400
+    return res.status(status).json({ error: err.message })
+  }
+  console.error('Error en usuarios.controller:', err)
+  return res.status(500).json({ error: 'Error interno del servidor' })
+}
+
 const listar = async (req, res) => {
   try {
     const { rol, sucursalId, buscar, activo } = req.query
@@ -40,145 +177,223 @@ const listar = async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ error: 'Error al obtener usuarios' }) }
 }
 
-// POST /usuarios
 const crear = async (req, res) => {
   try {
-    // Extraer empresaId del cuerpo de la solicitud
-    const { nombre, username, password, confirmarPassword, rol, sucursalId, empresaId: empresaIdBody } = req.body
-    const solicitante = req.usuario
-
-    // Validaciones básicas
-    if (!nombre || !username || !password || !rol) return res.status(400).json({ error: 'Faltan campos obligatorios' })
-    if (password !== confirmarPassword) return res.status(400).json({ error: 'Las contraseñas no coinciden' })
-
-    // --- Whitelist de roles asignables (P0-01P1B) ---
-    if (!ROLES_ASIGNABLES_POR_SUPERADMIN.has(rol)) {
-      return res.status(403).json({
-        error: 'No tienes permisos para crear este tipo de usuario'
-      })
+    if (typeof req.body !== 'object' || req.body === null || Array.isArray(req.body)) {
+      return res.status(400).json({ error: 'Cuerpo de solicitud inválido' })
     }
 
-    // --- Verificaciones de permisos (jerarquía) ---
-    if (!puedeGestionar(solicitante.rol, rol)) {
+    const actorUsuarioId = normalizarIdPositivo(req.usuario.id, {
+      codigo: 'ACTOR_NO_AUTORIZADO', mensaje: 'No autorizado'
+    })
+
+    const body = construirDataCreacion(req.body)
+
+    if (!body.nombre || !body.username || !body.password || !body.rol) {
+      return res.status(400).json({ error: 'Faltan campos obligatorios' })
+    }
+
+    if (body.password !== body.confirmarPassword) {
+      return res.status(400).json({ error: 'Las contraseñas no coinciden' })
+    }
+    if (body.password.length < 6) {
+      return res.status(400).json({ error: 'Mínimo 6 caracteres' })
+    }
+
+    if (!ROLES_ASIGNABLES_POR_SUPERADMIN.has(body.rol)) {
+      return res.status(403).json({ error: 'No tienes permisos para crear este tipo de usuario' })
+    }
+    if (!puedeGestionar('SUPERADMIN', body.rol)) {
       return res.status(403).json({ error: 'No tienes permisos para crear este tipo de usuario' })
     }
 
-    // Restricciones adicionales para ADMIN_SUCURSAL
-    if (solicitante.rol === 'ADMIN_SUCURSAL') {
-      if (rol === 'ADMIN_SUCURSAL' && empresaIdBody && parseInt(empresaIdBody) !== solicitante.empresaId) {
-        return res.status(403).json({ error: 'No tienes permiso para crear administradores de otras empresas' })
+    await prevalidarActor(actorUsuarioId)
+
+    const passwordHash = await bcrypt.hash(body.password, 10)
+
+    const sucursalId = extractSucursalIdCrear(body)
+
+    const resultado = await prisma.$transaction(async (tx) => {
+      const { actorEmpresaId, empresa } = await rehidratarActorEnTx(tx, actorUsuarioId)
+
+      const rolFinal = body.rol
+      const empresaIdFinal = actorEmpresaId
+
+      if (sucursalId !== null) {
+        await consultarSucursalEnTenant(tx, sucursalId, actorEmpresaId)
       }
-      if (sucursalId && parseInt(sucursalId) !== solicitante.sucursalId) {
-        return res.status(403).json({ error: 'No tienes permiso para asignar sucursal fuera de tu empresa' })
+
+      validarEstadoUsuarioPorRol({
+        rol: rolFinal,
+        empresaId: empresaIdFinal,
+        empresa,
+        sucursalId,
+        sucursal: sucursalId !== null ? { id: sucursalId, empresaId: actorEmpresaId, activa: true } : null
+      })
+
+      const existe = await tx.usuario.findUnique({
+        where: { empresaId_username: { empresaId: empresaIdFinal, username: body.username } }
+      })
+      if (existe) {
+        const err = new Error('El nombre de usuario ya existe en esta empresa')
+        err.code = 'P2002'
+        throw err
       }
-    }
 
-    // --- Determinar el empresaId para el nuevo usuario ---
-    let nuevaEmpresaId = null;
-    if (solicitante.rol === 'ADMIN_SUCURSAL') {
-      // ADMIN_SUCURSAL crea usuarios para su propia empresa
-      nuevaEmpresaId = solicitante.empresaId;
-    } else if (solicitante.rol === 'SUPERADMIN' || solicitante.rol === 'PLATFORM_ADMIN') {
-      // SUPERADMIN/PLATFORM_ADMIN puede especificar empresaId o crear usuarios globales
-      if (empresaIdBody) {
-        nuevaEmpresaId = parseInt(empresaIdBody);
-      } else if (rol !== 'SUPERADMIN' && rol !== 'PLATFORM_ADMIN') {
-        // Si el rol a crear no es SUPERADMIN/PLATFORM_ADMIN, empresaId es obligatorio
-        return res.status(400).json({ error: 'Para este rol, empresaId es obligatorio para el nuevo usuario' });
-      }
-      // Si el rol es SUPERADMIN/PLATFORM_ADMIN y no se especifica empresaId, se asume global (null)
-    }
+      const usuario = await tx.usuario.create({
+        data: {
+          nombre: body.nombre,
+          username: body.username,
+          passwordHash,
+          rol: rolFinal,
+          sucursalId,
+          activo: true,
+          empresaId: empresaIdFinal
+        },
+        select: { id: true, nombre: true, username: true, rol: true, activo: true, tienePin: true, Sucursal: { select: { id: true, nombre: true } } }
+      })
 
-    // --- Verificación de unicidad del nombre de usuario ---
-    let existe;
-    if (nuevaEmpresaId !== null) {
-      // Para usuarios con empresaId, usar el unique compuesto
-      existe = await prisma.usuario.findUnique({
-        where: { empresaId_username: { empresaId: nuevaEmpresaId, username } }
-      });
-    } else {
-      // Para usuarios globales (empresaId: null), usar findFirst para buscar unicidad
-      // Nota: La restricción de unicidad de DB con NULL es permisiva, esto es una mitigación a nivel de aplicación.
-      existe = await prisma.usuario.findFirst({
-        where: { empresaId: null, username }
-      });
-    }
+      return usuario
+    }, { isolationLevel: 'Serializable' })
 
-    if (existe) {
-      return res.status(409).json({ error: 'El nombre de usuario ya existe en esta empresa o como usuario global' })
-    }
+    await registrarAudit(
+      { id: actorUsuarioId, ...req.usuario },
+      'CREAR_USUARIO',
+      `${req.usuario.nombre} creo al usuario ${body.username} con rol ${body.rol}`,
+      req.ip
+    )
 
-    // --- Preparar sucursalId para el nuevo usuario ---
-    // Si el solicitante es ADMIN_SUCURSAL, la sucursal del nuevo usuario debe ser la suya.
-    // De lo contrario, se usa la sucursalId proporcionada en el body (si existe) o null.
-    const sucId = solicitante.rol === 'ADMIN_SUCURSAL' ? solicitante.sucursalId : (sucursalId ? parseInt(sucursalId) : null)
-    
-    // --- Hashear contraseña y crear usuario ---
-    const hash  = await bcrypt.hash(password, 10)
-    const usuario = await prisma.usuario.create({
-      data: {
-        nombre,
-        username,
-        passwordHash: hash,
-        rol,
-        sucursalId: sucId,
-        activo: true,
-        empresaId: nuevaEmpresaId // Asignar el empresaId determinado
-      },
-      select: { id: true, nombre: true, username: true, rol: true, activo: true, tienePin: true, Sucursal: { select: { id: true, nombre: true } } }
-    })
-    await registrarAudit(solicitante, 'CREAR_USUARIO', `${solicitante.nombre} creo al usuario ${username} con rol ${rol}`, req.ip)
-    res.status(201).json(usuario)
-  } catch (err) { console.error(err); res.status(500).json({ error: 'Error al crear usuario' }) }
+    res.status(201).json(resultado)
+  } catch (err) {
+    return mapearErrorController(err, res)
+  }
 }
 
-// PUT /usuarios/:id
 const editar = async (req, res) => {
   try {
-    const { id } = req.params
-    const { nombre, username, rol, sucursalId, password, confirmarPassword } = req.body
-    const solicitante = req.usuario
-    const objetivo = await prisma.usuario.findUnique({ where: { id: parseInt(id) } })
-    if (!objetivo) return res.status(404).json({ error: 'Usuario no encontrado' })
-
-    // P0-01P1B: Calcular rolFinal siempre (incluso si no se envía rol en el body)
-    const rolFinal = rol !== undefined ? rol : objetivo.rol
-
-    // 1. El solicitante puede gestionar al usuario objetivo (rol actual)
-    if (!puedeGestionar(solicitante.rol, objetivo.rol)) {
-      return res.status(403).json({ error: 'No tienes permisos para editar este usuario' })
+    if (typeof req.body !== 'object' || req.body === null || Array.isArray(req.body)) {
+      return res.status(400).json({ error: 'Cuerpo de solicitud inválido' })
     }
 
-    // 2. El rol final debe estar en whitelist (incluso si no cambia)
-    if (!ROLES_ASIGNABLES_POR_SUPERADMIN.has(rolFinal)) {
-      return res.status(403).json({ error: 'No tienes permisos para asignar o administrar este rol' })
-    }
-
-    // 3. El solicitante puede gestionar el rol final (si cambió)
-    if (!puedeGestionar(solicitante.rol, rolFinal)) {
-      return res.status(403).json({ error: 'No tienes permisos para asignar este rol' })
-    }
-
-    const data = { nombre, username }
-    if (rol !== undefined)      data.rol        = rolFinal
-    if (sucursalId !== undefined) data.sucursalId = sucursalId ? parseInt(sucursalId) : null
-    // ── Contraseña opcional ──
-    if (password) {
-      if (!confirmarPassword)            return res.status(400).json({ error: 'Debes confirmar la nueva contraseña' })
-      if (password !== confirmarPassword) return res.status(400).json({ error: 'Las contraseñas no coinciden' })
-      if (password.length < 6)           return res.status(400).json({ error: 'Mínimo 6 caracteres' })
-      data.passwordHash = await bcrypt.hash(password, 10)
-    }
-    const usuario = await prisma.usuario.update({
-      where: { id: parseInt(id) }, data,
-      select: { id: true, nombre: true, username: true, rol: true, activo: true, tienePin: true, Sucursal: { select: { id: true, nombre: true } } }
+    const actorUsuarioId = normalizarIdPositivo(req.usuario.id, {
+      codigo: 'ACTOR_NO_AUTORIZADO', mensaje: 'No autorizado'
     })
-    await registrarAudit(solicitante, 'EDITAR_USUARIO', `${solicitante.nombre} edito al usuario ${objetivo.username}`, req.ip)
-    res.json(usuario)
-  } catch (err) { console.error(err); res.status(500).json({ error: 'Error al editar usuario' }) }
+    const objetivoId = normalizarIdPositivo(parseInt(req.params.id), {
+      codigo: 'USUARIO_NO_ENCONTRADO', mensaje: 'Usuario no encontrado'
+    })
+
+    const body = req.body
+
+    if (Object.prototype.hasOwnProperty.call(body, 'empresaId')) {
+      throw policyError('EMPRESA_NO_MODIFICABLE', 'No puedes modificar la empresa del usuario')
+    }
+
+    let passwordHash = undefined
+    if (Object.prototype.hasOwnProperty.call(body, 'password') && body.password) {
+      if (!Object.prototype.hasOwnProperty.call(body, 'confirmarPassword') || !body.confirmarPassword) {
+        return res.status(400).json({ error: 'Debes confirmar la nueva contraseña' })
+      }
+      if (body.password !== body.confirmarPassword) {
+        return res.status(400).json({ error: 'Las contraseñas no coinciden' })
+      }
+      if (body.password.length < 6) {
+        return res.status(400).json({ error: 'Mínimo 6 caracteres' })
+      }
+      passwordHash = await bcrypt.hash(body.password, 10)
+    }
+
+    await prevalidarActor(actorUsuarioId)
+
+    const resultado = await prisma.$transaction(async (tx) => {
+      const { actorEmpresaId, empresa } = await rehidratarActorEnTx(tx, actorUsuarioId)
+
+      const objRows = await tx.$queryRaw`
+        SELECT id, rol, activo, "empresaId", "sucursalId", nombre, username
+        FROM "Usuario"
+        WHERE id = ${objetivoId}
+          AND "empresaId" = ${actorEmpresaId}
+        FOR UPDATE
+      `
+      if (!Array.isArray(objRows) || objRows.length === 0) {
+        throw policyError('USUARIO_NO_ENCONTRADO', 'Usuario no encontrado')
+      }
+      const objetivo = objRows[0]
+
+      const objetivoRol = objetivo.rol
+      if (objetivoRol === 'SUPERADMIN' || objetivoRol === 'PLATFORM_ADMIN') {
+        throw policyError('USUARIO_PROTEGIDO', 'No tienes permisos para gestionar este usuario')
+      }
+      if (!puedeGestionar('SUPERADMIN', objetivoRol)) {
+        throw policyError('USUARIO_PROTEGIDO', 'No tienes permisos para gestionar este usuario')
+      }
+
+      const nextState = {
+        rol: Object.prototype.hasOwnProperty.call(body, 'rol') ? body.rol : objetivo.rol,
+        empresaId: actorEmpresaId,
+        sucursalId: extractSucursalIdEditar(body)
+      }
+
+      if (nextState.sucursalId === undefined) {
+        nextState.sucursalId = Number(objetivo.sucursalId) || null
+      }
+
+      if (!ROLES_ASIGNABLES_POR_SUPERADMIN.has(nextState.rol)) {
+        throw policyError('ROL_INVALIDO', 'No tienes permisos para asignar este rol')
+      }
+      if (!puedeGestionar('SUPERADMIN', nextState.rol)) {
+        throw policyError('ROL_INVALIDO', 'No tienes permisos para asignar este rol')
+      }
+
+      let sucursal = null
+      if (nextState.sucursalId !== null && nextState.sucursalId !== undefined) {
+        sucursal = await consultarSucursalEnTenant(tx, nextState.sucursalId, actorEmpresaId)
+      }
+
+      validarEstadoUsuarioPorRol({
+        rol: nextState.rol,
+        empresaId: nextState.empresaId,
+        empresa,
+        sucursalId: nextState.sucursalId,
+        sucursal
+      })
+
+      const data = {}
+      if (Object.prototype.hasOwnProperty.call(body, 'nombre')) data.nombre = body.nombre
+      if (Object.prototype.hasOwnProperty.call(body, 'username')) data.username = body.username
+      if (Object.prototype.hasOwnProperty.call(body, 'rol')) data.rol = nextState.rol
+      if (Object.prototype.hasOwnProperty.call(body, 'sucursalId')) data.sucursalId = nextState.sucursalId
+      if (passwordHash !== undefined) data.passwordHash = passwordHash
+
+      const updateResult = await tx.usuario.updateMany({
+        where: { id: Number(objetivo.id), empresaId: actorEmpresaId },
+        data
+      })
+
+      if (updateResult.count !== 1) {
+        throw new Error('Unexpected update count')
+      }
+
+      const usuarioActualizado = await tx.usuario.findUnique({
+        where: { id: Number(objetivo.id) },
+        select: { id: true, nombre: true, username: true, rol: true, activo: true, tienePin: true, Sucursal: { select: { id: true, nombre: true } } }
+      })
+
+      return usuarioActualizado
+    }, { isolationLevel: 'Serializable' })
+
+    await registrarAudit(
+      { id: actorUsuarioId, ...req.usuario },
+      'EDITAR_USUARIO',
+      `${req.usuario.nombre} edito al usuario ${resultado.username}`,
+      req.ip
+    )
+
+    res.json(resultado)
+  } catch (err) {
+    return mapearErrorController(err, res)
+  }
 }
 
-// PATCH /usuarios/:id/estado
 const cambiarEstado = async (req, res) => {
   try {
     const { id } = req.params
@@ -193,7 +408,6 @@ const cambiarEstado = async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ error: 'Error al cambiar estado' }) }
 }
 
-// POST /usuarios/:id/reset-password
 const resetPassword = async (req, res) => {
   try {
     const { id } = req.params
@@ -212,9 +426,6 @@ const resetPassword = async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ error: 'Error al resetear contrasena' }) }
 }
 
-// ════════════════════════════════════════════════════════════════════
-//  POST /usuarios/:id/pin — Establecer/cambiar PIN de 4 dígitos
-// ════════════════════════════════════════════════════════════════════
 const establecerPin = async (req, res) => {
   try {
     const { id }  = req.params
@@ -227,11 +438,9 @@ const establecerPin = async (req, res) => {
     const objetivo = await prisma.usuario.findUnique({ where: { id: parseInt(id) } })
     if (!objetivo) return res.status(404).json({ error: 'Usuario no encontrado' })
 
-    // Jerarquía: solo roles superiores pueden asignar PIN
     if (!puedeGestionar(solicitante.rol, objetivo.rol)) {
       return res.status(403).json({ error: 'No tienes permisos para gestionar este usuario' })
     }
-    // ADMIN_SUCURSAL solo puede asignar PIN a usuarios de su sucursal
     if (solicitante.rol === 'ADMIN_SUCURSAL' && objetivo.sucursalId !== solicitante.sucursalId) {
       return res.status(403).json({ error: 'El usuario no pertenece a tu sucursal' })
     }
@@ -244,10 +453,6 @@ const establecerPin = async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ error: 'Error al establecer PIN' }) }
 }
 
-// ════════════════════════════════════════════════════════════════════
-//  POST /usuarios/:id/verificar-pin — Verificar PIN (desde POS)
-//  Ruta pública con auth normal — el POS la llama al seleccionar vendedor
-// ════════════════════════════════════════════════════════════════════
 const verificarPin = async (req, res) => {
   try {
     const { id }  = req.params
@@ -267,13 +472,10 @@ const verificarPin = async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ error: 'Error al verificar PIN' }) }
 }
 
-// GET /usuarios/vendedores — para el POS (cualquier rol autenticado)
-// Devuelve solo id+nombre de usuarios activos de la misma sucursal
 const listarVendedores = async (req, res) => {
   try {
     const { sucursalId, rol } = req.usuario
     const where = { activo: true }
-    // SUPERADMIN ve todos; los demás ven su sucursal + SUPERADMIN
     if (rol !== 'SUPERADMIN' && rol !== 'PLATFORM_ADMIN') {
       if (sucursalId) {
         where.OR = [
@@ -281,7 +483,6 @@ const listarVendedores = async (req, res) => {
           { rol: 'SUPERADMIN' }
         ]
       } else {
-        // ADMIN_SUCURSAL/EMPLEADO sin sucursal asignada — no debería ocurrir
         return res.status(400).json({ error: 'Usuario sin sucursal asignada' })
       }
     }
@@ -295,8 +496,6 @@ const listarVendedores = async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ error: 'Error al obtener vendedores' }) }
 }
 
-// GET /usuarios/responsables-bitacora — para Bitácora (cualquier rol autenticado)
-// Devuelve id+nombre de usuarios activos de la MISMA empresa.
 const listarResponsablesBitacora = async (req, res) => {
   try {
     const empresaId = getEmpresaId(req)
@@ -307,14 +506,13 @@ const listarResponsablesBitacora = async (req, res) => {
     })
     res.json(responsables)
   } catch (err) {
-    console.error('❌ listar responsables bitacora:', err)
+    console.error('Error listar responsables bitacora:', err)
     res.status(err.status || 500).json({
       error: err.status ? err.message : 'Error al obtener responsables'
     })
   }
 }
 
-// GET /usuarios/sucursales
 const listarSucursales = async (req, res) => {
   try {
     const { rol, empresaId: tokenEmpresaId } = req.usuario || {}
@@ -323,7 +521,6 @@ const listarSucursales = async (req, res) => {
     if (rol === 'PLATFORM_ADMIN') {
       const reqEmpresaId = req.body?.empresaId ?? req.query?.empresaId
       if (reqEmpresaId) where.empresaId = parseInt(reqEmpresaId)
-      // sin empresaId = ve TODAS las sucursales de TODAS las empresas
     } else {
       const empresaId = getEmpresaId(req)
       where.empresaId = empresaId

@@ -33,6 +33,7 @@ const ENTERPRISE_ROLES = new Set([
 ])
 
 const ROLES_REQUIEREN_SUCURSAL = new Set([
+  'ADMIN_SUCURSAL',
   'EMPLEADO'
 ])
 
