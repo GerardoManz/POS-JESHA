@@ -1,0 +1,32 @@
+@view-transition {
+  navigation: auto;
+}
+
+::view-transition-old(root) {
+  animation: page-out 120ms ease-in both;
+}
+
+::view-transition-new(root) {
+  animation: page-in 160ms ease-out both;
+}
+
+@keyframes page-out {
+  to {
+    opacity: 0;
+    transform: translateX(-5px);
+  }
+}
+
+@keyframes page-in {
+  from {
+    opacity: 0;
+    transform: translateX(5px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none;
+  }
+}
