@@ -1,9 +1,4 @@
-const {
-  ROLES_VALIDOS,
-  PLATFORM_ROLES,
-  ENTERPRISE_ROLES,
-  ROLES_REQUIEREN_SUCURSAL
-} = require('./roles')
+const identity = require('../security/identity')
 
 function crearErrorPoliticaUsuario(codigo, mensaje) {
   const err = new Error(mensaje)
@@ -54,7 +49,7 @@ function validarEstadoUsuarioPorRol({
   sucursalId,
   sucursal
 }) {
-  if (!ROLES_VALIDOS.has(rol)) {
+  if (!identity.ALL_ROLES.includes(rol)) {
     throw crearErrorPoliticaUsuario('ROL_INVALIDO', 'Rol de usuario inválido')
   }
 
@@ -99,7 +94,7 @@ function validarEstadoUsuarioPorRol({
     }
   }
 
-  if (PLATFORM_ROLES.has(rol)) {
+  if (identity.esRolPlataforma(rol)) {
     if (tieneEmpresaId) {
       throw crearErrorPoliticaUsuario('EMPRESA_PROHIBIDA', 'El rol del usuario no debe tener empresa asignada')
     }
@@ -111,7 +106,7 @@ function validarEstadoUsuarioPorRol({
     return true
   }
 
-  if (!ENTERPRISE_ROLES.has(rol)) {
+  if (!identity.esRolTenant(rol)) {
     throw crearErrorPoliticaUsuario('ROL_INVALIDO', 'Rol de usuario inválido')
   }
 
@@ -135,7 +130,7 @@ function validarEstadoUsuarioPorRol({
     ) {
       throw crearErrorPoliticaUsuario('SUCURSAL_NO_PERTENECE_A_EMPRESA', 'La sucursal no pertenece a la empresa del usuario')
     }
-  } else if (ROLES_REQUIEREN_SUCURSAL.has(rol)) {
+  } else if (identity.requiereSucursal(rol)) {
     throw crearErrorPoliticaUsuario('SUCURSAL_REQUERIDA', 'El rol del usuario requiere una sucursal asignada')
   }
 
