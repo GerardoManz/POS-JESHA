@@ -1,7 +1,7 @@
 const jwt    = require('jsonwebtoken')
 const prisma = require('../lib/prisma')
 const debug = require('../lib/debug')
-const { validarIdentidadFinalUsuario } = require('../security/identity')
+const { validarIdentidadFinalUsuario, esRolPlataforma } = require('../security/identity')
 
 // ═══════════════════════════════════════════════════════════════════
 // REQUIREAUTH - Verificar que el usuario tiene token válido
@@ -32,11 +32,16 @@ const requireAuth = async (req, res, next) => {
   try {
     const payload = jwt.verify(token, process.env.JWT_SECRET)
 
-    validarIdentidadFinalUsuario({
+    const identidad = validarIdentidadFinalUsuario({
       id: payload.id, rol: payload.rol,
       empresaId: payload.empresaId, sucursalId: payload.sucursalId,
       activo: true
     })
+
+    if (esRolPlataforma(identidad.rol)) {
+      if (debug.isEnabled()) debug.recordAuth401('invalid', req.path)
+      return res.status(401).json({ error: 'Token inválido' })
+    }
 
     req.usuario = payload
     req.usuarioId = payload.id
