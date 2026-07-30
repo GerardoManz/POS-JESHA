@@ -1,6 +1,9 @@
 const router = require('express').Router()
-const { listar } = require('./sucursal.controller')
+const { requestContext } = require('../../middlewares/request-context.middleware')
+const { tenantGlobal } = require('../../middlewares/scope.middleware')
+const { listar, listarDisponibles } = require('./sucursal.controller')
 
+router.get('/disponibles', requestContext, tenantGlobal, listarDisponibles)
 router.get('/', listar)
 
 module.exports = router

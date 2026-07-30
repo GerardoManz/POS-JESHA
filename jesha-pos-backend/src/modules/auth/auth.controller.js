@@ -264,6 +264,21 @@ async function actualizarPreferencias(req, res) {
   }
 }
 
+function obtenerContexto(req, res) {
+  const context = req.context
+  if (!context) {
+    return res.status(500).json({ error: 'Contexto no disponible' })
+  }
+  const sanitized = {
+    version: context.version,
+    kind: context.kind,
+    actor: { id: context.actor.id, rol: context.actor.rol },
+    tenant: { empresaId: context.tenant.empresaId },
+    branch: { mode: context.branch.mode, sucursalId: context.branch.sucursalId }
+  }
+  res.json(sanitized)
+}
+
 module.exports = {
   TenantAuthError,
   parseTenantLoginBody,
@@ -272,5 +287,6 @@ module.exports = {
   serializarUsuario,
   login,
   me,
-  actualizarPreferencias
+  actualizarPreferencias,
+  obtenerContexto
 }
