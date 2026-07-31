@@ -1469,11 +1469,8 @@ const registrarAbono = async (req, res) => {
     const empresaId = getEmpresaId(req)
     const usuarioId = req.usuario.id
     const { rol } = req.usuario
-    const sucursalOperativa = req.usuario.sucursalId ?? null
-
-    if (!sucursalOperativa) {
-      return res.status(409).json({ success: false, error: 'Se requiere una sucursal operativa para registrar cobros', codigo: 'CONTEXTO_SUCURSAL_REQUERIDO' })
-    }
+    const sucursalOperativa = req.usuario.sucursalId  // puede ser null para SUPERADMIN
+    // Para roles con sucursal fija, se valida contra la bitácora después del FOR UPDATE
 
     const METODOS_VALIDOS = ['EFECTIVO', 'DEBITO', 'CREDITO', 'TRANSFERENCIA']
     if (!metodoPago || !METODOS_VALIDOS.includes(metodoPago)) {
@@ -1709,10 +1706,8 @@ const contextoCobranza = async (req, res) => {
     }
     const empresaId = getEmpresaId(req)
     const { rol } = req.usuario
-    const sucursalOperativa = req.usuario.sucursalId ?? null
-    if (!sucursalOperativa) {
-      return res.status(409).json({ success: false, error: 'Se requiere una sucursal operativa', codigo: 'CONTEXTO_SUCURSAL_REQUERIDO' })
-    }
+    const sucursalOperativa = req.usuario.sucursalId  // puede ser null para SUPERADMIN
+    // Para roles con sucursal fija, se valida contra la bitácora al cargar
 
     const bitacora = await prisma.bitacora.findUnique({
       where: { id: bitacoraId },
@@ -1732,7 +1727,7 @@ const contextoCobranza = async (req, res) => {
     })
     if (!bitacora) return res.status(404).json({ success: false, error: 'Bitácora no encontrada' })
     if (bitacora.empresaId !== empresaId) return res.status(404).json({ success: false, error: 'Bitácora no encontrada' })
-    if (bitacora.sucursalId !== sucursalOperativa) {
+    if (sucursalOperativa != null && bitacora.sucursalId !== sucursalOperativa) {
       return res.status(403).json({ success: false, error: 'Esta bitácora pertenece a otra sucursal', codigo: 'SUCURSAL_INCORRECTA' })
     }
     if (bitacora.estado !== 'ABIERTA') {

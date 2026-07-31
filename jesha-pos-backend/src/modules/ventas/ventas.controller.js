@@ -1226,6 +1226,103 @@ exports.cancelarVenta = async (req, res) => {
 //  4. deleteMany filtra por tipo:'VENTA' para no borrar devoluciones
 //  5. Permisos: solo SUPERADMIN y ADMIN_SUCURSAL pueden editar método
 // ════════════════════════════════════════════════════════════════════
+
+// ════════════════════════════════════════════════════════════════════
+//  PATCH /ventas/:id/desbloquear-factura — Desbloquea facturación
+//  para venta CREDITO_CLIENTE cuya bitácora ya fue liquidada.
+//  No modifica metodoPago ni MovimientoCaja.
+// ════════════════════════════════════════════════════════════════════
+exports.desbloquearFactura = async (req, res) => {
+  try {
+    const ventaId = parseInt(req.params.id)
+    const empresaId = getEmpresaId(req)
+    const usuario  = req.usuario
+    if (!usuario) return res.status(401).json({ error: 'Usuario no autenticado' })
+
+    const rolesPermitidos = ['SUPERADMIN', 'ADMIN_SUCURSAL', 'PLATFORM_ADMIN']
+    if (!rolesPermitidos.includes(usuario.rol)) {
+      return res.status(403).json({ error: 'Sin permiso para desbloquear facturación' })
+    }
+
+    const venta = await prisma.venta.findUnique({
+      where: { id: ventaId, empresaId },
+      include: { Cliente: true }
+    })
+    if (!venta) return res.status(404).json({ error: 'Venta no encontrada' })
+
+    if (venta.metodoPago !== 'CREDITO_CLIENTE') {
+      return res.status(409).json({ error: 'Solo aplica a ventas a crédito', codigo: 'METODO_NO_CREDITO' })
+    }
+    if (venta.facturaEstado !== 'BLOQUEADA') {
+      return res.status(409).json({ error: `La venta no está bloqueada (estado actual: ${venta.facturaEstado})`, codigo: 'FACTURA_NO_BLOQUEADA' })
+    }
+    if (venta.estado === 'CANCELADA') {
+      return res.status(409).json({ error: 'La venta está cancelada' })
+    }
+
+    // Verificar que todas las bitácoras asociadas estén cerradas
+    const detallesBitacora = await prisma.detalleBitacora.findMany({
+      where: { ventaId, Bitacora: { estado: { not: 'CANCELADA' } } },
+      select: { Bitacora: { select: { id: true, folio: true, estado: true, saldoPendiente: true } } }
+    })
+
+    // Filtrar detalles con bitácora válida
+    const bitacoras = [...new Map(
+      detallesBitacora.filter(d => d.Bitacora).map(d => [d.Bitacora.id, d.Bitacora])
+    ).values()]
+
+    if (bitacoras.length === 0) {
+      return res.status(409).json({ error: 'No se encontró bitácora asociada', codigo: 'SIN_BITACORA' })
+    }
+
+    const bitacorasAbiertas = bitacoras.filter(b => parseFloat(b.saldoPendiente) > 0)
+    if (bitacorasAbiertas.length > 0) {
+      return res.status(409).json({
+        error: `La bitácora aún tiene saldo pendiente ($${bitacorasAbiertas[0].saldoPendiente}). Liquídala primero.`,
+        codigo: 'BITACORA_CON_SALDO'
+      })
+    }
+
+    // Verificar CFDI activo
+    const cfdiActivo = await prisma.facturaCfdi.findFirst({
+      where: { ventaId, estado: { not: 'CANCELADA' } },
+      select: { id: true, folioFiscal: true }
+    })
+    if (cfdiActivo) {
+      return res.status(409).json({
+        error: `La venta ya tiene un CFDI activo (${cfdiActivo.folioFiscal || 'pendiente'}).`,
+        codigo: 'VENTA_CON_CFDI_ACTIVO'
+      })
+    }
+
+    // Desbloquear
+    const facturaLimite = new Date()
+    facturaLimite.setDate(facturaLimite.getDate() + 30)
+
+    const ventaActualizada = await prisma.venta.update({
+      where: { id: ventaId },
+      data: { facturaEstado: 'DISPONIBLE', facturaLimite }
+    })
+
+    await prisma.auditoria.create({
+      data: {
+        empresaId, usuarioId: usuario.id, sucursalId: venta.sucursalId,
+        accion: 'DESBLOQUEAR_FACTURA_CREDITO',
+        modulo: 'VENTAS',
+        referencia: venta.folio,
+        valorAntes: { facturaEstado: 'BLOQUEADA', facturaLimite: null },
+        valorDespues: { facturaEstado: 'DISPONIBLE', facturaLimite }
+      }
+    })
+
+    res.json({ success: true, venta: ventaActualizada, mensaje: 'Facturación desbloqueada. Ya puedes facturar esta venta.' })
+
+  } catch (err) {
+    console.error('❌ Error en desbloquearFactura:', err)
+    res.status(500).json({ error: err.message })
+  }
+}
+
 exports.actualizarMetodoPago = async (req, res) => {
   try {
     const ventaId  = parseInt(req.params.id)

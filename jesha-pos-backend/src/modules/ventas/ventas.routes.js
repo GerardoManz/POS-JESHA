@@ -14,6 +14,7 @@ const {
   obtenerHistorial, 
   cancelarVenta,
   actualizarMetodoPago,
+  desbloquearFactura,
   obtenerReporteVentas,
   obtenerDashboardKpis  // ← NUEVA IMPORTACIÓN
 } = require('./ventas.controller')
@@ -36,6 +37,9 @@ router.patch('/:id/cancelar', cancelarVenta)
 
 // PATCH /ventas/:id/metodo-pago — Actualizar método de pago ← NUEVA RUTA
 router.patch('/:id/metodo-pago', actualizarMetodoPago)
+
+// PATCH /ventas/:id/desbloquear-factura — Desbloquear facturación de crédito liquidado
+router.patch('/:id/desbloquear-factura', desbloquearFactura)
 
 // GET /ventas/:id/ticket — Ticket imprimible (desktop)
 router.get('/:id/ticket', ticketController.generarTicket)
