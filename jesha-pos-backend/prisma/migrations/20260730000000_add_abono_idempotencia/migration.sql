@@ -22,6 +22,3 @@ ALTER TABLE "MovimientoCaja"
 ALTER TABLE "MovimientoCaja"
   ADD CONSTRAINT "MovimientoCaja_abonoBitacoraId_key"
   UNIQUE ("abonoBitacoraId");
-
-CREATE INDEX "MovimientoCaja_abonoBitacoraId_idx"
-  ON "MovimientoCaja"("abonoBitacoraId");
