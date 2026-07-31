@@ -11,6 +11,7 @@ const { EMPRESA } = require('../../../config/empresa')
 const { buildAbonoSnapshot, buildRetiroSnapshot, formatFechaTicket } = require('../impresion/impresion.snapshot')
 const { encolarImpresion } = require('../impresion/impresion.service')
 const { normalizarUnidadVenta } = require('../../helpers/unidades.helper')
+const { validarMontoDecimal, Decimal } = require('../../helpers/validarMontoDecimal')
 
 // ── Auditoría ──
 async function audit(usuarioId, sucursalId, accion, ref, empresaId, valorDespues = null) {
@@ -505,19 +506,28 @@ const cambiarEstado = async (req, res) => {
     // Solo ABIERTA/PAUSADA sin abonos. Reintegra stock.
     // ──────────────────────────────────────────────────────────
     if (estado === 'CANCELADA') {
-      if (existente.estado !== 'ABIERTA' && existente.estado !== 'PAUSADA') {
-        return res.status(400).json({ success: false, error: `Solo se pueden cancelar bitácoras en estado ABIERTA o PAUSADA (actual: ${existente.estado})` })
-      }
-      const totalAbonado = parseFloat(existente.totalAbonado)
-      if (totalAbonado > 0) {
-        return res.status(400).json({ success: false, error: `No se puede cancelar: la bitácora tiene abonos por $${totalAbonado.toFixed(2)}. Debe quedar en $0 antes de cancelar.`, codigo: 'TIENE_ABONOS' })
-      }
       if (!motivo?.trim()) {
         return res.status(400).json({ success: false, error: 'Debe indicar un motivo para cancelar la bitácora', codigo: 'MOTIVO_REQUERIDO' })
       }
 
       await prisma.$transaction(async tx => {
-        // 1. Reintegrar stock de todos los detalles con inventarioDescontado
+        // Lock para evitar carrera con pagos concurrentes
+        const rows = await tx.$queryRaw`
+          SELECT id, estado, "totalAbonado", "saldoPendiente", folio, notas, "clienteId"
+          FROM "Bitacora"
+          WHERE id = ${parseInt(id)} AND "empresaId" = ${empresaId}
+          FOR UPDATE`
+        if (rows.length === 0) {
+          throw Object.assign(new Error('Bitácora no encontrada'), { status: 404 })
+        }
+        const locked = rows[0]
+        if (locked.estado !== 'ABIERTA' && locked.estado !== 'PAUSADA') {
+          throw Object.assign(new Error(`Solo se pueden cancelar bitácoras en estado ABIERTA o PAUSADA (actual: ${locked.estado})`), { status: 400 })
+        }
+        const totalAbonadoLocked = parseFloat(locked.totalAbonado)
+        if (totalAbonadoLocked > 0) {
+          throw Object.assign(new Error(`No se puede cancelar: la bitácora tiene abonos por $${totalAbonadoLocked.toFixed(2)}. Debe quedar en $0 antes de cancelar.`), { status: 400, codigo: 'TIENE_ABONOS' })
+        }
         const detalles = await tx.detalleBitacora.findMany({
           where: { bitacoraId: parseInt(id), inventarioDescontado: true },
           select: { id: true, productoId: true, cantidad: true, RecibeTrabajador: { select: { nombre: true } } }
@@ -546,8 +556,8 @@ const cambiarEstado = async (req, res) => {
                   cantidad: cant,
                   stockAntes,
                   stockDespues,
-                  referencia: existente.folio,
-                  notas: `Cancelación bitácora ${existente.folio}`
+                  referencia: locked.folio,
+                  notas: `Cancelación bitácora ${locked.folio}`
                 }
               })
             }
@@ -561,15 +571,15 @@ const cambiarEstado = async (req, res) => {
             estado:         'CANCELADA',
             cerradaEn:      new Date(),
             saldoPendiente: 0,
-            notas:          `[CANCELADA ${new Date().toISOString().split('T')[0]}] ${motivo.trim()}\n${existente.notas || ''}`.trim()
+            notas:          `[CANCELADA ${new Date().toISOString().split('T')[0]}] ${motivo.trim()}\n${locked.notas || ''}`.trim()
           }
         })
 
         // 3. Liberar saldo del cliente si tenía
-        const saldo = parseFloat(existente.saldoPendiente)
-        if (saldo > 0 && existente.clienteId) {
+        const saldo = parseFloat(locked.saldoPendiente)
+        if (saldo > 0 && locked.clienteId) {
           await tx.cliente.update({
-            where: { id: existente.clienteId },
+            where: { id: locked.clienteId },
             data: { saldoPendiente: { decrement: saldo } }
           })
         }
@@ -1437,131 +1447,341 @@ const quitarProducto = async (req, res) => {
 //  POST /bitacoras/:id/abonos — Registrar abono
 //  VENTA y MANUAL → exigen turno, crean MovimientoCaja (afecta corte)
 //  Cierre automático si saldo llega a $0.
+function esEstadoLiquidado(estado) {
+  return ['CERRADA_VENTA', 'CERRADA_INTERNA'].includes(estado)
+}
+
+function resolverEstadoLiquidacion(origen) {
+  if (origen === 'VENTA')  return 'CERRADA_VENTA'
+  if (origen === 'MANUAL') return 'CERRADA_INTERNA'
+  throw Object.assign(new Error(`Origen no soportado para liquidación: ${origen}`), { status: 409, codigo: 'ORIGEN_NO_LIQUIDABLE' })
+}
+
 // ════════════════════════════════════════════════════════════════════
 const registrarAbono = async (req, res) => {
   try {
-    const { id } = req.params
-    const { monto, metodoPago, notas, turnoId } = req.body
-    const { id: usuarioId, sucursalId } = req.usuario
+    const bitacoraId = parseInt(req.params.id)
+    if (!/^[1-9]\d*$/.test(req.params.id) || !Number.isSafeInteger(bitacoraId)) {
+      return res.status(400).json({ success: false, error: 'ID de bitácora inválido' })
+    }
+
+    const { metodoPago, notas } = req.body
     const empresaId = getEmpresaId(req)
+    const usuarioId = req.usuario.id
+    const { rol } = req.usuario
+    const sucursalOperativa = req.context?.branch?.sucursalId ?? null
 
-    const montoAbono = parseFloat(parseFloat(monto || 0).toFixed(2))
-    if (!monto || montoAbono <= 0) {
-      return res.status(400).json({ success: false, error: 'El monto debe ser mayor a 0', codigo: 'MONTO_INVALIDO' })
-    }
-
-    // ── Obtener bitácora CON origen ──
-    const bitacora = await prisma.bitacora.findUnique({
-      where: { id: parseInt(id) },
-      select: { id: true, empresaId: true, sucursalId: true, folio: true, estado: true, origen: true, totalAbonado: true, totalMateriales: true, saldoPendiente: true, descuentoMonto: true, clienteId: true, Cliente: { select: { nombre: true } } }
-    })
-    if (!bitacora) return res.status(404).json({ success: false, error: 'Bitácora no encontrada' })
-    if (bitacora.empresaId !== empresaId) {
-      return res.status(404).json({ success: false, error: 'Bitácora no encontrada' })
-    }
-    if (bitacora.estado !== 'ABIERTA') {
-      return res.status(400).json({ success: false, error: `No se pueden registrar abonos en estado ${bitacora.estado}`, codigo: 'ESTADO_INVALIDO' })
+    if (!sucursalOperativa) {
+      return res.status(409).json({ success: false, error: 'Se requiere una sucursal operativa para registrar cobros', codigo: 'CONTEXTO_SUCURSAL_REQUERIDO' })
     }
 
-    // ── Validar turno para todos los orígenes ──
-    const turnoIdFinal = parseInt(turnoId)
-    if (!turnoIdFinal || isNaN(turnoIdFinal)) {
-      return res.status(400).json({ success: false, error: 'Se requiere turno de caja abierto para registrar abonos', codigo: 'SIN_TURNO' })
-    }
-    const turno = await prisma.turnoCaja.findUnique({
-      where: { id: turnoIdFinal },
-      select: { id: true, abierto: true, empresaId: true, sucursalId: true }
-    })
-    if (!turno || !turno.abierto) {
-      return res.status(403).json({ success: false, error: 'Turno cerrado o no existe', codigo: 'TURNO_CERRADO' })
-    }
-    if (turno.empresaId !== empresaId) {
-      return res.status(403).json({ success: false, error: 'Turno no válido', codigo: 'TURNO_INVALIDO' })
-    }
-    if (turno.sucursalId !== bitacora.sucursalId) {
-      return res.status(403).json({ success: false, error: 'Turno no válido', codigo: 'TURNO_INVALIDO' })
+    const METODOS_VALIDOS = ['EFECTIVO', 'DEBITO', 'CREDITO', 'TRANSFERENCIA']
+    if (!metodoPago || !METODOS_VALIDOS.includes(metodoPago)) {
+      return res.status(400).json({ success: false, error: `Método no soportado: ${metodoPago || '(vacío)'}`, codigo: 'METODO_INVALIDO', metodosPermitidos: METODOS_VALIDOS })
     }
 
-    // ── Validar acceso a la sucursal (roles no globales) ──
-    const { rol, sucursalId: usuarioSucursalId } = req.usuario
-    if (!['SUPERADMIN', 'PLATFORM_ADMIN'].includes(rol)) {
-      if (usuarioSucursalId !== bitacora.sucursalId) {
-        return res.status(403).json({ success: false, error: 'No tienes acceso a esta bitácora', codigo: 'SIN_ACCESO' })
-      }
+    const montoResult = validarMontoDecimal(req.body.monto)
+    if (montoResult.error) {
+      return res.status(400).json({ success: false, error: montoResult.error, codigo: 'MONTO_INVALIDO' })
+    }
+    const monto = montoResult.valor
+
+    const idempotencyKey = req.headers['idempotency-key']
+    if (!idempotencyKey || typeof idempotencyKey !== 'string' || idempotencyKey.length > 64 ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(idempotencyKey)) {
+      return res.status(400).json({ success: false, error: 'Idempotency-Key requerido (UUID v4)', codigo: 'IDEMPOTENCY_KEY_REQUERIDO' })
     }
 
-    const saldoActual = parseFloat(bitacora.saldoPendiente)
-    if (montoAbono > saldoActual + 0.005) {
-      return res.status(400).json({
-        success: false,
-        error: `Monto excede saldo pendiente. Saldo: $${saldoActual.toFixed(2)}, Intento: $${montoAbono.toFixed(2)}`,
-        codigo: 'EXCEDE_SALDO',
-        saldoActual
-      })
-    }
-
-    const descuentoMonto = parseFloat(bitacora.descuentoMonto || 0)
-    const nuevoAbonado   = parseFloat((parseFloat(bitacora.totalAbonado) + montoAbono).toFixed(2))
-    const nuevoSaldo     = parseFloat((parseFloat(bitacora.totalMateriales) - descuentoMonto - nuevoAbonado).toFixed(2))
-    const cerrar       = nuevoSaldo <= 0.005
-
-    await prisma.$transaction(async tx => {
-      const abono = await tx.abonoBitacora.create({
-        data: {
-          empresaId,
-          bitacoraId: parseInt(id),
-          usuarioId,
-          turnoId:    turnoIdFinal,
-          monto:      montoAbono,
-          metodoPago: metodoPago || 'EFECTIVO',
-          notas:      notas || null
+    let resultado
+    try {
+      resultado = await prisma.$transaction(async (tx) => {
+        const rows = await tx.$queryRaw`
+          SELECT id, "empresaId", "sucursalId", folio, estado, origen,
+                 "totalMateriales", "totalAbonado", "saldoPendiente",
+                 "descuentoMonto", "clienteId"
+          FROM "Bitacora"
+          WHERE id = ${bitacoraId}
+            AND "empresaId" = ${empresaId}
+            AND "sucursalId" = ${sucursalOperativa}
+          FOR UPDATE`
+        if (rows.length === 0) {
+          throw Object.assign(new Error('Bitácora no encontrada'), { status: 404 })
         }
-      })
+        const bit = rows[0]
 
-      const updateData = {
-        totalAbonado:   nuevoAbonado,
-        saldoPendiente: Math.max(0, nuevoSaldo)
-      }
-      if (cerrar) {
-        updateData.estado    = 'CERRADA_VENTA'
-        updateData.cerradaEn = new Date()
-      }
-      await tx.bitacora.update({ where: { id: parseInt(id) }, data: updateData })
-
-      if (bitacora.clienteId) {
-        await tx.cliente.update({
-          where: { id: bitacora.clienteId },
-          data:  { saldoPendiente: { decrement: montoAbono } }
+        const existente = await tx.abonoBitacora.findUnique({
+          where: { empresaId_idempotencyKey: { empresaId, idempotencyKey } },
+          select: {
+            id: true, monto: true, metodoPago: true, bitacoraId: true, turnoId: true,
+            saldoAntesSnapshot: true, saldoDespuesSnapshot: true,
+            estadoResultante: true, cerradaEnSnapshot: true,
+            MovimientoCaja: { select: { id: true } }
+          }
         })
-      }
+        if (existente) {
+          if (existente.bitacoraId !== bitacoraId) {
+            throw Object.assign(new Error('Idempotency-Key reutilizada en otra bitácora'), { status: 409, codigo: 'KEY_BITACORA_DIFERENTE' })
+          }
+          const montoExistente = new Decimal(existente.monto)
+          if (!montoExistente.equals(monto) || existente.metodoPago !== metodoPago) {
+            throw Object.assign(new Error('Misma Idempotency-Key con payload diferente'), { status: 409, codigo: 'KEY_PAYLOAD_DIFERENTE' })
+          }
+          return {
+            status: 200,
+            body: {
+              success: true,
+              abonoId: existente.id,
+              bitacoraId,
+              montoAplicado: montoExistente.toFixed(2),
+              saldoAnterior: existente.saldoAntesSnapshot ? new Decimal(existente.saldoAntesSnapshot).toFixed(2) : null,
+              saldoPosterior: existente.saldoDespuesSnapshot ? new Decimal(existente.saldoDespuesSnapshot).toFixed(2) : null,
+              liquidada: esEstadoLiquidado(existente.estadoResultante),
+              estado: existente.estadoResultante,
+              movimientoCajaId: existente.MovimientoCaja?.id ?? null,
+              idempotencyKey,
+              idempotent: true,
+              mensaje: existente.estadoResultante === 'CERRADA_VENTA' ? 'Abono ya registrado — bitácora cerrada' : 'Abono ya registrado'
+            }
+          }
+        }
 
-      // ── MovimientoCaja para todos los orígenes ──
-      await tx.movimientoCaja.create({
-        data: {
-          empresaId,
-          turnoId:    turnoIdFinal,
-          tipo:       'ABONO_BITACORA',
-          monto:      montoAbono,
-          metodoPago: metodoPago || 'EFECTIVO',
-          referencia: bitacora.folio,
-          notas:      `Abono a bitácora ${bitacora.folio}${cerrar ? ' (liquidación completa)' : ''}`
+        if (bit.estado !== 'ABIERTA') {
+          throw Object.assign(new Error(`No se pueden registrar abonos en estado ${bit.estado}`), { status: 409, codigo: 'ESTADO_INVALIDO' })
+        }
+
+        const saldoPendiente = new Decimal(bit.saldoPendiente)
+        if (monto.greaterThan(saldoPendiente)) {
+          throw Object.assign(new Error(`Monto $${monto.toFixed(2)} excede saldo $${saldoPendiente.toFixed(2)}`), { status: 409, codigo: 'EXCEDE_SALDO' })
+        }
+
+        const turnos = await tx.turnoCaja.findMany({
+          where: { sucursalId: bit.sucursalId, abierto: true, empresaId },
+          select: { id: true },
+          take: 2
+        })
+        if (turnos.length === 0) {
+          throw Object.assign(new Error('No hay turno abierto en esta sucursal'), { status: 409, codigo: 'SIN_TURNO_ABIERTO' })
+        }
+        if (turnos.length > 1) {
+          throw Object.assign(new Error('Múltiples turnos abiertos en la sucursal'), { status: 409, codigo: 'MULTIPLES_TURNOS_ABIERTOS' })
+        }
+        const turnoId = turnos[0].id
+
+        const totalMateriales = new Decimal(bit.totalMateriales)
+        const descuentoMonto = new Decimal(bit.descuentoMonto || 0)
+        const totalAbonadoAntes = new Decimal(bit.totalAbonado)
+        const saldoDespues = saldoPendiente.minus(monto)
+        const totalAbonadoDespues = totalAbonadoAntes.plus(monto)
+
+        const saldoTeorico = totalMateriales.minus(descuentoMonto).minus(totalAbonadoDespues)
+        if (!saldoTeorico.equals(saldoDespues)) {
+          throw Object.assign(new Error('Inconsistencia en saldo de bitácora detectada'), { status: 409, codigo: 'INCONSISTENCIA_SALDO_BITACORA' })
+        }
+
+        const cerrar = saldoDespues.equals(new Decimal('0.00'))
+        const estadoCierre = cerrar ? resolverEstadoLiquidacion(bit.origen) : null
+
+        const abono = await tx.abonoBitacora.create({
+          data: {
+            empresaId, bitacoraId, usuarioId, turnoId,
+            monto, metodoPago, idempotencyKey, notas: notas || null,
+            saldoAntesSnapshot: saldoPendiente,
+            saldoDespuesSnapshot: saldoDespues,
+            estadoResultante: cerrar ? estadoCierre : 'ABIERTA',
+            cerradaEnSnapshot: cerrar ? new Date() : null
+          }
+        })
+
+        const mc = await tx.movimientoCaja.create({
+          data: {
+            empresaId, turnoId, tipo: 'ABONO_BITACORA',
+            monto, metodoPago, referencia: bit.folio,
+            notas: `Abono a bitácora ${bit.folio}${cerrar ? ' (liquidación completa)' : ''}`,
+            abonoBitacoraId: abono.id
+          }
+        })
+
+        await tx.bitacora.update({
+          where: { id: bitacoraId },
+          data: {
+            totalAbonado: totalAbonadoDespues,
+            saldoPendiente: saldoDespues,
+            ...(cerrar ? { estado: estadoCierre, cerradaEn: new Date() } : {})
+          }
+        })
+
+        if (bit.clienteId) {
+          const upd = await tx.cliente.updateMany({
+            where: { id: bit.clienteId, empresaId, saldoPendiente: { gte: monto } },
+            data: { saldoPendiente: { decrement: monto } }
+          })
+          if (upd.count !== 1) {
+            throw Object.assign(new Error('Inconsistencia en saldo del cliente'), { status: 409, codigo: 'INCONSISTENCIA_SALDO_CLIENTE' })
+          }
+        }
+
+        await tx.auditoria.create({
+          data: {
+            empresaId, usuarioId, sucursalId: bit.sucursalId,
+            accion: cerrar ? 'ABONO_BITACORA_CIERRE' : 'ABONO_BITACORA',
+            modulo: 'BITACORA',
+            referencia: `${bit.folio} → abono #${abono.id}`,
+            valorAntes: { saldoPendiente: saldoPendiente.toFixed(2), totalAbonado: totalAbonadoAntes.toFixed(2) },
+            valorDespues: { abonoId: abono.id, monto: monto.toFixed(2), metodoPago, saldoPosterior: saldoDespues.toFixed(2), liquidada: cerrar }
+          }
+        })
+
+        return {
+          status: 201,
+          body: {
+            success: true,
+            abonoId: abono.id,
+            bitacoraId,
+            montoAplicado: monto.toFixed(2),
+            saldoAnterior: saldoPendiente.toFixed(2),
+            saldoPosterior: saldoDespues.toFixed(2),
+            liquidada: cerrar,
+            estado: cerrar ? estadoCierre : 'ABIERTA',
+            movimientoCajaId: mc.id,
+            idempotencyKey,
+            idempotent: false,
+            mensaje: cerrar ? 'Abono registrado — bitácora cerrada automáticamente (saldo en $0)' : 'Abono registrado correctamente'
+          }
         }
       })
+    } catch (err) {
+      if (err.code === 'P2002') {
+        const target = err.meta?.target
+        if (Array.isArray(target) && target.includes('idempotencyKey')) {
+          const existente = await prisma.abonoBitacora.findUnique({
+            where: { empresaId_idempotencyKey: { empresaId, idempotencyKey } },
+            select: {
+              id: true, monto: true, metodoPago: true, bitacoraId: true,
+              saldoAntesSnapshot: true, saldoDespuesSnapshot: true,
+              estadoResultante: true, cerradaEnSnapshot: true,
+              MovimientoCaja: { select: { id: true } }
+            }
+          })
+          if (existente && existente.bitacoraId === bitacoraId) {
+            const montoExistente = new Decimal(existente.monto)
+            if (montoExistente.equals(monto) && existente.metodoPago === metodoPago) {
+              return res.status(200).json({
+                success: true,
+                abonoId: existente.id,
+                bitacoraId,
+                montoAplicado: montoExistente.toFixed(2),
+                saldoAnterior: existente.saldoAntesSnapshot ? new Decimal(existente.saldoAntesSnapshot).toFixed(2) : null,
+                saldoPosterior: existente.saldoDespuesSnapshot ? new Decimal(existente.saldoDespuesSnapshot).toFixed(2) : null,
+                liquidada: esEstadoLiquidado(existente.estadoResultante),
+                estado: existente.estadoResultante,
+                movimientoCajaId: existente.MovimientoCaja?.id ?? null,
+                idempotencyKey,
+                idempotent: true,
+                mensaje: existente.estadoResultante === 'CERRADA_VENTA' ? 'Abono ya registrado — bitácora cerrada' : 'Abono ya registrado'
+              })
+            }
+          }
+        }
+      }
+      if (err.status) {
+        return res.status(err.status).json({ success: false, error: err.message, codigo: err.codigo || null })
+      }
+      throw err
+    }
 
-    })
+    return res.status(resultado.status).json(resultado.body)
 
-    const accion = cerrar ? 'ABONO_BITACORA_CIERRE' : 'ABONO_BITACORA'
-    await audit(usuarioId, sucursalId, accion, `${bitacora.folio} +$${montoAbono.toFixed(2)}`, empresaId)
-
-    const bitacoraActualizada = await prisma.bitacora.findUnique({ where: { id: parseInt(id) }, select: BITACORA_SELECT })
-    res.json({
-      success: true,
-      data:    bitacoraActualizada,
-      cerrada: cerrar,
-      mensaje: cerrar ? 'Abono registrado — bitácora cerrada automáticamente (saldo en $0)' : 'Abono registrado correctamente'
-    })
   } catch (err) {
     console.error('❌ abono bitacora:', err)
+    res.status(500).json({ success: false, error: err.message })
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  GET /bitacoras/:id/contexto-cobranza
+//  Devuelve datos para el POS en modo cobranza (solo origen VENTA)
+// ════════════════════════════════════════════════════════════════════
+const contextoCobranza = async (req, res) => {
+  try {
+    const bitacoraId = parseInt(req.params.id)
+    if (!/^[1-9]\d*$/.test(req.params.id) || !Number.isSafeInteger(bitacoraId)) {
+      return res.status(400).json({ success: false, error: 'ID de bitácora inválido' })
+    }
+    const empresaId = getEmpresaId(req)
+    const { rol } = req.usuario
+    const sucursalOperativa = req.context?.branch?.sucursalId ?? null
+    if (!sucursalOperativa) {
+      return res.status(409).json({ success: false, error: 'Se requiere una sucursal operativa', codigo: 'CONTEXTO_SUCURSAL_REQUERIDO' })
+    }
+
+    const bitacora = await prisma.bitacora.findUnique({
+      where: { id: bitacoraId },
+      select: {
+        id: true, empresaId: true, sucursalId: true, folio: true, estado: true, origen: true,
+        totalMateriales: true, totalAbonado: true, saldoPendiente: true, descuentoMonto: true,
+        titulo: true, clienteId: true,
+        Cliente: { select: { id: true, nombre: true } },
+        DetalleBitacora: {
+          select: {
+            id: true, productoId: true, cantidad: true, precioUnitario: true, subtotal: true,
+            unidadVentaSnapshot: true,
+            Producto: { select: { id: true, nombre: true, esGranel: true, unidadVenta: true } }
+          }
+        }
+      }
+    })
+    if (!bitacora) return res.status(404).json({ success: false, error: 'Bitácora no encontrada' })
+    if (bitacora.empresaId !== empresaId) return res.status(404).json({ success: false, error: 'Bitácora no encontrada' })
+    if (bitacora.sucursalId !== sucursalOperativa) {
+      return res.status(403).json({ success: false, error: 'Esta bitácora pertenece a otra sucursal', codigo: 'SUCURSAL_INCORRECTA' })
+    }
+    if (bitacora.estado !== 'ABIERTA') {
+      return res.status(409).json({ success: false, error: `Bitácora en estado ${bitacora.estado}`, codigo: 'ESTADO_INVALIDO' })
+    }
+    const ORIGENES_COBRABLES_POS = ['VENTA', 'MANUAL']
+    if (!ORIGENES_COBRABLES_POS.includes(bitacora.origen)) {
+      return res.status(409).json({ success: false, error: `Origen ${bitacora.origen} no puede cobrarse en POS`, codigo: 'ORIGEN_NO_COBRABLE' })
+    }
+
+    const turnos = await prisma.turnoCaja.findMany({
+      where: { sucursalId: sucursalOperativa, abierto: true, empresaId },
+      select: { id: true },
+      take: 2
+    })
+    if (turnos.length === 0) {
+      return res.status(409).json({ success: false, error: 'No hay turno abierto en esta sucursal', codigo: 'SIN_TURNO_ABIERTO' })
+    }
+
+    const saldoPendiente = new Decimal(bitacora.saldoPendiente)
+    const totalAbonado = new Decimal(bitacora.totalAbonado)
+    const totalMateriales = new Decimal(bitacora.totalMateriales)
+    const descuentoMonto = new Decimal(bitacora.descuentoMonto || 0)
+
+    res.json({
+      success: true,
+      data: {
+        id: bitacora.id,
+        folio: bitacora.folio,
+        estado: bitacora.estado,
+        origen: bitacora.origen,
+        titulo: bitacora.titulo,
+        cliente: bitacora.Cliente ? { id: bitacora.Cliente.id, nombre: bitacora.Cliente.nombre } : null,
+        totalMateriales: totalMateriales.toFixed(2),
+        totalAbonado: totalAbonado.toFixed(2),
+        descuentoMonto: descuentoMonto.toFixed(2),
+        saldoPendiente: saldoPendiente.toFixed(2),
+        productos: bitacora.DetalleBitacora.map(d => ({
+          id: d.Producto?.id ?? d.productoId,
+          nombre: d.Producto?.nombre || '—',
+          cantidad: new Decimal(d.cantidad).toFixed(2),
+          precioUnitario: new Decimal(d.precioUnitario).toFixed(2),
+          subtotal: new Decimal(d.subtotal).toFixed(2),
+          unidadVenta: d.unidadVentaSnapshot ?? d.Producto?.unidadVenta ?? ''
+        }))
+      }
+    })
+  } catch (err) {
+    console.error('❌ contexto-cobranza:', err)
     res.status(500).json({ success: false, error: err.message })
   }
 }
@@ -1578,5 +1798,6 @@ module.exports = {
   agregarProductosBatch,
   editarDetalle,
   quitarProducto,
-  registrarAbono
+  registrarAbono,
+  contextoCobranza
 }
