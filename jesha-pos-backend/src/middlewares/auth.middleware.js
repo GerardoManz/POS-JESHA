@@ -1,195 +1,80 @@
-'use strict'
-
-const jwt = require('jsonwebtoken')
+const jwt    = require('jsonwebtoken')
 const prisma = require('../lib/prisma')
 const debug = require('../lib/debug')
-const {
-  IdentityError,
-  esEnteroPositivo,
-  esRolTenant,
-  validarIdentidadFinalUsuario,
-  crearPrincipalTenant
-} = require('../security/identity')
-const { resolveTenantAuthConfig } = require('../modules/auth/tenant-auth.config')
+const { validarIdentidadFinalUsuario, esRolPlataforma } = require('../security/identity')
 
-const TENANT_AUTH_CONFIG = resolveTenantAuthConfig()
+// ═══════════════════════════════════════════════════════════════════
+// REQUIREAUTH - Verificar que el usuario tiene token válido
+// Acepta token en:
+//   1. Header Authorization: Bearer <token>  (fetch/XHR — método principal)
+//   2. Query param ?token=<token>            (window.open — para tickets)
+// ═══════════════════════════════════════════════════════════════════
 
-class TenantTokenError extends Error {
-  constructor(code, message) {
-    super(message)
-    this.name = 'TenantTokenError'
-    this.code = code
-  }
-}
+const requireAuth = async (req, res, next) => {
+  let token = null
 
-function extractTenantToken(req) {
-  const authorization = req && req.headers && req.headers.authorization
-  if (authorization !== undefined) {
-    if (typeof authorization !== 'string') {
-      throw new TenantTokenError('TENANT_TOKEN_MALFORMED', 'Authorization inválido')
-    }
-    const match = /^Bearer ([^\s]+)$/.exec(authorization)
-    if (!match) {
-      throw new TenantTokenError('TENANT_TOKEN_MALFORMED', 'Bearer inválido')
-    }
-    return match[1]
+  // 1. Intentar desde header Authorization (prioridad)
+  const authHeader = req.headers.authorization
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    token = authHeader.split(' ')[1]
   }
 
-  const queryToken = req && req.query && req.query.token
-  if (queryToken !== undefined) {
-    if (typeof queryToken !== 'string' || queryToken.length === 0 || /\s/.test(queryToken)) {
-      throw new TenantTokenError('TENANT_TOKEN_MALFORMED', 'Token query inválido')
-    }
-    return queryToken
+  // 2. Fallback: query param ?token=xxx (para window.open en tickets)
+  if (!token && req.query.token) {
+    token = req.query.token
   }
 
-  throw new TenantTokenError('TENANT_TOKEN_MISSING', 'Token requerido')
-}
-
-function validateTenantTokenPayload(payload) {
-  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
-    throw new TenantTokenError('TENANT_TOKEN_PAYLOAD_INVALID', 'Payload inválido')
-  }
-  if (payload.version !== 1 || payload.kind !== 'TENANT' || !esRolTenant(payload.rol)) {
-    throw new TenantTokenError('TENANT_TOKEN_KIND_INVALID', 'Token no pertenece a un tenant')
-  }
-  if (!esEnteroPositivo(payload.sub)) {
-    throw new TenantTokenError('TENANT_TOKEN_SUB_INVALID', 'sub inválido')
-  }
-  return Object.freeze({ sub: payload.sub, rol: payload.rol })
-}
-
-function verifyTenantToken(token) {
-  const payload = jwt.verify(token, TENANT_AUTH_CONFIG.secret, {
-    algorithms: [TENANT_AUTH_CONFIG.algorithm],
-    issuer: TENANT_AUTH_CONFIG.issuer,
-    audience: TENANT_AUTH_CONFIG.audience
-  })
-  return validateTenantTokenPayload(payload)
-}
-
-function buildTenantActor(usuario) {
-  const identidad = validarIdentidadFinalUsuario(usuario)
-  const principal = crearPrincipalTenant(usuario)
-  const actor = Object.freeze({
-    id: identidad.id,
-    nombre: usuario.nombre,
-    username: usuario.username,
-    rol: identidad.rol,
-    empresaId: identidad.empresaId,
-    sucursalId: identidad.sucursalId,
-    activo: true
-  })
-  return Object.freeze({ actor, principal })
-}
-
-function recordTenant401(req, code) {
-  if (!debug.isEnabled()) return
-  debug.recordAuth401('invalid', req.path)
-  debug.logJSON({
-    event: 'tenant_auth_rejected',
-    code,
-    requestId: req.requestId,
-    path: req.path,
-    ...debug.buildBase()
-  })
-}
-
-async function hydrateTenantActor(tokenIdentity) {
-  const usuario = await prisma.usuario.findUnique({
-    where: { id: tokenIdentity.sub },
-    select: {
-      id: true,
-      nombre: true,
-      username: true,
-      rol: true,
-      activo: true,
-      empresaId: true,
-      sucursalId: true
-    }
-  })
-
-  if (!usuario || !usuario.activo || !esRolTenant(usuario.rol)) {
-    throw new TenantTokenError('TENANT_ACTOR_UNAVAILABLE', 'Usuario tenant no disponible')
+  if (!token) {
+    if (debug.isEnabled()) debug.recordAuth401('missing', req.path)
+    return res.status(401).json({ error: 'Token requerido' })
   }
 
-  let hydrated
   try {
-    hydrated = buildTenantActor(usuario)
-  } catch (err) {
-    if (err instanceof IdentityError) {
-      throw new TenantTokenError(err.code || 'TENANT_ACTOR_IDENTITY_INVALID', 'Identidad tenant inválida')
-    }
-    throw err
-  }
+    const payload = jwt.verify(token, process.env.JWT_SECRET)
 
-  if (hydrated.principal.rol !== tokenIdentity.rol) {
-    throw new TenantTokenError('TENANT_ROLE_CHANGED', 'El rol del usuario cambió')
-  }
-
-  const empresa = await prisma.empresa.findUnique({
-    where: { id: hydrated.actor.empresaId },
-    select: { id: true, activa: true }
-  })
-  if (!empresa || !empresa.activa) {
-    throw new TenantTokenError('TENANT_EMPRESA_UNAVAILABLE', 'Empresa tenant no disponible')
-  }
-
-  if (hydrated.actor.sucursalId !== null) {
-    const sucursal = await prisma.sucursal.findUnique({
-      where: { id: hydrated.actor.sucursalId },
-      select: { id: true, empresaId: true, activa: true }
+    const identidad = validarIdentidadFinalUsuario({
+      id: payload.id, rol: payload.rol,
+      empresaId: payload.empresaId, sucursalId: payload.sucursalId,
+      activo: true
     })
-    if (!sucursal || !sucursal.activa || sucursal.empresaId !== hydrated.actor.empresaId) {
-      throw new TenantTokenError('TENANT_SUCURSAL_UNAVAILABLE', 'Sucursal tenant no disponible')
+
+    if (esRolPlataforma(identidad.rol)) {
+      if (debug.isEnabled()) debug.recordAuth401('invalid', req.path)
+      return res.status(401).json({ error: 'Token inválido' })
     }
-  }
 
-  return hydrated
-}
+    req.usuario = payload
+    req.usuarioId = payload.id
 
-async function requireAuth(req, res, next) {
-  try {
-    const token = extractTenantToken(req)
-    const tokenIdentity = verifyTenantToken(token)
-    const hydrated = await hydrateTenantActor(tokenIdentity)
+    const usuarioDB = await prisma.usuario.findUnique({
+      where: { id: payload.id },
+      select: { activo: true }
+    })
+    if (!usuarioDB?.activo) {
+      return res.status(403).json({ error: 'Usuario desactivado' })
+    }
 
-    req.usuario = hydrated.actor
-    req.usuarioId = hydrated.actor.id
-    req.authPrincipal = hydrated.principal
-    return next()
+    next()
   } catch (err) {
-    if (
-      err.name === 'JsonWebTokenError' ||
-      err.name === 'TokenExpiredError' ||
-      err.name === 'NotBeforeError'
-    ) {
-      recordTenant401(req, err.name || 'TENANT_TOKEN_INVALID')
+    if (err.name === 'JsonWebTokenError' || err.name === 'TokenExpiredError') {
+      if (debug.isEnabled()) {
+        const reason = err.name === 'TokenExpiredError' ? 'expired' : 'invalid'
+        debug.recordAuth401(reason, req.path)
+      }
       return res.status(401).json({ error: 'Token inválido o expirado' })
     }
-
-    if (err instanceof TenantTokenError || err instanceof IdentityError) {
-      const forbiddenCodes = new Set([
-        'TENANT_ACTOR_UNAVAILABLE',
-        'TENANT_ROLE_CHANGED',
-        'TENANT_EMPRESA_UNAVAILABLE',
-        'TENANT_SUCURSAL_UNAVAILABLE',
-        'IDENTITY_EMPRESA_REQUIRED',
-        'IDENTITY_SUCURSAL_REQUIRED',
-        'IDENTITY_SUCURSAL_INVALID',
-        'IDENTITY_SUCURSAL_FORBIDDEN'
-      ])
-      const status = forbiddenCodes.has(err.code) ? 403 : 401
-      recordTenant401(req, err.code || 'TENANT_TOKEN_INVALID')
-      return res.status(status).json({
-        error: status === 403 ? 'Acceso tenant denegado' : 'Token inválido o expirado'
-      })
+    if (err.name === 'IdentityError') {
+      if (debug.isEnabled()) debug.recordAuth401('invalid_identity', req.path)
+      return res.status(401).json({ error: 'Token inválido' })
     }
-
     console.error('Error en requireAuth:', err)
     return res.status(500).json({ error: 'Error interno de autenticación' })
   }
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// REQUIREROLE - Verificar que el usuario tiene el rol permitido
+// ═══════════════════════════════════════════════════════════════════
 
 const requireRole = (...roles) => {
   const rolesPermitidos = roles.flat()
@@ -201,8 +86,12 @@ const requireRole = (...roles) => {
   }
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// REQUIRESUCURSALACCESS - Verificar que el usuario accede solo su sucursal
+// ═══════════════════════════════════════════════════════════════════
+
 const requireSucursalAccess = (req, res, next) => {
-  if (req.usuario.rol === 'SUPERADMIN') return next()
+  if (req.usuario.rol === 'SUPERADMIN' || req.usuario.rol === 'PLATFORM_ADMIN') return next()
   const sucursalSolicitada = parseInt(req.params.sucursalId || req.body.sucursalId)
   if (!sucursalSolicitada) return next()
   if (req.usuario.sucursalId !== sucursalSolicitada) {
@@ -211,13 +100,11 @@ const requireSucursalAccess = (req, res, next) => {
   next()
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// EXPORTAR TODOS LOS MIDDLEWARES
+// ═══════════════════════════════════════════════════════════════════
+
 module.exports = {
-  TenantTokenError,
-  extractTenantToken,
-  validateTenantTokenPayload,
-  verifyTenantToken,
-  buildTenantActor,
-  hydrateTenantActor,
   requireAuth,
   requireRole,
   requireSucursalAccess

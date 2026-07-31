@@ -4,10 +4,7 @@ process.env.PLATFORM_JWT_SECRET = 'platform-test-secret-'.padEnd(64, 'x')
 process.env.PLATFORM_JWT_ISSUER = 'jesha-platform-test'
 process.env.PLATFORM_JWT_AUDIENCE = 'jesha-platform-api-test'
 process.env.PLATFORM_JWT_TTL = '15m'
-process.env.TENANT_JWT_SECRET = 'tenant-test-secret-'.padEnd(64, 'y')
-process.env.TENANT_JWT_ISSUER = 'jesha-tenant-test'
-process.env.TENANT_JWT_AUDIENCE = 'jesha-tenant-api-test'
-process.env.TENANT_JWT_TTL = '8h'
+process.env.JWT_SECRET = 'tenant-test-secret-'.padEnd(64, 'y')
 
 const assert = require('node:assert/strict')
 const { describe, it, before, after, beforeEach } = require('node:test')
@@ -92,8 +89,6 @@ before(() => {
   ORIGINALS.usuarioFindMany = prisma.usuario.findMany
   ORIGINALS.usuarioFindUnique = prisma.usuario.findUnique
   ORIGINALS.usuarioFindFirst = prisma.usuario.findFirst
-  ORIGINALS.empresaFindUnique = prisma.empresa.findUnique
-  ORIGINALS.sucursalFindUnique = prisma.sucursal.findUnique
   ORIGINALS.auditoriaCreate = prisma.auditoria.create
   ORIGINALS.bcryptCompare = bcrypt.compare
 })
@@ -102,8 +97,6 @@ after(() => {
   prisma.usuario.findMany = ORIGINALS.usuarioFindMany
   prisma.usuario.findUnique = ORIGINALS.usuarioFindUnique
   prisma.usuario.findFirst = ORIGINALS.usuarioFindFirst
-  prisma.empresa.findUnique = ORIGINALS.empresaFindUnique
-  prisma.sucursal.findUnique = ORIGINALS.sucursalFindUnique
   prisma.auditoria.create = ORIGINALS.auditoriaCreate
   bcrypt.compare = ORIGINALS.bcryptCompare
 })
@@ -112,8 +105,6 @@ beforeEach(() => {
   prisma.usuario.findMany = async () => [platformUser()]
   prisma.usuario.findUnique = async () => platformUser()
   prisma.usuario.findFirst = async () => null
-  prisma.empresa.findUnique = async () => ({ id: 1, slug: 'jesha', nombreComercial: 'JESHA', activa: true })
-  prisma.sucursal.findUnique = async () => ({ id: 1, empresaId: 1, nombre: 'Matriz', activa: true })
   prisma.auditoria.create = async ({ data }) => ({ id: 1, ...data })
   bcrypt.compare = async (password, hash) => password === 'correct' && hash === 'hash-ok'
 })
@@ -383,27 +374,24 @@ describe('P0-PLATFORM-AUTH middleware', { concurrency: 1 }, () => {
 })
 
 describe('Aislamiento respecto al auth compartido', { concurrency: 1 }, () => {
-  it('POST /auth/login bloquea PLATFORM_ADMIN aunque pertenezca a empresa legacy', async () => {
-    prisma.usuario.findUnique = async () => platformUser({ empresaId: 1 })
-    const req = platformReq({ empresaSlug: 'jesha', username: 'platform.owner', password: 'correct' })
+  it('POST /auth/login bloquea PLATFORM_ADMIN', async () => {
+    prisma.usuario.findFirst = async () => platformUser()
+    const req = platformReq({ username: 'platform.owner', password: 'correct' })
     const res = mockRes()
     await tenantController.login(req, res)
     assert.strictEqual(res._state.statusCode, 401)
     assert.deepStrictEqual(res._state.body, { error: 'Credenciales inválidas' })
   })
 
-  it('requireAuth tenant rechaza token PLATFORM firmado con secreto tenant', async () => {
+  it('requireAuth compartido rechaza token PLATFORM_ADMIN legado', async () => {
     const token = jwt.sign({
-      version: 1,
-      kind: 'PLATFORM',
-      sub: 101,
-      rol: 'PLATFORM_ADMIN'
-    }, process.env.TENANT_JWT_SECRET, {
-      algorithm: 'HS256',
-      issuer: process.env.TENANT_JWT_ISSUER,
-      audience: process.env.TENANT_JWT_AUDIENCE,
-      expiresIn: '1h'
-    })
+      id: 101,
+      username: 'platform.owner',
+      nombre: 'Platform Owner',
+      rol: 'PLATFORM_ADMIN',
+      empresaId: null,
+      sucursalId: null
+    }, process.env.JWT_SECRET, { expiresIn: '1h' })
 
     const req = {
       headers: { authorization: `Bearer ${token}` },

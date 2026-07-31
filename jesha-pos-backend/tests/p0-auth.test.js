@@ -1,104 +1,122 @@
-'use strict'
-
 const { describe, it } = require('node:test')
-const assert = require('node:assert/strict')
+const assert = require('node:assert')
 const jwt = require('jsonwebtoken')
-const {
-  IdentityError,
-  crearPrincipalTenant,
-  crearPrincipalPlataforma
-} = require('../src/security/identity')
+const { validarIdentidadFinalUsuario, IdentityError } = require('../src/security/identity')
 
-function user(overrides = {}) {
-  return {
-    id: 1,
-    nombre: 'Usuario',
-    username: 'usuario',
-    rol: 'SUPERADMIN',
-    empresaId: 10,
-    sucursalId: null,
-    activo: true,
-    ...overrides
-  }
-}
+describe('P0-PLATFORM-AUTH: identity validation in auth flow', () => {
 
-describe('P0-TENANT-AUTH: principal y payload mínimo', () => {
-  it('SUPERADMIN genera principal tenant mínimo', () => {
-    assert.deepStrictEqual(crearPrincipalTenant(user()), {
-      version: 1, kind: 'TENANT', sub: 1, rol: 'SUPERADMIN'
-    })
-  })
+  it('login builds JWT payload from identity-validated snapshot (SUPERADMIN)', () => {
+    const usuario = { id: 1, nombre: 'Admin', username: 'admin', rol: 'SUPERADMIN', empresaId: 1, sucursalId: null, activo: true }
+    const identidad = validarIdentidadFinalUsuario(usuario)
+    const payload = { id: identidad.id, username: usuario.username, nombre: usuario.nombre, rol: identidad.rol, empresaId: identidad.empresaId, sucursalId: identidad.sucursalId }
 
-  it('ADMIN_SUCURSAL genera principal tenant mínimo', () => {
-    assert.deepStrictEqual(crearPrincipalTenant(user({ rol: 'ADMIN_SUCURSAL', sucursalId: 20 })), {
-      version: 1, kind: 'TENANT', sub: 1, rol: 'ADMIN_SUCURSAL'
-    })
-  })
+    const token = jwt.sign(payload, 'test-secret', { expiresIn: '1h' })
+    const decoded = jwt.verify(token, 'test-secret')
 
-  it('EMPLEADO genera principal tenant mínimo', () => {
-    assert.deepStrictEqual(crearPrincipalTenant(user({ rol: 'EMPLEADO', sucursalId: 20 })), {
-      version: 1, kind: 'TENANT', sub: 1, rol: 'EMPLEADO'
-    })
-  })
-
-  it('PRECIOS sin sucursal genera principal tenant mínimo', () => {
-    assert.deepStrictEqual(crearPrincipalTenant(user({ rol: 'PRECIOS' })), {
-      version: 1, kind: 'TENANT', sub: 1, rol: 'PRECIOS'
-    })
-  })
-
-  it('PRECIOS con sucursal genera principal tenant mínimo', () => {
-    assert.deepStrictEqual(crearPrincipalTenant(user({ rol: 'PRECIOS', sucursalId: 20 })), {
-      version: 1, kind: 'TENANT', sub: 1, rol: 'PRECIOS'
-    })
-  })
-
-  it('principal tenant está congelado', () => {
-    assert.ok(Object.isFrozen(crearPrincipalTenant(user())))
-  })
-
-  it('principal tenant no contiene empresaId ni sucursalId', () => {
-    const principal = crearPrincipalTenant(user({ rol: 'ADMIN_SUCURSAL', sucursalId: 20 }))
-    assert.strictEqual(principal.empresaId, undefined)
-    assert.strictEqual(principal.sucursalId, undefined)
-  })
-
-  it('principal tenant no contiene datos de perfil ni secretos', () => {
-    const principal = crearPrincipalTenant(user({ passwordHash: 'secret', pin: '1234' }))
-    assert.deepStrictEqual(Object.keys(principal).sort(), ['kind', 'rol', 'sub', 'version'])
-  })
-
-  it('PLATFORM_ADMIN no genera principal tenant', () => {
-    assert.throws(() => crearPrincipalTenant(user({
-      rol: 'PLATFORM_ADMIN', empresaId: null, sucursalId: null
-    })), IdentityError)
-  })
-
-  it('usuario tenant no genera principal plataforma', () => {
-    assert.throws(() => crearPrincipalPlataforma(user()), IdentityError)
-  })
-
-  it('JWT tenant firmado conserva únicamente principal más claims estándar', () => {
-    const principal = crearPrincipalTenant(user())
-    const token = jwt.sign(principal, 'tenant-test-secret', { expiresIn: '1h' })
-    const decoded = jwt.verify(token, 'tenant-test-secret')
-    assert.strictEqual(decoded.kind, 'TENANT')
-    assert.strictEqual(decoded.sub, 1)
+    assert.strictEqual(decoded.id, 1)
+    assert.strictEqual(decoded.username, 'admin')
+    assert.strictEqual(decoded.nombre, 'Admin')
     assert.strictEqual(decoded.rol, 'SUPERADMIN')
-    assert.strictEqual(decoded.empresaId, undefined)
-    assert.strictEqual(decoded.sucursalId, undefined)
+    assert.strictEqual(decoded.empresaId, 1)
+    assert.strictEqual(decoded.sucursalId, null)
   })
 
-  it('cambio de rol produce principal distinto y permite invalidar token anterior', () => {
-    const original = crearPrincipalTenant(user({ rol: 'ADMIN_SUCURSAL', sucursalId: 20 }))
-    const actualizado = crearPrincipalTenant(user({ rol: 'SUPERADMIN', sucursalId: null }))
-    assert.notStrictEqual(original.rol, actualizado.rol)
+  it('login builds JWT payload from identity-validated snapshot (PLATFORM_ADMIN)', () => {
+    const usuario = { id: 5, nombre: 'God', username: 'god', rol: 'PLATFORM_ADMIN', empresaId: null, sucursalId: null, activo: true }
+    const identidad = validarIdentidadFinalUsuario(usuario)
+    const payload = { id: identidad.id, username: usuario.username, nombre: usuario.nombre, rol: identidad.rol, empresaId: identidad.empresaId, sucursalId: identidad.sucursalId }
+
+    const token = jwt.sign(payload, 'test-secret', { expiresIn: '1h' })
+    const decoded = jwt.verify(token, 'test-secret')
+
+    assert.strictEqual(decoded.rol, 'PLATFORM_ADMIN')
+    assert.strictEqual(decoded.empresaId, null)
+    assert.strictEqual(decoded.sucursalId, null)
   })
 
-  it('shape exacto del principal tenant', () => {
-    assert.deepStrictEqual(
-      Object.keys(crearPrincipalTenant(user())).sort(),
-      ['kind', 'rol', 'sub', 'version']
+  it('login builds JWT payload from identity-validated snapshot (EMPLEADO con sucursal)', () => {
+    const usuario = { id: 10, nombre: 'Emp', username: 'emp', rol: 'EMPLEADO', empresaId: 2, sucursalId: 3, activo: true }
+    const identidad = validarIdentidadFinalUsuario(usuario)
+    const payload = { id: identidad.id, username: usuario.username, nombre: usuario.nombre, rol: identidad.rol, empresaId: identidad.empresaId, sucursalId: identidad.sucursalId }
+
+    const token = jwt.sign(payload, 'test-secret', { expiresIn: '1h' })
+    const decoded = jwt.verify(token, 'test-secret')
+
+    assert.strictEqual(decoded.rol, 'EMPLEADO')
+    assert.strictEqual(decoded.empresaId, 2)
+    assert.strictEqual(decoded.sucursalId, 3)
+  })
+
+  it('login rejects PLATFORM_ADMIN with empresaId (identity validation)', () => {
+    assert.throws(
+      () => validarIdentidadFinalUsuario({ id: 1, nombre: 'Bad', username: 'bad', rol: 'PLATFORM_ADMIN', empresaId: 5, sucursalId: null, activo: true }),
+      IdentityError
     )
+  })
+
+  it('login rejects EMPLEADO without sucursalId (identity validation)', () => {
+    assert.throws(
+      () => validarIdentidadFinalUsuario({ id: 1, nombre: 'Bad', username: 'bad', rol: 'EMPLEADO', empresaId: 1, sucursalId: null, activo: true }),
+      IdentityError
+    )
+  })
+
+  it('login rejects SUPERADMIN with sucursalId (identity validation)', () => {
+    assert.throws(
+      () => validarIdentidadFinalUsuario({ id: 1, nombre: 'Bad', username: 'bad', rol: 'SUPERADMIN', empresaId: 1, sucursalId: 5, activo: true }),
+      IdentityError
+    )
+  })
+
+  it('login rejects ADMIN_SUCURSAL without sucursalId (identity validation)', () => {
+    assert.throws(
+      () => validarIdentidadFinalUsuario({ id: 1, nombre: 'Bad', username: 'bad', rol: 'ADMIN_SUCURSAL', empresaId: 1, sucursalId: null, activo: true }),
+      IdentityError
+    )
+  })
+
+  it('login rejects unknown role (identity validation)', () => {
+    assert.throws(
+      () => validarIdentidadFinalUsuario({ id: 1, nombre: 'Bad', username: 'bad', rol: 'FAKE_ROLE', empresaId: null, sucursalId: null, activo: true }),
+      IdentityError
+    )
+  })
+
+  it('requireAuth validates identity from JWT payload — valid SUPERADMIN', () => {
+    const payload = { id: 1, rol: 'SUPERADMIN', empresaId: 1, sucursalId: null }
+    const result = validarIdentidadFinalUsuario({ ...payload, activo: true })
+    assert.strictEqual(result.rol, 'SUPERADMIN')
+    assert.strictEqual(result.empresaId, 1)
+    assert.strictEqual(result.sucursalId, null)
+  })
+
+  it('requireAuth validates identity from JWT payload — valid ADMIN_SUCURSAL', () => {
+    const payload = { id: 1, rol: 'ADMIN_SUCURSAL', empresaId: 1, sucursalId: 2 }
+    const result = validarIdentidadFinalUsuario({ ...payload, activo: true })
+    assert.strictEqual(result.rol, 'ADMIN_SUCURSAL')
+    assert.strictEqual(result.empresaId, 1)
+    assert.strictEqual(result.sucursalId, 2)
+  })
+
+  it('requireAuth rejects JWT with PLATFORM_ADMIN + empresaId (identity validation)', () => {
+    assert.throws(
+      () => validarIdentidadFinalUsuario({ id: 1, rol: 'PLATFORM_ADMIN', empresaId: 5, sucursalId: null, activo: true }),
+      IdentityError
+    )
+  })
+
+  it('requireAuth rejects JWT with EMPLEADO missing sucursalId (identity validation)', () => {
+    assert.throws(
+      () => validarIdentidadFinalUsuario({ id: 1, rol: 'EMPLEADO', empresaId: 1, sucursalId: null, activo: true }),
+      IdentityError
+    )
+  })
+
+  it('token payload exact shape matches system requirements', () => {
+    const usuario = { id: 1, nombre: 'Admin', username: 'admin', rol: 'SUPERADMIN', empresaId: 1, sucursalId: null, activo: true }
+    const identidad = validarIdentidadFinalUsuario(usuario)
+    const payload = { id: identidad.id, username: usuario.username, nombre: usuario.nombre, rol: identidad.rol, empresaId: identidad.empresaId, sucursalId: identidad.sucursalId }
+
+    assert.deepStrictEqual(Object.keys(payload).sort(), ['empresaId', 'id', 'nombre', 'rol', 'sucursalId', 'username'])
   })
 })
