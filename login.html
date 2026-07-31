@@ -18,139 +18,93 @@
 <div class="card">
 
   <div class="left">
-
     <div class="logo-wrap">
       <img src="Imagenes/logo-jesha.png" alt="Ferretería e Iluminación JESHA" />
     </div>
 
-    <div id="login-step" class="step-active">
-      <form id="login-form" class="form-block">
+    <!-- FORMULARIO CORREGIDO -->
+    <form id="login-form" class="form-block">
 
-        <h1>Inicio de Sesión</h1>
+      <h1>Inicio de Sesión</h1>
 
-        <div class="field">
+      <div class="field">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/>
+          <path d="M9 9h1"/><path d="M14 9h1"/><path d="M9 13h1"/><path d="M14 13h1"/>
+          <path d="M10 21v-4h4v4"/>
+        </svg>
+        <input
+          type="text"
+          id="empresa-slug"
+          placeholder="Empresa (ej. jesha)"
+          autocomplete="organization"
+          autocapitalize="none"
+          spellcheck="false"
+          maxlength="80"
+          required
+        />
+      </div>
+
+      <div class="field">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+          <circle cx="12" cy="7" r="4"/>
+        </svg>
+        <input 
+          type="text" 
+          id="username"
+          placeholder="Usuario" 
+          autocomplete="username"
+          required 
+        />
+      </div>
+
+      <div class="field">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+        </svg>
+        <input 
+          type="password" 
+          id="password"
+          placeholder="Contraseña" 
+          autocomplete="current-password"
+          required 
+        />
+        <button type="button" class="btn-eye" id="btn-toggle-pass">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
-            <polyline points="9 22 9 12 15 12 15 22"/>
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+            <circle cx="12" cy="12" r="3"/>
           </svg>
-          <input
-            type="text"
-            id="empresa-slug"
-            placeholder="Empresa (ej. jesha)"
-            autocomplete="organization"
-            autocapitalize="none"
-            spellcheck="false"
-            maxlength="80"
-            required
-          />
-        </div>
-
-        <div class="field">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
-               stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-            <circle cx="12" cy="7" r="4"/>
-          </svg>
-          <input
-            type="text"
-            id="username"
-            placeholder="Usuario"
-            autocomplete="username"
-            required
-          />
-        </div>
-
-        <div class="field">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
-               stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-          </svg>
-          <input
-            type="password"
-            id="password"
-            placeholder="Contraseña"
-            autocomplete="current-password"
-            required
-          />
-          <button type="button" class="btn-eye" id="btn-toggle-pass">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
-                 stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-              <circle cx="12" cy="12" r="3"/>
-            </svg>
-          </button>
-        </div>
-
-        <label class="remember-wrap">
-          <input type="checkbox" id="recordar-empresa" checked />
-          <span class="remember-label">Recordar empresa</span>
-        </label>
-
-        <div id="login-error" class="error-msg"></div>
-
-        <button type="submit" class="btn-login">
-          Ingresar
-        </button>
-
-      </form>
-    </div>
-
-    <div id="sucursal-step" class="step-hidden">
-      <div class="sucursal-block">
-        <h1>Selecciona tu Sucursal</h1>
-
-        <p class="sucursal-bienvenida" id="sucursal-bienvenida"></p>
-
-        <div class="sucursal-select-wrap">
-          <select id="sucursal-select" class="sucursal-select">
-            <option value="">— Selecciona una sucursal —</option>
-          </select>
-        </div>
-
-        <div id="sucursal-error" class="error-msg"></div>
-
-        <button type="button" class="btn-login" id="btn-continuar-sucursal">
-          Continuar
         </button>
       </div>
-    </div>
 
+      <!-- MENSAJE DE ERROR -->
+      <div 
+        id="login-error" 
+        style="color:#ff6b6b; margin-bottom:10px; text-align:center; font-size:0.9rem;">
+      </div>
+
+      <button type="submit" class="btn-login">
+        Ingresar
+      </button>
+
+    </form>
   </div>
 
   <div class="right">
-    <div class="right-bg"></div>
-    <div class="right-content">
-      <div class="right-illustration">
-        <svg viewBox="0 0 320 400" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <rect width="320" height="400" rx="0"/>
-          <circle cx="160" cy="120" r="48" fill="rgba(255,255,255,0.08)"/>
-          <circle cx="160" cy="120" r="32" fill="rgba(255,255,255,0.12)"/>
-          <rect x="70" y="200" width="180" height="12" rx="6" fill="rgba(255,255,255,0.1)"/>
-          <rect x="90" y="224" width="140" height="8" rx="4" fill="rgba(255,255,255,0.06)"/>
-          <rect x="100" y="260" width="120" height="80" rx="8" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
-          <rect x="110" y="270" width="100" height="6" rx="3" fill="rgba(255,255,255,0.08)"/>
-          <rect x="110" y="284" width="60" height="6" rx="3" fill="rgba(255,255,255,0.05)"/>
-          <rect x="110" y="298" width="80" height="6" rx="3" fill="rgba(255,255,255,0.05)"/>
-          <rect x="110" y="312" width="40" height="6" rx="3" fill="rgba(255,255,255,0.08)"/>
-          <circle cx="160" cy="360" r="16" fill="rgba(255,255,255,0.06)"/>
-          <circle cx="132" cy="360" r="6" fill="rgba(255,255,255,0.08)"/>
-          <circle cx="188" cy="360" r="6" fill="rgba(255,255,255,0.08)"/>
-          <path d="M 80 180 Q 160 160 240 180" stroke="rgba(255,255,255,0.08)" stroke-width="2" fill="none"/>
-          <path d="M 100 190 Q 160 174 220 190" stroke="rgba(255,255,255,0.05)" stroke-width="1.5" fill="none"/>
-        </svg>
-      </div>
-      <div class="right-tagline">
-        <strong>JESHA POS</strong>
-        <span>Sistema de punto de venta empresarial</span>
-      </div>
-    </div>
+    <img src="Imagenes/panel-derecho.png" alt="" role="presentation" />
   </div>
 
 </div>
 
+<!-- SCRIPT CONECTADO -->
 <script src="config.js"></script>
+
 <script src="session.js"></script>
 <script src="login.js"></script>
 
