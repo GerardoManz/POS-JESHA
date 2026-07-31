@@ -1,7 +1,6 @@
 const jwt    = require('jsonwebtoken')
 const prisma = require('../lib/prisma')
 const debug = require('../lib/debug')
-const { validarIdentidadFinalUsuario } = require('../security/identity')
 
 // ═══════════════════════════════════════════════════════════════════
 // REQUIREAUTH - Verificar que el usuario tiene token válido
@@ -31,13 +30,6 @@ const requireAuth = async (req, res, next) => {
 
   try {
     const payload = jwt.verify(token, process.env.JWT_SECRET)
-
-    validarIdentidadFinalUsuario({
-      id: payload.id, rol: payload.rol,
-      empresaId: payload.empresaId, sucursalId: payload.sucursalId,
-      activo: true
-    })
-
     req.usuario = payload
     req.usuarioId = payload.id
 
@@ -57,10 +49,6 @@ const requireAuth = async (req, res, next) => {
         debug.recordAuth401(reason, req.path)
       }
       return res.status(401).json({ error: 'Token inválido o expirado' })
-    }
-    if (err.name === 'IdentityError') {
-      if (debug.isEnabled()) debug.recordAuth401('invalid_identity', req.path)
-      return res.status(401).json({ error: 'Token inválido' })
     }
     console.error('Error en requireAuth:', err)
     return res.status(500).json({ error: 'Error interno de autenticación' })
