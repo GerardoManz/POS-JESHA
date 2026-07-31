@@ -11,8 +11,6 @@ const {
   crearPrincipalTenant
 } = require('../security/identity')
 const { resolveTenantAuthConfig } = require('../modules/auth/tenant-auth.config')
-const { hydrateTenantRequestContext } = require('./request-context.middleware')
-const { RequestContextError } = require('../security/request-context')
 
 const TENANT_AUTH_CONFIG = resolveTenantAuthConfig()
 
@@ -159,7 +157,6 @@ async function requireAuth(req, res, next) {
     req.usuario = hydrated.actor
     req.usuarioId = hydrated.actor.id
     req.authPrincipal = hydrated.principal
-    await hydrateTenantRequestContext(req, hydrated.actor)
     return next()
   } catch (err) {
     if (
@@ -169,19 +166,6 @@ async function requireAuth(req, res, next) {
     ) {
       recordTenant401(req, err.name || 'TENANT_TOKEN_INVALID')
       return res.status(401).json({ error: 'Token inválido o expirado' })
-    }
-
-    if (err instanceof RequestContextError) {
-      const status = err.status || 403
-      if (status >= 500) {
-        console.error('Error construyendo request context:', err)
-        return res.status(500).json({ error: 'Error interno de autenticación' })
-      }
-      recordTenant401(req, err.code || 'REQUEST_CONTEXT_REJECTED')
-      return res.status(status).json({
-        error: status === 400 ? err.message : 'Acceso tenant denegado',
-        code: err.code
-      })
     }
 
     if (err instanceof TenantTokenError || err instanceof IdentityError) {
@@ -218,24 +202,13 @@ const requireRole = (...roles) => {
 }
 
 const requireSucursalAccess = (req, res, next) => {
-  const contextSucursalId = req.context?.branch?.sucursalId ?? null
-  const raw = req.params?.sucursalId ?? req.body?.sucursalId ?? req.query?.sucursalId
-
-  if (raw === undefined) {
-    if (contextSucursalId === null) {
-      return res.status(400).json({ error: 'Selecciona una sucursal para realizar esta operación' })
-    }
-    return next()
-  }
-
-  const value = typeof raw === 'number' ? raw : Number(String(raw).trim())
-  if (!Number.isInteger(value) || value <= 0) {
-    return res.status(400).json({ error: 'sucursalId inválido' })
-  }
-  if (contextSucursalId === null || contextSucursalId !== value) {
+  if (req.usuario.rol === 'SUPERADMIN') return next()
+  const sucursalSolicitada = parseInt(req.params.sucursalId || req.body.sucursalId)
+  if (!sucursalSolicitada) return next()
+  if (req.usuario.sucursalId !== sucursalSolicitada) {
     return res.status(403).json({ error: 'No tienes acceso a esta sucursal' })
   }
-  return next()
+  next()
 }
 
 module.exports = {
