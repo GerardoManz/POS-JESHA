@@ -120,7 +120,6 @@ app.get('/facturar', (req, res) => {
 })
 
 // ── Rutas PÚBLICAS del API ──
-app.use('/platform/auth', require('./modules/platform-auth/platform-auth.routes'))
 app.use('/auth',          require('./modules/auth/auth.routes'))
 app.use('/facturar/api',  require('./modules/facturacion/facturacion.routes'))
 
@@ -147,7 +146,7 @@ app.use('/reportes', requireAuth, require('./modules/reportes/reporte-stock.rout
 app.use('/sucursales', requireAuth, require('./modules/sucursal/sucursal.routes'))
 app.use('/trabajadores', requireAuth, require('./modules/trabajadores/trabajadores.routes'))
 app.use('/impresion',    require('./modules/impresion/impresion.routes')) // rutas de agente + frontend, auth interna
-app.use('/precios',     requireAuth, requireRole('PRECIOS', 'ADMIN_SUCURSAL', 'SUPERADMIN'), require('./modules/precios/precios.routes'))
+app.use('/precios',     requireAuth, requireRole('PRECIOS', 'ADMIN_SUCURSAL', 'SUPERADMIN', 'PLATFORM_ADMIN'), require('./modules/precios/precios.routes'))
 
 // ── Imágenes de productos ──
 app.use('/imagenes', express.static(path.join(__dirname, 'public/imagenes')))
