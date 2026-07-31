@@ -53,7 +53,7 @@ function animarKPI(el, valorFinal, formateador, duracion) {
 }
 
 // ── Estado del filtro ──
-let sucursalSeleccionada = window.jeshaSession?.getSelectedSucursalId() ? String(window.jeshaSession.getSelectedSucursalId()) : '' // '' = todas
+let sucursalSeleccionada = '' // '' = todas
 let listaSucursales      = []
 let cacheVentasHoy       = null
 let cacheVentasTotales   = null
@@ -96,7 +96,7 @@ function categoriaStock(stock, minimo) {
 //  FILTRO DE SUCURSAL — visible solo para SUPERADMIN
 // ════════════════════════════════════════════════════════════════════
 async function inicializarFiltroSucursal() {
-  if (!['SUPERADMIN'].includes(USUARIO.rol)) return
+  if (!['SUPERADMIN', 'PLATFORM_ADMIN'].includes(USUARIO.rol)) return
 
   document.getElementById('sucursal-filter').style.display = 'flex'
 
@@ -110,13 +110,9 @@ async function inicializarFiltroSucursal() {
     const sel = document.getElementById('filtro-sucursal')
     sel.innerHTML = '<option value="">🏢 Todas las sucursales</option>' +
       listaSucursales.map(s => `<option value="${s.id}">${s.nombre}</option>`).join('')
-    sel.value = sucursalSeleccionada
 
     sel.addEventListener('change', e => {
       sucursalSeleccionada = e.target.value
-      window.jeshaSession?.setSelectedSucursalId(sucursalSeleccionada || null)
-      const sidebarSelect = document.getElementById('tenant-branch-select')
-      if (sidebarSelect) sidebarSelect.value = sucursalSeleccionada
       cargarKPIs()
       cargarStockBajo()
     })

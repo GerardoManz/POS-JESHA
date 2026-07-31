@@ -2,7 +2,7 @@
 ;(function() {
   try {
     const rol = JSON.parse(localStorage.getItem('jesha_usuario') || '{}').rol
-    const ROLES_PERMITIDOS = ['SUPERADMIN', 'ADMIN_SUCURSAL']
+    const ROLES_PERMITIDOS = ['SUPERADMIN', 'ADMIN_SUCURSAL', 'PLATFORM_ADMIN']
     if (!ROLES_PERMITIDOS.includes(rol)) {
       window.location.replace('dashboard.html')
     }
@@ -1120,7 +1120,7 @@ async function cargarFiltros() {
     }
 
     const zonSelect = $id('filtro-zona')
-    if (zonSelect && usuario.rol === 'SUPERADMIN') {
+    if (zonSelect && (usuario.rol === 'SUPERADMIN' || usuario.rol === 'PLATFORM_ADMIN')) {
       try {
         const sucs = await apiFetch('/sucursales').catch(() => null)
         const data = sucs?.data || sucs?.sucursales || sucs || []
@@ -1246,9 +1246,8 @@ async function cargarSucursalesStock() {
   const select = $id('stock-sucursal')
   if (!select || select.options.length > 1) return
   try {
-    const usuario = window.jeshaSession?.getUsuario() || {}
-    const selectedSucursalId = window.jeshaSession?.getSelectedSucursalId() || null
-    if (usuario.rol === 'SUPERADMIN' || (usuario.rol === 'PRECIOS' && !usuario.sucursalId)) {
+    const usuario = JSON.parse(localStorage.getItem('jesha_usuario') || '{}')
+    if (usuario.rol === 'SUPERADMIN' || usuario.rol === 'PLATFORM_ADMIN') {
       const data = await apiFetch('/sucursales')
       const sucs = data?.data || data?.sucursales || data || []
       sucs.forEach(s => {
@@ -1257,13 +1256,13 @@ async function cargarSucursalesStock() {
         opt.textContent = s.nombre
         select.appendChild(opt)
       })
-    } else if (selectedSucursalId) {
+    } else {
       const opt = document.createElement('option')
-      opt.value = selectedSucursalId
-      opt.textContent = usuario.Sucursal?.nombre || 'Mi sucursal'
+      opt.value = usuario.sucursalId || 1
+      opt.textContent = 'Mi sucursal'
       select.appendChild(opt)
     }
-    select.value = selectedSucursalId ? String(selectedSucursalId) : ''
+    select.value = usuario.sucursalId || 1
   } catch (e) {
     console.warn('No se pudieron cargar sucursales:', e.message)
   }

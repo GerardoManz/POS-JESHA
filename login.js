@@ -1,25 +1,18 @@
-'use strict'
-
 const API_URL = (typeof CONFIG !== 'undefined' ? CONFIG.API_URL : null) || window.__JESHA_API_URL__ || 'http://localhost:3000'
 const DASHBOARD_PAGE = 'dashboard.html'
-const LAST_EMPRESA_KEY = 'jesha_last_empresa_slug'
 
-if (window.jeshaSession?.isValid()) {
+// Si ya hay sesión activa, redirige al dashboard
+const token = localStorage.getItem('jesha_token')
+if (token) {
   window.location.href = DASHBOARD_PAGE
-} else if (localStorage.getItem('jesha_token') || localStorage.getItem('jesha_usuario')) {
-  window.jeshaSession?.clear()
 }
 
 const form = document.getElementById('login-form')
-const empresaSlugInput = document.getElementById('empresa-slug')
 const usernameInput = document.getElementById('username')
 const passwordInput = document.getElementById('password')
 const errorBox = document.getElementById('login-error')
 const btnLogin = document.querySelector('.btn-login')
 const btnTogglePass = document.getElementById('btn-toggle-pass')
-
-const lastEmpresaSlug = localStorage.getItem(LAST_EMPRESA_KEY)
-if (lastEmpresaSlug) empresaSlugInput.value = lastEmpresaSlug
 
 btnTogglePass.addEventListener('click', () => {
   const visible = passwordInput.type === 'text'
@@ -32,9 +25,8 @@ btnTogglePass.addEventListener('click', () => {
 form.addEventListener('submit', async (event) => {
   event.preventDefault()
 
-  const empresaSlug = empresaSlugInput.value.trim().toLowerCase()
   const username = usernameInput.value.trim()
-  const password = passwordInput.value
+  const password = passwordInput.value.trim()
 
   btnLogin.disabled = true
   btnLogin.textContent = 'Ingresando...'
@@ -44,25 +36,25 @@ form.addEventListener('submit', async (event) => {
     const response = await fetch(`${API_URL}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ empresaSlug, username, password })
+      body: JSON.stringify({ username, password })
     })
 
-    const data = await response.json().catch(() => null)
+    const data = await response.json()
 
     if (!response.ok) {
-      errorBox.textContent = data?.error || 'Credenciales inválidas'
+      errorBox.textContent = data.error || 'Credenciales inválidas'
       return
     }
 
-    window.jeshaSession.start({ token: data.token, usuario: data.usuario, empresaSlug })
-    localStorage.setItem(LAST_EMPRESA_KEY, empresaSlug)
+    // Guardar token y datos del usuario
+    localStorage.setItem('jesha_token', data.token)
+    localStorage.setItem('jesha_usuario', JSON.stringify(data.usuario))
     localStorage.setItem('jesha_theme', data.usuario?.tema || 'dark')
+
     window.location.href = DASHBOARD_PAGE
+
   } catch (err) {
-    console.error('Error de login tenant:', err)
-    errorBox.textContent = err?.message === 'Sesión tenant inválida'
-      ? 'La cuenta no pertenece al acceso empresarial del POS'
-      : 'No se pudo conectar con el servidor'
+    errorBox.textContent = 'No se pudo conectar con el servidor'
   } finally {
     btnLogin.disabled = false
     btnLogin.textContent = 'Ingresar'

@@ -72,6 +72,7 @@ let usuarioResetId = null
 // Agregar nuevos roles aquí — un solo lugar en el frontend
 const ROL_CONFIG = {
   SUPERADMIN:     { clase: 'badge-superadmin', texto: 'Superadmin' },
+  PLATFORM_ADMIN: { clase: 'badge-platform',   texto: 'Platform Admin' },
   ADMIN_SUCURSAL: { clase: 'badge-admin',       texto: 'Admin Sucursal' },
   PRECIOS:        { clase: 'badge-precios',     texto: 'Precios' },
   EMPLEADO:       { clase: 'badge-vendedor',    texto: 'Empleado' }
@@ -181,7 +182,7 @@ function renderizarTabla() {
     const ultimoLogin = usuario.ultimoLogin 
       ? new Date(usuario.ultimoLogin).toLocaleDateString('es-MX')
       : 'Nunca'
-    const cuentaProtegida = ['SUPERADMIN'].includes(usuario.rol)
+    const cuentaProtegida = ['SUPERADMIN', 'PLATFORM_ADMIN'].includes(usuario.rol)
     
     return `
       <tr>
