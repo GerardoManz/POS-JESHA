@@ -63,20 +63,27 @@ model Empresa {
 // ════════════════════════════════════════════════════════════════════
 
 model AbonoBitacora {
-  id         Int        @id @default(autoincrement())
-  empresaId  Int
-  bitacoraId Int
-  usuarioId  Int
-  monto      Decimal    @db.Decimal(10, 2)
-  metodoPago MetodoPago @default(EFECTIVO)
-  notas      String?
-  creadoEn   DateTime   @default(now())
-  turnoId    Int?
-  Empresa    Empresa    @relation(fields: [empresaId], references: [id])
-  Bitacora   Bitacora   @relation(fields: [bitacoraId], references: [id], onDelete: Cascade)
-  TurnoCaja  TurnoCaja? @relation(fields: [turnoId], references: [id])
-  Usuario    Usuario    @relation(fields: [usuarioId], references: [id])
+  id                    Int             @id @default(autoincrement())
+  empresaId             Int
+  bitacoraId            Int
+  usuarioId             Int
+  monto                 Decimal         @db.Decimal(10, 2)
+  metodoPago            MetodoPago      @default(EFECTIVO)
+  notas                 String?
+  creadoEn              DateTime        @default(now())
+  turnoId               Int?
+  idempotencyKey        String?
+  saldoAntesSnapshot    Decimal?        @db.Decimal(12, 2)
+  saldoDespuesSnapshot  Decimal?        @db.Decimal(12, 2)
+  estadoResultante      EstadoBitacora?
+  cerradaEnSnapshot     DateTime?
+  Empresa               Empresa         @relation(fields: [empresaId], references: [id])
+  Bitacora              Bitacora        @relation(fields: [bitacoraId], references: [id], onDelete: Cascade)
+  TurnoCaja             TurnoCaja?      @relation(fields: [turnoId], references: [id])
+  Usuario               Usuario         @relation(fields: [usuarioId], references: [id])
+  MovimientoCaja        MovimientoCaja?
 
+  @@unique([empresaId, idempotencyKey])
   @@index([bitacoraId])
   @@index([empresaId])
   @@index([turnoId])
@@ -276,17 +283,19 @@ model FacturaCfdi {
 }
 
 model MovimientoCaja {
-  id         Int                @id @default(autoincrement())
-  empresaId  Int
-  turnoId    Int
-  tipo       TipoMovimientoCaja
-  monto      Decimal            @db.Decimal(10, 2)
-  metodoPago MetodoPago?
-  referencia String?
-  notas      String?
-  creadoEn   DateTime           @default(now())
-  Empresa    Empresa            @relation(fields: [empresaId], references: [id])
-  TurnoCaja  TurnoCaja          @relation(fields: [turnoId], references: [id], onDelete: Cascade)
+  id              Int                @id @default(autoincrement())
+  empresaId       Int
+  turnoId         Int
+  tipo            TipoMovimientoCaja
+  monto           Decimal            @db.Decimal(10, 2)
+  metodoPago      MetodoPago?
+  referencia      String?
+  notas           String?
+  creadoEn        DateTime           @default(now())
+  abonoBitacoraId Int?               @unique
+  Empresa         Empresa            @relation(fields: [empresaId], references: [id])
+  TurnoCaja       TurnoCaja          @relation(fields: [turnoId], references: [id], onDelete: Cascade)
+  AbonoBitacora   AbonoBitacora?     @relation(fields: [abonoBitacoraId], references: [id], onDelete: Restrict)
 
   @@index([empresaId])
   @@index([turnoId])
