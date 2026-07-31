@@ -1469,7 +1469,7 @@ const registrarAbono = async (req, res) => {
     const empresaId = getEmpresaId(req)
     const usuarioId = req.usuario.id
     const { rol } = req.usuario
-    const sucursalOperativa = req.context?.branch?.sucursalId ?? null
+    const sucursalOperativa = req.usuario.sucursalId ?? null
 
     if (!sucursalOperativa) {
       return res.status(409).json({ success: false, error: 'Se requiere una sucursal operativa para registrar cobros', codigo: 'CONTEXTO_SUCURSAL_REQUERIDO' })
@@ -1709,7 +1709,7 @@ const contextoCobranza = async (req, res) => {
     }
     const empresaId = getEmpresaId(req)
     const { rol } = req.usuario
-    const sucursalOperativa = req.context?.branch?.sucursalId ?? null
+    const sucursalOperativa = req.usuario.sucursalId ?? null
     if (!sucursalOperativa) {
       return res.status(409).json({ success: false, error: 'Se requiere una sucursal operativa', codigo: 'CONTEXTO_SUCURSAL_REQUERIDO' })
     }
