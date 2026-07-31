@@ -981,11 +981,6 @@ function renderAcciones() {
   // Siempre mostrar botón de reporte completo
   acciones.push(`<button class="btn-secondary" id="btn-reporte-completo">📄 Reporte completo</button>`)
 
-  const ORIGENES_COBRABLES_POS = ['VENTA', 'MANUAL']
-  if (b.estado === 'ABIERTA' && ORIGENES_COBRABLES_POS.includes(b.origen)) {
-    acciones.push(`<button class="btn-success" id="btn-cobrar-pos">🛒 Cobrar en POS</button>`)
-  }
-
   // ABIERTA o PAUSADA → botón "Cerrar manualmente"
   if (b.estado === 'ABIERTA' || b.estado === 'PAUSADA') {
     acciones.push(`<button class="btn-danger" id="btn-abrir-cierre">🔒 Cerrar manualmente</button>`)
@@ -1029,14 +1024,6 @@ function renderAcciones() {
 
   const btnReporte = document.getElementById('btn-reporte-completo')
   if (btnReporte) btnReporte.addEventListener('click', abrirReporteCompleto)
-
-  const btnCobrarPOS = document.getElementById('btn-cobrar-pos')
-  if (btnCobrarPOS) btnCobrarPOS.addEventListener('click', () => cobrarEnPos(bitacoraActual.id))
-}
-
-// ── Enviar bitácora al POS para cobranza ──
-function cobrarEnPos(bitacoraId) {
-  window.location.href = `punto-venta.html?modo=cobranza-bitacora&bitacoraId=${bitacoraId}`
 }
 
 async function abrirModalCancelar() {
@@ -1271,85 +1258,44 @@ async function quitarProducto(detalleId) {
 // ════════════════════════════════════════════════════════════════════
 //  ABONO (requiere turno abierto + ticket opcional)
 // ════════════════════════════════════════════════════════════════════
-function obtenerIntencionAbono(bitacoraId) {
-  const key = `jesha_abono_bitacora_${bitacoraId}`
-  try { const raw = sessionStorage.getItem(key); return raw ? JSON.parse(raw) : null } catch { return null }
-}
-function guardarIntencionAbono(bitacoraId, intent) {
-  sessionStorage.setItem(`jesha_abono_bitacora_${bitacoraId}`, JSON.stringify(intent))
-}
-function eliminarIntencionAbono(bitacoraId) {
-  sessionStorage.removeItem(`jesha_abono_bitacora_${bitacoraId}`)
-}
-
 async function registrarAbono() {
   if (!turnoActual?.abierto) {
     toast('Debes abrir un turno de caja para registrar abonos', 'warning')
     return
   }
-  const montoRaw = document.getElementById('abono-monto').value
+  const monto  = parseFloat(document.getElementById('abono-monto').value)
   const metodo = document.getElementById('abono-metodo').value
   const notas  = document.getElementById('abono-notas').value.trim()
 
-  // Validar formato decimal exacto
-  if (!/^\d{1,10}\.\d{2}$/.test(montoRaw)) { toast('Ingresa un monto válido (ej. 100.00)', 'warning'); return }
-  const montoStr = montoRaw
-  const montoNum = parseFloat(montoStr)
-  if (montoNum <= 0) { toast('Ingresa un monto mayor a 0', 'warning'); return }
+  if (!monto || monto <= 0) { toast('Ingresa un monto válido', 'warning'); return }
 
   const btn = document.getElementById('btn-abonar')
-  if (btn.disabled) return
   btn.disabled = true
-  btn.textContent = 'Procesando...'
-
-  const bid = bitacoraActual.id
-  let intent = obtenerIntencionAbono(bid)
-  let idempotencyKey
-
-  if (intent && intent.monto === montoStr && intent.metodoPago === metodo && intent.bitacoraId === bid) {
-    idempotencyKey = intent.idempotencyKey
-  } else if (intent && intent.estado === 'RESULTADO_DESCONOCIDO') {
-    idempotencyKey = intent.idempotencyKey
-    toast('Reintentando cobro pendiente...', 'info')
-  } else {
-    idempotencyKey = crypto.randomUUID()
-    intent = { bitacoraId: bid, monto: montoStr, metodoPago: metodo, idempotencyKey, estado: 'ENVIANDO' }
-    guardarIntencionAbono(bid, intent)
-  }
 
   try {
-    const payload = { monto: montoStr, metodoPago: metodo, notas, turnoId: turnoActual.id }
-    const res = await apiFetch(`/bitacoras/${bid}/abonos`, {
+    const payload = { monto, metodoPago: metodo, notas, turnoId: turnoActual.id }
+
+    const res = await apiFetch(`/bitacoras/${bitacoraActual.id}/abonos`, {
       method: 'POST',
-      body: JSON.stringify(payload),
-      headers: { 'Idempotency-Key': idempotencyKey }
+      body: JSON.stringify(payload)
     })
-    eliminarIntencionAbono(bid)
-    toast(res.mensaje || 'Abono registrado', res.liquidada ? 'success' : 'info')
+    toast(res.mensaje || 'Abono registrado', res.cerrada ? 'success' : 'info')
     document.getElementById('abono-monto').value = ''
     document.getElementById('abono-notas').value = ''
-    await cargarDetalleBitacora(bid)
+    bitacoraActual = res.data
+    renderDetalle()
     cargarBitacoras(paginaActual)
-  } catch (e) {
-    const status = e?.status || (e?.message?.includes('409') ? 409 : 0)
-    if (status >= 400 && status < 500) {
-      eliminarIntencionAbono(bid)
-      toast('Error: ' + e.message, 'error')
-    } else {
-      intent.estado = 'RESULTADO_DESCONOCIDO'
-      guardarIntencionAbono(bid, intent)
-      toast('Error de conexión. El abono pudo haberse registrado — reintenta.', 'warning')
+
+    // Preguntar si desea imprimir (modal estilizado del sistema)
+    const ultimoAbono = (res.data.AbonoBitacora || []).slice(-1)[0]
+    if (ultimoAbono) {
+      mostrarModalImprimir(monto, ultimoAbono.id)
     }
+  } catch (e) {
+    toast('Error: ' + e.message, 'error')
   } finally {
     btn.disabled = false
-    btn.textContent = '+ Registrar abono'
   }
-}
-
-async function cargarDetalleBitacora(bid) {
-  const d = await apiFetch(`/bitacoras/${bid}`)
-  bitacoraActual = d.data
-  renderDetalle()
 }
 
 // ── Modal estilizado para preguntar si imprimir ──

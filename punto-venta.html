@@ -31,10 +31,6 @@
         <p id="fecha-actual"></p>
         <span class="turno-badge" id="turno-status">⚠️ Sin turno</span>
       </div>
-      <div id="banner-cobranza" style="display:none;background:rgba(100,180,255,0.12);border:1px solid rgba(100,180,255,0.35);border-radius:8px;padding:8px 16px;margin-top:8px;font-size:0.85rem;color:var(--text);">
-        🧾 <strong>Modo cobranza</strong> — Liquidando bitácora <span id="banner-cobranza-folio"></span>
-        <span style="margin-left:12px;">Saldo pendiente: <strong id="banner-cobranza-saldo"></strong></span>
-      </div>
     </header>
 
     <!-- ── CONTENEDOR PRINCIPAL (grid 2 columnas) ── -->
@@ -125,7 +121,7 @@
     </div>
 
         <!-- MÉTODO DE PAGO -->
-        <div id="metodos-normal-section" class="carrito-section-control">
+        <div class="carrito-section-control">
           <label class="control-label">Método de Pago</label>
           <div class="metodos-pago">
             <button class="metodo-btn" data-metodo="EFECTIVO">

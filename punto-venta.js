@@ -139,9 +139,6 @@ let clienteSeleccionado    = null
 let ventaEnProceso         = false
 let clientesLista          = []
 let cotIdActual            = null
-let modoCobranza           = false
-let carritoSoloLectura     = false
-let saldoPendienteCobranza = null
 const productoCache        = new Map()
 
 const CONFIRMAR_BTN_HTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Confirmar venta'
@@ -228,7 +225,6 @@ function animarMonto(elemento, valorFinal, formateador, duracion) {
 // ══════════════════════════════════════════════════════════════════
 
 function guardarCarritoEnSession() {
-  if (modoCobranza) return
   try {
     const estado = {
       carrito,
@@ -312,7 +308,6 @@ function limpiarCarritoSession() {
 // ══════════════════════════════════════════════════════════════════
 
 function actualizarPrecio(productoId, nuevoPrecio) {
-  if (modoCobranza) return
   const item = carrito.find(i => i.id === productoId)
   if (!item) return
   const parsed = parseFloat(nuevoPrecio)
@@ -333,18 +328,6 @@ function actualizarPrecio(productoId, nuevoPrecio) {
 
 document.addEventListener('DOMContentLoaded', async () => {
   console.log('📄 DOMContentLoaded: Punto de Venta')
-
-  // Detectar modo cobranza
-  const params = new URLSearchParams(window.location.search)
-  if (params.get('modo') === 'cobranza-bitacora') {
-    const bid = parseInt(params.get('bitacoraId'))
-    if (bid && bid > 0) {
-      modoCobranza = true
-      carritoSoloLectura = true
-      bitacoraIdCobranza = bid
-    }
-  }
-
   await verificarTurno()
   purgarPausadasDeOtroTurno()
   actualizarBadgePausadas()
@@ -354,11 +337,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Quitar selección predeterminada de método de pago
   document.querySelectorAll('.metodo-btn').forEach(b => b.classList.remove('active'))
   metodoPagoSeleccionado = null
-
-  if (modoCobranza) {
-    await activarModoCobranza()
-    return
-  }
 
   const tieneCotizacion = localStorage.getItem('pos_cotizacion')
   if (tieneCotizacion) {
@@ -1191,7 +1169,6 @@ function construirDetalleVentaPayload(item) {
 // ══════════════════════════════════════════════════════════════════
 
 function agregarAlCarrito(productoId, nombre, precio, esGranel = false, unidadVenta = '') {
-  if (modoCobranza) return
   const idParsed = parseInt(productoId, 10)
   const cached = productoCache.get(idParsed)
   const factor = cached?.factorConversion ? parseFloat(cached.factorConversion) : 1
@@ -1591,7 +1568,6 @@ function confirmarCantidadGranel() {
 }
 
 function eliminarDelCarrito(productoId) {
-  if (modoCobranza) return
   carrito = carrito.filter(item => item.id !== productoId)
   const fila = carritoTbody?.querySelector(`.carrito-row[data-id="${productoId}"]`)
   if (fila && !prefersReducedMotion()) {
@@ -1617,7 +1593,6 @@ function ajustarCantidadCarrito(productoId, delta) {
 }
 
 function actualizarCantidad(productoId, cantidad) {
-  if (modoCobranza) return
   const item = carrito.find(i => i.id === productoId)
   if (item) {
     let cantParsed = parseFloat(cantidad)
@@ -1664,24 +1639,6 @@ function actualizarCarrito(opciones = {}) {
       const cantidadVisible = item.cantidadVisible || item.cantidad
       const unidadLabel = esEmpaque ? (item.unidadCompra || 'caja') : (item.unidadVenta || '')
       const sku = obtenerSkuCarrito(item)
-      const sub = typeof item.subtotalFijo === 'number' ? item.subtotalFijo : subtotalLinea(item)
-
-      // Modo cobranza: solo lectura (sin inputs, sin botones)
-      if (carritoSoloLectura) {
-        return `
-        <tr class="carrito-row" data-id="${item.id}">
-          <td class="carrito-producto-nombre">
-            <div class="cart-product-title">${escaparHtml(item.nombre)}</div>
-            ${sku ? `<div class="cart-product-sku">SKU: ${escaparHtml(sku)}</div>` : ''}
-          </td>
-          <td style="text-align:center;"><span>$${item.precio.toFixed(2)}</span></td>
-          <td style="text-align:center;"><span>${cantidadVisible} ${unidadLabel}</span></td>
-          <td style="text-align:right;"><span class="cart-subtotal">$${sub.toFixed(2)}</span></td>
-          <td></td>
-        </tr>`
-      }
-
-      // Modo normal: editable
       return `
       <tr class="carrito-row" data-id="${item.id}">
         <td class="carrito-producto-nombre">
@@ -1754,7 +1711,6 @@ function actualizarCarrito(opciones = {}) {
 }
 
 async function limpiarCarrito() {
-  if (modoCobranza) return
   if (carrito.length === 0) return
   const ok = await jeshaConfirm({
     title: 'Limpiar carrito',
@@ -2177,12 +2133,6 @@ function mostrarToast(mensaje, tipo = 'error', duracion = 4000) {
 async function completarVenta() {
   if (carrito.length === 0)    { mostrarToast('El carrito está vacío', 'warning'); return }
   if (!turnoActivo)            { mostrarToast('No hay turno abierto', 'warning'); return }
-
-  if (modoCobranza) {
-    await confirmarCobranza()
-    return
-  }
-
   if (!metodoPagoSeleccionado) {
     const metodos = document.querySelector('.metodos-pago')
     if (metodos) {
@@ -2873,200 +2823,6 @@ function configurarEventosCotizar() {
 }
 
 // ══════════════════════════════════════════════════════════════════
-//  MODO COBRANZA — Liquidar bitácora desde POS
-// ══════════════════════════════════════════════════════════════════
-
-async function activarModoCobranza() {
-  // Banner de cobranza
-  const banner = document.getElementById('banner-cobranza')
-  if (banner) banner.style.display = 'block'
-
-  // Catálogo: reemplazar contenido con mensaje (conserva área)
-  if (typeof productosGrid !== 'undefined' && productosGrid) {
-    productosGrid.innerHTML = `<div style="padding:60px 20px;text-align:center;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:12px;">
-      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.5"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
-      <div style="font-size:1rem;font-weight:600;">Modo cobranza</div>
-      <div style="font-size:0.82rem;">Los productos provienen de la bitácora y no pueden modificarse.</div>
-    </div>`
-  }
-  const searchInput = document.getElementById('search-productos')
-  if (searchInput) { searchInput.disabled = true; searchInput.placeholder = 'Modo cobranza' }
-
-  // Métodos: reutilizar sección normal, deshabilitar MIXTO y CREDITO_CLIENTE
-  document.querySelectorAll('.metodo-btn').forEach(btn => {
-    const metodo = btn.dataset.metodo
-    if (metodo === 'MIXTO' || metodo === 'CREDITO_CLIENTE') {
-      btn.disabled = true
-      btn.setAttribute('aria-disabled', 'true')
-      btn.style.opacity = '0.4'
-      btn.style.cursor = 'not-allowed'
-    }
-  })
-  // Si había método seleccionado no permitido, limpiar
-  if (metodoPagoSeleccionado === 'MIXTO' || metodoPagoSeleccionado === 'CREDITO_CLIENTE') {
-    metodoPagoSeleccionado = null
-    document.querySelectorAll('.metodo-btn').forEach(b => b.classList.remove('active'))
-  }
-
-  // Botón principal: solo cambiar texto
-  if (btnCompletarVenta) {
-    btnCompletarVenta.textContent = '💰 Cobrar y liquidar'
-  }
-
-  // Ocultar controles no aplicables
-  const toHide = ['btn-limpiar-carrito','btn-cotizar-carrito','btn-pausar-venta','btn-articulo-rapido']
-  toHide.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none' })
-  const clienteWrap = document.getElementById('cliente-selector-wrap')
-  if (clienteWrap) clienteWrap.style.display = 'none'
-
-  try {
-    const res = await apiFetch(`/bitacoras/${bitacoraIdCobranza}/contexto-cobranza`)
-    const ctx = res.data
-
-    if (!ctx) { toast('No se pudo cargar la bitácora', 'error'); return }
-
-    document.getElementById('banner-cobranza-folio').textContent = ctx.folio
-    document.getElementById('banner-cobranza-saldo').textContent = '$' + ctx.saldoPendiente
-    saldoPendienteCobranza = ctx.saldoPendiente
-
-    // Etiqueta de origen en banner
-    const bannerDiv = document.getElementById('banner-cobranza')
-    if (bannerDiv) {
-      const origenLabel = ctx.origen === 'MANUAL' ? 'Bitácora manual' : 'Venta a crédito'
-      const q = bannerDiv.querySelector('strong')
-      if (q) q.textContent = `Modo cobranza — ${origenLabel}`
-    }
-
-    // Llenar carrito con productos (solo lectura)
-    carrito = ctx.productos.map(p => ({
-      id: p.id,
-      nombre: p.nombre,
-      precio: parseFloat(p.precioUnitario),
-      cantidad: parseFloat(p.cantidad),
-      esGranel: false,
-      unidadVenta: p.unidadVenta,
-      subtotalFijo: parseFloat(p.subtotal)
-    }))
-
-    // Asignar cliente
-    if (ctx.cliente) {
-      clienteSeleccionado = { id: ctx.cliente.id, nombre: ctx.cliente.nombre }
-      if (typeof clienteNombre !== 'undefined' && clienteNombre) clienteNombre.value = ctx.cliente.nombre
-      const badge = document.getElementById('cliente-seleccionado-badge')
-      const badgeNombre = document.getElementById('cliente-badge-nombre')
-      if (badge && badgeNombre) {
-        badgeNombre.textContent = ctx.cliente.nombre
-        badge.style.display = 'flex'
-      }
-    }
-
-    actualizarCarrito()
-    btnCompletarVenta.disabled = false
-
-    // Verificar si existe una intención previa (recarga tras timeout)
-    const intentPrevia = obtenerIntencionCobranza()
-    if (intentPrevia && intentPrevia.estado === 'RESULTADO_DESCONOCIDO') {
-      metodoPagoSeleccionado = intentPrevia.metodoPago
-      // Seleccionar visualmente el botón en la sección normal
-      if (metodoPagoSeleccionado) {
-        document.querySelectorAll('.metodo-btn').forEach(b => {
-          b.classList.toggle('active', b.dataset.metodo === intentPrevia.metodoPago)
-        })
-      }
-    }
-  } catch (e) {
-    toast('Error: ' + (e.message || 'No se pudo cargar'), 'error')
-  }
-}
-
-function obtenerIntencionCobranza() {
-  const key = `jesha_cobranza_bitacora_${bitacoraIdCobranza}`
-  try {
-    const raw = sessionStorage.getItem(key)
-    return raw ? JSON.parse(raw) : null
-  } catch { return null }
-}
-
-function guardarIntencionCobranza(intent) {
-  const key = `jesha_cobranza_bitacora_${bitacoraIdCobranza}`
-  sessionStorage.setItem(key, JSON.stringify(intent))
-}
-
-function eliminarIntencionCobranza() {
-  const key = `jesha_cobranza_bitacora_${bitacoraIdCobranza}`
-  sessionStorage.removeItem(key)
-}
-
-async function confirmarCobranza() {
-  if (ventaEnProceso) return
-  if (!metodoPagoSeleccionado) { mostrarToast('Selecciona el método de pago', 'warning'); return }
-  if (!turnoActivo) { mostrarToast('No hay turno abierto', 'warning'); return }
-  if (!saldoPendienteCobranza) { mostrarToast('Saldo no disponible', 'error'); return }
-
-  const montoStr = saldoPendienteCobranza
-
-  let intent = obtenerIntencionCobranza()
-  let idempotencyKey
-
-  if (intent && intent.monto === montoStr && intent.metodoPago === metodoPagoSeleccionado && intent.bitacoraId === bitacoraIdCobranza) {
-    idempotencyKey = intent.idempotencyKey
-  } else if (intent && intent.estado === 'RESULTADO_DESCONOCIDO') {
-    mostrarToast('Hay un cobro pendiente. Reintentando con la misma clave...', 'info')
-    idempotencyKey = intent.idempotencyKey
-  } else {
-    idempotencyKey = crypto.randomUUID()
-    intent = {
-      bitacoraId: bitacoraIdCobranza,
-      monto: montoStr,
-      metodoPago: metodoPagoSeleccionado,
-      idempotencyKey,
-      estado: 'ENVIANDO'
-    }
-    guardarIntencionCobranza(intent)
-  }
-
-  ventaEnProceso = true
-  btnCompletarVenta.disabled = true
-  btnCompletarVenta.innerHTML = '<span class="spinner-btn"></span> Procesando...'
-
-  try {
-    const res = await apiFetch(`/bitacoras/${bitacoraIdCobranza}/abonos`, {
-      method: 'POST',
-      body: JSON.stringify({ monto: montoStr, metodoPago: metodoPagoSeleccionado }),
-      headers: { 'Idempotency-Key': idempotencyKey }
-    })
-
-    eliminarIntencionCobranza()
-
-    if (res.liquidada) {
-      mostrarToast('✅ Bitácora liquidada correctamente', 'success')
-      if (typeof mostrarModalExito === 'function') {
-        document.getElementById('exito-total').textContent = '$' + montoStr
-        document.getElementById('exito-metodo').textContent = metodoPagoSeleccionado
-        document.getElementById('exito-cambio').textContent = '$0.00'
-        mostrarModalExito()
-      }
-    } else {
-      mostrarToast('✅ Abono registrado — Saldo pendiente: $' + (res.saldoPosterior || '0.00'), 'info')
-    }
-  } catch (e) {
-    const status = e?.status || (e?.message?.includes('409') ? 409 : 0)
-    if (status >= 400 && status < 500) {
-      eliminarIntencionCobranza()
-      mostrarToast('Error: ' + (e.message || 'Error de conexión'), 'error')
-    } else {
-      intent.estado = 'RESULTADO_DESCONOCIDO'
-      guardarIntencionCobranza(intent)
-      mostrarToast('Cobro enviado pero sin respuesta. Reintenta con el mismo método.', 'warning')
-    }
-  } finally {
-    ventaEnProceso = false
-    btnCompletarVenta.disabled = false
-    btnCompletarVenta.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Cobrar y liquidar'
-  }
-}
-
-// ══════════════════════════════════════════════════════════════════
 //  CARGAR COTIZACIÓN / PEDIDO DESDE STORAGE
 // ══════════════════════════════════════════════════════════════════
 
@@ -3313,16 +3069,11 @@ function configurarEventListeners() {
 
   metodosPayButtons.forEach(btn => {
     btn.addEventListener('click', e => {
-      var target = e.target.closest('.metodo-btn')
-      const metodo = target.dataset.metodo
-
-      // Guarda: en modo cobranza, bloquear MIXTO y CREDITO_CLIENTE
-      if (modoCobranza && ['MIXTO', 'CREDITO_CLIENTE'].includes(metodo)) return
-
       metodosPayButtons.forEach(b => {
         b.classList.remove('active')
         b.setAttribute('aria-pressed', 'false')
       })
+      var target = e.target.closest('.metodo-btn')
 
       // ── Ripple ──
       const rect = target.getBoundingClientRect()
