@@ -30,17 +30,6 @@ const FORMA_PAGO_SAT = {
   TRANSFERENCIA: '03'
 }
 
-function resolverFormaPagoSat(metodoPago) {
-  const forma = FORMA_PAGO_SAT[metodoPago]
-  if (!forma) {
-    throw Object.assign(
-      new Error(`El método de pago ${metodoPago} no es facturable.`),
-      { status: 409, codigo: 'METODO_PAGO_NO_FACTURABLE' }
-    )
-  }
-  return forma
-}
-
 const PERIODICIDAD_FACTURAPI = {
   '01': 'day',
   '02': 'week',
@@ -177,7 +166,7 @@ function buildInvoicePayload({ rfc, razonSocial, regimenFiscal, codigoPostal, us
       address:    { zip: codigoPostal.trim() }
     },
     use:            usoCfdi,
-    payment_form:   resolverFormaPagoSat(metodoPago),
+    payment_form:   FORMA_PAGO_SAT[metodoPago] || '01',
     payment_method: 'PUE',
     items
   }
@@ -375,12 +364,6 @@ exports.obtenerVentaPorToken = async (req, res) => {
       })
     }
     if (venta.estado === 'CANCELADA') return res.status(400).json({ error: 'Esta venta fue cancelada y no puede facturarse.' })
-    if (venta.metodoPago === 'CREDITO_CLIENTE') {
-      return res.status(409).json({
-        error: 'La facturación de ventas a crédito no está disponible en línea. Solicita tu factura directamente en sucursal.',
-        codigo: 'VENTA_CREDITO_FACTURACION_NO_DISPONIBLE'
-      })
-    }
     if (venta.facturaEstado === 'BLOQUEADA') return res.status(400).json({ error: 'Esta venta no puede facturarse en línea (efectivo mayor a $2,000). Solicita tu factura directamente en sucursal.' })
     if (horas > HORAS_LIMITE_QR) return res.status(400).json({ razon: 'TIEMPO_EXPIRADO', error: 'El plazo de autofacturación en línea (3 días) venció. Solicita tu factura directamente en sucursal.' })
     if (venta.facturaEstado === 'VENCIDA' || ahora > new Date(venta.facturaLimite)) return res.status(400).json({ error: 'El plazo para solicitar factura venció. Contacta a la sucursal si necesitas ayuda.' })
@@ -462,12 +445,6 @@ exports.solicitarFactura = async (req, res) => {
 
     const empresaId = venta.empresaId
     if (venta.estado === 'CANCELADA') return res.status(400).json({ error: 'Venta cancelada.' })
-    if (venta.metodoPago === 'CREDITO_CLIENTE') {
-      return res.status(409).json({
-        error: 'La facturación de ventas a crédito estará disponible cuando se implemente PPD y complementos de pago.',
-        codigo: 'VENTA_CREDITO_FACTURACION_NO_DISPONIBLE'
-      })
-    }
     if (venta.facturaEstado === 'BLOQUEADA') return res.status(400).json({ error: 'Venta no facturable en línea.' })
     // Gate por canal: QR público = 72h desde la venta; interno (mostrador) = mes fiscal (facturaLimite).
     // Fail-safe: cualquier valor que no sea 'INTERNO' explícito se trata como QR (canal restrictivo).
@@ -673,26 +650,6 @@ exports.timbrarManual = async (req, res) => {
 
     const fp = getFacturapi()
     if (!fp) return res.status(503).json({ error: 'Facturapi no configurada. Agrega FACTURAPI_KEY al .env' })
-
-    // ── POLITICA P0.11: Validar metodoPago de la venta ANTES de tomar el lock ──
-    const ventaIdsPre = await obtenerVentaIdsDeFactura(factura.id, factura.ventaId)
-    if (ventaIdsPre.length > 0) {
-      const ventasPre = await prisma.venta.findMany({
-        where: { id: { in: ventaIdsPre } },
-        select: { id: true, metodoPago: true, facturaEstado: true }
-      })
-      for (const v of ventasPre) {
-        if (v.metodoPago === 'CREDITO_CLIENTE') {
-          return res.status(409).json({ error: 'La facturación de ventas a crédito no está disponible.', codigo: 'VENTA_CREDITO_FACTURACION_NO_DISPONIBLE' })
-        }
-        if (v.facturaEstado === 'BLOQUEADA') {
-          return res.status(400).json({ error: 'La venta está bloqueada para facturación.' })
-        }
-        if (v.metodoPago === 'MIXTO') {
-          return res.status(409).json({ error: 'La facturación individual de ventas MIXTO no está disponible.', codigo: 'METODO_MIXTO_FACTURACION_NO_DISPONIBLE' })
-        }
-      }
-    }
 
     // ── CAS local: tomar el lock de timbrado (anti doble-clic concurrente) ──
     // updateMany con where restrictivo es atómico: solo un request gana.

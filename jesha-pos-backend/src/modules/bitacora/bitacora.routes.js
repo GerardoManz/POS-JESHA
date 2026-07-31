@@ -33,9 +33,6 @@ router.delete('/:id/productos/:detalleId',  c.quitarProducto)
 // Abonos
 router.post('/:id/abonos',                  c.registrarAbono)
 
-// Contexto de cobranza para POS (solo bitácoras VENTA ABIERTA)
-router.get('/:id/contexto-cobranza',        c.contextoCobranza)
-
 // Ticket de abono imprimible (HTML 58mm)
 router.get('/abonos/:abonoId/ticket',       tk.generarTicketAbono)
 
