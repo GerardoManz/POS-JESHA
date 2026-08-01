@@ -6,8 +6,8 @@ const { listar, crear, editar, cambiarEstado } = require('./trabajadores.control
 router.get('/',           requireAuth, listar)
 
 // Gestión — solo SUPERADMIN y ADMIN_SUCURSAL
-router.post('/',          requireAuth, requireRole('SUPERADMIN', 'ADMIN_SUCURSAL', 'PLATFORM_ADMIN'), crear)
-router.put('/:id',        requireAuth, requireRole('SUPERADMIN', 'ADMIN_SUCURSAL', 'PLATFORM_ADMIN'), editar)
-router.patch('/:id/estado', requireAuth, requireRole('SUPERADMIN', 'ADMIN_SUCURSAL', 'PLATFORM_ADMIN'), cambiarEstado)
+router.post('/',          requireAuth, requireRole('SUPERADMIN', 'ADMIN_SUCURSAL'), crear)
+router.put('/:id',        requireAuth, requireRole('SUPERADMIN', 'ADMIN_SUCURSAL'), editar)
+router.patch('/:id/estado', requireAuth, requireRole('SUPERADMIN', 'ADMIN_SUCURSAL'), cambiarEstado)
 
 module.exports = router

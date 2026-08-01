@@ -13,7 +13,7 @@ const facCtrl      = require('../facturacion/facturacion.controller')
 const resolverCtrl = require('./resolver-timbrado.controller')
 const { requireRole } = require('../../middlewares/auth.middleware')
 
-const ROLES_FISCAL = ['ADMIN_SUCURSAL', 'SUPERADMIN', 'PLATFORM_ADMIN']
+const ROLES_FISCAL = ['ADMIN_SUCURSAL', 'SUPERADMIN']
 
 // ── Factura Global CFDI 4.0 (ANTES de :id para que no lo capture como parám.) ──
 router.get ('/global/preview',    requireRole(ROLES_FISCAL), ctrl.previewGlobal)

@@ -56,17 +56,17 @@ const uploadCSV = multer({
 // ═══════════════════════════════════════════════════════════════════
 
 router.get('/departamentos',     productosController.listarDepartamentos)
-router.post('/departamentos',    requireRole('SUPERADMIN', 'ADMIN_SUCURSAL', 'PLATFORM_ADMIN'), productosController.crearDepartamento)
+router.post('/departamentos',    requireRole('SUPERADMIN', 'ADMIN_SUCURSAL'), productosController.crearDepartamento)
 router.get('/categorias',        productosController.listarCategorias)
 router.get('/departamentos/:departamentoId/categorias', productosController.categoriasPorDepartamento)
-router.post('/categorias',       requireRole('SUPERADMIN', 'ADMIN_SUCURSAL', 'PLATFORM_ADMIN'), productosController.crearCategoria)
+router.post('/categorias',       requireRole('SUPERADMIN', 'ADMIN_SUCURSAL'), productosController.crearCategoria)
 
 // ═══════════════════════════════════════════════════════════════════
 // IMPORTACIÓN CSV
 // ═══════════════════════════════════════════════════════════════════
 
-router.post('/importar/csv',            requireRole('SUPERADMIN', 'ADMIN_SUCURSAL', 'PLATFORM_ADMIN'), uploadCSV.single('archivo'), importacionController.importarCSV)
-router.post('/importar/solo-nuevos',    requireRole('SUPERADMIN', 'ADMIN_SUCURSAL', 'PLATFORM_ADMIN'), uploadCSV.single('archivo'), importacionController.importarSoloNuevos)
+router.post('/importar/csv',            requireRole('SUPERADMIN', 'ADMIN_SUCURSAL'), uploadCSV.single('archivo'), importacionController.importarCSV)
+router.post('/importar/solo-nuevos',    requireRole('SUPERADMIN', 'ADMIN_SUCURSAL'), uploadCSV.single('archivo'), importacionController.importarSoloNuevos)
 // ═══════════════════════════════════════════════════════════════════
 // CRUD PRODUCTOS
 // ═══════════════════════════════════════════════════════════════════
@@ -85,12 +85,12 @@ router.get('/sugerir', productosController.sugerirNombres)
 // GET /productos/:id — Obtener producto individual
 router.get('/:id', productosController.obtener)
 
-router.post('/',                 requireRole('SUPERADMIN', 'ADMIN_SUCURSAL', 'PLATFORM_ADMIN'), productosController.crear)
-router.put('/:id',               requireRole('SUPERADMIN', 'ADMIN_SUCURSAL', 'PLATFORM_ADMIN'), productosController.editar)
-router.patch('/:id/datos-basicos', requireRole('EMPLEADO', 'ADMIN_SUCURSAL', 'SUPERADMIN', 'PLATFORM_ADMIN'), productosController.editarDatosBasicos)
-router.patch('/:id/estado',      requireRole('SUPERADMIN', 'ADMIN_SUCURSAL', 'PLATFORM_ADMIN'), productosController.cambiarEstado)
-router.patch('/:id/inventario',  requireRole('SUPERADMIN', 'ADMIN_SUCURSAL', 'PLATFORM_ADMIN'), productosController.ajustarInventario)
-router.post('/:id/duplicar',     requireRole('SUPERADMIN', 'ADMIN_SUCURSAL', 'PLATFORM_ADMIN'), productosController.duplicarProducto)
+router.post('/',                 requireRole('SUPERADMIN', 'ADMIN_SUCURSAL'), productosController.crear)
+router.put('/:id',               requireRole('SUPERADMIN', 'ADMIN_SUCURSAL'), productosController.editar)
+router.patch('/:id/datos-basicos', requireRole('EMPLEADO', 'ADMIN_SUCURSAL', 'SUPERADMIN'), productosController.editarDatosBasicos)
+router.patch('/:id/estado',      requireRole('SUPERADMIN', 'ADMIN_SUCURSAL'), productosController.cambiarEstado)
+router.patch('/:id/inventario',  requireRole('SUPERADMIN', 'ADMIN_SUCURSAL'), productosController.ajustarInventario)
+router.post('/:id/duplicar',     requireRole('SUPERADMIN', 'ADMIN_SUCURSAL'), productosController.duplicarProducto)
 
 // ═══════════════════════════════════════════════════════════════════
 // SUGERENCIA SAT (read-only, sin requireRole: cualquier usuario autenticado)
@@ -102,7 +102,7 @@ router.post('/sat/sugerir', satController.sugerirSat)
 // IMAGEN — SUBIR (ahora va a Cloudinary, sin tocar disco)
 // ═══════════════════════════════════════════════════════════════════
 
-router.post('/:id/imagen', requireRole('SUPERADMIN', 'ADMIN_SUCURSAL', 'PLATFORM_ADMIN'), uploadImagen.single('imagen'), async (req, res) => {
+router.post('/:id/imagen', requireRole('SUPERADMIN', 'ADMIN_SUCURSAL'), uploadImagen.single('imagen'), async (req, res) => {
     try {
         const { id } = req.params
 
@@ -129,6 +129,6 @@ router.post('/:id/imagen', requireRole('SUPERADMIN', 'ADMIN_SUCURSAL', 'PLATFORM
 // IMAGEN — ELIMINAR (opcional, listo para usar cuando lo conectes al frontend)
 // ═══════════════════════════════════════════════════════════════════
 
-router.delete('/:id/imagen', requireRole('SUPERADMIN', 'ADMIN_SUCURSAL', 'PLATFORM_ADMIN'), productosController.eliminarImagen)
+router.delete('/:id/imagen', requireRole('SUPERADMIN', 'ADMIN_SUCURSAL'), productosController.eliminarImagen)
 
 module.exports = router

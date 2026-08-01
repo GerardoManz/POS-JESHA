@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 //  PRECIOS.CONTROLLER.JS — PATCH /:id
-//  Acceso: PRECIOS, ADMIN_SUCURSAL, SUPERADMIN, PLATFORM_ADMIN
+//  Acceso: PRECIOS, ADMIN_SUCURSAL, SUPERADMIN
 //  Permite actualizar solo campos de precio, no otros datos del producto.
 // ════════════════════════════════════════════════════════════════════
 

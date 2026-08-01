@@ -28,17 +28,15 @@ function construirWhereScopeVentas(req) {
   const { rol, empresaId, sucursalId } = req.usuario || {}
   const where = {}
 
-  if (rol !== 'PLATFORM_ADMIN') {
-    if (!empresaId && rol !== 'SUPERADMIN') {
-      const err = new Error('empresaId requerido para este rol')
-      err.status = 401
-      throw err
-    }
-
-    if (empresaId) where.empresaId = parseInt(empresaId)
+  if (!empresaId && rol !== 'SUPERADMIN') {
+    const err = new Error('empresaId requerido para este rol')
+    err.status = 401
+    throw err
   }
 
-  if (!['SUPERADMIN', 'PLATFORM_ADMIN'].includes(rol)) {
+  if (empresaId) where.empresaId = parseInt(empresaId)
+
+  if (rol !== 'SUPERADMIN') {
     if (!sucursalId) {
       const err = new Error('Usuario sin sucursal asignada')
       err.status = 400
@@ -101,7 +99,7 @@ exports.crearVenta = async (req, res) => {
     if (!usuario || !usuario.activo) {
       return res.status(403).json({ error: 'Usuario inválido o inactivo' })
     }
-    const rolesConVenta = ['EMPLEADO', 'ADMIN_SUCURSAL', 'SUPERADMIN', 'PLATFORM_ADMIN']
+    const rolesConVenta = ['EMPLEADO', 'ADMIN_SUCURSAL', 'SUPERADMIN']
     if (!rolesConVenta.includes(usuario.rol)) {
       return res.status(403).json({ error: 'Usuario sin permiso para vender', codigo: 'SIN_PERMISO_VENTA' })
     }
@@ -1010,7 +1008,7 @@ exports.cancelarVenta = async (req, res) => {
     if (venta.estado === 'DEVOLUCION')
       return res.status(409).json({ error: 'Esta venta tiene devoluciones — cancela las devoluciones primero o usa el módulo de devoluciones.' })
 
-    const rolesPermitidos = ['SUPERADMIN', 'ADMIN_SUCURSAL', 'EMPLEADO', 'PLATFORM_ADMIN']
+    const rolesPermitidos = ['SUPERADMIN', 'ADMIN_SUCURSAL', 'EMPLEADO']
     if (!rolesPermitidos.includes(usuario.rol))
       return res.status(403).json({ error: 'Sin permiso para cancelar ventas' })
 
@@ -1239,7 +1237,7 @@ exports.desbloquearFactura = async (req, res) => {
     const usuario  = req.usuario
     if (!usuario) return res.status(401).json({ error: 'Usuario no autenticado' })
 
-    const rolesPermitidos = ['SUPERADMIN', 'ADMIN_SUCURSAL', 'PLATFORM_ADMIN']
+    const rolesPermitidos = ['SUPERADMIN', 'ADMIN_SUCURSAL']
     if (!rolesPermitidos.includes(usuario.rol)) {
       return res.status(403).json({ error: 'Sin permiso para desbloquear facturación' })
     }
@@ -1335,7 +1333,7 @@ exports.actualizarMetodoPago = async (req, res) => {
     }
 
     // ── Solo SUPERADMIN y ADMIN_SUCURSAL pueden cambiar el método ──
-    const rolesPermitidos = ['SUPERADMIN', 'ADMIN_SUCURSAL', 'PLATFORM_ADMIN']
+    const rolesPermitidos = ['SUPERADMIN', 'ADMIN_SUCURSAL']
     if (!rolesPermitidos.includes(usuario.rol)) {
       return res.status(403).json({ error: 'Sin permiso para editar el método de pago' })
     }

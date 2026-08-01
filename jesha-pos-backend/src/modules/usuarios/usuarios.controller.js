@@ -31,7 +31,7 @@ async function prevalidarActor(actorUsuarioId) {
     select: { id: true, activo: true, rol: true, empresaId: true }
   })
   if (!actor || !actor.activo) throw policyError('ACTOR_NO_AUTORIZADO', 'No autorizado')
-  if (actor.rol !== 'SUPERADMIN' && actor.rol !== 'PLATFORM_ADMIN') throw policyError('ACTOR_NO_AUTORIZADO', 'No autorizado')
+  if (actor.rol !== 'SUPERADMIN') throw policyError('ACTOR_NO_AUTORIZADO', 'No autorizado')
   if (!actor.empresaId || !Number.isSafeInteger(Number(actor.empresaId)) || Number(actor.empresaId) <= 0) {
     throw policyError('ACTOR_SIN_EMPRESA', 'No autorizado')
   }
@@ -55,7 +55,7 @@ async function rehidratarActorEnTx(tx, actorUsuarioId) {
   const actor = actorRows[0]
   const empresaId = Number(actor.empresaId)
   if (!actor.activo) throw policyError('ACTOR_NO_AUTORIZADO', 'No autorizado')
-  if (actor.rol !== 'SUPERADMIN' && actor.rol !== 'PLATFORM_ADMIN') throw policyError('ACTOR_NO_AUTORIZADO', 'No autorizado')
+  if (actor.rol !== 'SUPERADMIN') throw policyError('ACTOR_NO_AUTORIZADO', 'No autorizado')
   if (!actor.empresaId || !Number.isSafeInteger(empresaId) || empresaId <= 0) {
     throw policyError('ACTOR_SIN_EMPRESA', 'No autorizado')
   }
@@ -476,7 +476,7 @@ const listarVendedores = async (req, res) => {
   try {
     const { sucursalId, rol } = req.usuario
     const where = { activo: true }
-    if (rol !== 'SUPERADMIN' && rol !== 'PLATFORM_ADMIN') {
+    if (rol !== 'SUPERADMIN') {
       if (sucursalId) {
         where.OR = [
           { sucursalId },
@@ -516,15 +516,7 @@ const listarResponsablesBitacora = async (req, res) => {
 const listarSucursales = async (req, res) => {
   try {
     const { rol, empresaId: tokenEmpresaId } = req.usuario || {}
-    const where = { activa: true }
-
-    if (rol === 'PLATFORM_ADMIN') {
-      const reqEmpresaId = req.body?.empresaId ?? req.query?.empresaId
-      if (reqEmpresaId) where.empresaId = parseInt(reqEmpresaId)
-    } else {
-      const empresaId = getEmpresaId(req)
-      where.empresaId = empresaId
-    }
+    const where = { activa: true, empresaId: getEmpresaId(req) }
 
     const sucursales = await prisma.sucursal.findMany({
       where,

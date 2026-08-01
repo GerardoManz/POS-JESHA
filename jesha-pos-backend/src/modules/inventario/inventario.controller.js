@@ -46,7 +46,7 @@ exports.ajusteRapido = async (req, res) => {
     if (!usuario || !usuario.activo) {
       return res.status(403).json({ error: 'Usuario inválido o inactivo', codigo: 'USUARIO_INACTIVO' })
     }
-    const rolesPermitidos = ['EMPLEADO', 'ADMIN_SUCURSAL', 'SUPERADMIN', 'PLATFORM_ADMIN']
+    const rolesPermitidos = ['EMPLEADO', 'ADMIN_SUCURSAL', 'SUPERADMIN']
     if (!rolesPermitidos.includes(usuario.rol)) {
       return res.status(403).json({ error: 'Sin permiso para ajustar inventario', codigo: 'SIN_PERMISO_AJUSTE' })
     }

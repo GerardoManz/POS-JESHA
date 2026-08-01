@@ -18,7 +18,7 @@ router.get('/',                ctrl.listar)
 router.post('/',               ctrl.crear)
 
 // PATCH /cotizaciones/:id/estado  — cambiar estado (ruta fija antes de /:id)
-router.patch('/:id/estado',    requireRole('ADMIN_SUCURSAL', 'SUPERADMIN', 'PLATFORM_ADMIN'), ctrl.cambiarEstado)
+router.patch('/:id/estado',    requireRole('ADMIN_SUCURSAL', 'SUPERADMIN'), ctrl.cambiarEstado)
 
 // GET  /cotizaciones/:id      — detalle completo con detalles
 router.get('/:id',             ctrl.obtener)

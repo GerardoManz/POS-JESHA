@@ -152,7 +152,7 @@ async function listar(req, res) {
 
         const rol = req.usuario?.rol
         const empresaIdRaw = req.usuario?.empresaId
-        const esScopeGlobal = !empresaIdRaw && ['PLATFORM_ADMIN', 'SUPERADMIN'].includes(rol)
+        const esScopeGlobal = !empresaIdRaw && rol === 'SUPERADMIN'
         const empresaIdScope = empresaIdRaw ? parseInt(empresaIdRaw) : null
 
         if (!esScopeGlobal && (!empresaIdScope || Number.isNaN(empresaIdScope))) {
@@ -1095,7 +1095,7 @@ async function ajustarInventario(req, res) {
     const empresaId = getEmpresaId(req)
 
     // ── Validar rol ──
-    const rolesPermitidos = ['SUPERADMIN', 'ADMIN_SUCURSAL', 'PLATFORM_ADMIN']
+    const rolesPermitidos = ['SUPERADMIN', 'ADMIN_SUCURSAL']
     if (!rolesPermitidos.includes(usuario.rol)) {
       return res.status(403).json({
         error: 'No tienes permisos para ajustar inventario. Se requiere SUPERADMIN o ADMIN_SUCURSAL.'
@@ -1224,7 +1224,7 @@ async function editarDatosBasicos(req, res) {
 
         const rol          = req.usuario?.rol
         const empresaIdRaw = req.usuario?.empresaId
-        const esGlobal     = empresaIdRaw === null && ['PLATFORM_ADMIN', 'SUPERADMIN'].includes(rol)
+        const esGlobal     = empresaIdRaw === null && rol === 'SUPERADMIN'
         const empresaId    = esGlobal ? null : parseInt(empresaIdRaw)
 
         if (!esGlobal && (!empresaId || Number.isNaN(empresaId))) {

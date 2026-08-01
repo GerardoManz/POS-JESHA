@@ -46,7 +46,7 @@ function nombreTrabajador(t) {
 }
 
 function puedeAplicarDescuento(rol) {
-  return ['SUPERADMIN', 'ADMIN_SUCURSAL', 'PLATFORM_ADMIN'].includes(rol)
+  return ['SUPERADMIN', 'ADMIN_SUCURSAL'].includes(rol)
 }
 
 function calcularDescuentoGlobal(totalMateriales, descuentoTipo, descuentoValor) {
@@ -126,7 +126,7 @@ const listar = async (req, res) => {
     const { sucursalId, rol } = req.usuario
     const where = {}
 
-    if (rol !== 'SUPERADMIN' && rol !== 'PLATFORM_ADMIN' && sucursalId) where.sucursalId = sucursalId
+    if (rol !== 'SUPERADMIN' && sucursalId) where.sucursalId = sucursalId
     if (estado) {
       where.estado = estado
     } else {
@@ -595,10 +595,10 @@ const cambiarEstado = async (req, res) => {
     // ──────────────────────────────────────────────────────────
     if (estado === 'ABIERTA') {
       // Validar permiso
-      if (rol !== 'SUPERADMIN' && rol !== 'PLATFORM_ADMIN') {
+      if (rol !== 'SUPERADMIN') {
         return res.status(403).json({
           success: false,
-          error: 'Solo SUPERADMIN o PLATFORM_ADMIN puede reabrir bitácoras cerradas',
+          error: 'Solo SUPERADMIN puede reabrir bitácoras cerradas',
           codigo: 'PERMISO_DENEGADO'
         })
       }
@@ -676,8 +676,8 @@ const eliminar = async (req, res) => {
     const { id: usuarioId, sucursalId, rol } = req.usuario
     const empresaId = getEmpresaId(req)
 
-    if (rol !== 'SUPERADMIN' && rol !== 'PLATFORM_ADMIN') {
-      return res.status(403).json({ success: false, error: 'Solo SUPERADMIN o PLATFORM_ADMIN puede eliminar bitácoras', codigo: 'PERMISO_DENEGADO' })
+    if (rol !== 'SUPERADMIN') {
+      return res.status(403).json({ success: false, error: 'Solo SUPERADMIN puede eliminar bitácoras', codigo: 'PERMISO_DENEGADO' })
     }
 
     const existente = await prisma.bitacora.findUnique({

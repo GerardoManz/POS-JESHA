@@ -80,7 +80,7 @@ async function listar({ sucursalId, rol, estado, excluirCanceladas, tipo, buscar
   `
 
   const where = {}
-  if (rol !== 'SUPERADMIN' && rol !== 'PLATFORM_ADMIN' && sucursalId) where.sucursalId = sucursalId
+  if (rol !== 'SUPERADMIN' && sucursalId) where.sucursalId = sucursalId
 
   // Filtro de estado: si viene explícito úsalo, si no excluir CANCELADA
   if (estado) {
@@ -256,8 +256,8 @@ async function cambiarEstado(id, estado, { usuarioId, sucursalId, empresaId, rol
   })
   if (!existente) throw new Error('Cotización no encontrada')
 
-  // Validar acceso a sucursal (SUPERADMIN y PLATFORM_ADMIN hacen bypass)
-  if (rol !== 'SUPERADMIN' && rol !== 'PLATFORM_ADMIN' && existente.sucursalId !== sucursalId) {
+  // Validar acceso a sucursal (SUPERADMIN hace bypass)
+  if (rol !== 'SUPERADMIN' && existente.sucursalId !== sucursalId) {
     throw new Error('No tienes acceso a esta cotización')
   }
 
