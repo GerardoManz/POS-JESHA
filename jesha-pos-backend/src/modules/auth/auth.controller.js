@@ -1,6 +1,7 @@
 const bcrypt = require('bcryptjs')
 const jwt = require('jsonwebtoken')
 const prisma = require('../../lib/prisma')
+const { validarIdentidadFinalUsuario } = require('../../security/identity')
 
 const TEMAS_VALIDOS = new Set(['dark', 'light'])
 
@@ -38,12 +39,18 @@ const login = async (req, res) => {
       return res.status(401).json({ error: 'Credenciales inválidas' })
     }
 
+    const identidad = validarIdentidadFinalUsuario({
+      id: usuario.id, nombre: usuario.nombre, username: usuario.username,
+      rol: usuario.rol, empresaId: usuario.empresaId, sucursalId: usuario.sucursalId,
+      activo: true
+    })
+
     const Sucursal = usuario.sucursalId
       ? await prisma.sucursal.findUnique({ where: { id: usuario.sucursalId }, select: { id: true, nombre: true } })
       : null
 
     const token = jwt.sign(
-      { id: usuario.id, username: usuario.username, nombre: usuario.nombre, rol: usuario.rol, sucursalId: usuario.sucursalId, empresaId: usuario.empresaId }, // Incluir empresaId en el payload del token JWT
+      { id: identidad.id, username: usuario.username, nombre: usuario.nombre, rol: identidad.rol, sucursalId: identidad.sucursalId, empresaId: identidad.empresaId },
       process.env.JWT_SECRET,
       { expiresIn: '8h' }
     )
@@ -58,6 +65,9 @@ const login = async (req, res) => {
     })
 
   } catch (err) {
+    if (err.name === 'IdentityError') {
+      return res.status(401).json({ error: 'Credenciales inválidas' })
+    }
     console.error('Error en login:', err)
     res.status(500).json({ error: 'Error interno del servidor' })
   }
