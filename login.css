@@ -5,8 +5,17 @@
 }
 
 :root {
-  --navy:  #1a2f5e;
-  --navy2: #243d7a;
+  --bg-page:    #0e0f12;
+  --left-bg:    #111216;
+  --right-bg:   #15171e;
+  --accent:     #2dd4bf;
+  --accent-dim: rgba(45, 212, 191, 0.15);
+  --text:       #f1f5f9;
+  --text-dim:   #94a3b8;
+  --border:     rgba(255, 255, 255, 0.08);
+  --border-focus: rgba(45, 212, 191, 0.5);
+  --field-bg:   rgba(255, 255, 255, 0.04);
+  --field-hover: rgba(255, 255, 255, 0.07);
 }
 
 body {
@@ -14,108 +23,157 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #313337a7;
+  background: var(--bg-page);
   font-family: 'Barlow', sans-serif;
 }
 
-/* ── CARD ── */
 .card {
   display: flex;
   width: 100%;
-  max-width: 860px;
-  min-height: 520px;
-  border-radius: 18px;
+  max-width: 880px;
+  min-height: 540px;
+  border-radius: 20px;
   overflow: hidden;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.22);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5);
+  background: var(--left-bg);
 }
 
-/* ── LEFT → NEGRO CLARO ── */
 .left {
   flex: 1;
-  padding: 48px 52px;
+  padding: 44px 48px;
   display: flex;
   flex-direction: column;
   justify-content: center;
-  background: #1a1a1a;
+  background: var(--left-bg);
+  position: relative;
 }
 
 .logo-wrap {
   display: flex;
   justify-content: center;
-  margin-bottom: 36px;
+  margin-bottom: 32px;
 }
 
 .logo-wrap img {
-  max-width: 220px;
+  max-width: 200px;
   height: auto;
 }
 
-/* ── BLOQUE DEL FORMULARIO ──
-   Ajusta margin-top para subir o bajar el formulario.
-   Valores de referencia:
-     0px   → centrado natural
-    -40px  → un poco arriba
-    -60px  → medio arriba  ← prueba aquí
-    -100px → muy arriba
-*/
+.step-active {
+  display: block;
+}
+
+.step-hidden {
+  display: none;
+}
+
 .form-block {
-  margin-top: -60px;
+  width: 100%;
+  max-width: 340px;
+  margin: 0 auto;
+}
+
+.sucursal-block {
+  width: 100%;
+  max-width: 360px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.sucursal-bienvenida {
+  color: var(--text-dim);
+  font-size: 0.95rem;
+  margin-bottom: 24px;
+  line-height: 1.5;
+}
+
+.sucursal-select-wrap {
+  margin-bottom: 20px;
+}
+
+.sucursal-select {
+  width: 100%;
+  padding: 14px 16px;
+  background: var(--field-bg);
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-family: 'Barlow', sans-serif;
+  font-size: 0.95rem;
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  padding-right: 40px;
+}
+
+.sucursal-select:focus {
+  border-color: var(--border-focus);
+  background-color: var(--field-hover);
+}
+
+.sucursal-select option {
+  background: #1a1c23;
+  color: var(--text);
 }
 
 h1 {
   font-family: 'Barlow Condensed', sans-serif;
-  font-size: 1.6rem;
+  font-size: 1.5rem;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: #fff;
+  color: var(--text);
   text-align: center;
-  margin-bottom: 28px;
+  margin-bottom: 24px;
 }
 
 .field {
   display: flex;
   align-items: center;
   gap: 12px;
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--field-bg);
   border-radius: 8px;
-  padding: 0 16px;
-  margin-bottom: 14px;
-  border: 1.5px solid rgba(255, 255, 255, 0.2);
+  padding: 0 14px;
+  margin-bottom: 12px;
+  border: 1.5px solid var(--border);
   transition: border-color 0.2s, background 0.2s;
 }
 
 .field:focus-within {
-  border-color: rgba(255, 255, 255, 0.6);
-  background: rgba(255, 255, 255, 0.15);
+  border-color: var(--border-focus);
+  background: var(--field-hover);
 }
 
 .field svg {
   flex-shrink: 0;
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--text-dim);
 }
 
 .field input {
   flex: 1;
   border: none;
   background: transparent;
-  padding: 14px 0;
+  padding: 13px 0;
   font-size: 0.95rem;
   font-family: 'Barlow', sans-serif;
-  color: #fff;
+  color: var(--text);
   outline: none;
 }
 
 .field input::placeholder {
-  color: rgba(255, 255, 255, 0.45);
+  color: rgba(255, 255, 255, 0.3);
 }
 
-/* ── BOTÓN OJO ── */
 .btn-eye {
   background: none;
   border: none;
   cursor: pointer;
-  color: rgba(255, 255, 255, 0.35);
+  color: rgba(255, 255, 255, 0.25);
   display: flex;
   align-items: center;
   padding: 4px;
@@ -124,48 +182,132 @@ h1 {
 }
 
 .btn-eye:hover {
-  color: rgba(255, 255, 255, 0.7);
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.remember-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.remember-wrap input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.remember-label {
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  font-family: 'Barlow', sans-serif;
 }
 
 .btn-login {
   width: 100%;
-  padding: 15px;
-  margin-top: 10px;
-  background: #fff;
-  color: #000;
+  padding: 14px;
+  background: var(--accent);
+  color: #0a0b0e;
   border: none;
   border-radius: 8px;
   font-family: 'Barlow Condensed', sans-serif;
-  font-size: 1.1rem;
+  font-size: 1.05rem;
   font-weight: 700;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   cursor: pointer;
-  transition: background 0.2s, transform 0.1s;
+  transition: background 0.2s, transform 0.1s, box-shadow 0.2s;
 }
 
-.btn-login:hover  { background: #e0e0e0; }
-.btn-login:active { transform: scale(0.98); }
+.btn-login:hover {
+  background: #5eead4;
+  box-shadow: 0 0 20px rgba(45, 212, 191, 0.25);
+}
 
-/* ── RIGHT → GRIS ── */
+.btn-login:active {
+  transform: scale(0.97);
+}
+
+.btn-login:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.error-msg {
+  color: #f87171;
+  margin-bottom: 12px;
+  text-align: center;
+  font-size: 0.85rem;
+  min-height: 1.2em;
+}
+
 .right {
   width: 320px;
   flex-shrink: 0;
+  position: relative;
   overflow: hidden;
-  background: #b7b7b7;
+  background: var(--right-bg);
 }
 
-.right img {
-  width: 100%;
+.right-bg {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 30% 20%, rgba(45, 212, 191, 0.06) 0%, transparent 60%),
+    radial-gradient(ellipse at 70% 80%, rgba(45, 212, 191, 0.04) 0%, transparent 50%);
+  pointer-events: none;
+}
+
+.right-content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   height: 100%;
-  object-fit: cover;
-  object-position: 40.1% center; /* pega el lado izquierdo del PNG al borde */
-  display: block;
+  padding: 40px 32px;
+  text-align: center;
 }
 
-/* ── RESPONSIVE ── */
+.right-illustration {
+  width: 200px;
+  height: auto;
+  margin-bottom: 32px;
+  opacity: 0.7;
+}
 
-/* TABLET — hasta 860px */
+.right-illustration svg {
+  width: 100%;
+  height: auto;
+}
+
+.right-tagline {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.right-tagline strong {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 1.2rem;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  color: var(--accent);
+  text-transform: uppercase;
+}
+
+.right-tagline span {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  letter-spacing: 0.03em;
+}
+
 @media (max-width: 860px) {
   body {
     padding: 16px;
@@ -176,20 +318,21 @@ h1 {
   }
 
   .left {
-    padding: 40px 36px;
+    padding: 36px 32px;
   }
 }
 
-/* MÓVIL — hasta 560px */
-@media (max-width: 560px) {
+@media (max-width: 600px) {
   body {
     padding: 12px;
+    align-items: flex-start;
+    padding-top: 40px;
   }
 
   .card {
     flex-direction: column;
     min-height: auto;
-    border-radius: 14px;
+    border-radius: 16px;
   }
 
   .right {
@@ -197,24 +340,21 @@ h1 {
   }
 
   .left {
-    padding: 36px 28px 40px;
+    padding: 32px 24px 36px;
   }
 
-  .form-block {
-    margin-top: 0;
-  }
-
-  .logo-wrap {
-    margin-bottom: 24px;
+  .form-block,
+  .sucursal-block {
+    max-width: 100%;
   }
 
   .logo-wrap img {
-    max-width: 180px;
+    max-width: 160px;
   }
 
   h1 {
-    font-size: 1.35rem;
-    margin-bottom: 22px;
+    font-size: 1.3rem;
+    margin-bottom: 20px;
   }
 
   .field input {
@@ -225,6 +365,10 @@ h1 {
   .btn-login {
     padding: 13px;
     font-size: 1rem;
+  }
+
+  .right-illustration {
+    display: none;
   }
 }
 
