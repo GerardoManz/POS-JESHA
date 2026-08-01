@@ -133,7 +133,10 @@ describe('P0-PLATFORM-AUTH PostgreSQL aislado', { concurrency: 1, timeout: 24000
     process.env.PLATFORM_JWT_ISSUER = PLATFORM_ISSUER
     process.env.PLATFORM_JWT_AUDIENCE = PLATFORM_AUDIENCE
     process.env.PLATFORM_JWT_TTL = '15m'
-    process.env.JWT_SECRET = TENANT_SECRET
+    process.env.TENANT_JWT_SECRET = TENANT_SECRET
+    process.env.TENANT_JWT_ISSUER = 'jesha-tenant-postgres-test'
+    process.env.TENANT_JWT_AUDIENCE = 'jesha-tenant-api-postgres-test'
+    process.env.TENANT_JWT_TTL = '8h'
 
     prisma = require('../src/lib/prisma')
     controller = require('../src/modules/platform-auth/platform-auth.controller')
