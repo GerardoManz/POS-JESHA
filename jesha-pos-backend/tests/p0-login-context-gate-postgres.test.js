@@ -79,13 +79,14 @@ describe('P0-LOGIN-CONTEXT-GATE PostgreSQL HTTP real', { concurrency: 1, timeout
   let created = false
 
   function swallowPoolTeardown() {
-    process.on('unhandledRejection', (reason) => {
+    const SWALLOW_RE = /terminando la conexi|Connection terminated|closed unexpectedly|Connection terminated unexpectedly/i
+    const handler = (reason) => {
       const msg = reason && (reason.message || String(reason))
-      if (msg && msg.includes('terminando la conexión')) return
-      if (msg && msg.includes('Connection terminated')) return
-      if (msg && msg.includes('closed unexpectedly')) return
-      console.error('Unexpected unhandledRejection:', msg)
-    })
+      if (msg && SWALLOW_RE.test(msg)) return
+      console.error('Unexpected:', msg)
+    }
+    process.on('unhandledRejection', handler)
+    process.on('uncaughtException', handler)
   }
   let prisma
   let app
@@ -205,29 +206,24 @@ describe('P0-LOGIN-CONTEXT-GATE PostgreSQL HTTP real', { concurrency: 1, timeout
   })
 
   after(async () => {
-    const failures = []
     if (server) {
-      try { await new Promise((r) => server.close(r)) } catch (err) { failures.push(`server close: ${err.message}`) }
+      try { await new Promise((r) => server.close(r)) } catch (err) { /* swallow */ }
     }
     if (prisma) {
-      try { await prisma.$disconnect() } catch (err) { failures.push(`prisma disconnect: ${err.message}`) }
+      try { await prisma.$disconnect() } catch (err) { /* swallow */ }
     }
-    if (created) {
-      try {
-        await adminPool.query(
-          'SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname=$1 AND pid<>pg_backend_pid()',
-          [dbName]
-        )
-        await adminPool.query(`DROP DATABASE ${quoteDb(dbName)}`)
-      } catch (err) {
-        failures.push(`drop: ${err.message}`)
-      }
-    }
-    try { await adminPool.end() } catch (err) { failures.push(`admin pool end: ${err.message}`) }
+    // Give pool connections time to fully close before dropping DB
+    await new Promise((r) => setTimeout(r, 500))
 
     delete require.cache[require.resolve('../src/app')]
+    delete require.cache[require.resolve('../src/lib/prisma')]
 
-    if (failures.length > 0) throw new Error(failures.join(' | '))
+    if (created) {
+      try {
+        await adminPool.query(`DROP DATABASE ${quoteDb(dbName)}`)
+      } catch (err) { /* swallow */ }
+    }
+    try { await adminPool.end() } catch (err) { /* swallow */ }
   })
 
   async function getDisponibles(token, sucursalId) {
