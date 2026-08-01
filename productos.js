@@ -34,7 +34,7 @@ let TOKEN = localStorage.getItem('jesha_token')
 
 const IVA_FACTOR = window.__JESHA_IVA_FACTOR__ || 1.16
 const ROL_ACTUAL = JSON.parse(localStorage.getItem('jesha_usuario') || '{}').rol
-const ES_ADMIN = ['SUPERADMIN', 'ADMIN_SUCURSAL', 'PLATFORM_ADMIN'].includes(ROL_ACTUAL)
+const ES_ADMIN = ['SUPERADMIN', 'ADMIN_SUCURSAL'].includes(ROL_ACTUAL)
 const ES_PRECIOS = ROL_ACTUAL === 'PRECIOS'
 const ES_EMPLEADO = ROL_ACTUAL === 'EMPLEADO'
 
@@ -2995,7 +2995,7 @@ function mostrarErrorImport(msg) {
 // ════════════════════════════════════════════════════════════════════
 
 // Roles que pueden ajustar inventario
-const ROLES_AJUSTE = ['SUPERADMIN', 'ADMIN_SUCURSAL', 'PLATFORM_ADMIN']
+const ROLES_AJUSTE = ['SUPERADMIN', 'ADMIN_SUCURSAL']
 let productoAjuste = null
 
 function initAjusteInventario() {

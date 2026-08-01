@@ -5,7 +5,13 @@
 // FIX: Validación previa ahora detecta notación científica
 // ═══════════════════════════════════════════════════════════════════
 
-const token = localStorage.getItem('jesha_token')
+if (!window.jeshaSession?.isValid()) {
+    window.jeshaSession?.clear()
+    window.location.replace('login.html')
+    throw new Error('Sesión tenant requerida')
+}
+
+const token = window.jeshaSession.getToken()
 const API_BASE = window.__JESHA_API_URL__ || 'http://localhost:3000'
 
 let archivoSeleccionado = null

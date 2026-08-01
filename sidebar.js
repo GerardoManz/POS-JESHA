@@ -19,14 +19,16 @@ const REDIRECCION_ROL = {
 }
 
 function getRol() {
-  try { return JSON.parse(localStorage.getItem('jesha_usuario') || '{}').rol || 'EMPLEADO' }
-  catch { return 'EMPLEADO' }
+  return window.jeshaSession?.getUsuario()?.rol || 'EMPLEADO'
 }
 
+const PAGINAS_SUCURSAL_REQUERIDA = new Set([
+  'punto-venta', 'corte-caja', 'historial-cortes', 'historial', 'compras', 'pedidos'
+])
+
 function verificarAutenticacion() {
-  const token   = localStorage.getItem('jesha_token')
-  const usuario = localStorage.getItem('jesha_usuario')
-  if (!token || !usuario) {
+  if (!window.jeshaSession?.isValid()) {
+    window.jeshaSession?.clear()
     window.location.href = 'login.html'
     return false
   }
@@ -35,7 +37,18 @@ function verificarAutenticacion() {
 
 function verificarAccesoPagina(pagina) {
   const rol = getRol()
-  if (rol === 'SUPERADMIN' || rol === 'PLATFORM_ADMIN') return true
+  if (rol === 'PLATFORM_ADMIN') {
+    window.jeshaSession?.clear()
+    window.location.replace('login.html')
+    return false
+  }
+
+  if (PAGINAS_SUCURSAL_REQUERIDA.has(pagina) && !window.jeshaSession?.getSelectedSucursalId()) {
+    window.location.replace('dashboard.html?seleccionarSucursal=1')
+    return false
+  }
+
+  if (rol === 'SUPERADMIN') return true
 
   // ── Bloqueo horario para EMPLEADO (8:00 – 18:00 hora CDMX) ──────
   if (rol === 'EMPLEADO') {
@@ -73,8 +86,7 @@ function verificarAccesoPagina(pagina) {
             </strong>
           </div>
           <button onclick="
-            localStorage.removeItem('jesha_token');
-            localStorage.removeItem('jesha_usuario');
+            window.jeshaSession && window.jeshaSession.clear();
             window.location.href='login.html';
           " style="
             margin-top:16px; padding:10px 24px;
@@ -111,6 +123,7 @@ async function cargarSidebar(paginaActual) {
     marcarPaginaActiva(paginaActual)
     configurarSidebarCollapse()
     configurarThemeToggle()
+    await configurarSelectorSucursal(paginaActual)
     configurarLogoutConReintentos(10)
   } catch (error) {
     console.error('❌ Error cargando sidebar.html:', error)
@@ -119,7 +132,7 @@ async function cargarSidebar(paginaActual) {
 
 function aplicarPermisosMenu() {
   const rol = getRol()
-  if (rol === 'SUPERADMIN' || rol === 'PLATFORM_ADMIN') return
+  if (rol === 'SUPERADMIN') return
 
   const bloqueadas = ROL_BLOQUEADO[rol] || []
 
@@ -233,8 +246,7 @@ function obtenerLogoutDesdeTarget(target) {
 function cerrarSesion() {
   if (cerrandoSesion) return
   cerrandoSesion = true
-  localStorage.removeItem('jesha_token')
-  localStorage.removeItem('jesha_usuario')
+  window.jeshaSession?.clear()
   window.location.replace('login.html')
 }
 
@@ -260,6 +272,98 @@ function configurarLogoutConReintentos(intentos) {
   }
 }
 
+
+async function configurarSelectorSucursal(paginaActual) {
+  const wrap = document.getElementById('tenant-branch-context')
+  const select = document.getElementById('tenant-branch-select')
+  const label = document.getElementById('tenant-branch-label')
+  const empresa = document.getElementById('tenant-company-label')
+  if (!wrap || !select || !label) return
+
+  const usuario = window.jeshaSession?.getUsuario()
+  if (!usuario) return
+
+  empresa.textContent = window.jeshaSession.getEmpresaSlug() || 'Empresa'
+  const fixedSucursalId = window.jeshaSession.positiveInt(usuario.sucursalId)
+
+  if (fixedSucursalId) {
+    wrap.hidden = false
+    select.disabled = true
+    select.innerHTML = ''
+    const option = document.createElement('option')
+    option.value = String(fixedSucursalId)
+    option.textContent = usuario.Sucursal?.nombre || `Sucursal ${fixedSucursalId}`
+    select.appendChild(option)
+    label.textContent = 'Sucursal asignada'
+    window.jeshaSession.setSelectedSucursalId(fixedSucursalId)
+    return
+  }
+
+  if (!window.jeshaSession.canSelectSucursal()) {
+    wrap.hidden = true
+    return
+  }
+
+  wrap.hidden = false
+  select.disabled = true
+  label.textContent = usuario.rol === 'PRECIOS' ? 'Sucursal opcional' : 'Sucursal operativa'
+  select.innerHTML = '<option value="">Cargando sucursales...</option>'
+
+  try {
+    const data = await window.apiFetch('/sucursales')
+    const sucursales = Array.isArray(data) ? data : (data?.data || data?.sucursales || [])
+    const required = PAGINAS_SUCURSAL_REQUERIDA.has(paginaActual)
+    select.innerHTML = ''
+
+    const empty = document.createElement('option')
+    empty.value = ''
+    empty.textContent = required ? 'Selecciona una sucursal' : 'Todas las sucursales'
+    select.appendChild(empty)
+
+    for (const sucursal of sucursales) {
+      const id = window.jeshaSession.positiveInt(sucursal.id)
+      if (!id) continue
+      const option = document.createElement('option')
+      option.value = String(id)
+      option.textContent = sucursal.nombre || `Sucursal ${id}`
+      select.appendChild(option)
+    }
+
+    const selected = window.jeshaSession.getSelectedSucursalId()
+    const exists = selected && Array.from(select.options).some((option) => option.value === String(selected))
+    if (exists) {
+      select.value = String(selected)
+    } else {
+      window.jeshaSession.setSelectedSucursalId(null)
+      select.value = ''
+    }
+    select.disabled = false
+
+    select.addEventListener('change', () => {
+      const nextId = select.value || null
+      try {
+        window.jeshaSession.setSelectedSucursalId(nextId)
+        if (!nextId && PAGINAS_SUCURSAL_REQUERIDA.has(paginaActual)) {
+          window.location.replace('dashboard.html?seleccionarSucursal=1')
+          return
+        }
+        window.location.reload()
+      } catch (err) {
+        if (window.jeshaToast) window.jeshaToast(err.message, 'error')
+      }
+    })
+
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('seleccionarSucursal') === '1' && window.jeshaToast) {
+      window.jeshaToast('Selecciona una sucursal para continuar', 'warning')
+    }
+  } catch (err) {
+    select.innerHTML = '<option value="">No se pudieron cargar</option>'
+    select.disabled = true
+    if (window.jeshaToast) window.jeshaToast('No se pudieron cargar las sucursales', 'error')
+  }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   if (!verificarAutenticacion()) return
   const paginaActual = document.body.getAttribute('data-page') || ''
@@ -273,7 +377,8 @@ document.addEventListener('DOMContentLoaded', () => {
 //  Disponible en todos los módulos porque sidebar.js carga primero
 // ════════════════════════════════════════════════════════════════════
 window.apiFetch = async function(path, opts = {}) {
-  const token  = localStorage.getItem('jesha_token')
+  const token  = window.jeshaSession?.getToken()
+  const sucursalId = window.jeshaSession?.getSelectedSucursalId()
   const apiUrl = window.__JESHA_API_URL__ || 'http://localhost:3000'
   const debugOn = localStorage.getItem('jesha_debug') === '1'
   const start = Date.now()
@@ -289,6 +394,7 @@ window.apiFetch = async function(path, opts = {}) {
       headers: {
         ...(esFormData ? {} : { 'Content-Type': 'application/json' }),
         'Authorization': `Bearer ${token}`,
+        ...(sucursalId ? { 'X-Sucursal-Id': String(sucursalId) } : {}),
         ...(opts.headers || {})
       }
     })
@@ -324,8 +430,7 @@ window.apiFetch = async function(path, opts = {}) {
 
   // Token expirado o inválido — redirigir a login
   if (res.status === 401) {
-    localStorage.removeItem('jesha_token')
-    localStorage.removeItem('jesha_usuario')
+    window.jeshaSession?.clear()
     window.location.href = 'login.html'
     throw new Error('Sesión expirada')
   }
@@ -333,7 +438,6 @@ window.apiFetch = async function(path, opts = {}) {
   // Permisos insuficientes — toast y lanzar error
   if (res.status === 403) {
     const msg = (data && data.error) || 'No tienes permisos para realizar esta acción'
-    if (window.jeshaToast) jeshaToast(msg, 'error')
     throw new Error(msg)
   }
 
@@ -348,8 +452,7 @@ window.apiFetch = async function(path, opts = {}) {
 // Helper para módulos que usan fetch() directo
 window.handle401 = function(status) {
   if (status === 401) {
-    localStorage.removeItem('jesha_token')
-    localStorage.removeItem('jesha_usuario')
+    window.jeshaSession?.clear()
     window.location.href = 'login.html'
     return true
   }

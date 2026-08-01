@@ -19,7 +19,7 @@ let paginaActual       = 1
 const LIMIT = 25
 
 const usuario  = JSON.parse(localStorage.getItem('jesha_usuario') || '{}')
-const esSUPER  = ['SUPERADMIN', 'PLATFORM_ADMIN'].includes(usuario.rol)
+const esSUPER  = ['SUPERADMIN'].includes(usuario.rol)
 
 // ════════════════════════════════════════════════════════════════════
 //  HELPERS
@@ -455,7 +455,7 @@ function cerrarDropdownClienteDetalle() {
 }
 
 function puedeEditarDescuentoBitacora(b) {
-  const rolPermitido = ['SUPERADMIN', 'ADMIN_SUCURSAL', 'PLATFORM_ADMIN'].includes(usuario.rol)
+  const rolPermitido = ['SUPERADMIN', 'ADMIN_SUCURSAL'].includes(usuario.rol)
   return rolPermitido && ['ABIERTA', 'PAUSADA'].includes(b?.estado)
 }
 

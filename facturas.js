@@ -97,7 +97,7 @@ async function cargarFacturas() {
     tbody.innerHTML = lista.map(f => {
       const incierto = f.estado === 'PENDIENTE_TIMBRADO' && f.procesandoTimbrado
       const esPendiente = f.estado === 'PENDIENTE_TIMBRADO'
-      const rolFiscal = ['ADMIN_SUCURSAL','SUPERADMIN','PLATFORM_ADMIN'].includes(USUARIO.rol)
+      const rolFiscal = ['ADMIN_SUCURSAL','SUPERADMIN'].includes(USUARIO.rol)
       const badgeEstado = incierto
         ? '<span class="fact-badge badge-incierto">⚠ INCIERTO</span>'
         : estadoBadge(f.estado)
@@ -195,7 +195,7 @@ window.verDetalle = async function(id) {
     const btnPdf         = document.getElementById('det-btn-pdf')
     const btnCandidatos  = document.getElementById('det-btn-candidatos')
     const btnDescartar   = document.getElementById('det-btn-descartar')
-    const rolFiscal = ['ADMIN_SUCURSAL','SUPERADMIN','PLATFORM_ADMIN'].includes(USUARIO.rol)
+    const rolFiscal = ['ADMIN_SUCURSAL','SUPERADMIN'].includes(USUARIO.rol)
     const incierto = esPendiente && f.procesandoTimbrado
 
     btnTimbrar.style.display   = esPendiente && !f.facturapiId ? 'flex' : 'none'
@@ -1119,7 +1119,7 @@ document.addEventListener('DOMContentLoaded', () => {
     })
   }
 
-  const rolFiscal = ['ADMIN_SUCURSAL','SUPERADMIN','PLATFORM_ADMIN'].includes(USUARIO.rol)
+  const rolFiscal = ['ADMIN_SUCURSAL','SUPERADMIN'].includes(USUARIO.rol)
   if (rolFiscal) {
     const btn = document.getElementById('btn-factura-global')
     if (btn) btn.style.display = 'inline-flex'
