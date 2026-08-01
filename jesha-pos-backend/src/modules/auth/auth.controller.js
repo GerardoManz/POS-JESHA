@@ -1,7 +1,7 @@
 const bcrypt = require('bcryptjs')
 const jwt = require('jsonwebtoken')
 const prisma = require('../../lib/prisma')
-const { validarIdentidadFinalUsuario } = require('../../security/identity')
+const { validarIdentidadFinalUsuario, esRolPlataforma } = require('../../security/identity')
 
 const TEMAS_VALIDOS = new Set(['dark', 'light'])
 
@@ -30,7 +30,7 @@ const login = async (req, res) => {
       where: { username: username.trim(), activo: true }
     })
 
-    if (!usuario) {
+    if (!usuario || esRolPlataforma(usuario.rol)) {
       return res.status(401).json({ error: 'Credenciales inválidas' })
     }
 
