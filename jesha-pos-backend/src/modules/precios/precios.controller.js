@@ -6,12 +6,14 @@
 
 const prisma = require('../../lib/prisma')
 const { FACTOR_IVA } = require('../../utils/constantes')
+const getEmpresaId = require('../../helpers/getEmpresaId')
 
 async function actualizarPrecios(req, res) {
   try {
     const { id } = req.params
     const { precioBase, precioVenta, precioMayoreo, margen } = req.body
     const solicitante = req.usuario
+    const empresaId = getEmpresaId(req)
 
     // Paso 1: validar que al menos un campo venga (contra undefined, no falsy — el 0 es legítimo)
     if (precioBase === undefined && precioVenta === undefined &&
@@ -28,9 +30,9 @@ async function actualizarPrecios(req, res) {
 
     // TODO: validar sucursalId del usuario vs alcance del producto cuando exista campo/relación directa
 
-    // Obtener producto actual (para auditoría y costo)
-    const producto = await prisma.producto.findUnique({
-      where: { id: parseInt(id) },
+    // Obtener producto actual (para auditoría y costo) — scoped por empresa
+    const producto = await prisma.producto.findFirst({
+      where: { id: parseInt(id), empresaId },
       select: {
         id: true, nombre: true, costo: true,
         precioBase: true, precioVenta: true, precioMayoreo: true, margen: true
@@ -74,22 +76,38 @@ async function actualizarPrecios(req, res) {
     if (precioMayoreo !== undefined) data.precioMayoreo = parseFloat(precioMayoreo)
     if (nuevoMargen !== undefined)   data.margen        = nuevoMargen
 
-    // Paso 6: actualizar producto
-    const actualizado = await prisma.producto.update({
-      where: { id: parseInt(id) },
-      data,
-      select: {
-        id: true, nombre: true,
-        precioBase: true, precioVenta: true, precioMayoreo: true,
-        margen: true, costo: true
+    // Paso 6: actualizar producto — scoped por empresa
+    const resultadoUpdate = await prisma.$transaction(async (tx) => {
+      const actualizado = await tx.producto.updateMany({
+        where: { id: parseInt(id), empresaId },
+        data
+      })
+
+      if (actualizado.count !== 1) {
+        return { notFound: true }
       }
+
+      const productoActualizado = await tx.producto.findFirst({
+        where: { id: parseInt(id), empresaId },
+        select: {
+          id: true, nombre: true,
+          precioBase: true, precioVenta: true, precioMayoreo: true,
+          margen: true, costo: true
+        }
+      })
+
+      return { notFound: false, producto: productoActualizado }
     })
 
+    if (resultadoUpdate.notFound) {
+      return res.status(404).json({ error: 'Producto no encontrado' })
+    }
+
+    const actualizado = resultadoUpdate.producto
+
     // Paso 7: auditoría de cambios
-    // No se usa transacción para read + write porque:
-    // - Es un endpoint de baja contención (no se editan precios simultáneamente)
-    // - Si hay race condition, el último valor gana — no hay invariante de negocio que romper
-    // - Una transacción añadiría complejidad innecesaria en este caso
+    // El update se hace en $transaction con updateMany scoped por empresa
+    // (count !== 1 → 404), garantizando que nunca se toca un producto de otra empresa.
     const cambios = []
     if (nuevoPrecioBase !== undefined && parseFloat(producto.precioBase) !== parseFloat(actualizado.precioBase)) {
       cambios.push(`precioBase: ${producto.precioBase} → ${actualizado.precioBase}`)
