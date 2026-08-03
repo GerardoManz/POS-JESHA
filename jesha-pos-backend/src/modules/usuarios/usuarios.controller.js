@@ -400,12 +400,27 @@ const cambiarEstado = async (req, res) => {
     const { id } = req.params
     const { activo } = req.body
     const solicitante = req.usuario
-    const objetivo = await prisma.usuario.findUnique({ where: { id: parseInt(id) } })
-    if (!objetivo) return res.status(404).json({ error: 'Usuario no encontrado' })
-    if (!puedeGestionar(solicitante.rol, objetivo.rol)) return res.status(403).json({ error: 'No tienes permisos para gestionar este usuario' })
-    const usuario = await prisma.usuario.update({ where: { id: parseInt(id) }, data: { activo }, select: { id: true, nombre: true, activo: true } })
-    await registrarAudit(solicitante, activo ? 'ACTIVAR_USUARIO' : 'DESACTIVAR_USUARIO', `${solicitante.nombre} ${activo ? 'activo' : 'desactivo'} al usuario ${objetivo.username}`, req.ip)
-    res.json(usuario)
+    const empresaId = getEmpresaId(req)
+
+    const resultado = await prisma.$transaction(async (tx) => {
+      const objetivo = await tx.usuario.findFirst({ where: { id: parseInt(id), empresaId } })
+      if (!objetivo) return { notFound: true }
+      if (!puedeGestionar(solicitante.rol, objetivo.rol)) return { sinPermisos: true }
+
+      const resultadoUpdate = await tx.usuario.updateMany({
+        where: { id: parseInt(id), empresaId },
+        data:  { activo }
+      })
+      if (resultadoUpdate.count !== 1) return { notFound: true }
+
+      await registrarAudit(solicitante, activo ? 'ACTIVAR_USUARIO' : 'DESACTIVAR_USUARIO', `${solicitante.nombre} ${activo ? 'activo' : 'desactivo'} al usuario ${objetivo.username}`, req.ip)
+      return { ok: true, objetivo }
+    })
+
+    if (resultado.notFound) return res.status(404).json({ error: 'Usuario no encontrado' })
+    if (resultado.sinPermisos) return res.status(403).json({ error: 'No tienes permisos para gestionar este usuario' })
+
+    res.json({ id: resultado.objetivo.id, nombre: resultado.objetivo.nombre, activo })
   } catch (err) { console.error(err); res.status(500).json({ error: 'Error al cambiar estado' }) }
 }
 
