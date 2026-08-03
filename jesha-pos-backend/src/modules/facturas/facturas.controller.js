@@ -12,7 +12,6 @@
 // ════════════════════════════════════════════════════════════════════
 
 const prisma = require('../../lib/prisma')
-const resolverEmpresaScope = require('../../helpers/resolverEmpresaScope')
 const resolverDatosEmisor = require('../../helpers/resolverDatosEmisor')
 const getEmpresaId = require('../../helpers/getEmpresaId')
 const { getFacturapi, modoActivo } = require('../../lib/facturapi')
@@ -73,8 +72,8 @@ async function auditarCancelacion(req, factura, ventaIds, detalle) {
 // GET /facturas — listar con filtros
 exports.listar = async (req, res) => {
   try {
-    const scope = resolverEmpresaScope(req)
-    const whereScope = scope.modo === 'GLOBAL' ? {} : { empresaId: scope.empresaId }
+    const empresaId = getEmpresaId(req)
+    const whereScope = { empresaId }
 
     const { q, desde, hasta, estado, metodoPago, page = 1, take = 20 } = req.query
     const skip = (parseInt(page) - 1) * parseInt(take)
@@ -170,8 +169,8 @@ exports.listar = async (req, res) => {
 // GET /facturas/:id — detalle
 exports.obtener = async (req, res) => {
   try {
-    const scope = resolverEmpresaScope(req)
-    const whereScope = scope.modo === 'GLOBAL' ? {} : { empresaId: scope.empresaId }
+    const empresaId = getEmpresaId(req)
+    const whereScope = { empresaId }
 
     const factura = await prisma.facturaCfdi.findFirst({
       where: { id: parseInt(req.params.id), ...whereScope },
@@ -204,8 +203,8 @@ exports.obtener = async (req, res) => {
 // PATCH /facturas/:id/cancelar — ENDURECIDO (anti-desync fiscal)
 exports.cancelar = async (req, res) => {
   try {
-    const scope = resolverEmpresaScope(req)
-    const whereScope = scope.modo === 'GLOBAL' ? {} : { empresaId: scope.empresaId }
+    const empresaId = getEmpresaId(req)
+    const whereScope = { empresaId }
 
     const id = parseInt(req.params.id)
     const { motivo: motivoCancelacion = '02', confirmacionManual } = req.body || {}

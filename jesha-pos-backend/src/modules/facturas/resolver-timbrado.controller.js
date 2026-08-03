@@ -17,7 +17,7 @@
 // ════════════════════════════════════════════════════════════════════
 
 const prisma = require('../../lib/prisma')
-const resolverEmpresaScope = require('../../helpers/resolverEmpresaScope')
+const getEmpresaId = require('../../helpers/getEmpresaId')
 const { getFacturapi, modoActivo } = require('../../lib/facturapi')
 
 const RFC_GENERICOS = new Set(['XAXX010101000', 'XEXX010101000'])
@@ -26,18 +26,21 @@ const MAX_CONFIRMACION = 500
 const MAX_PAGINAS = 10
 const PAGE_SIZE = 50
 
-// ── Scope estricto: estos endpoints mueven estado fiscal; GLOBAL debe acotar. ──
+// ── Scope estricto desde contexto tenant: empresaId obligatorio, sucursalId opcional. ──
 function scopeEstricto(req) {
-  const scope = resolverEmpresaScope(req) // lanza 401/403 si aplica
-  if (scope.modo === 'GLOBAL') {
-    const empresaId = Number(req.query.empresaId ?? req.body?.empresaId)
-    if (!Number.isInteger(empresaId)) {
-      const e = new Error('empresaId explícito requerido para este endpoint')
-      e.status = 400; e.expose = true; throw e
-    }
-    return empresaId
+  const empresaId = getEmpresaId(req)
+
+  const bodyEmpresaId = req.body?.empresaId ?? req.query?.empresaId
+  if (bodyEmpresaId !== undefined && bodyEmpresaId !== null) {
+    const e = new Error('empresaId no se acepta en body ni query')
+    e.status = 400; e.expose = true; throw e
   }
-  return scope.empresaId
+  const bodySuc = req.body?.sucursalId ?? req.query?.sucursalId
+  if (bodySuc !== undefined && bodySuc !== null) {
+    const e = new Error('sucursalId no se acepta en body ni query')
+    e.status = 400; e.expose = true; throw e
+  }
+  return { empresaId, sucursalId: req.context.branch.sucursalId }
 }
 
 // Helper (duplicado del de facturas.controller; es chico y evita acoplar archivos).
@@ -56,7 +59,7 @@ async function auditar(req, factura, empresaId, detalle) {
         referencia: `factura:${factura.id}`,
         usuarioId: req.usuario?.id ?? null,
         empresaId,
-        sucursalId: req.usuario?.sucursalId ?? null,
+        sucursalId: req.context?.branch?.sucursalId ?? null,
         ip: req.ip,
         valorAntes: {
           estado: factura.estado, procesandoTimbrado: factura.procesandoTimbrado,
@@ -151,7 +154,7 @@ function clasificar(factura, candidatos) {
 // ════════════════════════════════════════════════════════════════════
 exports.timbradoCandidatos = async (req, res) => {
   try {
-    const empresaId = scopeEstricto(req)
+    const { empresaId } = scopeEstricto(req)
     const id = parseInt(req.params.id)
 
     const factura = await prisma.facturaCfdi.findFirst({ where: { id, empresaId } })
@@ -188,7 +191,7 @@ exports.timbradoCandidatos = async (req, res) => {
 // ════════════════════════════════════════════════════════════════════
 exports.reconciliarTimbrado = async (req, res) => {
   try {
-    const empresaId = scopeEstricto(req)
+    const { empresaId } = scopeEstricto(req)
     const id = parseInt(req.params.id)
     const { facturapiId } = req.body || {}
     if (!facturapiId || typeof facturapiId !== 'string') {
@@ -278,7 +281,7 @@ exports.reconciliarTimbrado = async (req, res) => {
 // ════════════════════════════════════════════════════════════════════
 exports.descartarTimbradoIncierto = async (req, res) => {
   try {
-    const empresaId = scopeEstricto(req)
+    const { empresaId } = scopeEstricto(req)
     const id = parseInt(req.params.id)
     const conf = (req.body?.confirmacionManual ?? '').toString().trim()
     if (conf.length < MIN_CONFIRMACION) {
