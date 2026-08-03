@@ -154,7 +154,8 @@ const listar = async (req, res) => {
   try {
     const { rol, sucursalId, buscar, activo } = req.query
     const solicitante = req.usuario
-    const where = {}
+    const empresaId = getEmpresaId(req)
+    const where = { empresaId }
     if (solicitante.rol === 'ADMIN_SUCURSAL') { where.sucursalId = solicitante.sucursalId; where.rol = { not: 'SUPERADMIN' } }
     if (rol)        where.rol        = rol
     if (sucursalId) where.sucursalId = parseInt(sucursalId)
@@ -474,16 +475,16 @@ const verificarPin = async (req, res) => {
 
 const listarVendedores = async (req, res) => {
   try {
-    const { sucursalId, rol } = req.usuario
-    const where = { activo: true }
-    if (rol !== 'SUPERADMIN') {
-      if (sucursalId) {
+    const empresaId = getEmpresaId(req)
+    const { branch } = req.context
+    const where = { activo: true, empresaId }
+
+    if (branch.mode === 'FIXED' || branch.mode === 'SELECTED') {
+      if (branch.sucursalId) {
         where.OR = [
-          { sucursalId },
+          { sucursalId: branch.sucursalId },
           { rol: 'SUPERADMIN' }
         ]
-      } else {
-        return res.status(400).json({ error: 'Usuario sin sucursal asignada' })
       }
     }
 

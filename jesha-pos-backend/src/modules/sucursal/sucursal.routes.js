@@ -4,6 +4,6 @@ const { tenantGlobal } = require('../../middlewares/scope.middleware')
 const { listar, listarDisponibles } = require('./sucursal.controller')
 
 router.get('/disponibles', requestContext, tenantGlobal, listarDisponibles)
-router.get('/', listar)
+router.get('/', requestContext, tenantGlobal, listar)
 
 module.exports = router
