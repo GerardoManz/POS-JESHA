@@ -367,30 +367,39 @@ const abonarCredito = async (req, res) => {
   try {
     const { id }    = req.params
     const { monto } = req.body
- 
+    const empresaId = getEmpresaId(req)
+
     if (!monto || parseFloat(monto) <= 0)
       return res.status(400).json({ error: 'Monto inválido' })
- 
-    const cliente = await prisma.cliente.findUnique({ where: { id: parseInt(id) } })
-    if (!cliente) return res.status(404).json({ error: 'Cliente no encontrado' })
-    if (cliente.tipo !== 'REGISTRADO')
-      return res.status(400).json({ error: 'Cliente sin crédito habilitado' })
- 
-    const montoAbono  = parseFloat(parseFloat(monto).toFixed(2))
-    const saldoActual = parseFloat(cliente.saldoPendiente)
-    const nuevoSaldo  = parseFloat(Math.max(0, saldoActual - montoAbono).toFixed(2))
- 
-    const actualizado = await prisma.cliente.update({
-      where: { id: parseInt(id) },
-      data:  { saldoPendiente: nuevoSaldo }
+
+    const resultado = await prisma.$transaction(async (tx) => {
+      const cliente = await tx.cliente.findFirst({ where: { id: parseInt(id), empresaId } })
+      if (!cliente) return { notFound: true }
+      if (cliente.tipo !== 'REGISTRADO')
+        return { sinCredito: true }
+
+      const montoAbono  = parseFloat(parseFloat(monto).toFixed(2))
+      const saldoActual = parseFloat(cliente.saldoPendiente)
+      const nuevoSaldo  = parseFloat(Math.max(0, saldoActual - montoAbono).toFixed(2))
+
+      const resultadoUpdate = await tx.cliente.updateMany({
+        where: { id: parseInt(id), empresaId },
+        data:  { saldoPendiente: nuevoSaldo }
+      })
+      if (resultadoUpdate.count !== 1) return { notFound: true }
+
+      return { ok: true, montoAbono, saldoActual, nuevoSaldo, cliente }
     })
- 
+
+    if (resultado.notFound) return res.status(404).json({ error: 'Cliente no encontrado' })
+    if (resultado.sinCredito) return res.status(400).json({ error: 'Cliente sin crédito habilitado' })
+
     res.json({
       success: true,
-      mensaje: `Abono de $${montoAbono.toFixed(2)} aplicado al crédito`,
-      saldoAnterior: saldoActual,
-      saldoNuevo:    nuevoSaldo,
-      Cliente:       { id: actualizado.id, nombre: actualizado.nombre, saldoPendiente: nuevoSaldo }
+      mensaje: `Abono de $${resultado.montoAbono.toFixed(2)} aplicado al crédito`,
+      saldoAnterior: resultado.saldoActual,
+      saldoNuevo:    resultado.nuevoSaldo,
+      Cliente:       { id: resultado.cliente.id, nombre: resultado.cliente.nombre, saldoPendiente: resultado.nuevoSaldo }
     })
   } catch (err) {
     console.error('❌ Error en abonarCredito:', err)
