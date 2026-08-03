@@ -80,8 +80,9 @@ function validarSatCatalogo(claveSat, unidadSat) {
 
 async function listarDepartamentos(req, res) {
     try {
+        const empresaId = getEmpresaId(req)
         const departamentos = await prisma.departamento.findMany({
-            where: { activo: true },
+            where: { activo: true, OR: [{ empresaId }, { empresaId: null }] },
             orderBy: { nombre: 'asc' }
         })
         console.log(`✅ Departamentos: ${departamentos.length}`)
@@ -98,7 +99,9 @@ async function listarDepartamentos(req, res) {
 
 async function listarCategorias(req, res) {
     try {
+        const empresaId = getEmpresaId(req)
         const categorias = await prisma.categoria.findMany({
+            where: { OR: [{ empresaId }, { empresaId: null }] },
             include: { Departamento: true },
             orderBy: { nombre: 'asc' }
         })
@@ -150,14 +153,7 @@ async function listar(req, res) {
         const incluirFrecuenciaTickets = String(contexto || '').toLowerCase() === 'pos'
         const terminoRanking = String(terminoBusqueda || '').trim().replace(/^["']+|["']+$/g, '').trim().toLowerCase()
 
-        const rol = req.usuario?.rol
-        const empresaIdRaw = req.usuario?.empresaId
-        const esScopeGlobal = !empresaIdRaw && rol === 'SUPERADMIN'
-        const empresaIdScope = empresaIdRaw ? parseInt(empresaIdRaw) : null
-
-        if (!esScopeGlobal && (!empresaIdScope || Number.isNaN(empresaIdScope))) {
-            return res.status(401).json({ success: false, error: 'empresaId no encontrado en el token del usuario' })
-        }
+        const empresaId = getEmpresaId(req)
 
         const sucursalRaw = req.usuario?.sucursalId ?? req.query.sucursalId ?? 1
         const sucursalIdInventario = parseInt(sucursalRaw)
@@ -165,8 +161,7 @@ async function listar(req, res) {
             return res.status(400).json({ success: false, error: 'sucursalId inválido' })
         }
 
-        const whereScope = esScopeGlobal ? {} : { empresaId: empresaIdScope }
-        const where = { ...whereScope }
+        const where = { empresaId }
         if (activo === 'all') {
             // no filtra — retorna todos
         } else if (activo !== undefined) {
@@ -206,7 +201,7 @@ async function listar(req, res) {
                 try {
                     const rawResult = await prisma.$queryRaw`
                         SELECT p.id FROM "Producto" p
-                        WHERE p."empresaId" = ${empresaIdScope}
+                        WHERE p."empresaId" = ${empresaId}
                           AND (
                             to_tsvector('simple', p.nombre) @@ plainto_tsquery('simple', ${termLimpio})
                             OR p."codigoInterno" ILIKE ${'%' + termLimpio + '%'}
@@ -221,7 +216,7 @@ async function listar(req, res) {
                 // 2) ILIKE por palabra — para que "clavo concreto" encuentre "clavo p/concreto"
                 try {
                     const ilikeWhere = {
-                        ...(esScopeGlobal ? {} : { empresaId: empresaIdScope }),
+                        empresaId,
                         AND: palabras.map(p => ({
                             OR: [
                                 { nombre:        { contains: p, mode: 'insensitive' } },
@@ -290,7 +285,7 @@ async function listar(req, res) {
         }
 
         // ── Query de datos y conteo en paralelo ──
-        const whereGlobal = { ...whereScope }
+        const whereGlobal = { ...where }
         if (activo === 'all') {
             // no filtra
         } else if (activo !== undefined) {
@@ -332,7 +327,7 @@ async function listar(req, res) {
                   AND i."stockActual" > 0
                   AND i."stockActual" <= i."stockMinimoAlerta"
                   AND p.activo = true
-                  AND (${esScopeGlobal} = true OR p."empresaId" = ${empresaIdScope || 0})
+                  AND p."empresaId" = ${empresaId}
             `.then(r => r[0].count)
         ]
 
@@ -367,8 +362,8 @@ async function listar(req, res) {
                     WHERE dv."productoId" IN (${Prisma.join(productoIds)})
                       AND v."creadaEn" >= ${desdeFrecuencia}
                       AND v."estado" <> 'CANCELADA'
+                      AND v."empresaId" = ${empresaId}
                       AND v."sucursalId" = ${sucursalIdInventario}
-                      AND (${esScopeGlobal} = true OR v."empresaId" = ${empresaIdScope || 0})
                     GROUP BY dv."productoId"
                 `
 
@@ -456,8 +451,9 @@ async function listar(req, res) {
 async function obtener(req, res) {
     try {
         const { id } = req.params
-        const producto = await prisma.producto.findUnique({
-            where: { id: parseInt(id) },
+        const empresaId = getEmpresaId(req)
+        const producto = await prisma.producto.findFirst({
+            where: { id: parseInt(id), empresaId },
             include: {
                 Categoria: { include: { Departamento: true } },
                 InventarioSucursal: { where: { sucursalId: 1 }, take: 1 },
@@ -502,6 +498,10 @@ async function crear(req, res) {
         } = req.body
         const empresaId = getEmpresaId(req)
 
+        if (req.body?.empresaId !== undefined || req.query?.empresaId !== undefined) {
+            return res.status(400).json({ success: false, error: 'empresaId no se acepta desde el cliente' })
+        }
+
         // Normalizar codigoBarras y codigoInterno
         codigoBarras = normalizarCodigoBarras(codigoBarras)
         codigoInterno = normalizarCodigoInterno(codigoInterno)
@@ -524,6 +524,15 @@ async function crear(req, res) {
             return res.status(400).json({ success: false, error: "tipo debe ser 'PRODUCTO' o 'SERVICIO'", campo: 'tipo' })
         }
         const esServicio = tipoFinal === 'SERVICIO'
+
+        // Validar que la categoría pertenezca a la empresa (o sea global)
+        const categoriaValida = await prisma.categoria.findFirst({
+            where: { id: parseInt(categoriaId), OR: [{ empresaId }, { empresaId: null }] },
+            select: { id: true }
+        })
+        if (!categoriaValida) {
+            return res.status(400).json({ success: false, error: 'La categoría no existe o no pertenece a esta empresa', campo: 'categoriaId' })
+        }
 
         // Validar CLAVE SAT y UNIDAD SAT obligatorios (solo para productos físicos)
         if (!esServicio && (satInvalido(claveSat) || satInvalido(unidadSat))) {
@@ -608,6 +617,13 @@ async function crear(req, res) {
 
         // Guardar relación con proveedor si se proporcionó
         if (proveedorId) {
+            const proveedorValido = await prisma.proveedor.findFirst({
+                where: { id: parseInt(proveedorId), empresaId },
+                select: { id: true }
+            })
+            if (!proveedorValido) {
+                return res.status(400).json({ success: false, error: 'El proveedor no existe o no pertenece a esta empresa', campo: 'proveedorId' })
+            }
             await prisma.proveedorProducto.create({
                 data: {
                     productoId: producto.id,
@@ -778,6 +794,12 @@ function construirDataEdicion(body, existente, esServ, claveSatFinal, unidadSatF
 async function editar(req, res) {
     try {
         const { id } = req.params
+        const empresaId = getEmpresaId(req)
+
+        if (req.body?.empresaId !== undefined || req.query?.empresaId !== undefined) {
+            return res.status(400).json({ success: false, error: 'empresaId no se acepta desde el cliente' })
+        }
+
         let {
             nombre, codigoInterno, codigoBarras, descripcion,
             costo, precioBase, precioVenta, categoriaId,
@@ -818,9 +840,18 @@ async function editar(req, res) {
             })
         }
 
-        const existente = await prisma.producto.findUnique({ where: { id: parseInt(id) } })
+        const existente = await prisma.producto.findFirst({ where: { id: parseInt(id), empresaId } })
         if (!existente) {
             return res.status(404).json({ success: false, error: 'Producto no encontrado' })
+        }
+
+        // Validar que la categoría (si cambia) pertenezca a la empresa o sea global
+        const categoriaEditar = await prisma.categoria.findFirst({
+            where: { id: parseInt(categoriaId), OR: [{ empresaId }, { empresaId: null }] },
+            select: { id: true }
+        })
+        if (!categoriaEditar) {
+            return res.status(400).json({ success: false, error: 'La categoría no existe o no pertenece a esta empresa', campo: 'categoriaId' })
         }
 
         if (tipo && tipo !== existente.tipo) {
@@ -869,6 +900,13 @@ async function editar(req, res) {
         })
 
         if (proveedorId && proveedorId !== '' && proveedorId !== 'null') {
+            const proveedorEditar = await prisma.proveedor.findFirst({
+                where: { id: parseInt(proveedorId), empresaId },
+                select: { id: true }
+            })
+            if (!proveedorEditar) {
+                return res.status(400).json({ success: false, error: 'El proveedor no existe o no pertenece a esta empresa', campo: 'proveedorId' })
+            }
             const ppProveedorId = parseInt(proveedorId)
             const ppProductoId  = parseInt(id)
             await prisma.proveedorProducto.upsert({
@@ -904,13 +942,22 @@ async function cambiarEstado(req, res) {
     try {
         const { id } = req.params
         const { activo } = req.body
+        const empresaId = getEmpresaId(req)
 
         if (typeof activo !== 'boolean') {
             return res.status(400).json({ success: false, error: 'El campo activo debe ser booleano' })
         }
 
+        const existente = await prisma.producto.findFirst({
+            where: { id: parseInt(id), empresaId },
+            select: { id: true }
+        })
+        if (!existente) {
+            return res.status(404).json({ success: false, error: 'Producto no encontrado' })
+        }
+
         const producto = await prisma.producto.update({
-            where: { id: parseInt(id) },
+            where: { id: existente.id },
             data: { activo }
         })
 
@@ -928,9 +975,19 @@ async function cambiarEstado(req, res) {
 // Guarda ambos campos para permitir borrar/reemplazar después
 // ═══════════════════════════════════════════════════════════════════
 
-async function actualizarImagen(id, { url, public_id }) {
+async function actualizarImagen(id, req, { url, public_id }) {
+    const empresaId = getEmpresaId(req)
+    const existente = await prisma.producto.findFirst({
+        where: { id: parseInt(id), empresaId },
+        select: { id: true }
+    })
+    if (!existente) {
+        const err = new Error('Producto no encontrado')
+        err.statusCode = 404
+        throw err
+    }
     const producto = await prisma.producto.update({
-        where: { id: parseInt(id) },
+        where: { id: existente.id },
         data: {
             imagenUrl:      url,
             imagenPublicId: public_id
@@ -957,8 +1014,9 @@ async function actualizarImagen(id, { url, public_id }) {
 async function eliminarImagen(req, res) {
     try {
         const { id } = req.params
-        const producto = await prisma.producto.findUnique({
-            where: { id: parseInt(id) }
+        const empresaId = getEmpresaId(req)
+        const producto = await prisma.producto.findFirst({
+            where: { id: parseInt(id), empresaId }
         })
 
         if (!producto) {
@@ -972,7 +1030,7 @@ async function eliminarImagen(req, res) {
 
         // Limpiar campos en BD (independiente del resultado de Cloudinary)
         const actualizado = await prisma.producto.update({
-            where: { id: parseInt(id) },
+            where: { id: producto.id },
             data: { imagenUrl: null, imagenPublicId: null },
             include: {
                 Categoria: { include: { Departamento: true } },
@@ -1002,8 +1060,19 @@ async function eliminarImagen(req, res) {
 async function categoriasPorDepartamento(req, res) {
     try {
         const { departamentoId } = req.params
+        const empresaId = getEmpresaId(req)
+        const deptoId = parseInt(departamentoId)
+
+        const departamento = await prisma.departamento.findFirst({
+            where: { id: deptoId, OR: [{ empresaId }, { empresaId: null }] },
+            select: { id: true }
+        })
+        if (!departamento) {
+            return res.status(404).json({ success: false, error: 'Departamento no encontrado' })
+        }
+
         const categorias = await prisma.categoria.findMany({
-            where: { departamentoId: parseInt(departamentoId) },
+            where: { departamentoId: deptoId, OR: [{ empresaId }, { empresaId: null }] },
             orderBy: { nombre: 'asc' }
         })
         res.json({ success: true, data: categorias })
@@ -1222,17 +1291,14 @@ async function editarDatosBasicos(req, res) {
         if (!nombre)        return res.status(400).json({ success: false, error: 'El nombre es requerido' })
         if (!codigoInterno) return res.status(400).json({ success: false, error: 'El código interno es requerido' })
 
-        const rol          = req.usuario?.rol
-        const empresaIdRaw = req.usuario?.empresaId
-        const esGlobal     = empresaIdRaw === null && rol === 'SUPERADMIN'
-        const empresaId    = esGlobal ? null : parseInt(empresaIdRaw)
-
-        if (!esGlobal && (!empresaId || Number.isNaN(empresaId))) {
-            return res.status(401).json({ success: false, error: 'empresaId no encontrado en el token del usuario' })
+        if (req.body?.empresaId !== undefined || req.query?.empresaId !== undefined) {
+            return res.status(400).json({ success: false, error: 'empresaId no se acepta desde el cliente' })
         }
 
+        const empresaId = getEmpresaId(req)
+
         const existente = await prisma.producto.findFirst({
-            where: esGlobal ? { id } : { id, empresaId }
+            where: { id, empresaId }
         })
         if (!existente) {
             return res.status(404).json({ success: false, error: 'Producto no encontrado' })
@@ -1386,7 +1452,10 @@ const duplicarProducto = async (req, res) => {
             return res.status(400).json({ success: false, error: 'Código interno requerido' })
         }
 
-        const original = await prisma.producto.findUnique({ where: { id }, include: { Categoria: true } })
+        const original = await prisma.producto.findFirst({
+            where: { id, empresaId },
+            include: { Categoria: true }
+        })
         if (!original) return res.status(404).json({ success: false, error: 'Producto original no encontrado' })
 
         const codigoInternoLimpio = normalizarCodigoInterno(codigoInterno)

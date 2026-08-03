@@ -8,6 +8,8 @@ const router  = express.Router()
 const multer  = require('multer')
 
 const { requireRole } = require('../../middlewares/auth.middleware')
+const { requestContext } = require('../../middlewares/request-context.middleware')
+const { tenantGlobal } = require('../../middlewares/scope.middleware')
 
 const productosController   = require('./productos.controller')
 const productosRapidoController = require('./productos.rapido.controller')
@@ -52,17 +54,24 @@ const uploadCSV = multer({
 })
 
 // ═══════════════════════════════════════════════════════════════════
+// CONTEXTO TENANT — requestContext hidrata req.context (inmutable).
+// El scope se aplica por ruta: catalog/CRUD es TENANT_GLOBAL.
+// ═══════════════════════════════════════════════════════════════════
+
+router.use(requestContext)
+
+// ═══════════════════════════════════════════════════════════════════
 // DEPARTAMENTOS Y CATEGORÍAS
 // ═══════════════════════════════════════════════════════════════════
 
-router.get('/departamentos',     productosController.listarDepartamentos)
-router.post('/departamentos',    requireRole('SUPERADMIN', 'ADMIN_SUCURSAL'), productosController.crearDepartamento)
-router.get('/categorias',        productosController.listarCategorias)
-router.get('/departamentos/:departamentoId/categorias', productosController.categoriasPorDepartamento)
-router.post('/categorias',       requireRole('SUPERADMIN', 'ADMIN_SUCURSAL'), productosController.crearCategoria)
+router.get('/departamentos',     tenantGlobal, productosController.listarDepartamentos)
+router.post('/departamentos',    tenantGlobal, requireRole('SUPERADMIN', 'ADMIN_SUCURSAL'), productosController.crearDepartamento)
+router.get('/categorias',        tenantGlobal, productosController.listarCategorias)
+router.get('/departamentos/:departamentoId/categorias', tenantGlobal, productosController.categoriasPorDepartamento)
+router.post('/categorias',       tenantGlobal, requireRole('SUPERADMIN', 'ADMIN_SUCURSAL'), productosController.crearCategoria)
 
 // ═══════════════════════════════════════════════════════════════════
-// IMPORTACIÓN CSV
+// IMPORTACIÓN CSV — FUERA_DE_ALCANCE (escribe inventario + movimientos)
 // ═══════════════════════════════════════════════════════════════════
 
 router.post('/importar/csv',            requireRole('SUPERADMIN', 'ADMIN_SUCURSAL'), uploadCSV.single('archivo'), importacionController.importarCSV)
@@ -74,9 +83,9 @@ router.post('/importar/solo-nuevos',    requireRole('SUPERADMIN', 'ADMIN_SUCURSA
 router.get('/',                    productosController.listar)
 
 // GET /productos/sat/unidades — catálogo SAT + unidades operativas para dropdowns
-router.get('/sat/unidades',        satController.listarUnidades)
+router.get('/sat/unidades',        tenantGlobal, satController.listarUnidades)
 
-// POST /productos/articulo-rapido — alta rápida desde POS (cualquier usuario autenticado)
+// POST /productos/articulo-rapido — FUERA_DE_ALCANCE (crea inventario + movimiento)
 router.post('/articulo-rapido',   productosRapidoController.crearArticuloRapido)
 
 // GET /productos/sugerir — Autocomplete (ANTES de /:id para que no capture "sugerir" como :id)
@@ -85,24 +94,24 @@ router.get('/sugerir', productosController.sugerirNombres)
 // GET /productos/:id — Obtener producto individual
 router.get('/:id', productosController.obtener)
 
-router.post('/',                 requireRole('SUPERADMIN', 'ADMIN_SUCURSAL'), productosController.crear)
-router.put('/:id',               requireRole('SUPERADMIN', 'ADMIN_SUCURSAL'), productosController.editar)
-router.patch('/:id/datos-basicos', requireRole('EMPLEADO', 'ADMIN_SUCURSAL', 'SUPERADMIN'), productosController.editarDatosBasicos)
-router.patch('/:id/estado',      requireRole('SUPERADMIN', 'ADMIN_SUCURSAL'), productosController.cambiarEstado)
+router.post('/',                 tenantGlobal, requireRole('SUPERADMIN', 'ADMIN_SUCURSAL'), productosController.crear)
+router.put('/:id',               tenantGlobal, requireRole('SUPERADMIN', 'ADMIN_SUCURSAL'), productosController.editar)
+router.patch('/:id/datos-basicos', tenantGlobal, requireRole('EMPLEADO', 'ADMIN_SUCURSAL', 'SUPERADMIN'), productosController.editarDatosBasicos)
+router.patch('/:id/estado',      tenantGlobal, requireRole('SUPERADMIN', 'ADMIN_SUCURSAL'), productosController.cambiarEstado)
 router.patch('/:id/inventario',  requireRole('SUPERADMIN', 'ADMIN_SUCURSAL'), productosController.ajustarInventario)
-router.post('/:id/duplicar',     requireRole('SUPERADMIN', 'ADMIN_SUCURSAL'), productosController.duplicarProducto)
+router.post('/:id/duplicar',     tenantGlobal, requireRole('SUPERADMIN', 'ADMIN_SUCURSAL'), productosController.duplicarProducto)
 
 // ═══════════════════════════════════════════════════════════════════
 // SUGERENCIA SAT (read-only, sin requireRole: cualquier usuario autenticado)
 // ═══════════════════════════════════════════════════════════════════
 
-router.post('/sat/sugerir', satController.sugerirSat)
+router.post('/sat/sugerir', tenantGlobal, satController.sugerirSat)
 
 // ═══════════════════════════════════════════════════════════════════
 // IMAGEN — SUBIR (ahora va a Cloudinary, sin tocar disco)
 // ═══════════════════════════════════════════════════════════════════
 
-router.post('/:id/imagen', requireRole('SUPERADMIN', 'ADMIN_SUCURSAL'), uploadImagen.single('imagen'), async (req, res) => {
+router.post('/:id/imagen', tenantGlobal, requireRole('SUPERADMIN', 'ADMIN_SUCURSAL'), uploadImagen.single('imagen'), async (req, res) => {
     try {
         const { id } = req.params
 
@@ -111,8 +120,8 @@ router.post('/:id/imagen', requireRole('SUPERADMIN', 'ADMIN_SUCURSAL'), uploadIm
         // Sube a Cloudinary (resize + WebP los hace Cloudinary, no nosotros)
         const { url, public_id } = await subirImagenProducto(req.file.buffer, id)
 
-        // Guarda url + public_id en BD
-        const producto = await productosController.actualizarImagen(id, { url, public_id })
+        // Guarda url + public_id en BD (scoped por empresa desde el contexto)
+        const producto = await productosController.actualizarImagen(id, req, { url, public_id })
 
         res.json({
             mensaje:    'Imagen subida exitosamente',
@@ -121,7 +130,8 @@ router.post('/:id/imagen', requireRole('SUPERADMIN', 'ADMIN_SUCURSAL'), uploadIm
         })
     } catch (err) {
         console.error('❌ Error subiendo imagen:', err)
-        res.status(400).json({ error: err.message })
+        const status = err.statusCode || 400
+        res.status(status).json({ error: err.message })
     }
 })
 
@@ -129,6 +139,6 @@ router.post('/:id/imagen', requireRole('SUPERADMIN', 'ADMIN_SUCURSAL'), uploadIm
 // IMAGEN — ELIMINAR (opcional, listo para usar cuando lo conectes al frontend)
 // ═══════════════════════════════════════════════════════════════════
 
-router.delete('/:id/imagen', requireRole('SUPERADMIN', 'ADMIN_SUCURSAL'), productosController.eliminarImagen)
+router.delete('/:id/imagen', tenantGlobal, requireRole('SUPERADMIN', 'ADMIN_SUCURSAL'), productosController.eliminarImagen)
 
 module.exports = router
