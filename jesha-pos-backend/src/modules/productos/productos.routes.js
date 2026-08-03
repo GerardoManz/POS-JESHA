@@ -9,7 +9,7 @@ const multer  = require('multer')
 
 const { requireRole } = require('../../middlewares/auth.middleware')
 const { requestContext } = require('../../middlewares/request-context.middleware')
-const { tenantGlobal } = require('../../middlewares/scope.middleware')
+const { tenantGlobal, branchOptional } = require('../../middlewares/scope.middleware')
 
 const productosController   = require('./productos.controller')
 const productosRapidoController = require('./productos.rapido.controller')
@@ -55,7 +55,8 @@ const uploadCSV = multer({
 
 // ═══════════════════════════════════════════════════════════════════
 // CONTEXTO TENANT — requestContext hidrata req.context (inmutable).
-// El scope se aplica por ruta: catalog/CRUD es TENANT_GLOBAL.
+// El scope se aplica por ruta: catalog/CRUD es TENANT_GLOBAL;
+// lecturas con existencias son BRANCH_OPTIONAL.
 // ═══════════════════════════════════════════════════════════════════
 
 router.use(requestContext)
@@ -80,7 +81,7 @@ router.post('/importar/solo-nuevos',    requireRole('SUPERADMIN', 'ADMIN_SUCURSA
 // CRUD PRODUCTOS
 // ═══════════════════════════════════════════════════════════════════
 
-router.get('/',                    productosController.listar)
+router.get('/',                    branchOptional, productosController.listar)
 
 // GET /productos/sat/unidades — catálogo SAT + unidades operativas para dropdowns
 router.get('/sat/unidades',        tenantGlobal, satController.listarUnidades)
@@ -89,10 +90,10 @@ router.get('/sat/unidades',        tenantGlobal, satController.listarUnidades)
 router.post('/articulo-rapido',   productosRapidoController.crearArticuloRapido)
 
 // GET /productos/sugerir — Autocomplete (ANTES de /:id para que no capture "sugerir" como :id)
-router.get('/sugerir', productosController.sugerirNombres)
+router.get('/sugerir', branchOptional, productosController.sugerirNombres)
 
-// GET /productos/:id — Obtener producto individual
-router.get('/:id', productosController.obtener)
+// GET /productos/:id — Obtener producto individual (incluye existencias por sucursal)
+router.get('/:id', branchOptional, productosController.obtener)
 
 router.post('/',                 tenantGlobal, requireRole('SUPERADMIN', 'ADMIN_SUCURSAL'), productosController.crear)
 router.put('/:id',               tenantGlobal, requireRole('SUPERADMIN', 'ADMIN_SUCURSAL'), productosController.editar)

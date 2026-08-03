@@ -41,6 +41,19 @@ function satInvalido(valor) {
     return false
 }
 
+// Resuelve la sucursal operativa desde req.context.branch (nunca body/query/token).
+// NONE → null (consolidado); FIXED/SELECTED → sucursal única.
+function sucursalOperativa(req) {
+    const sucursalId = req?.context?.branch?.sucursalId ?? null
+    return sucursalId === null || sucursalId === undefined ? null : parseInt(sucursalId)
+}
+
+// Include de inventario para respuestas de producto según contexto de sucursal.
+function includeInventario(req) {
+    const sucursalId = sucursalOperativa(req)
+    return sucursalId ? { where: { sucursalId }, take: 1 } : { take: 1 }
+}
+
 function normalizarClaveSat(valor) {
     if (satInvalido(valor)) return null
     return String(valor).trim()
@@ -154,12 +167,7 @@ async function listar(req, res) {
         const terminoRanking = String(terminoBusqueda || '').trim().replace(/^["']+|["']+$/g, '').trim().toLowerCase()
 
         const empresaId = getEmpresaId(req)
-
-        const sucursalRaw = req.usuario?.sucursalId ?? req.query.sucursalId ?? 1
-        const sucursalIdInventario = parseInt(sucursalRaw)
-        if (!sucursalIdInventario || Number.isNaN(sucursalIdInventario)) {
-            return res.status(400).json({ success: false, error: 'sucursalId inválido' })
-        }
+        const sucursalIdInventario = sucursalOperativa(req)
 
         const where = { empresaId }
         if (activo === 'all') {
@@ -268,11 +276,18 @@ async function listar(req, res) {
 
         // ── Filtro por stock (NUEVO — antes se hacía en frontend) ──
         // Soporta el nuevo param `stock` (con|sin|bajo) y el legacy `enStock`
+        // FIXED/SELECTED → sucursal operativa. NONE → consolida la Empresa.
         const stockFiltro = stock || (enStock === 'true' ? 'con' : '')
+        const filtroStockCon = sucursalIdInventario
+            ? { some: { sucursalId: sucursalIdInventario, stockActual: { gt: 0 } } }
+            : { some: { stockActual: { gt: 0 } } }
+        const filtroStockSin = sucursalIdInventario
+            ? { none: { sucursalId: sucursalIdInventario, stockActual: { gt: 0 } } }
+            : { none: { stockActual: { gt: 0 } } }
         if (stockFiltro === 'con') {
-            where.InventarioSucursal = { some: { sucursalId: sucursalIdInventario, stockActual: { gt: 0 } } }
+            where.InventarioSucursal = filtroStockCon
         } else if (stockFiltro === 'sin') {
-            where.InventarioSucursal = { none: { sucursalId: sucursalIdInventario, stockActual: { gt: 0 } } }
+            where.InventarioSucursal = filtroStockSin
         } else if (stockFiltro === 'sin_imagen') {
             where.imagenUrl = null
         }
@@ -304,7 +319,7 @@ async function listar(req, res) {
                 where,
                 include: {
                     Categoria: { include: { Departamento: true } },
-                    InventarioSucursal: { where: { sucursalId: sucursalIdInventario }, take: 1 },
+                    InventarioSucursal: sucursalIdInventario ? { where: { sucursalId: sucursalIdInventario } } : {},
                     ProveedorProducto: { include: { Proveedor: true } }
                 },
                 orderBy: { nombre: 'asc' },
@@ -313,21 +328,17 @@ async function listar(req, res) {
             }),
             prisma.producto.count({ where: stockFiltro === 'bajo' ? { ...where } : where }),
             // Conteos globales para las estadísticas del header
-            prisma.producto.count({
-                where: { ...whereGlobal, InventarioSucursal: { some: { sucursalId: sucursalIdInventario, stockActual: { gt: 0 } } } }
-            }),
-            prisma.producto.count({
-                where: { ...whereGlobal, InventarioSucursal: { none: { sucursalId: sucursalIdInventario, stockActual: { gt: 0 } } } }
-            }),
+            prisma.producto.count({ where: { ...whereGlobal, InventarioSucursal: filtroStockCon } }),
+            prisma.producto.count({ where: { ...whereGlobal, InventarioSucursal: filtroStockSin } }),
             prisma.$queryRaw`
-                SELECT COUNT(*)::int AS count
+                SELECT COUNT(DISTINCT p.id)::int AS count
                 FROM "InventarioSucursal" i
                 JOIN "Producto" p ON p.id = i."productoId"
-                WHERE i."sucursalId" = ${sucursalIdInventario}
+                WHERE p."empresaId" = ${empresaId}
                   AND i."stockActual" > 0
                   AND i."stockActual" <= i."stockMinimoAlerta"
                   AND p.activo = true
-                  AND p."empresaId" = ${empresaId}
+                  ${sucursalIdInventario ? Prisma.sql`AND i."sucursalId" = ${sucursalIdInventario}` : Prisma.empty}
             `.then(r => r[0].count)
         ]
 
@@ -336,11 +347,12 @@ async function listar(req, res) {
         // ── Post-filtro para "bajo stock" (requiere comparar columnas) ──
         if (stockFiltro === 'bajo') {
             productos = productos.filter(p => {
-                const inv = p.InventarioSucursal?.[0]
-                if (!inv) return false
-                const sa = parseFloat(inv.stockActual)
-                const sm = parseFloat(inv.stockMinimoAlerta)
-                return sa > 0 && sa <= sm
+                const invs = p.InventarioSucursal || []
+                return invs.some(inv => {
+                    const sa = parseFloat(inv.stockActual)
+                    const sm = parseFloat(inv.stockMinimoAlerta)
+                    return sa > 0 && sa <= sm
+                })
             })
             total = productos.length
             // Aplicar paginación manual sobre el resultado filtrado, salvo ranking.
@@ -363,7 +375,7 @@ async function listar(req, res) {
                       AND v."creadaEn" >= ${desdeFrecuencia}
                       AND v."estado" <> 'CANCELADA'
                       AND v."empresaId" = ${empresaId}
-                      AND v."sucursalId" = ${sucursalIdInventario}
+                      ${sucursalIdInventario ? Prisma.sql`AND v."sucursalId" = ${sucursalIdInventario}` : Prisma.empty}
                     GROUP BY dv."productoId"
                 `
 
@@ -407,17 +419,23 @@ async function listar(req, res) {
                 .slice(skipNum, skipNum + takeNum)
         }
 
-        const data = productos.map(prod => ({
-            ...prod,
-            ...(incluirFrecuenciaTickets ? { vecesEnTickets: frecuenciaTickets.get(prod.id) || 0 } : {}),
-            stock: prod.InventarioSucursal?.length > 0 ? parseFloat(prod.InventarioSucursal[0].stockActual) : 0,
-            inventario: prod.InventarioSucursal?.length > 0 ? {
-              ...prod.InventarioSucursal[0],
-              stockActual:       parseFloat(prod.InventarioSucursal[0].stockActual),
-              stockMinimoAlerta: parseFloat(prod.InventarioSucursal[0].stockMinimoAlerta),
-              stockMaximo:       prod.InventarioSucursal[0].stockMaximo ? parseFloat(prod.InventarioSucursal[0].stockMaximo) : null
-            } : null
-        }))
+        const data = productos.map(prod => {
+            const invs = prod.InventarioSucursal || []
+            const stock = sucursalIdInventario
+                ? (invs.length > 0 ? parseFloat(invs[0].stockActual) : 0)
+                : invs.reduce((suma, inv) => suma + parseFloat(inv.stockActual || 0), 0)
+            return {
+                ...prod,
+                ...(incluirFrecuenciaTickets ? { vecesEnTickets: frecuenciaTickets.get(prod.id) || 0 } : {}),
+                stock,
+                inventario: invs.length > 0 ? {
+                    ...invs[0],
+                    stockActual:       parseFloat(invs[0].stockActual),
+                    stockMinimoAlerta: parseFloat(invs[0].stockMinimoAlerta),
+                    stockMaximo:       invs[0].stockMaximo ? parseFloat(invs[0].stockMaximo) : null
+                } : null
+            }
+        })
 
         const paginaActual = Math.floor(skipNum / takeNum) + 1
 
@@ -456,7 +474,7 @@ async function obtener(req, res) {
             where: { id: parseInt(id), empresaId },
             include: {
                 Categoria: { include: { Departamento: true } },
-                InventarioSucursal: { where: { sucursalId: 1 }, take: 1 },
+                InventarioSucursal: includeInventario(req),
                 ProveedorProducto: {
                     orderBy: { actualizadoEn: 'desc' },
                     take: 1,
@@ -611,7 +629,7 @@ async function crear(req, res) {
             },
             include: {
                 Categoria: { include: { Departamento: true } },
-                InventarioSucursal: { where: { sucursalId: 1 }, take: 1 }
+                InventarioSucursal: { take: 1 }
             }
         })
 
@@ -895,7 +913,7 @@ async function editar(req, res) {
             data,
             include: {
                 Categoria: { include: { Departamento: true } },
-                InventarioSucursal: { where: { sucursalId: 1 }, take: 1 }
+                InventarioSucursal: includeInventario(req)
             }
         })
 
@@ -994,7 +1012,7 @@ async function actualizarImagen(id, req, { url, public_id }) {
         },
         include: {
             Categoria: { include: { Departamento: true } },
-            InventarioSucursal: { where: { sucursalId: 1 }, take: 1 }
+            InventarioSucursal: includeInventario(req)
         }
     })
     console.log(`✅ Imagen actualizada (Cloudinary): ${producto.nombre}`)
@@ -1034,7 +1052,7 @@ async function eliminarImagen(req, res) {
             data: { imagenUrl: null, imagenPublicId: null },
             include: {
                 Categoria: { include: { Departamento: true } },
-                InventarioSucursal: { where: { sucursalId: 1 }, take: 1 }
+                InventarioSucursal: includeInventario(req)
             }
         })
 
@@ -1328,7 +1346,7 @@ async function editarDatosBasicos(req, res) {
             data: { nombre, codigoInterno, codigoBarras },
             include: {
                 Categoria: { include: { Departamento: true } },
-                InventarioSucursal: { where: { sucursalId: 1 }, take: 1 }
+                InventarioSucursal: includeInventario(req)
             }
         })
 
@@ -1362,7 +1380,7 @@ const sugerirNombres = async (req, res) => {
             return res.json({ success: true, data: [] })
         }
         const busqueda = q.trim()
-        const sucursalIdInt = parseInt(req.usuario?.sucursalId) || 0
+        const sucursalIdInt = sucursalOperativa(req)
 
         const where = { empresaId }
 
@@ -1391,9 +1409,13 @@ const sugerirNombres = async (req, res) => {
         }
 
         if (stock === 'con') {
-            where.InventarioSucursal = { some: { sucursalId: sucursalIdInt, stockActual: { gt: 0 } } }
+            where.InventarioSucursal = sucursalIdInt
+                ? { some: { sucursalId: sucursalIdInt, stockActual: { gt: 0 } } }
+                : { some: { stockActual: { gt: 0 } } }
         } else if (stock === 'sin') {
-            where.InventarioSucursal = { none: { sucursalId: sucursalIdInt, stockActual: { gt: 0 } } }
+            where.InventarioSucursal = sucursalIdInt
+                ? { none: { sucursalId: sucursalIdInt, stockActual: { gt: 0 } } }
+                : { none: { stockActual: { gt: 0 } } }
         }
 
         const palabras = busqueda.split(/\s+/).filter(Boolean)
@@ -1417,7 +1439,11 @@ const sugerirNombres = async (req, res) => {
                 codigoInterno: true,
                 precioVenta: true,
                 unidadVenta: true,
-                InventarioSucursal: { where: { sucursalId: sucursalIdInt }, take: 1, select: { stockActual: true } }
+                InventarioSucursal: {
+                    where: sucursalIdInt ? { sucursalId: sucursalIdInt } : undefined,
+                    take: 1,
+                    select: { stockActual: true }
+                }
             },
             take: 15,
             orderBy: { nombre: 'asc' }
@@ -1519,7 +1545,7 @@ const duplicarProducto = async (req, res) => {
                     modulo: 'PRODUCTOS',
                     referencia: `Original: ${original.codigoInterno} → Nuevo: ${codigoInternoLimpio}`,
                     usuarioId: req.usuario?.id ? parseInt(req.usuario.id) : null,
-                    sucursalId: req.usuario?.sucursalId ? parseInt(req.usuario.sucursalId) : null
+                    sucursalId: sucursalOperativa(req)
                 }
             })
 
