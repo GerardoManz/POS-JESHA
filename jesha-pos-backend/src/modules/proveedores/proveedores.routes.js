@@ -1,6 +1,9 @@
-// src/modules/proveedores/proveedores.routes.js
 const router = require('express').Router()
-const c      = require('./proveedores.controller')
+const c = require('./proveedores.controller')
+const { requestContext } = require('../../middlewares/request-context.middleware')
+const { tenantGlobal } = require('../../middlewares/scope.middleware')
+
+router.use(requestContext, tenantGlobal)
 
 router.get('/',                       c.listar)
 router.post('/',                      c.crear)

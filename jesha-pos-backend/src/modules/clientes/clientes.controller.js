@@ -49,7 +49,8 @@ async function registrarAudit(solicitante, accion, referencia, ip, empresaId) {
 const listar = async (req, res) => {
   try {
     const { tipo, activo, buscar } = req.query
-    const where = {}
+    const empresaId = getEmpresaId(req)
+    const where = { empresaId }
 
     if (tipo)              where.tipo   = tipo
     if (activo !== undefined) where.activo = activo === 'true'
