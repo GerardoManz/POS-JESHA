@@ -21,9 +21,8 @@ exports.ajusteRapido = async (req, res) => {
     const productoId = parseInt(req.body.productoId)
     const nuevoStock = parseFloat(req.body.nuevoStock)
 
-    // SUPERADMIN puede tener sucursalId = null en el token → fallback
-    const sucursalIdToken = req.usuario?.sucursalId
-    const sucursalId      = sucursalIdToken || parseInt(req.body.sucursalId) || 1
+    // La sucursal SIEMPRE viene del contexto tenant (FIXED/SELECTED), nunca del body ni del JWT
+    const sucursalId      = req.context?.branch?.sucursalId ?? null
     const usuarioId       = req.usuario?.id ? parseInt(req.usuario.id) : null
     const empresaId       = getEmpresaId(req)
 
@@ -49,6 +48,15 @@ exports.ajusteRapido = async (req, res) => {
     const rolesPermitidos = ['EMPLEADO', 'ADMIN_SUCURSAL', 'SUPERADMIN']
     if (!rolesPermitidos.includes(usuario.rol)) {
       return res.status(403).json({ error: 'Sin permiso para ajustar inventario', codigo: 'SIN_PERMISO_AJUSTE' })
+    }
+
+    // ── Validar que el producto pertenezca a la empresa del contexto ──
+    const producto = await prisma.producto.findFirst({
+      where: { id: productoId, empresaId },
+      select: { id: true }
+    })
+    if (!producto) {
+      return res.status(404).json({ error: `Producto ${productoId} no encontrado en esta empresa`, codigo: 'PRODUCTO_NO_ENCONTRADO' })
     }
 
     // ── Transacción ACID ───────────────────────────────────────────
