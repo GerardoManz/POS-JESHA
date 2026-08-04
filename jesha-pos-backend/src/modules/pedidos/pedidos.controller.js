@@ -118,8 +118,9 @@ const listar = async (req, res) => {
 // ── GET /pedidos/:id ──
 const obtener = async (req, res) => {
   try {
-    const pedido = await prisma.pedido.findUnique({
-      where: { id: parseInt(req.params.id) },
+    const empresaId = getEmpresaId(req)
+    const pedido = await prisma.pedido.findFirst({
+      where: { id: parseInt(req.params.id), empresaId },
       select: PEDIDO_SELECT
     })
     if (!pedido) return res.status(404).json({ success: false, error: 'Pedido no encontrado' })

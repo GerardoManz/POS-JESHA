@@ -176,8 +176,9 @@ const listar = async (req, res) => {
 // ════════════════════════════════════════════════════════════════════
 const obtener = async (req, res) => {
   try {
-    const b = await prisma.bitacora.findUnique({
-      where: { id: parseInt(req.params.id) },
+    const empresaId = getEmpresaId(req)
+    const b = await prisma.bitacora.findFirst({
+      where: { id: parseInt(req.params.id), empresaId },
       select: BITACORA_SELECT
     })
     if (!b) return res.status(404).json({ success: false, error: 'Bitácora no encontrada' })

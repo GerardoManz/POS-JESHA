@@ -43,8 +43,8 @@ exports.crear = async (req, res) => {
       return res.status(400).json({ error: `tipoReembolso inválido. Use: ${TIPOS_VALIDOS.join(', ')}` })
     }
 
-    const venta = await prisma.venta.findUnique({
-      where:   { id: parseInt(ventaId) },
+    const venta = await prisma.venta.findFirst({
+      where:   { id: parseInt(ventaId), empresaId },
       include: { DetalleVenta: true, Devolucion: { include: { DetalleDevolucion: true } } }
     })
 
@@ -201,8 +201,8 @@ let montoReembolso = 0
       }
 
       // ── ACTUALIZAR ESTADO DE LA VENTA ─────────────────────────
-      await tx.venta.update({
-        where: { id: parseInt(ventaId) },
+      await tx.venta.updateMany({
+        where: { id: parseInt(ventaId), empresaId },
         data:  { estado: nuevoEstadoVenta }
       })
 
@@ -374,8 +374,13 @@ exports.listar = async (req, res) => {
 exports.porVenta = async (req, res) => {
   try {
     const { ventaId } = req.params
+    const empresaId = getEmpresaId(req)
+    const venta = await prisma.venta.findFirst({ where: { id: parseInt(ventaId), empresaId }, select: { id: true } })
+    if (!venta) {
+      return res.status(404).json({ error: 'Venta no encontrada' })
+    }
     const devoluciones = await prisma.devolucion.findMany({
-      where:   { ventaId: parseInt(ventaId) },
+      where:   { ventaId: parseInt(ventaId), empresaId },
       orderBy: { creadaEn: 'desc' },
       include: {
         Usuario:  { select: { nombre: true } },

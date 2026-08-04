@@ -105,17 +105,19 @@ async function listar({ sucursalId, rol, estado, excluirCanceladas, tipo, buscar
   return { cotizaciones, total, page: parseInt(page), limit: parseInt(limit) }
 }
 
-async function obtenerPorId(id) {
-  // Auto-vencer cotización expirada antes de obtener
-  await prisma.$executeRaw`
-    UPDATE "Cotizacion" SET estado = 'VENCIDA'
-    WHERE id = ${parseInt(id)}
-      AND estado = 'PENDIENTE'
-      AND "venceEn" IS NOT NULL
-      AND "venceEn" < NOW()
-  `
+async function obtenerPorId(id, empresaId) {
+  // Auto-vencer cotización expirada antes de obtener (solo dentro de la misma empresa)
+  await prisma.cotizacion.updateMany({
+    where: {
+      id: parseInt(id),
+      empresaId,
+      estado: 'PENDIENTE',
+      venceEn: { not: null, lt: new Date() }
+    },
+    data: { estado: 'VENCIDA' }
+  })
 
-  return prisma.cotizacion.findUnique({ where: { id: parseInt(id) }, select: COTIZACION_SELECT })
+  return prisma.cotizacion.findFirst({ where: { id: parseInt(id), empresaId }, select: COTIZACION_SELECT })
 }
 
 async function crear({ sucursalId, usuarioId, clienteId, empresaId, tipo = 'PRODUCTOS', detalles, notas, venceEn, descuento }) {

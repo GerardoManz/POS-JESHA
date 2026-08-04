@@ -101,8 +101,9 @@ const listar = async (req, res) => {
 const obtener = async (req, res) => {
   try {
     const { id } = req.params
-    const cliente = await prisma.cliente.findUnique({
-      where: { id: parseInt(id) },
+    const empresaId = getEmpresaId(req)
+    const cliente = await prisma.cliente.findFirst({
+      where: { id: parseInt(id), empresaId },
       select: CLIENTE_SELECT
     })
 
@@ -321,8 +322,13 @@ const cambiarEstado = async (req, res) => {
 const obtenerVentas = async (req, res) => {
   try {
     const { id } = req.params
+    const empresaId = getEmpresaId(req)
+    const cliente = await prisma.cliente.findFirst({ where: { id: parseInt(id), empresaId }, select: { id: true } })
+    if (!cliente) {
+      return res.status(404).json({ error: 'Cliente no encontrado' })
+    }
     const ventas = await prisma.venta.findMany({
-      where: { clienteId: parseInt(id) },
+      where: { clienteId: parseInt(id), empresaId },
       select: { id: true, folio: true, total: true, metodoPago: true, estado: true, creadaEn: true },
       orderBy: { creadaEn: 'desc' },
       take: 50
@@ -342,8 +348,13 @@ const obtenerVentas = async (req, res) => {
 const obtenerAbonos = async (req, res) => {
   try {
     const { id } = req.params
+    const empresaId = getEmpresaId(req)
+    const cliente = await prisma.cliente.findFirst({ where: { id: parseInt(id), empresaId }, select: { id: true } })
+    if (!cliente) {
+      return res.status(404).json({ error: 'Cliente no encontrado' })
+    }
     const abonos = await prisma.abonoBitacora.findMany({
-      where: { Bitacora: { clienteId: parseInt(id) } },
+      where: { Bitacora: { clienteId: parseInt(id), empresaId } },
       select: {
         id:         true,
         monto:      true,

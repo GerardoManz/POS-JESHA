@@ -46,7 +46,7 @@ const listar = async (req, res) => {
 const obtener = async (req, res) => {
   try {
     const { id } = req.params
-    const cotizacion = await service.obtenerPorId(id)
+    const cotizacion = await service.obtenerPorId(id, getEmpresaId(req))
 
     if (!cotizacion) {
       return res.status(404).json({ success: false, error: 'Cotización no encontrada' })

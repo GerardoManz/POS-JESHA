@@ -79,7 +79,8 @@ const listar = async (req, res) => {
 // ── GET /compras/:id ──
 const obtener = async (req, res) => {
   try {
-    const oc = await prisma.ordenCompra.findUnique({ where: { id: parseInt(req.params.id) }, select: OC_SELECT })
+    const empresaId = getEmpresaId(req)
+    const oc = await prisma.ordenCompra.findFirst({ where: { id: parseInt(req.params.id), empresaId }, select: OC_SELECT })
     if (!oc) return res.status(404).json({ success: false, error: 'Orden no encontrada' })
     res.json({ success: true, data: oc })
   } catch (err) { res.status(500).json({ success: false, error: err.message }) }
