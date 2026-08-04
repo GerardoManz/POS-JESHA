@@ -1534,23 +1534,33 @@ exports.obtenerReporteVentas = async (req, res) => {
 // ════════════════════════════════════════════════════════════════════════
 exports.obtenerDashboardKpis = async (req, res) => {
   try {
-    const { desde, hasta, sucursalId } = req.query
-    const { sucursalId: sucursalUsuario } = req.usuario
+    const empresaId = getEmpresaId(req)
+    const branchSucursalId = req.context.branch.sucursalId
 
-    // Determinar sucursal (del query o del token)
-    const filterSucursalId = sucursalId || sucursalUsuario
+    // DEPRECATED_QUERY_SUCURSAL_ID: req.query.sucursalId ignorado
+    // La autoridad es req.context.branch.sucursalId (NONE, FIXED o SELECTED)
 
-    // Construir where base (siempre exclude canceladas)
     const whereBase = {
+      empresaId,
       estado: { not: 'CANCELADA' }
     }
-    if (filterSucursalId) whereBase.sucursalId = parseInt(filterSucursalId)
+    if (branchSucursalId !== null) whereBase.sucursalId = branchSucursalId
 
-    // Query 1: Ventas de hoy
+    const { desde, hasta } = req.query
     let desdeDate, hastaDate
-    if (desde && hasta) {
+
+    if (desde !== undefined || hasta !== undefined) {
+      if (!desde || !hasta) {
+        return res.status(400).json({ error: 'Los parámetros desde y hasta son requeridos cuando se especifica uno' })
+      }
       desdeDate = new Date(desde)
       hastaDate = new Date(hasta)
+      if (isNaN(desdeDate.getTime()) || isNaN(hastaDate.getTime())) {
+        return res.status(400).json({ error: 'Formato de fecha inválido' })
+      }
+      if (desdeDate > hastaDate) {
+        return res.status(400).json({ error: 'La fecha desde no puede ser posterior a hasta' })
+      }
       hastaDate.setHours(23, 59, 59, 999)
     } else {
       const hoy = new Date()
@@ -1563,17 +1573,25 @@ exports.obtenerDashboardKpis = async (req, res) => {
       creadaEn: { gte: desdeDate, lte: hastaDate }
     }
 
-    // Query 2: Ventas históricas (sin rango de fechas)
     const whereHistorico = { ...whereBase }
 
-    // Query 5: Abonos hoy (cobranza a crédito)
     const whereAbonosHoy = {
       tipo: 'ABONO_BITACORA',
       creadoEn: { gte: desdeDate, lte: hastaDate }
     }
-    if (filterSucursalId) whereAbonosHoy.TurnoCaja = { sucursalId: parseInt(filterSucursalId) }
+    if (branchSucursalId !== null) {
+      whereAbonosHoy.TurnoCaja = { sucursalId: branchSucursalId, empresaId }
+    } else {
+      whereAbonosHoy.TurnoCaja = { empresaId }
+    }
 
-    // Queries en paralelo
+    const whereDevoluciones = {
+      empresaId,
+      creadaEn: { gte: desdeDate, lte: hastaDate },
+      tipoReembolso: { in: ['REEMBOLSO', 'CAMBIO_PARCIAL'] }
+    }
+    if (branchSucursalId !== null) whereDevoluciones.sucursalId = branchSucursalId
+
     const [resHoy, resHistorico, resRecientes, resDevoluciones, resAbonos] = await Promise.all([
       prisma.venta.aggregate({
         where: whereHoy,
@@ -1594,11 +1612,7 @@ exports.obtenerDashboardKpis = async (req, res) => {
         take: 8
       }),
       prisma.devolucion.aggregate({
-        where: {
-          creadaEn: { gte: desdeDate, lte: hastaDate },
-          tipoReembolso: { in: ['REEMBOLSO', 'CAMBIO_PARCIAL'] },
-          sucursalId
-        },
+        where: whereDevoluciones,
         _sum: { montoReembolso: true }
       }),
       prisma.movimientoCaja.aggregate({
@@ -1639,7 +1653,7 @@ exports.obtenerDashboardKpis = async (req, res) => {
     })
 
   } catch (error) {
-    console.error('❌ Error en obtenerDashboardKpis:', error)
+    console.error('Error en obtenerDashboardKpis:', error)
     res.status(500).json({ error: error.message })
   }
 }
