@@ -3,9 +3,43 @@
   .tenant-branch-context { margin: 0 12px 14px; padding: 10px; border: 1px solid rgba(255,255,255,.10); border-radius: 10px; background: rgba(255,255,255,.035); }
   .tenant-company { overflow: hidden; margin-bottom: 5px; color: var(--muted,#8b96a8); font-size: .68rem; font-weight: 700; letter-spacing: .08em; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
   .tenant-branch-label { display: block; margin-bottom: 5px; color: var(--text,#e9edf4); font-size: .72rem; font-weight: 600; }
-  .tenant-branch-select { width: 100%; min-width: 0; padding: 7px 8px; border: 1px solid rgba(255,255,255,.14); border-radius: 7px; background: var(--panel,#151922); color: var(--text,#e9edf4); font: inherit; font-size: .78rem; }
-  .tenant-branch-select:disabled { cursor: not-allowed; opacity: .72; }
+  .tenant-branch-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text,#e9edf4); font-size: .78rem; font-weight: 600; }
   .sidebar-collapsed .tenant-branch-context { display: none; }
+
+  /* ── TOPBAR GLOBAL (única fuente de selección de sucursal) ── */
+  .jesha-global-topbar {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    padding-bottom: 14px; margin-bottom: 22px;
+    border-bottom: 1px solid var(--panel-border, rgba(255,255,255,.08));
+    font-family: 'Barlow', sans-serif;
+  }
+  .topbar-empresa {
+    color: var(--text,#e9edf4); font-weight: 700; font-size: .8rem;
+    letter-spacing: .06em; text-transform: uppercase; white-space: nowrap;
+  }
+  .topbar-branch-label {
+    color: var(--muted,#8b96a8); font-size: .72rem; font-weight: 600;
+    text-transform: uppercase; letter-spacing: .05em; white-space: nowrap;
+  }
+  .topbar-branch-select {
+    min-width: 200px; padding: 7px 10px;
+    border: 1px solid var(--panel-border, rgba(255,255,255,.14));
+    border-radius: 8px; background: var(--panel,#151922);
+    color: var(--text,#e9edf4); font: inherit; font-size: .82rem;
+  }
+  .topbar-branch-select:disabled { cursor: not-allowed; opacity: .72; }
+  .topbar-branch-fijo {
+    color: var(--muted,#8b96a8); font-size: .82rem; font-weight: 600; white-space: nowrap;
+  }
+  .topbar-rol {
+    margin-left: auto; padding: 4px 10px; border-radius: 999px;
+    background: rgba(31,58,102,.35); border: 1px solid rgba(31,58,102,.6);
+    color: #9cc1ff; font-size: .66rem; font-weight: 700;
+    letter-spacing: .08em; white-space: nowrap;
+  }
+  [data-theme="light"] .topbar-rol { background: rgba(31,58,102,.1); border-color: rgba(31,58,102,.3); color: #1f3a66; }
+  [data-theme="light"] .topbar-branch-select { background: #ffffff; border-color: #d6dee9; color: #111827; }
+  [data-theme="light"] .topbar-empresa { color: #111827; }
 </style>
 
 
@@ -28,8 +62,8 @@
 
     <section class="tenant-branch-context" id="tenant-branch-context" hidden>
       <div class="tenant-company" id="tenant-company-label">Empresa</div>
-      <label class="tenant-branch-label" id="tenant-branch-label" for="tenant-branch-select">Sucursal operativa</label>
-      <select class="tenant-branch-select" id="tenant-branch-select" aria-label="Sucursal operativa"></select>
+      <label class="tenant-branch-label" id="tenant-branch-label">Sucursal</label>
+      <div class="tenant-branch-text" id="tenant-branch-text">—</div>
     </section>
 
     <nav class="menu">

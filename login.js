@@ -70,38 +70,10 @@ async function validarContextYSesion(token, usuario, empresaSlug, selectedSucurs
 
   const context = await res.json()
 
-  if (context.version !== 1 || context.kind !== 'TENANT') {
-    throw new Error('Contexto empresarial inválido')
-  }
-  if (context.actor.id !== usuario.id) {
-    throw new Error('Identidad de usuario no coincide')
-  }
-  if (context.actor.rol !== usuario.rol) {
-    throw new Error('Rol de usuario no coincide')
-  }
-  if (context.tenant.empresaId !== usuario.empresaId) {
-    throw new Error('Empresa no coincide con la sesión')
-  }
-  if (tieneSucursalFija(usuario)) {
-    if (context.branch.mode !== 'FIXED') {
-      throw new Error('El contexto no resolvió sucursal fija')
-    }
-    if (context.branch.sucursalId !== usuario.sucursalId) {
-      throw new Error('La sucursal fija no coincide con el backend')
-    }
-  }
-  if (selectedSucursalId !== null && selectedSucursalId !== undefined) {
-    if (context.branch.mode === 'NONE') {
-      throw new Error('No se pudo seleccionar la sucursal')
-    }
-    if (context.branch.sucursalId !== Number(selectedSucursalId)) {
-      throw new Error('La sucursal seleccionada no coincide con el contexto')
-    }
-  }
-  if (!tieneSucursalFija(usuario) && selectedSucursalId === null) {
-    if (context.branch.mode !== 'NONE' || context.branch.sucursalId !== null) {
-      throw new Error('No se pudo verificar el contexto empresarial')
-    }
+  if (typeof window.jeshaSession?.validarContexto === 'function') {
+    window.jeshaSession.validarContexto(context, usuario, selectedSucursalId)
+  } else {
+    throw new Error('Sesión tenant inválida')
   }
 
   window.jeshaSession.start({ token, usuario, empresaSlug })

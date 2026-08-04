@@ -123,7 +123,8 @@ async function cargarSidebar(paginaActual) {
     marcarPaginaActiva(paginaActual)
     configurarSidebarCollapse()
     configurarThemeToggle()
-    await configurarSelectorSucursal(paginaActual)
+    configurarContextoSidebar()
+    await configurarTopbarGlobal(paginaActual)
     configurarLogoutConReintentos(10)
   } catch (error) {
     console.error('❌ Error cargando sidebar.html:', error)
@@ -273,12 +274,32 @@ function configurarLogoutConReintentos(intentos) {
 }
 
 
-async function configurarSelectorSucursal(paginaActual) {
+let sucursalesGlobales = []
+let topbarGlobalConfigurado = false
+
+function nombreSucursalPorId(sucursalId) {
+  const id = window.jeshaSession?.positiveInt(sucursalId)
+  if (!id) return null
+  const found = sucursalesGlobales.find(s => window.jeshaSession.positiveInt(s.id) === id)
+  return found ? (found.nombre || `Sucursal ${id}`) : `Sucursal ${id}`
+}
+
+function textoSucursalActual() {
+  const usuario = window.jeshaSession?.getUsuario()
+  if (!usuario) return '—'
+  const fixed = window.jeshaSession.positiveInt(usuario.sucursalId)
+  if (fixed) return usuario.Sucursal?.nombre || `Sucursal ${fixed}`
+  const selected = window.jeshaSession.getSelectedSucursalId()
+  if (selected) return nombreSucursalPorId(selected) || `Sucursal ${selected}`
+  return 'Todas las sucursales'
+}
+
+function configurarContextoSidebar() {
   const wrap = document.getElementById('tenant-branch-context')
-  const select = document.getElementById('tenant-branch-select')
   const label = document.getElementById('tenant-branch-label')
+  const text = document.getElementById('tenant-branch-text')
   const empresa = document.getElementById('tenant-company-label')
-  if (!wrap || !select || !label) return
+  if (!wrap || !label || !text) return
 
   const usuario = window.jeshaSession?.getUsuario()
   if (!usuario) return
@@ -288,14 +309,8 @@ async function configurarSelectorSucursal(paginaActual) {
 
   if (fixedSucursalId) {
     wrap.hidden = false
-    select.disabled = true
-    select.innerHTML = ''
-    const option = document.createElement('option')
-    option.value = String(fixedSucursalId)
-    option.textContent = usuario.Sucursal?.nombre || `Sucursal ${fixedSucursalId}`
-    select.appendChild(option)
     label.textContent = 'Sucursal asignada'
-    window.jeshaSession.setSelectedSucursalId(fixedSucursalId)
+    text.textContent = usuario.Sucursal?.nombre || `Sucursal ${fixedSucursalId}`
     return
   }
 
@@ -305,62 +320,160 @@ async function configurarSelectorSucursal(paginaActual) {
   }
 
   wrap.hidden = false
-  select.disabled = true
   label.textContent = usuario.rol === 'PRECIOS' ? 'Sucursal opcional' : 'Sucursal operativa'
-  select.innerHTML = '<option value="">Cargando sucursales...</option>'
+  text.textContent = textoSucursalActual()
+}
 
+async function cargarSucursalesGlobales() {
+  if (sucursalesGlobales.length > 0) return sucursalesGlobales
   try {
     const data = await window.apiFetch('/sucursales')
-    const sucursales = Array.isArray(data) ? data : (data?.data || data?.sucursales || [])
+    const lista = Array.isArray(data) ? data : (data?.data || data?.sucursales || [])
+    sucursalesGlobales = lista.filter(s => s.activa !== false)
+  } catch (err) {
+    sucursalesGlobales = []
+  }
+  return sucursalesGlobales
+}
+
+function construirTopbarGlobal() {
+  const main = document.querySelector('.content') || document.querySelector('.main-content') || document.querySelector('main')
+  if (!main || document.getElementById('jesha-global-topbar')) return null
+
+  const usuario = window.jeshaSession?.getUsuario()
+  if (!usuario) return null
+
+  const fixedSucursalId = window.jeshaSession.positiveInt(usuario.sucursalId)
+  const selectable = window.jeshaSession.canSelectSucursal()
+
+  const topbar = document.createElement('div')
+  topbar.id = 'jesha-global-topbar'
+  topbar.setAttribute('data-topbar', 'true')
+
+  const empresa = document.createElement('span')
+  empresa.className = 'topbar-empresa'
+  empresa.id = 'topbar-empresa-nombre'
+  empresa.textContent = window.jeshaSession.getEmpresaSlug() || 'JESHA'
+
+  const rol = document.createElement('span')
+  rol.className = 'topbar-rol'
+  const etiquetaRol = { SUPERADMIN: 'SUPERADMIN', ADMIN_SUCURSAL: 'ADMIN SUCURSAL', EMPLEADO: 'EMPLEADO', PRECIOS: 'PRECIOS' }
+  rol.textContent = etiquetaRol[usuario.rol] || usuario.rol
+
+  topbar.appendChild(empresa)
+  topbar.appendChild(rol)
+
+  if (selectable) {
+    const label = document.createElement('label')
+    label.className = 'topbar-branch-label'
+    label.setAttribute('for', 'jesha-topbar-branch-select')
+    label.textContent = 'Sucursal'
+
+    const select = document.createElement('select')
+    select.id = 'jesha-topbar-branch-select'
+    select.className = 'topbar-branch-select'
+    select.setAttribute('aria-label', 'Sucursal operativa')
+
+    const placeholder = document.createElement('option')
+    placeholder.value = ''
+    placeholder.textContent = 'Cargando...'
+    select.appendChild(placeholder)
+
+    topbar.appendChild(label)
+    topbar.appendChild(select)
+  } else {
+    const fijo = document.createElement('span')
+    fijo.className = 'topbar-branch-fijo'
+    fijo.id = 'topbar-branch-fijo'
+    fijo.textContent = fixedSucursalId
+      ? (usuario.Sucursal?.nombre || `Sucursal ${fixedSucursalId}`)
+      : 'Sin sucursal'
+    topbar.appendChild(fijo)
+  }
+
+  main.insertBefore(topbar, main.firstChild)
+  return topbar
+}
+
+function poblarTopbarSelect(select, required) {
+  const selected = window.jeshaSession?.getSelectedSucursalId()
+  select.innerHTML = ''
+
+  const allOption = document.createElement('option')
+  allOption.value = ''
+  allOption.textContent = required ? 'Selecciona una sucursal' : 'Todas las sucursales'
+  select.appendChild(allOption)
+
+  for (const sucursal of sucursalesGlobales) {
+    const id = window.jeshaSession?.positiveInt(sucursal.id)
+    if (!id) continue
+    const option = document.createElement('option')
+    option.value = String(id)
+    option.textContent = sucursal.nombre || `Sucursal ${id}`
+    select.appendChild(option)
+  }
+
+  if (selected && Array.from(select.options).some(o => o.value === String(selected))) {
+    select.value = String(selected)
+  } else {
+    select.value = ''
+  }
+}
+
+async function cambiarSucursalGlobal(nextId, select, paginaActual) {
+  const usuario = window.jeshaSession?.getUsuario()
+  const anterior = window.jeshaSession?.getSelectedSucursalId()
+  const next = nextId || null
+  try {
+    window.jeshaSession.setSelectedSucursalId(next)
+    const context = await window.apiFetch('/auth/context')
+    window.jeshaSession.validarContexto(context, usuario, next)
+
+    const sidebarText = document.getElementById('tenant-branch-text')
+    if (sidebarText) sidebarText.textContent = textoSucursalActual()
+
+    if (!next && PAGINAS_SUCURSAL_REQUERIDA.has(paginaActual)) {
+      window.location.replace('dashboard.html?seleccionarSucursal=1')
+      return
+    }
+    if (window.jeshaToast) {
+      window.jeshaToast(next ? 'Sucursal actualizada' : 'Mostrando todas las sucursales', 'success')
+    }
+    window.location.reload()
+  } catch (err) {
+    try { window.jeshaSession.setSelectedSucursalId(anterior) } catch (_) {}
+    if (select) select.value = anterior !== null ? String(anterior) : ''
+    if (window.jeshaToast) window.jeshaToast(err.message, 'error')
+  }
+}
+
+async function configurarTopbarGlobal(paginaActual) {
+  if (topbarGlobalConfigurado) return
+  const usuario = window.jeshaSession?.getUsuario()
+  if (!usuario) return
+
+  const topbar = construirTopbarGlobal()
+  if (!topbar) return
+  topbarGlobalConfigurado = true
+
+  const selectable = window.jeshaSession.canSelectSucursal()
+  const select = document.getElementById('jesha-topbar-branch-select')
+
+  if (selectable) {
     const required = PAGINAS_SUCURSAL_REQUERIDA.has(paginaActual)
-    select.innerHTML = ''
-
-    const empty = document.createElement('option')
-    empty.value = ''
-    empty.textContent = required ? 'Selecciona una sucursal' : 'Todas las sucursales'
-    select.appendChild(empty)
-
-    for (const sucursal of sucursales) {
-      const id = window.jeshaSession.positiveInt(sucursal.id)
-      if (!id) continue
-      const option = document.createElement('option')
-      option.value = String(id)
-      option.textContent = sucursal.nombre || `Sucursal ${id}`
-      select.appendChild(option)
-    }
-
-    const selected = window.jeshaSession.getSelectedSucursalId()
-    const exists = selected && Array.from(select.options).some((option) => option.value === String(selected))
-    if (exists) {
-      select.value = String(selected)
-    } else {
-      window.jeshaSession.setSelectedSucursalId(null)
-      select.value = ''
-    }
-    select.disabled = false
+    await cargarSucursalesGlobales()
+    configurarContextoSidebar()
+    poblarTopbarSelect(select, required)
+    select.disabled = sucursalesGlobales.length === 0
 
     select.addEventListener('change', () => {
-      const nextId = select.value || null
-      try {
-        window.jeshaSession.setSelectedSucursalId(nextId)
-        if (!nextId && PAGINAS_SUCURSAL_REQUERIDA.has(paginaActual)) {
-          window.location.replace('dashboard.html?seleccionarSucursal=1')
-          return
-        }
-        window.location.reload()
-      } catch (err) {
-        if (window.jeshaToast) window.jeshaToast(err.message, 'error')
-      }
+      cambiarSucursalGlobal(select.value, select, paginaActual)
     })
+  }
 
-    const params = new URLSearchParams(window.location.search)
-    if (params.get('seleccionarSucursal') === '1' && window.jeshaToast) {
-      window.jeshaToast('Selecciona una sucursal para continuar', 'warning')
-    }
-  } catch (err) {
-    select.innerHTML = '<option value="">No se pudieron cargar</option>'
-    select.disabled = true
-    if (window.jeshaToast) window.jeshaToast('No se pudieron cargar las sucursales', 'error')
+  const params = new URLSearchParams(window.location.search)
+  if (selectable && params.get('seleccionarSucursal') === '1' && window.jeshaToast) {
+    window.jeshaToast('Selecciona una sucursal para continuar', 'warning')
   }
 }
 

@@ -17,20 +17,15 @@
   <link rel="stylesheet" href="dashboard.css" />
   <link rel="stylesheet" href="view-transitions.css" />
   <style>
-    /* ── Selector de sucursal (SUPERADMIN) ── */
-    .sucursal-filter-wrap { display:flex; align-items:center; gap:10px; margin-left:auto; }
-    .sucursal-filter-wrap label { font-size:0.78rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.05em; font-weight:600; }
-    .sucursal-filter-select {
-      padding:8px 14px;
-      background:rgba(255,255,255,0.04);
-      border:1px solid var(--panel-border);
-      border-radius:8px;
-      color:var(--text);
-      font-family:'Barlow',sans-serif;
-      font-size:0.875rem;
-      cursor:pointer;
-      min-width:200px;
+    /* ── Estados del dashboard (carga/error) ── */
+    .dashboard-estado-cargando,
+    .dashboard-estado-error {
+      padding: 12px 16px; margin-bottom: 18px; border-radius: 10px;
+      font-family:'Barlow',sans-serif; font-size:0.875rem; font-weight:600;
+      display:flex; align-items:center; gap:10px;
     }
+    .dashboard-estado-cargando { color:var(--muted); background:rgba(255,255,255,0.03); border:1px solid var(--panel-border); }
+    .dashboard-estado-error { color:#ff6b6b; background:rgba(255,107,107,0.08); border:1px solid rgba(255,107,107,0.25); }
 
     /* ── KPI grid: 6 columnas ── */
     .kpi-grid { display:grid; grid-template-columns:repeat(6, 1fr); gap:12px; margin-bottom:18px; }
@@ -59,14 +54,6 @@
       <div>
         <h2>Dashboard</h2>
         <p id="fecha-actual"></p>
-      </div>
-
-      <!-- Selector de sucursal (solo visible para SUPERADMIN) -->
-      <div id="sucursal-filter" class="sucursal-filter-wrap" style="display:none;">
-        <label for="filtro-sucursal">Sucursal:</label>
-        <select id="filtro-sucursal" class="sucursal-filter-select">
-          <option value="">🏢 Todas las sucursales</option>
-        </select>
       </div>
     </header>
 

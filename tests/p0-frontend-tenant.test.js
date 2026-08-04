@@ -150,6 +150,97 @@ describe('P0-FRONTEND-TENANT session', () => {
   })
 })
 
+describe('P0-FRONTEND-TENANT validarContexto', () => {
+  function contexto(overrides = {}) {
+    return {
+      version: 1,
+      kind: 'TENANT',
+      actor: { id: 1, rol: 'ADMIN_SUCURSAL' },
+      tenant: { empresaId: 10 },
+      branch: { mode: 'FIXED', sucursalId: 20 },
+      ...overrides
+    }
+  }
+
+  it('acepta contexto NONE para SUPERADMIN sin sucursal seleccionada', () => {
+    const { session } = loadSession()
+    const usuario = adminUser({ rol: 'SUPERADMIN', sucursalId: null })
+    const ctx = contexto({ actor: { id: 1, rol: 'SUPERADMIN' }, branch: { mode: 'NONE', sucursalId: null } })
+    assert.strictEqual(session.validarContexto(ctx, usuario, null), ctx)
+  })
+
+  it('acepta contexto SELECTED para SUPERADMIN con sucursal', () => {
+    const { session } = loadSession()
+    const usuario = adminUser({ rol: 'SUPERADMIN', sucursalId: null })
+    const ctx = contexto({ actor: { id: 1, rol: 'SUPERADMIN' }, branch: { mode: 'SELECTED', sucursalId: 21 } })
+    assert.strictEqual(session.validarContexto(ctx, usuario, 21), ctx)
+  })
+
+  it('acepta contexto FIXED correcto para usuario fijo', () => {
+    const { session } = loadSession()
+    const ctx = contexto()
+    assert.strictEqual(session.validarContexto(ctx, adminUser(), null), ctx)
+  })
+
+  it('rechaza version distinta de 1', () => {
+    const { session } = loadSession()
+    assert.throws(() => session.validarContexto(contexto({ version: 2 }), adminUser(), null), /Contexto empresarial inválido/)
+  })
+
+  it('rechaza kind distinto de TENANT', () => {
+    const { session } = loadSession()
+    assert.throws(() => session.validarContexto(contexto({ kind: 'PLATFORM' }), adminUser(), null), /Contexto empresarial inválido/)
+  })
+
+  it('rechaza actor.id que no coincide', () => {
+    const { session } = loadSession()
+    assert.throws(() => session.validarContexto(contexto({ actor: { id: 999, rol: 'ADMIN_SUCURSAL' } }), adminUser(), null), /Identidad de usuario no coincide/)
+  })
+
+  it('rechaza actor.rol que no coincide', () => {
+    const { session } = loadSession()
+    assert.throws(() => session.validarContexto(contexto({ actor: { id: 1, rol: 'SUPERADMIN' } }), adminUser(), null), /Rol de usuario no coincide/)
+  })
+
+  it('rechaza empresaId que no coincide', () => {
+    const { session } = loadSession()
+    assert.throws(() => session.validarContexto(contexto({ tenant: { empresaId: 999 } }), adminUser(), null), /Empresa no coincide con la sesión/)
+  })
+
+  it('rechaza usuario fijo cuando el modo no es FIXED', () => {
+    const { session } = loadSession()
+    assert.throws(() => session.validarContexto(contexto({ branch: { mode: 'NONE', sucursalId: null } }), adminUser(), null), /no resolvió sucursal fija/)
+  })
+
+  it('rechaza usuario fijo cuando la sucursal no coincide', () => {
+    const { session } = loadSession()
+    assert.throws(() => session.validarContexto(contexto({ branch: { mode: 'FIXED', sucursalId: 99 } }), adminUser(), null), /sucursal fija no coincide/)
+  })
+
+  it('rechaza selección cuando el contexto es NONE', () => {
+    const { session } = loadSession()
+    const usuario = adminUser({ rol: 'SUPERADMIN', sucursalId: null })
+    assert.throws(() => session.validarContexto(contexto({ actor: { id: 1, rol: 'SUPERADMIN' }, branch: { mode: 'NONE', sucursalId: null } }), usuario, 21), /No se pudo seleccionar la sucursal/)
+  })
+
+  it('rechaza selección cuando la sucursal no coincide', () => {
+    const { session } = loadSession()
+    const usuario = adminUser({ rol: 'SUPERADMIN', sucursalId: null })
+    assert.throws(() => session.validarContexto(contexto({ actor: { id: 1, rol: 'SUPERADMIN' }, branch: { mode: 'SELECTED', sucursalId: 99 } }), usuario, 21), /no coincide con el contexto/)
+  })
+
+  it('rechaza sin selección cuando el contexto no es NONE', () => {
+    const { session } = loadSession()
+    const usuario = adminUser({ rol: 'SUPERADMIN', sucursalId: null })
+    assert.throws(() => session.validarContexto(contexto({ actor: { id: 1, rol: 'SUPERADMIN' }, branch: { mode: 'SELECTED', sucursalId: 21 } }), usuario, null), /No se pudo verificar el contexto empresarial/)
+  })
+
+  it('rechaza contexto null o ausente', () => {
+    const { session } = loadSession()
+    assert.throws(() => session.validarContexto(null, adminUser(), null), /Contexto empresarial inválido/)
+  })
+})
+
 describe('P0-FRONTEND-TENANT fetch wrapper', () => {
   it('agrega Authorization y X-Sucursal-Id a llamadas del API', async () => {
     let seen = null

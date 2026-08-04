@@ -136,6 +136,62 @@
     return requested
   }
 
+  // Validación compartida del contexto devuelto por GET /auth/context.
+  // Única fuente de verdad: la usa login.js al iniciar sesión y la topbar
+  // global al cambiar de sucursal. Lanza Error con mensaje si algo no coincide.
+  function validarContexto(context, usuario, selectedSucursalId) {
+    if (!usuario || typeof usuario !== 'object') {
+      throw new Error('Sesión tenant inválida')
+    }
+    const user = sanitizeUser(usuario) || usuario
+    if (!context || typeof context !== 'object') {
+      throw new Error('Contexto empresarial inválido')
+    }
+    if (context.version !== 1 || context.kind !== 'TENANT') {
+      throw new Error('Contexto empresarial inválido')
+    }
+    if (context.actor?.id !== user.id) {
+      throw new Error('Identidad de usuario no coincide')
+    }
+    if (context.actor?.rol !== user.rol) {
+      throw new Error('Rol de usuario no coincide')
+    }
+    if (context.tenant?.empresaId !== user.empresaId) {
+      throw new Error('Empresa no coincide con la sesión')
+    }
+
+    const fixed = positiveInt(user.sucursalId)
+    const requested = selectedSucursalId === null || selectedSucursalId === undefined
+      ? null
+      : positiveInt(selectedSucursalId)
+
+    if (fixed !== null) {
+      if (context.branch?.mode !== 'FIXED') {
+        throw new Error('El contexto no resolvió sucursal fija')
+      }
+      if (context.branch.sucursalId !== fixed) {
+        throw new Error('La sucursal fija no coincide con el backend')
+      }
+    }
+
+    if (requested !== null) {
+      if (context.branch?.mode === 'NONE') {
+        throw new Error('No se pudo seleccionar la sucursal')
+      }
+      if (context.branch?.sucursalId !== requested) {
+        throw new Error('La sucursal seleccionada no coincide con el contexto')
+      }
+    }
+
+    if (fixed === null && requested === null) {
+      if (context.branch?.mode !== 'NONE' || context.branch?.sucursalId !== null) {
+        throw new Error('No se pudo verificar el contexto empresarial')
+      }
+    }
+
+    return context
+  }
+
 
 
   const nativeFetch = window.fetch.bind(window)
@@ -201,6 +257,7 @@
     getSelectedSucursalId,
     canSelectSucursal,
     setSelectedSucursalId,
+    validarContexto,
     positiveInt
   })
 })()
