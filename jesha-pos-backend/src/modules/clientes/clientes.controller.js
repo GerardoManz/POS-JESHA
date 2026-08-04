@@ -63,8 +63,9 @@ const listar = async (req, res) => {
         try {
           const rawResult = await prisma.$queryRaw`
             SELECT c.id FROM "Cliente" c
-            WHERE to_tsvector('simple', c.nombre) @@ plainto_tsquery('simple', ${termLimpio})
-               OR to_tsvector('simple', c.apodo) @@ plainto_tsquery('simple', ${termLimpio})
+            WHERE c."empresaId" = ${empresaId}
+              AND (to_tsvector('simple', c.nombre) @@ plainto_tsquery('simple', ${termLimpio})
+                   OR to_tsvector('simple', c.apodo) @@ plainto_tsquery('simple', ${termLimpio}))
           `
           ids = rawResult.map(r => r.id)
         } catch { /* fallback a contains */ }

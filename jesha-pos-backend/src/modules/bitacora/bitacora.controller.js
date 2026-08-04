@@ -7,6 +7,7 @@
 
 const prisma = require('../../lib/prisma')
 const getEmpresaId = require('../../helpers/getEmpresaId')
+const construirWhereScopeTenant = require('../../helpers/construirWhereScopeTenant')
 const { EMPRESA } = require('../../../config/empresa')
 const { buildAbonoSnapshot, buildRetiroSnapshot, formatFechaTicket } = require('../impresion/impresion.snapshot')
 const { encolarImpresion } = require('../impresion/impresion.service')
@@ -124,7 +125,8 @@ const listar = async (req, res) => {
   try {
     const { estado, clienteId, origen, buscar, page = 1, limit = 25 } = req.query
     const { sucursalId, rol } = req.usuario
-    const where = {}
+    const where = construirWhereScopeTenant(req)
+    const empresaId = where.empresaId
 
     if (rol !== 'SUPERADMIN' && sucursalId) where.sucursalId = sucursalId
     if (estado) {
@@ -144,7 +146,8 @@ const listar = async (req, res) => {
         try {
           const rawResult = await prisma.$queryRaw`
             SELECT b.id FROM "Bitacora" b
-            WHERE to_tsvector('simple', b.titulo) @@ plainto_tsquery('simple', ${termLimpio})
+            WHERE b."empresaId" = ${empresaId}
+              AND to_tsvector('simple', b.titulo) @@ plainto_tsquery('simple', ${termLimpio})
           `
           ids = rawResult.map(r => r.id)
         } catch { /* fallback a contains */ }

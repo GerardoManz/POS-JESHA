@@ -1,5 +1,6 @@
 const prisma = require('../../lib/prisma')
 const getEmpresaId = require('../../helpers/getEmpresaId')
+const construirWhereScopeTenant = require('../../helpers/construirWhereScopeTenant')
 const { EMPRESA } = require('../../../config/empresa')
 const { buildCorteSnapshot, formatFechaTicket } = require('../impresion/impresion.snapshot')
 const { encolarImpresion } = require('../impresion/impresion.service')
@@ -63,7 +64,7 @@ const obtenerActivo = async (req, res) => {
     const sucursalId = sucursalIdToken || parseInt(req.query.sucursalId) || 1
 
     const turno = await prisma.turnoCaja.findFirst({
-      where: { sucursalId, abierto: true },
+      where: { ...construirWhereScopeTenant(req), sucursalId, abierto: true },
       include: {
         Usuario: { select: { id: true, nombre: true } },
         Sucursal: { select: { id: true, nombre: true } }
@@ -93,7 +94,7 @@ const obtenerResumen = async (req, res) => {
     const sucursalId = sucursalIdToken || parseInt(req.query.sucursalId) || 1
 
     const turno = await prisma.turnoCaja.findFirst({
-      where: { sucursalId, abierto: true },
+      where: { ...construirWhereScopeTenant(req), sucursalId, abierto: true },
       include: {
         Usuario: { select: { id: true, nombre: true } },
         Sucursal: { select: { id: true, nombre: true } }
@@ -342,7 +343,7 @@ const obtenerHistorial = async (req, res) => {
     const limitNum  = Math.min(100, Math.max(1, parseInt(limit)))
     const skip      = (pageNum - 1) * limitNum
 
-    const where = { abierto: false }
+    const where = { ...construirWhereScopeTenant(req, { incluirSucursal: false }), abierto: false }
 
     if (rol !== 'SUPERADMIN') {
       where.sucursalId = sucursalIdToken || 1
@@ -486,6 +487,7 @@ const obtenerResumenContable = async (req, res) => {
       return res.status(400).json({ error: 'fechaDesde y fechaHasta son requeridos' })
     }
 
+    const empresaId = getEmpresaId(req)
     const desde = new Date(fechaDesde + 'T00:00:00.000Z')
     const hasta = new Date(fechaHasta + 'T23:59:59.999Z')
 
@@ -505,6 +507,8 @@ const obtenerResumenContable = async (req, res) => {
         FROM "Venta" v
         JOIN "TurnoCaja" tc ON v."turnoId" = tc.id
         WHERE v.estado = 'COMPLETADA'
+          AND v."empresaId" = ${empresaId}
+          AND tc."empresaId" = ${empresaId}
           AND v."creadaEn" >= ${desde}
           AND v."creadaEn" <= ${hasta}
           AND tc.abierto = false
@@ -513,6 +517,7 @@ const obtenerResumenContable = async (req, res) => {
       prisma.turnoCaja.groupBy({
         by: ['sucursalId'],
         where: {
+          empresaId,
           abierto: false,
           cerradaEn: { gte: desde, lte: hasta },
           sucursalId: whereSucursal
@@ -530,7 +535,7 @@ const obtenerResumenContable = async (req, res) => {
     const row = Array.isArray(totales) ? totales[0] : totales
 
     const sucursales = await prisma.sucursal.findMany({
-      where: whereSucursal !== 1 && rol === 'SUPERADMIN' ? {} : { id: whereSucursal },
+      where: whereSucursal !== 1 && rol === 'SUPERADMIN' ? { empresaId } : { id: whereSucursal, empresaId },
       select: { id: true, nombre: true }
     })
 

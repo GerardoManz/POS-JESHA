@@ -330,4 +330,142 @@ describe('P0 — Cross-Tenant Reads (9 lecturas de registro único)', () => {
       }
     })
   })
+
+  // ═══════════════════════════════════════════════════════════════
+  // FASE 2 — LISTADOS CROSS-TENANT + SQL CRUDO SIN SCOPE
+  // ═══════════════════════════════════════════════════════════════
+  describe('FASE 2 — helper de scope compartido', () => {
+    it('F2.1 helper existe y exporta una función', () => {
+      const src = readSource('helpers/construirWhereScopeTenant.js')
+      assert.ok(src.length > 0, 'helper debe existir')
+      assert.ok(hasPattern(src, /function construirWhereScopeTenant/), 'helper debe definir la función')
+      assert.ok(hasPattern(src, /module\.exports/), 'helper debe exportar')
+    })
+
+    it('F2.2 helper usa getEmpresaId(req) (empresa autoritativa desde context)', () => {
+      const src = readSource('helpers/construirWhereScopeTenant.js')
+      assert.ok(hasPattern(src, /getEmpresaId\(req\)/), 'helper debe resolver empresa vía getEmpresaId')
+      assert.strictEqual(countPatterns(src, /req\.body/g), 0, 'nunca body')
+      assert.strictEqual(countPatterns(src, /req\.query/g), 0, 'nunca query')
+      assert.strictEqual(countPatterns(src, /req\.params/g), 0, 'nunca params')
+    })
+
+    it('F2.3 helper aplica empresaId siempre y sucursalId solo para roles no-SUPERADMIN', () => {
+      const src = readSource('helpers/construirWhereScopeTenant.js')
+      assert.ok(hasPattern(src, /empresaId: getEmpresaId\(req\)/), 'empresaId en el where base')
+      assert.ok(hasPattern(src, /incluirSucursal/), 'opción incluirSucursal')
+      assert.ok(hasPattern(src, /rol !== 'SUPERADMIN'/), 'SUPERADMIN excluido del filtro de sucursal')
+      assert.ok(hasPattern(src, /where\.sucursalId = parseInt\(sucursalId/), 'sucursalId parseado como entero')
+    })
+  })
+
+  describe('FASE 2 — listados scoped por empresa', () => {
+    it('F2.4 pedidos.listar usa construirWhereScopeTenant', () => {
+      const src = readSource('modules/pedidos/pedidos.controller.js')
+      assert.ok(hasPattern(src, /construirWhereScopeTenant/), 'importa helper')
+      const fn = extractFn(src, 'const listar = async (req, res) => {')
+      assert.ok(hasPattern(fn, /const where = construirWhereScopeTenant\(req\)/),
+        'listar debe construir where con helper')
+    })
+
+    it('F2.5 compras.listar usa construirWhereScopeTenant', () => {
+      const src = readSource('modules/compras/compras.controller.js')
+      assert.ok(hasPattern(src, /construirWhereScopeTenant/), 'importa helper')
+      const fn = extractFn(src, 'const listar = async (req, res) => {')
+      assert.ok(hasPattern(fn, /const where = construirWhereScopeTenant\(req\)/),
+        'listar debe construir where con helper')
+    })
+
+    it('F2.6 bitacora.listar usa construirWhereScopeTenant', () => {
+      const src = readSource('modules/bitacora/bitacora.controller.js')
+      assert.ok(hasPattern(src, /construirWhereScopeTenant/), 'importa helper')
+      const fn = extractFn(src, 'const listar = async (req, res) => {')
+      assert.ok(hasPattern(fn, /const where = construirWhereScopeTenant\(req\)/),
+        'listar debe construir where con helper')
+    })
+
+    it('F2.7 devoluciones.listar usa construirWhereScopeTenant (incluye scope de sucursal)', () => {
+      const src = readSource('modules/devoluciones/devoluciones.controller.js')
+      assert.ok(hasPattern(src, /construirWhereScopeTenant/), 'importa helper')
+      const fn = extractFn(src, 'exports.listar = async (req, res) => {')
+      assert.ok(hasPattern(fn, /const where = construirWhereScopeTenant\(req\)/),
+        'listar debe construir where con helper')
+    })
+
+    it('F2.8 cotizaciones.service.listar recibe empresaId y lo usa en where', () => {
+      const src = readSource('modules/cotizaciones/cotizaciones.service.js')
+      assert.ok(src.includes('async function listar({ empresaId'),
+        'firma debe incluir empresaId')
+      assert.ok(src.includes('const where = { empresaId }'),
+        'where base con empresaId')
+    })
+
+    it('F2.9 cotizaciones.controller pasa empresaId a service.listar', () => {
+      const src = readSource('modules/cotizaciones/cotizaciones.controller.js')
+      const fn = extractFn(src, 'const listar = async (req, res) => {')
+      assert.ok(hasPattern(fn, /empresaId: getEmpresaId\(req\)/),
+        'controller debe resolver empresa vía getEmpresaId y pasarla al service')
+    })
+  })
+
+  describe('FASE 2 — SQL crudo sin scope corregido', () => {
+    it('F2.10 bitacora $queryRaw full-text scoped por b."empresaId"', () => {
+      const src = readSource('modules/bitacora/bitacora.controller.js')
+      const fn = extractFn(src, 'const listar = async (req, res) => {')
+      assert.ok(hasPattern(fn, /b\."empresaId" = \$\{empresaId\}/),
+        'full-text debe filtrar por empresa')
+    })
+
+    it('F2.11 cotizaciones $executeRaw auto-vencer scoped por empresaId', () => {
+      const src = readSource('modules/cotizaciones/cotizaciones.service.js')
+      assert.ok(src.includes('WHERE "empresaId" = ${empresaId}'),
+        'UPDATE de auto-vencimiento debe filtrar por empresa')
+    })
+
+    it('F2.12 clientes $queryRaw full-text scoped por c."empresaId"', () => {
+      const src = readSource('modules/clientes/clientes.controller.js')
+      const fn = extractFn(src, 'const listar = async (req, res) => {')
+      assert.ok(hasPattern(fn, /c\."empresaId" = \$\{empresaId\}/),
+        'full-text de clientes debe filtrar por empresa')
+    })
+  })
+
+  describe('FASE 2 — turnos-caja scoped', () => {
+    it('F2.13 obtenerActivo scoped por construirWhereScopeTenant', () => {
+      const src = readSource('modules/turnos-caja/turnos-caja.controller.js')
+      assert.ok(hasPattern(src, /construirWhereScopeTenant/), 'importa helper')
+      const fn = extractFn(src, 'const obtenerActivo = async (req, res) => {')
+      assert.ok(hasPattern(fn, /\.\.\.construirWhereScopeTenant\(req\)/),
+        'turno activo debe llevar empresaId')
+    })
+
+    it('F2.14 obtenerResumen scoped por construirWhereScopeTenant', () => {
+      const src = readSource('modules/turnos-caja/turnos-caja.controller.js')
+      const fn = extractFn(src, 'const obtenerResumen = async (req, res) => {')
+      assert.ok(hasPattern(fn, /\.\.\.construirWhereScopeTenant\(req\)/),
+        'resumen debe llevar empresaId')
+    })
+
+    it('F2.15 obtenerHistorial scoped por construirWhereScopeTenant', () => {
+      const src = readSource('modules/turnos-caja/turnos-caja.controller.js')
+      const fn = extractFn(src, 'const obtenerHistorial = async (req, res) => {')
+      assert.ok(hasPattern(fn, /construirWhereScopeTenant\(req, \{ incluirSucursal: false \}\)/),
+        'historial debe llevar empresaId sin sucursal del helper')
+    })
+
+    it('F2.16 obtenerResumenContable scoped por empresaId (SQL + groupBy + sucursales)', () => {
+      const src = readSource('modules/turnos-caja/turnos-caja.controller.js')
+      const fn = extractFn(src, 'const obtenerResumenContable = async (req, res) => {')
+      assert.ok(hasPattern(fn, /const empresaId = getEmpresaId\(req\)/),
+        'debe resolver empresa vía getEmpresaId')
+      assert.ok(hasPattern(fn, /v\."empresaId" = \$\{empresaId\}/),
+        'SQL crudo de ventas debe filtrar por empresa')
+      assert.ok(hasPattern(fn, /tc\."empresaId" = \$\{empresaId\}/),
+        'SQL crudo de turnos debe filtrar por empresa')
+      assert.ok(hasPattern(fn, /empresaId,\n\s+abierto: false/),
+        'groupBy de turnoCaja debe incluir empresaId')
+      assert.ok(hasPattern(fn, /\{ id: whereSucursal, empresaId \}/),
+        'sucursal.findMany debe scoped por empresaId')
+    })
+  })
 })

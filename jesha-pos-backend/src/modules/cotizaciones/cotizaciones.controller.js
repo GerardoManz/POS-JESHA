@@ -28,6 +28,7 @@ const listar = async (req, res) => {
     const excluirCanceladas = !estado ? 'EXCLUIR' : undefined
 
     const resultado = await service.listar({
+      empresaId: getEmpresaId(req),
       sucursalId, rol, estado: estadoFiltro,
       excluirCanceladas, tipo, buscar, page, limit
     })

@@ -8,6 +8,7 @@
 
 const prisma = require('../../lib/prisma')
 const getEmpresaId = require('../../helpers/getEmpresaId')
+const construirWhereScopeTenant = require('../../helpers/construirWhereScopeTenant')
 
 // ── Folio ──
 async function generarFolio() {
@@ -77,7 +78,7 @@ const listar = async (req, res) => {
   try {
     const { estado, clienteId, usuarioId, buscar, page = 1, limit = 25 } = req.query
     const { sucursalId, rol } = req.usuario
-    const where = {}
+    const where = construirWhereScopeTenant(req)
 
     const pageInt  = Math.max(1, parseInt(page) || 1)
     const limitInt = Math.min(100, Math.max(1, parseInt(limit) || 25))

@@ -5,6 +5,7 @@
 
 const prisma = require('../../lib/prisma')
 const getEmpresaId = require('../../helpers/getEmpresaId')
+const construirWhereScopeTenant = require('../../helpers/construirWhereScopeTenant')
 const { FACTOR_IVA } = require('../../utils/constantes')
 const { verificarStockPostOperacion } = require('../../helpers/verificarStock')
 
@@ -50,7 +51,7 @@ const listar = async (req, res) => {
   try {
     const { estado, proveedorId, pagada, buscar, page = 1, limit = 25 } = req.query
     const { sucursalId, rol } = req.usuario
-    const where = {}
+    const where = construirWhereScopeTenant(req)
 
     if (rol !== 'SUPERADMIN' && sucursalId) where.sucursalId = sucursalId
     if (estado)      where.estado      = estado

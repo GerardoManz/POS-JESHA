@@ -83,8 +83,9 @@ describe('P0-CROSS-TENANT-READS PostgreSQL HTTP', { concurrency:1, timeout:30000
   let bitacoraA, bitacoraB
   let pedidoA, pedidoB
   let ocA, ocB
-  let cotizacionA, cotizacionB, cotizacionAVencida
-  let devolucionA
+  let cotizacionA, cotizacionB, cotizacionAVencida, cotizacionBVencida
+  let devolucionA, devolucionB
+  let turnoCerradoA, turnoCerradoB, ventaCerradaA, ventaLeakB
   let tokenSuperA, tokenSuperB
 
   function signToken(userId, rol) {
@@ -188,6 +189,27 @@ describe('P0-CROSS-TENANT-READS PostgreSQL HTTP', { concurrency:1, timeout:30000
         motivo:'Prueba', tipoReembolso:'REEMBOLSO', montoReembolso:10, reintegraInventario:true,
         DetalleDevolucion: { create: [{ productoId:productoA.id, cantidad:1, precioUnitario:10 }] }
       }
+    })
+    devolucionB = await prisma.devolucion.create({
+      data: {
+        empresaId:empresaB.id, ventaId:ventaB.id, sucursalId:sucursalB1.id, usuarioId:superB.id,
+        motivo:'Prueba B', tipoReembolso:'REEMBOLSO', montoReembolso:5, reintegraInventario:true,
+        DetalleDevolucion: { create: [{ productoId:productoB.id, cantidad:1, precioUnitario:5 }] }
+      }
+    })
+
+    cotizacionBVencida = await prisma.cotizacion.create({ data: { empresaId:empresaB.id, folio:'RD-COT-004', sucursalId:sucursalB1.id, usuarioId:superB.id, clienteId:clienteB.id, total:80, estado:'PENDIENTE', venceEn:new Date(Date.now() - 48*3600*1000) } })
+
+    turnoCerradoA = await prisma.turnoCaja.create({ data: { empresaId:empresaA.id, sucursalId:sucursalA1.id, usuarioId:superA.id, montoInicial:50, abierto:false, montoFinalDeclarado:75, montoCalculado:75, diferencia:0, cerradaEn:new Date() } })
+    turnoCerradoB = await prisma.turnoCaja.create({ data: { empresaId:empresaB.id, sucursalId:sucursalB1.id, usuarioId:superB.id, montoInicial:60, abierto:false, montoFinalDeclarado:93, montoCalculado:93, diferencia:0, cerradaEn:new Date() } })
+
+    ventaCerradaA = await prisma.venta.create({
+      data: { empresaId:empresaA.id, folio:'RD-V-004', sucursalId:sucursalA1.id, usuarioId:superA.id, clienteId:null, turnoId:turnoCerradoA.id, metodoPago:'EFECTIVO', subtotal:25, total:29, tokenQr:'rd-qr-004' }
+    })
+    // Registro cross-tenant intencional: pertenece a empresa B pero "vive" en la
+    // sucursal/turno que A consulta. Es el peor caso que el scope por empresaId debe cortar.
+    ventaLeakB = await prisma.venta.create({
+      data: { empresaId:empresaB.id, folio:'RD-V-LEAK', sucursalId:sucursalA1.id, usuarioId:superA.id, clienteId:null, turnoId:turnoCerradoA.id, metodoPago:'EFECTIVO', subtotal:50, total:58, tokenQr:'rd-qr-leak-b' }
     })
 
     tokenSuperA = signToken(superA.id, 'SUPERADMIN')
@@ -346,6 +368,7 @@ describe('P0-CROSS-TENANT-READS PostgreSQL HTTP', { concurrency:1, timeout:30000
   it('16. A no devuelve productos de venta B → 404 sin efectos', async () => {
     const stockAntes = parseFloat((await prisma.inventarioSucursal.findUnique({ where: { productoId_sucursalId: { productoId:productoB.id, sucursalId:sucursalB1.id } } })).stockActual)
     const movB = await prisma.movimientoInventario.count({ where: { empresaId:empresaB.id } })
+    const devB = await prisma.devolucion.count({ where: { ventaId:ventaB.id } })
     const res = await send('POST', '/devoluciones', tokenSuperA, {
       ventaId: ventaB.id, motivo:'X-Tenant', tipoReembolso:'REEMBOLSO',
       productos: [{ productoId:productoB.id, cantidad:1 }]
@@ -353,8 +376,8 @@ describe('P0-CROSS-TENANT-READS PostgreSQL HTTP', { concurrency:1, timeout:30000
     assert.strictEqual(res.status, 404)
     const stockDespues = parseFloat((await prisma.inventarioSucursal.findUnique({ where: { productoId_sucursalId: { productoId:productoB.id, sucursalId:sucursalB1.id } } })).stockActual)
     assert.strictEqual(stockDespues, stockAntes, 'stock de B no debe cambiar')
-    assert.strictEqual(await prisma.movimientoInventario.count({ where: { empresaId:empresaB.id } }), movB, 'sin movimientos en B')
-    assert.strictEqual(await prisma.devolucion.count({ where: { ventaId:ventaB.id } }), 0, 'sin devolución sobre venta B')
+    assert.strictEqual(await prisma.movimientoInventario.count({ where: { empresaId:empresaB.id } }), movB, 'sin movimientos nuevos en B')
+    assert.strictEqual(await prisma.devolucion.count({ where: { ventaId:ventaB.id } }), devB, 'sin devolución nueva sobre venta B')
   })
 
   it('17. A devuelve de SU propia venta → 201', async () => {
@@ -397,10 +420,11 @@ describe('P0-CROSS-TENANT-READS PostgreSQL HTTP', { concurrency:1, timeout:30000
   // GENERAL — Empresa B intacta + auth
   // ═══════════════════════════════════════════════════════════════
   it('22. Empresa B no fue modificada (stock, ventas, bitácoras)', async () => {
-    assert.strictEqual(await prisma.devolucion.count({ where: { empresaId:empresaB.id } }), 0, 'sin devoluciones en B')
+    assert.strictEqual(await prisma.devolucion.count({ where: { empresaId:empresaB.id } }), 1, 'solo la devolución B sembrada (F2)')
     assert.strictEqual(await prisma.movimientoInventario.count({ where: { empresaId:empresaB.id } }), 0, 'sin movimientos en B')
-    assert.strictEqual(await prisma.venta.count({ where: { empresaId:empresaB.id } }), 1, 'solo la venta B sembrada')
+    assert.strictEqual(await prisma.venta.count({ where: { empresaId:empresaB.id } }), 2, 'ventaB + ventaLeakB sembradas (F2)')
     assert.strictEqual(await prisma.bitacora.count({ where: { empresaId:empresaB.id } }), 1, 'solo la bitácora B sembrada')
+    assert.strictEqual(await prisma.cotizacion.count({ where: { empresaId:empresaB.id } }), 2, 'cotizacionB + cotizacionBVencida sembradas (F2)')
     const stockB = parseFloat((await prisma.inventarioSucursal.findUnique({ where: { productoId_sucursalId: { productoId:productoB.id, sucursalId:sucursalB1.id } } })).stockActual)
     assert.strictEqual(stockB, 10, 'stock de B intacto')
   })
@@ -421,5 +445,93 @@ describe('P0-CROSS-TENANT-READS PostgreSQL HTTP', { concurrency:1, timeout:30000
       const res = await fetch(`${baseUrl}${path}`, { method, headers: { 'Content-Type':'application/json' }, body: method === 'POST' ? JSON.stringify({}) : undefined })
       assert.strictEqual(res.status, 401, `${method} ${path} debe responder 401`)
     }
+  })
+
+  // ═══════════════════════════════════════════════════════════════
+  // 10. FASE 2 — LISTADOS + SQL CRUDO + TURNOS (scope cross-tenant)
+  // ═══════════════════════════════════════════════════════════════
+  it('24. GET /pedidos (A) → solo pedidos de A', async () => {
+    const res = await send('GET', '/pedidos', tokenSuperA)
+    assert.strictEqual(res.status, 200)
+    assert.strictEqual(res.body.total, 1, 'A solo ve su pedido')
+    assert.strictEqual(res.body.data[0].id, pedidoA.id)
+    assert.ok(!res.body.data.some(p => p.id === pedidoB.id), 'no filtra pedido de B')
+  })
+
+  it('25. GET /compras (A) → solo órdenes de A', async () => {
+    const res = await send('GET', '/compras', tokenSuperA)
+    assert.strictEqual(res.status, 200)
+    assert.strictEqual(res.body.total, 1, 'A solo ve su orden de compra')
+    assert.strictEqual(res.body.data[0].id, ocA.id)
+    assert.ok(!res.body.data.some(o => o.id === ocB.id), 'no filtra orden de B')
+  })
+
+  it('26. GET /bitacoras (A) → solo bitácoras de A', async () => {
+    const res = await send('GET', '/bitacoras', tokenSuperA)
+    assert.strictEqual(res.status, 200)
+    assert.strictEqual(res.body.total, 1, 'A solo ve su bitácora')
+    assert.ok(!res.body.data.some(b => b.id === bitacoraB.id), 'no filtra bitácora de B')
+  })
+
+  it('27. GET /bitacoras?buscar= (A) → full-text scoped, no filtra B', async () => {
+    const res = await send('GET', '/bitacoras?buscar=Bit', tokenSuperA)
+    assert.strictEqual(res.status, 200)
+    assert.strictEqual(res.body.total, 1, 'el full-text no debe arrastrar la bitácora de B')
+    assert.strictEqual(res.body.data[0].id, bitacoraA.id)
+  })
+
+  it('28. GET /cotizaciones (A) → solo cotizaciones de A', async () => {
+    const res = await send('GET', '/cotizaciones', tokenSuperA)
+    assert.strictEqual(res.status, 200)
+    assert.strictEqual(res.body.total, 2, 'cotizacionA + cotizacionAVencida, sin las de B')
+    assert.ok(!res.body.cotizaciones.some(c => c.id === cotizacionB.id || c.id === cotizacionBVencida.id), 'no filtra cotizaciones de B')
+  })
+
+  it('29. Auto-vencer de listar (A) → NO vence la cotización vencida de B', async () => {
+    const res = await send('GET', '/cotizaciones', tokenSuperA)
+    assert.strictEqual(res.status, 200)
+    const bVencida = await prisma.cotizacion.findUnique({ where: { id: cotizacionBVencida.id }, select: { estado: true } })
+    assert.strictEqual(bVencida.estado, 'PENDIENTE', 'el $executeRaw de listar no debe tocar cotizaciones de B')
+    const aVencida = await prisma.cotizacion.findUnique({ where: { id: cotizacionAVencida.id }, select: { estado: true } })
+    assert.strictEqual(aVencida.estado, 'VENCIDA', 'la cotización vencida de A sí debe vencerse')
+  })
+
+  it('30. GET /devoluciones (A) → solo devoluciones de A', async () => {
+    const res = await send('GET', '/devoluciones', tokenSuperA)
+    assert.strictEqual(res.status, 200)
+    assert.strictEqual(res.body.total, 2, 'devolucionA + la creada en test 17, nunca la de B')
+    assert.ok(!res.body.data.some(d => d.id === devolucionB.id), 'no filtra devolución de B')
+  })
+
+  it('31. GET /turnos-caja/historial (A) → solo turnos cerrados de A', async () => {
+    const res = await send('GET', '/turnos-caja/historial', tokenSuperA)
+    assert.strictEqual(res.status, 200)
+    assert.strictEqual(res.body.data.pagination.total, 1, 'solo turnoCerradoA')
+    assert.strictEqual(res.body.data.turnos[0].id, turnoCerradoA.id)
+  })
+
+  it('32. GET /turnos-caja/activo (B) → 404, no ve el turno abierto de A', async () => {
+    const res = await send('GET', '/turnos-caja/activo', tokenSuperB)
+    assert.strictEqual(res.status, 404, 'B no debe leer el turno de A por el default de sucursal')
+  })
+
+  it('33. GET /turnos-caja/resumen (B) → 404, no lee resumen del turno de A', async () => {
+    const res = await send('GET', '/turnos-caja/resumen', tokenSuperB)
+    assert.strictEqual(res.status, 404)
+  })
+
+  it('34. GET /turnos-caja/resumen-contable (A) → excluye ventaLeakB de otra empresa', async () => {
+    const hoy = new Date().toISOString().slice(0, 10)
+    const res = await send('GET', `/turnos-caja/resumen-contable?fechaDesde=${hoy}&fechaHasta=${hoy}&sucursalId=${sucursalA1.id}`, tokenSuperA)
+    assert.strictEqual(res.status, 200)
+    assert.strictEqual(res.body.data.totales.totalVentas, 1, 'solo ventaCerradaA, nunca ventaLeakB')
+    assert.strictEqual(res.body.data.totales.totalGeneral, 29, 'el monto no debe incluir la venta de B')
+  })
+
+  it('35. Sanidad: GET /devoluciones (B) → solo devolución de B', async () => {
+    const res = await send('GET', '/devoluciones', tokenSuperB)
+    assert.strictEqual(res.status, 200)
+    assert.strictEqual(res.body.total, 1)
+    assert.strictEqual(res.body.data[0].id, devolucionB.id)
   })
 })

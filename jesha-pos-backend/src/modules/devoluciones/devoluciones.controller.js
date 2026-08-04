@@ -5,6 +5,7 @@
 
 const prisma = require('../../lib/prisma')
 const getEmpresaId = require('../../helpers/getEmpresaId')
+const construirWhereScopeTenant = require('../../helpers/construirWhereScopeTenant')
 const { verificarStockPostOperacion } = require('../../helpers/verificarStock')
 
 async function registrarAudit(usuarioId, sucursalId, referencia, detalleExtra, empresaId) {
@@ -335,7 +336,7 @@ let montoReembolso = 0
 exports.listar = async (req, res) => {
   try {
     const { skip = 0, take = 20, ventaId, desde, hasta } = req.query
-    const where = {}
+    const where = construirWhereScopeTenant(req)
     if (ventaId) where.ventaId = parseInt(ventaId)
     if (desde || hasta) {
       where.creadaEn = {}

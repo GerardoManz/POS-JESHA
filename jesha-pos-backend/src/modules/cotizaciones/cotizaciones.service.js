@@ -70,16 +70,17 @@ function calcularDetalle(precioUnitario, cantidad, descuento, fechaManual) {
   return { precioUnitario: pu, cantidad: qty, descuento: dto, subtotal, fechaManual: parseFechaManual(fechaManual) }
 }
 
-async function listar({ sucursalId, rol, estado, excluirCanceladas, tipo, buscar, page = 1, limit = 30 }) {
-  // Auto-vencer cotizaciones expiradas antes de listar
+async function listar({ empresaId, sucursalId, rol, estado, excluirCanceladas, tipo, buscar, page = 1, limit = 30 }) {
+  // Auto-vencer cotizaciones expiradas antes de listar (solo de la empresa)
   await prisma.$executeRaw`
     UPDATE "Cotizacion" SET estado = 'VENCIDA'
-    WHERE estado = 'PENDIENTE'
+    WHERE "empresaId" = ${empresaId}
+      AND estado = 'PENDIENTE'
       AND "venceEn" IS NOT NULL
       AND "venceEn" < NOW()
   `
 
-  const where = {}
+  const where = { empresaId }
   if (rol !== 'SUPERADMIN' && sucursalId) where.sucursalId = sucursalId
 
   // Filtro de estado: si viene explícito úsalo, si no excluir CANCELADA
