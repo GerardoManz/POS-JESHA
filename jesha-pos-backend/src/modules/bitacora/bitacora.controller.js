@@ -127,6 +127,8 @@ const listar = async (req, res) => {
     const { sucursalId, rol } = req.usuario
     const where = construirWhereScopeTenant(req)
     const empresaId = where.empresaId
+    const pageInt  = Math.max(1, parseInt(page) || 1)
+    const limitInt = Math.min(100, Math.max(1, parseInt(limit) || 25))
 
     if (rol !== 'SUPERADMIN' && sucursalId) where.sucursalId = sucursalId
     if (estado) {
@@ -162,12 +164,12 @@ const listar = async (req, res) => {
       ]
     }
 
-    const skip = (parseInt(page) - 1) * parseInt(limit)
+    const skip = (pageInt - 1) * limitInt
     const [total, bitacoras] = await Promise.all([
       prisma.bitacora.count({ where }),
-      prisma.bitacora.findMany({ where, select: BITACORA_SELECT, orderBy: { creadaEn: 'desc' }, skip, take: parseInt(limit) })
+      prisma.bitacora.findMany({ where, select: BITACORA_SELECT, orderBy: { creadaEn: 'desc' }, skip, take: limitInt })
     ])
-    res.json({ success: true, data: bitacoras, total, page: parseInt(page), limit: parseInt(limit) })
+    res.json({ success: true, data: bitacoras, total, page: pageInt, limit: limitInt })
   } catch (err) {
     console.error('❌ listar bitacoras:', err)
     res.status(500).json({ success: false, error: err.message })

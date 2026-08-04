@@ -98,12 +98,14 @@ async function listar({ empresaId, sucursalId, rol, estado, excluirCanceladas, t
       { notas:   { contains: buscar, mode: 'insensitive' } }
     ]
   }
-  const skip = (parseInt(page) - 1) * parseInt(limit)
+  const pageInt  = Math.max(1, parseInt(page) || 1)
+  const limitInt = Math.min(200, Math.max(1, parseInt(limit) || 30))
+  const skip = (pageInt - 1) * limitInt
   const [total, cotizaciones] = await Promise.all([
     prisma.cotizacion.count({ where }),
-    prisma.cotizacion.findMany({ where, select: COTIZACION_SELECT, orderBy: { creadaEn: 'desc' }, skip, take: parseInt(limit) })
+    prisma.cotizacion.findMany({ where, select: COTIZACION_SELECT, orderBy: { creadaEn: 'desc' }, skip, take: limitInt })
   ])
-  return { cotizaciones, total, page: parseInt(page), limit: parseInt(limit) }
+  return { cotizaciones, total, page: pageInt, limit: limitInt }
 }
 
 async function obtenerPorId(id, empresaId) {

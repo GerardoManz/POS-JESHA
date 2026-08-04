@@ -52,6 +52,8 @@ const listar = async (req, res) => {
     const { estado, proveedorId, pagada, buscar, page = 1, limit = 25 } = req.query
     const { sucursalId, rol } = req.usuario
     const where = construirWhereScopeTenant(req)
+    const pageInt  = Math.max(1, parseInt(page) || 1)
+    const limitInt = Math.min(100, Math.max(1, parseInt(limit) || 25))
 
     if (rol !== 'SUPERADMIN' && sucursalId) where.sucursalId = sucursalId
     if (estado)      where.estado      = estado
@@ -65,12 +67,12 @@ const listar = async (req, res) => {
       ]
     }
 
-    const skip = (parseInt(page) - 1) * parseInt(limit)
+    const skip = (pageInt - 1) * limitInt
     const [total, ordenes] = await Promise.all([
       prisma.ordenCompra.count({ where }),
-      prisma.ordenCompra.findMany({ where, select: OC_SELECT, orderBy: { creadaEn: 'desc' }, skip, take: parseInt(limit) })
+      prisma.ordenCompra.findMany({ where, select: OC_SELECT, orderBy: { creadaEn: 'desc' }, skip, take: limitInt })
     ])
-    res.json({ success: true, data: ordenes, total, page: parseInt(page), limit: parseInt(limit) })
+    res.json({ success: true, data: ordenes, total, page: pageInt, limit: limitInt })
   } catch (err) {
     console.error('❌ listar compras:', err)
     res.status(500).json({ success: false, error: err.message })

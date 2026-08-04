@@ -336,6 +336,8 @@ let montoReembolso = 0
 exports.listar = async (req, res) => {
   try {
     const { skip = 0, take = 20, ventaId, desde, hasta } = req.query
+    const skipInt  = Math.max(0, parseInt(skip) || 0)
+    const takeInt  = Math.min(100, Math.max(1, parseInt(take) || 20))
     const where = construirWhereScopeTenant(req)
     if (ventaId) where.ventaId = parseInt(ventaId)
     if (desde || hasta) {
@@ -345,7 +347,7 @@ exports.listar = async (req, res) => {
     }
     const [devoluciones, total] = await Promise.all([
       prisma.devolucion.findMany({
-        where, skip: parseInt(skip), take: parseInt(take), orderBy: { creadaEn: 'desc' },
+        where, skip: skipInt, take: takeInt, orderBy: { creadaEn: 'desc' },
         include: {
           Venta:    { select: { folio: true, metodoPago: true } },
           Usuario:  { select: { id: true, nombre: true } },
@@ -361,7 +363,7 @@ exports.listar = async (req, res) => {
         tipoReembolso: d.tipoReembolso, motivo: d.motivo, montoReembolso: d.montoReembolso,
         cajero: d.Usuario.nombre, productos: d.DetalleDevolucion.length, creadaEn: d.creadaEn
       })),
-      total, skip: parseInt(skip), take: parseInt(take)
+      total, skip: skipInt, take: takeInt
     })
   } catch (err) {
     console.error('❌ Error en listarDevoluciones:', err)
