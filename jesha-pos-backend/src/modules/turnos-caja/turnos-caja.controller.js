@@ -1,6 +1,8 @@
+const { Prisma } = require('@prisma/client')
 const prisma = require('../../lib/prisma')
 const getEmpresaId = require('../../helpers/getEmpresaId')
 const construirWhereScopeTenant = require('../../helpers/construirWhereScopeTenant')
+const resolverSucursalId = require('../sucursal/sucursal.helper')
 const { EMPRESA } = require('../../../config/empresa')
 const { buildCorteSnapshot, formatFechaTicket } = require('../impresion/impresion.snapshot')
 const { encolarImpresion } = require('../impresion/impresion.service')
@@ -60,8 +62,13 @@ function calcularTotalesPorMetodoDesdeMovimientos(movimientos, tipos = ['VENTA',
 
 const obtenerActivo = async (req, res) => {
   try {
-    const { sucursalId: sucursalIdToken } = req.usuario
-    const sucursalId = sucursalIdToken || parseInt(req.query.sucursalId) || 1
+    const sucursalId = resolverSucursalId(req)
+
+    // Sin sucursal operativa (NONE) no hay un "turno activo" de una sucursal:
+    // 404 igual que antes (cuando el fallback a sucursal 1 no tenía turno).
+    if (sucursalId === null) {
+      return res.status(404).json({ error: 'No hay turno abierto', codigo: 'SIN_TURNO' })
+    }
 
     const turno = await prisma.turnoCaja.findFirst({
       where: { ...construirWhereScopeTenant(req), sucursalId, abierto: true },
@@ -90,8 +97,11 @@ const obtenerActivo = async (req, res) => {
 
 const obtenerResumen = async (req, res) => {
   try {
-    const { sucursalId: sucursalIdToken } = req.usuario
-    const sucursalId = sucursalIdToken || parseInt(req.query.sucursalId) || 1
+    const sucursalId = resolverSucursalId(req)
+
+    if (sucursalId === null) {
+      return res.status(404).json({ error: 'No hay turno abierto', codigo: 'SIN_TURNO' })
+    }
 
     const turno = await prisma.turnoCaja.findFirst({
       where: { ...construirWhereScopeTenant(req), sucursalId, abierto: true },
@@ -158,9 +168,9 @@ const obtenerResumen = async (req, res) => {
 
 const abrirTurno = async (req, res) => {
   try {
-    const { montoInicial, sucursalId: sucursalIdBody } = req.body
-    const { id: usuarioId, sucursalId: sucursalIdToken } = req.usuario
-    const sucursalId = sucursalIdToken || parseInt(sucursalIdBody) || 1
+    const { montoInicial } = req.body
+    const { id: usuarioId } = req.usuario
+    const sucursalId = resolverSucursalId(req)
     const empresaId = getEmpresaId(req)
 
     if (montoInicial === undefined || montoInicial < 0) {
@@ -168,8 +178,11 @@ const abrirTurno = async (req, res) => {
     }
 
     const resultado = await prisma.$transaction(async (tx) => {
+      // Bloqueo por fila: serializa aperturas concurrentes por sucursal (patrón FOR UPDATE).
+      await tx.$queryRaw`SELECT id FROM "Sucursal" WHERE id = ${sucursalId} FOR UPDATE`
+
       const turnoExistente = await tx.turnoCaja.findFirst({
-        where: { sucursalId, abierto: true }
+        where: { empresaId, sucursalId, abierto: true }
       })
       if (turnoExistente) {
         throw { status: 409, error: 'Ya hay un turno abierto en esta sucursal', turnoId: turnoExistente.id }
@@ -216,8 +229,8 @@ const abrirTurno = async (req, res) => {
 const cerrarTurno = async (req, res) => {
   try {
     const { montoFinalDeclarado, notasCierre } = req.body
-    const { id: usuarioId, sucursalId: sucursalIdToken } = req.usuario
-    const sucursalId = sucursalIdToken || parseInt(req.body.sucursalId) || 1
+    const { id: usuarioId } = req.usuario
+    const sucursalId = resolverSucursalId(req)
     const empresaId = getEmpresaId(req)
 
     if (montoFinalDeclarado === undefined || montoFinalDeclarado < 0) {
@@ -226,7 +239,7 @@ const cerrarTurno = async (req, res) => {
 
     const resultado = await prisma.$transaction(async (tx) => {
       const turno = await tx.turnoCaja.findFirst({
-        where: { sucursalId, abierto: true }
+        where: { empresaId, sucursalId, abierto: true }
       })
       if (!turno) {
         throw { status: 404, error: 'No hay turno abierto', codigo: 'SIN_TURNO' }
@@ -331,7 +344,6 @@ const cerrarTurno = async (req, res) => {
 
 const obtenerHistorial = async (req, res) => {
   try {
-    const { sucursalId: sucursalIdToken, rol } = req.usuario
     const {
       fecha,
       usuarioId,
@@ -345,8 +357,9 @@ const obtenerHistorial = async (req, res) => {
 
     const where = { ...construirWhereScopeTenant(req, { incluirSucursal: false }), abierto: false }
 
-    if (rol !== 'SUPERADMIN') {
-      where.sucursalId = sucursalIdToken || 1
+    const sucursalIdContexto = resolverSucursalId(req)
+    if (sucursalIdContexto !== null) {
+      where.sucursalId = sucursalIdContexto
     }
 
     if (fecha) {
@@ -480,8 +493,7 @@ const obtenerHistorial = async (req, res) => {
 
 const obtenerResumenContable = async (req, res) => {
   try {
-    const { sucursalId: sucursalIdToken, rol } = req.usuario
-    const { fechaDesde, fechaHasta, sucursalId } = req.query
+    const { fechaDesde, fechaHasta } = req.query
 
     if (!fechaDesde || !fechaHasta) {
       return res.status(400).json({ error: 'fechaDesde y fechaHasta son requeridos' })
@@ -491,9 +503,17 @@ const obtenerResumenContable = async (req, res) => {
     const desde = new Date(fechaDesde + 'T00:00:00.000Z')
     const hasta = new Date(fechaHasta + 'T23:59:59.999Z')
 
-    const whereSucursal = ((rol === 'SUPERADMIN') && sucursalId)
-      ? parseInt(sucursalId)
-      : (sucursalIdToken || 1)
+    // Sucursal desde el contexto operativo. NONE (sin sucursal seleccionada)
+    // consolida TODAS las sucursales de la empresa actual; nunca usa "1" por fallback.
+    const sucursalIdContexto = resolverSucursalId(req)
+    const sucursales = sucursalIdContexto === null
+      ? await prisma.sucursal.findMany({ where: { empresaId }, select: { id: true, nombre: true } })
+      : await prisma.sucursal.findMany({ where: { id: sucursalIdContexto, empresaId }, select: { id: true, nombre: true } })
+    const sucursalIds = sucursales.map(s => s.id)
+
+    const condicionSucursal = sucursalIds.length > 0
+      ? Prisma.sql`AND v."sucursalId" IN (${Prisma.join(sucursalIds)})`
+      : Prisma.sql`AND FALSE`
 
     const [totales, resumenTurnos] = await Promise.all([
       prisma.$queryRaw`
@@ -512,7 +532,7 @@ const obtenerResumenContable = async (req, res) => {
           AND v."creadaEn" >= ${desde}
           AND v."creadaEn" <= ${hasta}
           AND tc.abierto = false
-          AND v."sucursalId" = ${whereSucursal}
+          ${condicionSucursal}
       `,
       prisma.turnoCaja.groupBy({
         by: ['sucursalId'],
@@ -520,7 +540,7 @@ const obtenerResumenContable = async (req, res) => {
           empresaId,
           abierto: false,
           cerradaEn: { gte: desde, lte: hasta },
-          sucursalId: whereSucursal
+          sucursalId: { in: sucursalIds }
         },
         _count: { id: true },
         _sum: {
@@ -533,11 +553,6 @@ const obtenerResumenContable = async (req, res) => {
     ])
 
     const row = Array.isArray(totales) ? totales[0] : totales
-
-    const sucursales = await prisma.sucursal.findMany({
-      where: whereSucursal !== 1 && rol === 'SUPERADMIN' ? { empresaId } : { id: whereSucursal, empresaId },
-      select: { id: true, nombre: true }
-    })
 
     res.json({
       success: true,
