@@ -5,6 +5,7 @@
 
 const prisma = require('../../lib/prisma')
 const getEmpresaId = require('../../helpers/getEmpresaId')
+const resolverSucursalId = require('../sucursal/sucursal.helper')
 const satMatcher = require('./sat.matcher')
 const {
     normalizarCodigoBarras,
@@ -488,6 +489,7 @@ exports.validarUnidadVentaInvariante = validarUnidadVentaInvariante
 exports.importarCSV = async (req, res) => {
     try {
         const empresaId = getEmpresaId(req)
+        const sucursalId = resolverSucursalId(req)
 
         // ── Validar que llegó un archivo ──
         if (!req.file) {
@@ -585,7 +587,7 @@ exports.importarCSV = async (req, res) => {
                         dataSinAux.codigoBarras = normalizarCodigoBarras(dataSinAux.codigoBarras)
 
                         await prisma.producto.update({
-                            where: { codigoInterno: dataSinAux.codigoInterno },
+                            where: { empresaId_codigoInterno: { empresaId, codigoInterno: dataSinAux.codigoInterno } },
                             data: {
                                 nombre:       dataSinAux.nombre,
                                 codigoBarras: dataSinAux.codigoBarras,
@@ -601,9 +603,8 @@ exports.importarCSV = async (req, res) => {
                                 categoriaId,
                             }
                         })
-                        // Actualizar inventario si tiene stock en el CSV
-                        if (_stockInicial > 0 || _stockMinimo > 0) {
-                            const sucursalId = req.usuario?.sucursalId || 1
+                        // Actualizar inventario si tiene stock en el CSV (solo con sucursal operativa)
+                        if (sucursalId !== null && (_stockInicial > 0 || _stockMinimo > 0)) {
                             await prisma.inventarioSucursal.upsert({
                                 where: { productoId_sucursalId: { productoId: existente.id, sucursalId } },
                                 update: {
@@ -664,23 +665,24 @@ exports.importarCSV = async (req, res) => {
                             }
                         }
 
-                        // Crear o actualizar inventario con stock del CSV
-                        const sucursalId = req.usuario?.sucursalId || 1
-                        await prisma.inventarioSucursal.upsert({
-                            where: { productoId_sucursalId: { productoId: productoCreado.id, sucursalId } },
-                            update: {
-                                stockActual:       _stockInicial,
-                                stockMinimoAlerta: _stockMinimo,
-                                ..._stockMaximo && { stockMaximo: _stockMaximo }
-                            },
-                            create: {
-                                productoId:        productoCreado.id,
-                                sucursalId,
-                                stockActual:       _stockInicial,
-                                stockMinimoAlerta: _stockMinimo,
-                                ..._stockMaximo && { stockMaximo: _stockMaximo }
-                            }
-                        })
+                        // Crear o actualizar inventario con stock del CSV (solo con sucursal operativa)
+                        if (sucursalId !== null) {
+                            await prisma.inventarioSucursal.upsert({
+                                where: { productoId_sucursalId: { productoId: productoCreado.id, sucursalId } },
+                                update: {
+                                    stockActual:       _stockInicial,
+                                    stockMinimoAlerta: _stockMinimo,
+                                    ..._stockMaximo && { stockMaximo: _stockMaximo }
+                                },
+                                create: {
+                                    productoId:        productoCreado.id,
+                                    sucursalId,
+                                    stockActual:       _stockInicial,
+                                    stockMinimoAlerta: _stockMinimo,
+                                    ..._stockMaximo && { stockMaximo: _stockMaximo }
+                                }
+                            })
+                        }
                         // Vincular proveedor si viene en el CSV
                         if (_proveedorNombre) {
                             const proveedorId = cacheProveedores.get(_proveedorNombre)
@@ -760,6 +762,7 @@ exports.actualizarDatosFiscales_ELIMINADO = async (req, res) => {
 exports.importarSoloNuevos = async (req, res) => {
     try {
         const empresaId = getEmpresaId(req)
+        const sucursalId = resolverSucursalId(req)
 
         // ── Validar que llegó un archivo ──
         if (!req.file) {
@@ -919,23 +922,24 @@ exports.importarSoloNuevos = async (req, res) => {
                         }
                     }
 
-                    // Crear inventario con stock del CSV
-                    const sucursalId = req.usuario?.sucursalId || 1
-                    await prisma.inventarioSucursal.upsert({
-                        where: { productoId_sucursalId: { productoId: productoCreado.id, sucursalId } },
-                        update: {
-                            stockActual:       _stockInicial,
-                            stockMinimoAlerta: _stockMinimo,
-                            ..._stockMaximo && { stockMaximo: _stockMaximo }
-                        },
-                        create: {
-                            productoId:        productoCreado.id,
-                            sucursalId,
-                            stockActual:       _stockInicial,
-                            stockMinimoAlerta: _stockMinimo,
-                            ..._stockMaximo && { stockMaximo: _stockMaximo }
-                        }
-                    })
+                    // Crear inventario con stock del CSV (solo con sucursal operativa)
+                    if (sucursalId !== null) {
+                        await prisma.inventarioSucursal.upsert({
+                            where: { productoId_sucursalId: { productoId: productoCreado.id, sucursalId } },
+                            update: {
+                                stockActual:       _stockInicial,
+                                stockMinimoAlerta: _stockMinimo,
+                                ..._stockMaximo && { stockMaximo: _stockMaximo }
+                            },
+                            create: {
+                                productoId:        productoCreado.id,
+                                sucursalId,
+                                stockActual:       _stockInicial,
+                                stockMinimoAlerta: _stockMinimo,
+                                ..._stockMaximo && { stockMaximo: _stockMaximo }
+                            }
+                        })
+                    }
 
                     // Vincular proveedor si viene en el CSV
                     if (_proveedorNombre) {
