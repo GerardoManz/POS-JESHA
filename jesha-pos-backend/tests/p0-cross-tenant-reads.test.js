@@ -464,8 +464,10 @@ describe('P0 — Cross-Tenant Reads (9 lecturas de registro único)', () => {
         'SQL crudo de turnos debe filtrar por empresa')
       assert.ok(hasPattern(fn, /empresaId,\n\s+abierto: false/),
         'groupBy de turnoCaja debe incluir empresaId')
-      assert.ok(hasPattern(fn, /\{ id: whereSucursal, empresaId \}/),
-        'sucursal.findMany debe scoped por empresaId')
+      assert.ok(hasPattern(fn, /sucursalIdContexto === null/),
+        'NONE consolida todas las sucursales de la empresa')
+      assert.ok(hasPattern(fn, /where: \{ id: sucursalIdContexto, empresaId \}/),
+        'sucursal.findMany debe scoped por empresaId + contexto branch')
     })
   })
 })
