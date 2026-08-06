@@ -10,20 +10,21 @@
 const router  = require('express').Router()
 const ctrl    = require('./cotizaciones.controller')
 const { requireRole } = require('../../middlewares/auth.middleware')
+const { branchRequired } = require('../../middlewares/scope.middleware')
 
 // GET  /cotizaciones          — lista con filtros y paginación
 router.get('/',                ctrl.listar)
 
 // POST /cotizaciones          — crear nueva
-router.post('/',               ctrl.crear)
+router.post('/',               branchRequired, ctrl.crear)
 
 // PATCH /cotizaciones/:id/estado  — cambiar estado (ruta fija antes de /:id)
-router.patch('/:id/estado',    requireRole('ADMIN_SUCURSAL', 'SUPERADMIN'), ctrl.cambiarEstado)
+router.patch('/:id/estado',    branchRequired, requireRole('ADMIN_SUCURSAL', 'SUPERADMIN'), ctrl.cambiarEstado)
 
 // GET  /cotizaciones/:id      — detalle completo con detalles
 router.get('/:id',             ctrl.obtener)
 
 // PUT  /cotizaciones/:id      — editar cotización (solo PENDIENTE)
-router.put('/:id',             ctrl.editar)
+router.put('/:id',             branchRequired, ctrl.editar)
 
 module.exports = router

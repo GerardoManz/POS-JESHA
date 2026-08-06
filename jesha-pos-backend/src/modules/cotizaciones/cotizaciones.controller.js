@@ -12,6 +12,7 @@
 
 const service = require('./cotizaciones.service')
 const getEmpresaId = require('../../helpers/getEmpresaId')
+const resolverSucursalId = require('../sucursal/sucursal.helper')
 
 // ════════════════════════════════════════════════════════════════════
 //  GET /cotizaciones
@@ -20,8 +21,8 @@ const getEmpresaId = require('../../helpers/getEmpresaId')
 const listar = async (req, res) => {
   try {
     const { estado, tipo, buscar, page, limit } = req.query
-    const { sucursalId: sucursalIdToken, rol } = req.usuario
-    const sucursalId = sucursalIdToken || parseInt(req.query.sucursalId) || 1
+    const { rol } = req.usuario
+    const sucursalId = resolverSucursalId(req)
 
     // Si no se especifica estado, excluir CANCELADA por defecto
     const estadoFiltro = estado || undefined
@@ -69,8 +70,8 @@ const obtener = async (req, res) => {
 const crear = async (req, res) => {
   try {
     const { clienteId, tipo = 'PRODUCTOS', detalles, notas, venceEn, descuento } = req.body
-    const { id: usuarioId, sucursalId: sucursalIdToken } = req.usuario
-    const sucursalId = sucursalIdToken || parseInt(req.body.sucursalId) || 1
+    const { id: usuarioId } = req.usuario
+    const sucursalId = resolverSucursalId(req)
     const empresaId = getEmpresaId(req)
 
     // Validaciones básicas
@@ -134,8 +135,8 @@ const editar = async (req, res) => {
   try {
     const { id } = req.params
     const { clienteId, notas, venceEn, detalles, descuento } = req.body
-    const { id: usuarioId, sucursalId: sucursalIdToken } = req.usuario
-    const sucursalId = sucursalIdToken || parseInt(req.body.sucursalId) || 1
+    const { id: usuarioId } = req.usuario
+    const sucursalId = resolverSucursalId(req)
     const empresaId = getEmpresaId(req)
 
     const cotizacion = await service.editar(id, {
@@ -168,8 +169,8 @@ const cambiarEstado = async (req, res) => {
   try {
     const { id } = req.params
     const { estado } = req.body
-    const { id: usuarioId, sucursalId: sucursalIdToken, rol } = req.usuario
-    const sucursalId = sucursalIdToken || parseInt(req.body.sucursalId) || 1
+    const { id: usuarioId, rol } = req.usuario
+    const sucursalId = resolverSucursalId(req)
     const empresaId = getEmpresaId(req)
 
     if (!estado) {

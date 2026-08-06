@@ -7,6 +7,7 @@
 const express = require('express')
 const router = express.Router()
 const multer = require('multer')
+const { branchRequired } = require('../../middlewares/scope.middleware')
 const ctrl = require('./reporte-stock.controller')
 
 const uploadExcel = multer({
@@ -25,10 +26,10 @@ const uploadExcel = multer({
 router.get('/stock', ctrl.obtenerReporteStock)
 router.get('/stock/excel', ctrl.generarExcelReporteStock)
 router.get('/stock/pdf', ctrl.generarPdfReporteStock)
-router.post('/stock/alertas/generar', ctrl.generarAlertasPorTurno)
+router.post('/stock/alertas/generar', branchRequired, ctrl.generarAlertasPorTurno)
 router.patch('/stock/alertas/:id', ctrl.marcarAlerta)
 router.get('/stock/alertas', ctrl.obtenerAlertas)
 router.get('/stock/plantilla-correccion', ctrl.generarPlantillaCorreccion)
-router.post('/stock/corregir-plantilla', uploadExcel.single('archivo'), ctrl.corregirPlantilla)
+router.post('/stock/corregir-plantilla', branchRequired, uploadExcel.single('archivo'), ctrl.corregirPlantilla)
 
 module.exports = router

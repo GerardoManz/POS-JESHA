@@ -6,6 +6,7 @@
 
 const prisma = require('../../lib/prisma')
 const getEmpresaId = require('../../helpers/getEmpresaId')
+const resolverSucursalId = require('../sucursal/sucursal.helper')
 const { EMPRESA } = require('../../../config/empresa')
 const ExcelJS = require('exceljs')
 
@@ -37,14 +38,25 @@ async function buildReporteData(empresaId, sucursalId, fecha, turnoId, soloNuevo
   const desde = new Date(fecha + 'T00:00:00.000Z')
   const hasta = new Date(fecha + 'T23:59:59.999Z')
 
-  // Parallel: sucursal + turno + inventarios + movimientos + alertas
-  const [sucursal, turno, inventarios, movimientos, alertasActivas] = await Promise.all([
-    prisma.sucursal.findUnique({ where: { id: sucursalId } }),
-    turnoId
-      ? prisma.turnoCaja.findUnique({ where: { id: turnoId }, include: { Usuario: { select: { id: true, nombre: true } } } })
-      : prisma.turnoCaja.findFirst({ where: { sucursalId, abierto: true }, include: { Usuario: { select: { id: true, nombre: true } } } }),
+  // Determinar alcance por sucursal: NONE (sucursalId null) consolida todas las de la empresa.
+  const sucursalIds = sucursalId === null
+    ? (await prisma.sucursal.findMany({ where: { empresaId }, select: { id: true } })).map(s => s.id)
+    : [sucursalId]
+  const sucursalWhere = sucursalIds.length === 1 ? sucursalIds[0] : { in: sucursalIds }
+  const sucursalNombre = sucursalId !== null
+    ? (await prisma.sucursal.findUnique({ where: { id: sucursalId } }))?.nombre || '—'
+    : (sucursalIds.length ? `${sucursalIds.length} sucursales` : '—')
+
+  const turno =
+    sucursalId !== null && turnoId
+      ? await prisma.turnoCaja.findUnique({ where: { id: turnoId }, include: { Usuario: { select: { id: true, nombre: true } } } })
+      : sucursalId !== null
+        ? await prisma.turnoCaja.findFirst({ where: { sucursalId, abierto: true }, include: { Usuario: { select: { id: true, nombre: true } } } })
+        : null
+
+  const [inventarios, movimientos, alertasActivas] = await Promise.all([
     prisma.inventarioSucursal.findMany({
-      where: { sucursalId },
+      where: { sucursalId: sucursalWhere },
       include: {
         Producto: {
           include: {
@@ -55,7 +67,7 @@ async function buildReporteData(empresaId, sucursalId, fecha, turnoId, soloNuevo
       }
     }),
     prisma.movimientoInventario.findMany({
-      where: { empresaId, sucursalId, creadoEn: { gte: desde, lte: hasta } },
+      where: { empresaId, sucursalId: sucursalWhere, creadoEn: { gte: desde, lte: hasta } },
       include: {
         Producto: { select: { id: true, nombre: true, codigoInterno: true } },
         Usuario: { select: { id: true, nombre: true } }
@@ -64,7 +76,7 @@ async function buildReporteData(empresaId, sucursalId, fecha, turnoId, soloNuevo
       take: 2000
     }),
     prisma.alertaStock.findMany({
-      where: { empresaId, sucursalId, estado: 'PENDIENTE' },
+      where: { empresaId, sucursalId: sucursalWhere, estado: 'PENDIENTE' },
       include: {
         Producto: { select: { id: true, nombre: true, codigoInterno: true, costoPromedio: true } },
         TurnoCaja: { select: { id: true, cerradaEn: true } }
@@ -140,12 +152,12 @@ async function buildReporteData(empresaId, sucursalId, fecha, turnoId, soloNuevo
     const [vel7d, vel30d] = await Promise.all([
       prisma.detalleVenta.groupBy({
         by: ['productoId'],
-        where: { productoId: { in: ids }, Venta: { creadaEn: { gte: desde7 }, estado: { not: 'CANCELADA' }, sucursalId } },
+        where: { productoId: { in: ids }, Venta: { creadaEn: { gte: desde7 }, estado: { not: 'CANCELADA' }, sucursalId: sucursalWhere } },
         _sum: { cantidad: true }
       }),
       prisma.detalleVenta.groupBy({
         by: ['productoId'],
-        where: { productoId: { in: ids }, Venta: { creadaEn: { gte: desde30 }, estado: { not: 'CANCELADA' }, sucursalId } },
+        where: { productoId: { in: ids }, Venta: { creadaEn: { gte: desde30 }, estado: { not: 'CANCELADA' }, sucursalId: sucursalWhere } },
         _sum: { cantidad: true }
       })
     ])
@@ -172,7 +184,7 @@ async function buildReporteData(empresaId, sucursalId, fecha, turnoId, soloNuevo
   return {
     resumen: {
       fecha,
-      sucursal: sucursal?.nombre || '—',
+      sucursal: sucursalNombre,
       totalMonitoreados: inventarios.length,
       conStock: conStock.length,
       stockBajo: stockBajo.length,
@@ -199,13 +211,12 @@ async function buildReporteData(empresaId, sucursalId, fecha, turnoId, soloNuevo
 exports.generarAlertasPorTurno = async (req, res) => {
   try {
     const empresaId = getEmpresaId(req)
-    const { sucursalId: sucursalIdBody, turnoId: turnoIdBody } = req.body
-    const { sucursalId: sucursalIdToken } = req.usuario
-    const sucursalId = sucursalIdToken || parseInt(sucursalIdBody) || 1
+    const { turnoId: turnoIdBody } = req.body
+    const sucursalId = resolverSucursalId(req)
 
     const turno = turnoIdBody
-      ? await prisma.turnoCaja.findUnique({ where: { id: parseInt(turnoIdBody) } })
-      : await prisma.turnoCaja.findFirst({ where: { sucursalId, abierto: true } })
+      ? await prisma.turnoCaja.findFirst({ where: { id: parseInt(turnoIdBody), empresaId, sucursalId } })
+      : await prisma.turnoCaja.findFirst({ where: { empresaId, sucursalId, abierto: true } })
 
     if (!turno) return res.status(404).json({ error: 'No hay turno (activo o especificado) para generar alertas' })
 
@@ -256,8 +267,7 @@ exports.generarAlertasPorTurno = async (req, res) => {
 exports.obtenerReporteStock = async (req, res) => {
   try {
     const empresaId = getEmpresaId(req)
-    const { sucursalId: sucursalIdToken } = req.usuario
-    const sucursalId = req.query.sucursalId ? parseInt(req.query.sucursalId) : (sucursalIdToken || 1)
+    const sucursalId = resolverSucursalId(req)
     const fecha = req.query.fecha || new Date().toISOString().slice(0, 10)
     const turnoId = req.query.turnoId ? parseInt(req.query.turnoId) : null
     const page = Math.max(1, parseInt(req.query.page) || 1)
@@ -314,8 +324,7 @@ exports.obtenerReporteStock = async (req, res) => {
 exports.generarExcelReporteStock = async (req, res) => {
   try {
     const empresaId = getEmpresaId(req)
-    const { sucursalId: sucursalIdToken } = req.usuario
-    const sucursalId = req.query.sucursalId ? parseInt(req.query.sucursalId) : (sucursalIdToken || 1)
+    const sucursalId = resolverSucursalId(req)
     const fecha = req.query.fecha || new Date().toISOString().slice(0, 10)
 
     const data = await buildReporteData(empresaId, sucursalId, fecha, null)
@@ -633,8 +642,7 @@ exports.generarExcelReporteStock = async (req, res) => {
 exports.generarPdfReporteStock = async (req, res) => {
   try {
     const empresaId = getEmpresaId(req)
-    const { sucursalId: sucursalIdToken } = req.usuario
-    const sucursalId = req.query.sucursalId ? parseInt(req.query.sucursalId) : (sucursalIdToken || 1)
+    const sucursalId = resolverSucursalId(req)
     const fecha = req.query.fecha || new Date().toISOString().slice(0, 10)
 
     const data = await buildReporteData(empresaId, sucursalId, fecha, null)
@@ -952,11 +960,11 @@ exports.marcarAlerta = async (req, res) => {
 exports.obtenerAlertas = async (req, res) => {
   try {
     const empresaId = getEmpresaId(req)
-    const { sucursalId: sucursalIdToken } = req.usuario
-    const sucursalId = req.query.sucursalId ? parseInt(req.query.sucursalId) : (sucursalIdToken || 1)
+    const sucursalId = resolverSucursalId(req)
     const { estado, turnoId, limit = '50' } = req.query
 
-    const where = { empresaId, sucursalId }
+    const where = { empresaId }
+    if (sucursalId !== null) where.sucursalId = sucursalId
     if (estado) where.estado = estado
     if (turnoId) where.turnoId = parseInt(turnoId)
 
@@ -985,8 +993,7 @@ exports.obtenerAlertas = async (req, res) => {
 exports.generarPlantillaCorreccion = async (req, res) => {
   try {
     const empresaId = getEmpresaId(req)
-    const { sucursalId: sucursalIdToken } = req.usuario
-    const sucursalId = req.query.sucursalId ? parseInt(req.query.sucursalId) : (sucursalIdToken || 1)
+    const sucursalId = resolverSucursalId(req)
     const fecha = req.query.fecha || new Date().toISOString().slice(0, 10)
 
     const data = await buildReporteData(empresaId, sucursalId, fecha, null)
@@ -1059,8 +1066,8 @@ exports.generarPlantillaCorreccion = async (req, res) => {
 exports.corregirPlantilla = async (req, res) => {
   try {
     const empresaId = getEmpresaId(req)
-    const { sucursalId: sucursalIdToken, id: usuarioId } = req.usuario
-    const sucursalId = req.query.sucursalId ? parseInt(req.query.sucursalId) : (sucursalIdToken || 1)
+    const { id: usuarioId } = req.usuario
+    const sucursalId = resolverSucursalId(req)
 
     if (!req.file) {
       return res.status(400).json({ error: 'Archivo Excel requerido' })
