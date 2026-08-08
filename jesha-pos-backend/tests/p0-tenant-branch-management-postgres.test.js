@@ -61,7 +61,7 @@ function mockRes() {
   return {
     state,
     status(code) { state.statusCode = code; return this },
-    json(body) { state.body = body; return this },
+    json(body) { state.body = JSON.parse(JSON.stringify(body)); return this },
     end() { return this }
   }
 }
@@ -101,7 +101,7 @@ describe('P0-TENANT-BRANCH-MANAGEMENT PostgreSQL aislado', { concurrency: 1, tim
     process.env.TENANT_JWT_TTL = '8h'
 
     prisma = require('../src/lib/prisma')
-    middleware = require('../src/middlewares/auth.middleware')
+    mw = require('../src/middlewares/auth.middleware')
     scopeM = require('../src/middlewares/scope.middleware')
     ctrl = require('../src/modules/sucursal/sucursal.controller')
 
@@ -165,7 +165,7 @@ describe('P0-TENANT-BRANCH-MANAGEMENT PostgreSQL aislado', { concurrency: 1, tim
     const req = { headers, query: {}, params: {}, body: {}, path: '/sucursales/gestion', requestId: 'branch-pg', ip: '127.0.0.1' }
     const res = mockRes()
     let nextCalls = 0
-    await middleware.requireAuth(req, res, () => { nextCalls++ })
+    await mw.requireAuth(req, res, () => { nextCalls++ })
     return { req, res, nextCalls }
   }
 
@@ -253,7 +253,7 @@ describe('P0-TENANT-BRANCH-MANAGEMENT PostgreSQL aislado', { concurrency: 1, tim
     await ctrl.gestion(req, res)
     assert.strictEqual(res.state.statusCode, 200)
     const ids = res.state.body.sucursales.map(s => s.id).sort()
-    assert.ok(ids.includes(a1.id) && ids.includes(a2.id) && ids.includes(b1.id) && ids.includes(b1.id) === false && ids.includes(nuevaA))
+    assert.ok(ids.includes(a1.id) && ids.includes(a2.id) && !ids.includes(b1.id) && ids.includes(nuevaA))
     assert.strictEqual(res.state.body.sucursales.every(s => s.id !== b1.id), true) // aislada por tenant
   })
 
@@ -389,8 +389,10 @@ describe('P0-TENANT-BRANCH-MANAGEMENT PostgreSQL aislado', { concurrency: 1, tim
   })
 
   it('desactivar: sin turno abierto → 200 activa false', async () => {
+    // nuevaA está activa (activada en tests previos); desactivarla debe registrar SUCURSAL_DESACTIVAR
+    await prisma.sucursal.update({ where: { id: nuevaA }, data: { activa: true } })
     const { req, res } = await executeAuth(sign(superA.id, 'SUPERADMIN'))
-    req.params = { id: String(nuevaA) } // recién creada, sin turnos
+    req.params = { id: String(nuevaA) }
     await ctrl.desactivar(req, res)
     assert.strictEqual(res.state.statusCode, 200)
     assert.strictEqual(res.state.body.sucursal.activa, false)
@@ -567,7 +569,7 @@ describe('P0-TENANT-BRANCH-MANAGEMENT PostgreSQL aislado', { concurrency: 1, tim
     assert.strictEqual(s1.state.statusCode, 404)
 
     const { req: r2, res: s2 } = await executeAuth(sign(superA.id, 'SUPERADMIN'))
-    r2.params = { id: '424242' }; r2.body = { nombre: 'X' }
+    r2.params = { id: '424242' }; r2.body = { nombre: 'Inexistente' }
     await ctrl.editar(r2, s2)
     assert.strictEqual(s2.state.statusCode, 404)
 

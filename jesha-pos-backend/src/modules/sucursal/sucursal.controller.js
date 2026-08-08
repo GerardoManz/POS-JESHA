@@ -201,7 +201,7 @@ function validarEntero(raw, defecto, min, max) {
 const obtener = async (req, res) => {
   try {
     const empresaId = getEmpresaId(req)
-    const id = normalizarIdParam(req.params.id)
+    const id = normalizarId(req.params.id)
     if (!id) return res.status(400).json({ error: 'id de sucursal inválido' })
 
     const sucursal = await prisma.sucursal.findFirst({
@@ -239,7 +239,7 @@ const crear = async (req, res) => {
       select: SELECT_GESTION
     })
 
-    registrarAudit(
+    await registrarAudit(
       req.usuario,
       'SUCURSAL_CREAR',
       `Creó sucursal ${sucursal.nombre}`,
@@ -275,7 +275,7 @@ function armarDatosEdicion(body) {
 const editar = async (req, res) => {
   try {
     const empresaId = getEmpresaId(req)
-    const id = normalizarIdParam(req.params.id)
+    const id = normalizarId(req.params.id)
     if (!id) return res.status(400).json({ error: 'id de sucursal inválido' })
 
     const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {}
@@ -306,7 +306,7 @@ const editar = async (req, res) => {
       select: SELECT_GESTION
     })
 
-    registrarAudit(
+    await registrarAudit(
       req.usuario,
       'SUCURSAL_EDITAR',
       `Editó sucursal ${sucursal.nombre}`,
@@ -332,7 +332,7 @@ const editar = async (req, res) => {
 const activar = async (req, res) => {
   try {
     const empresaId = getEmpresaId(req)
-    const id = normalizarIdParam(req.params.id)
+    const id = normalizarId(req.params.id)
     if (!id) return res.status(400).json({ error: 'id de sucursal inválido' })
 
     const sucursal = await prisma.sucursal.findFirst({
@@ -351,7 +351,7 @@ const activar = async (req, res) => {
       select: SELECT_GESTION
     })
 
-    registrarAudit(
+    await registrarAudit(
       req.usuario,
       'SUCURSAL_ACTIVAR',
       `Activó sucursal ${actualizada.nombre}`,
@@ -374,7 +374,7 @@ const activar = async (req, res) => {
 const desactivar = async (req, res) => {
   try {
     const empresaId = getEmpresaId(req)
-    const id = normalizarIdParam(req.params.id)
+    const id = normalizarId(req.params.id)
     if (!id) return res.status(400).json({ error: 'id de sucursal inválido' })
 
     const sucursal = await prisma.sucursal.findFirst({
@@ -403,7 +403,7 @@ const desactivar = async (req, res) => {
       select: SELECT_GESTION
     })
 
-    registrarAudit(
+    await registrarAudit(
       req.usuario,
       'SUCURSAL_DESACTIVAR',
       `Desactivó sucursal ${actualizada.nombre}`,
