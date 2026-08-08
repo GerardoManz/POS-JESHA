@@ -334,9 +334,45 @@ async function cargarStockBajo() {
 }
 
 // ════════════════════════════════════════════════════════════════════
+//  ONBOARDING DE SUCURSAL
+//  Si la empresa no tiene sucursales activas, muestra un aviso con CTA
+//  (solo SUPERADMIN) o aviso informativo para el resto de roles.
+// ════════════════════════════════════════════════════════════════════
+async function verificarOnboarding() {
+  try {
+    const data = await apiFetch('/sucursales')
+    const activas = Array.isArray(data) ? data : (data && data.sucursales) ? data.sucursales : []
+    const grid = document.querySelector('.kpi-grid')
+    const existente = document.getElementById('onboarding-sucursal')
+    if (existente) existente.remove()
+
+    if (Array.isArray(activas) && activas.length === 0) {
+      const el = document.createElement('div')
+      el.id = 'onboarding-sucursal'
+      const esSuper = USUARIO.rol === 'SUPERADMIN'
+      el.innerHTML = `
+        <div class="onboarding-sucursal">
+          <span class="onboarding-sucursal-icon">🏪</span>
+          <div class="onboarding-sucursal-body">
+            <strong>Esta empresa todavía no tiene sucursales activas</strong>
+            <p>${esSuper ? 'Crea y activa tu primera sucursal para comenzar a operar tu punto de venta.' : 'Contacta a tu administrador para configurar una sucursal.'}</p>
+          </div>
+          ${esSuper
+            ? '<a class="onboarding-sucursal-cta" href="sucursales.html?nueva=1">Configurar sucursales →</a>'
+            : ''}
+        </div>`
+      if (grid && grid.parentNode) grid.parentNode.insertBefore(el, grid)
+    }
+  } catch (err) {
+    console.error('❌ Onboarding sucursal:', err.message)
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════
 //  INICIALIZACIÓN
 // ════════════════════════════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', () => {
+  verificarOnboarding()
   cargarKPIs()
   cargarStockBajo()
 })

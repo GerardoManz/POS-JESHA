@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <script>
+    if (!localStorage.getItem('jesha_token') || !localStorage.getItem('jesha_usuario')) {
+      window.location.replace('login.html')
+    }
+  </script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>JESHA POS - Sucursales</title>
+  <link rel="icon" type="image/x-icon" href="favicon.ico"/>
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png"/>
+  <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png"/>
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png"/>
+  <script src="theme.js"></script>
+  <link rel="stylesheet" href="dashboard.css" />
+  <link rel="stylesheet" href="sucursales.css" />
+</head>
+<body>
+  <div id="sidebar-container"></div>
+  <main class="main-content">
+    <div class="page-container">
+
+      <div class="page-header">
+        <div>
+          <h1 class="page-title">Sucursales</h1>
+          <p class="page-sub">Administra las sucursales de tu empresa</p>
+        </div>
+        <button id="btn-nueva-sucursal" class="btn-primary" type="button">+ Nueva sucursal</button>
+      </div>
+
+      <!-- ── Onboarding: empresa sin sucursales activas ── -->
+      <div id="onboarding-panel" class="onboarding" hidden>
+        <div class="onboarding-icon">🏪</div>
+        <h2 id="onboarding-titulo">Aún no tienes sucursales activas</h2>
+        <p id="onboarding-desc">Crea y activa tu primera sucursal para comenzar a operar.</p>
+        <div id="onboarding-acciones" class="onboarding-acciones">
+          <button id="btn-onboarding-crear" class="btn-primary" type="button">Crear mi primera sucursal</button>
+        </div>
+        <div id="onboarding-once" class="onboarding-once" hidden>
+          <span>✅</span> <span id="onboarding-once-text">Sucursal creada. Actívala para empezar a usarla.</span>
+          <button id="btn-onboarding-activar" class="btn-primary" type="button">Activar y usar</button>
+        </div>
+      </div>
+
+      <!-- ── Barra de herramientas ── -->
+      <div class="toolbar">
+        <div class="search-wrap">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input id="buscar-sucursal" class="search-input" type="search" placeholder="Buscar por nombre o código postal..." autocomplete="off" />
+        </div>
+        <select id="filtro-estado" class="filter-select">
+          <option value="todas">Todas</option>
+          <option value="activas">Activas</option>
+          <option value="inactivas">Inactivas</option>
+        </select>
+      </div>
+
+      <!-- ── Tabla ── -->
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Nombre</th>
+              <th>C.P.</th>
+              <th>Dirección</th>
+              <th>Teléfono</th>
+              <th>Estado</th>
+              <th>Creada</th>
+              <th class="th-acciones">Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="tbody-sucursales">
+            <tr><td colspan="7" class="empty-state">Cargando sucursales...</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div id="paginacion" class="paginacion" hidden>
+        <span id="paginacion-info"></span>
+        <div class="paginacion-botones">
+          <button id="btn-pagina-prev" class="btn-secundario" type="button">← Anterior</button>
+          <button id="btn-pagina-next" class="btn-secundario" type="button">Siguiente →</button>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- ── Modal crear / editar ── -->
+  <div class="modal-overlay" id="modal-sucursal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="modal-titulo">Nueva sucursal</h3>
+        <button id="btn-cerrar-modal" class="btn-close" type="button" aria-label="Cerrar">✕</button>
+      </div>
+      <div id="modal-error" class="modal-error" hidden></div>
+      <form id="form-sucursal" novalidate>
+        <div class="form-group">
+          <label for="suc-nombre">Nombre *</label>
+          <input id="suc-nombre" type="text" maxlength="120" placeholder="Ej. Sucursal Centro" required />
+        </div>
+        <div class="form-group">
+          <label for="suc-codigoPostal">Código Postal *</label>
+          <input id="suc-codigoPostal" type="text" maxlength="10" placeholder="97000" required />
+        </div>
+        <div class="form-group">
+          <label for="suc-direccion">Dirección</label>
+          <input id="suc-direccion" type="text" maxlength="250" placeholder="Calle, número, colonia..." />
+        </div>
+        <div class="form-group">
+          <label for="suc-telefono">Teléfono</label>
+          <input id="suc-telefono" type="text" maxlength="20" placeholder="999 123 4567" />
+        </div>
+        <div class="form-acciones">
+          <button id="btn-cancelar-modal" class="btn-secundario" type="button">Cancelar</button>
+          <button id="btn-guardar-sucursal" class="btn-primary" type="submit">Guardar sucursal</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="config.js"></script>
+  <script src="session.js"></script>
+  <script src="sidebar.js"></script>
+  <script src="sucursales.js"></script>
+</body>
+</html>

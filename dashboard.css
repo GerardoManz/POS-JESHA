@@ -937,3 +937,13 @@ input[type="date"].filter-date:focus {
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.04); }
 }
+
+/* -- Onboarding de sucursal (dashboard) -- */
+.onboarding-sucursal { display:flex; align-items:center; gap:14px; padding:16px 18px; margin-bottom:20px; background:linear-gradient(135deg,rgba(31,58,102,0.22),rgba(31,58,102,0.03)); border:1px dashed rgba(104,158,222,0.45); border-radius:12px; }
+.onboarding-sucursal-icon { font-size:1.9rem; }
+.onboarding-sucursal-body { flex:1; min-width:0; }
+.onboarding-sucursal-body strong { color:var(--text,#e9edf4); font-size:0.95rem; }
+.onboarding-sucursal-body p { margin:4px 0 0; color:var(--muted,#8b96a8); font-size:0.85rem; }
+.onboarding-sucursal-cta { white-space:nowrap; padding:8px 14px; background:#1f3a66; border:1px solid rgba(255,255,255,0.12); border-radius:8px; color:#fff; font-family:'Barlow',sans-serif; font-size:0.82rem; font-weight:600; text-decoration:none; }
+.onboarding-sucursal-cta:hover { background:#243f72; }
+[data-theme="light"] .onboarding-sucursal-body strong { color:#111827; }
