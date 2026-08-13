@@ -1463,6 +1463,8 @@ function renderSugerenciaPagina() {
   if (!el) return
   const items = sugerenciaItems
   const totalPages = Math.ceil(items.length / SUGERENCIA_LIMIT)
+  const model = jeshaPaginacionModel({ currentPage: sugerenciaPage, totalPages })
+  sugerenciaPage = model.currentPage
   const start = (sugerenciaPage - 1) * SUGERENCIA_LIMIT
   const page = items.slice(start, start + SUGERENCIA_LIMIT)
 
@@ -1487,19 +1489,45 @@ function renderSugerenciaPagina() {
       </tr>`
     }).join('')}
   </tbody></table>
-  <div style="display:flex;align-items:center;justify-content:center;gap:12px;padding:10px 0 4px;font-size:0.82rem;color:var(--muted,#7a8599);font-family:'Barlow',sans-serif;">
-    <button class="sug-pag-btn" data-page="${sugerenciaPage - 1}" ${sugerenciaPage <= 1 ? 'disabled' : ''} style="background:none;border:1px solid var(--panel-border,rgba(255,255,255,0.07));border-radius:6px;padding:4px 12px;color:var(--muted,#7a8599);cursor:pointer;font-size:0.78rem;${sugerenciaPage <= 1 ? 'opacity:0.3;cursor:default;' : ''}">‹ Anterior</button>
-    <span style="font-weight:600;">P\u00e1g. ${sugerenciaPage} de ${totalPages}</span>
-    <button class="sug-pag-btn" data-page="${sugerenciaPage + 1}" ${sugerenciaPage >= totalPages ? 'disabled' : ''} style="background:none;border:1px solid var(--panel-border,rgba(255,255,255,0.07));border-radius:6px;padding:4px 12px;color:var(--muted,#7a8599);cursor:pointer;font-size:0.78rem;${sugerenciaPage >= totalPages ? 'opacity:0.3;cursor:default;' : ''}">Siguiente ›</button>
+  <div id="sugerencia-pagination" class="pagination" style="display:none;">
+    <button id="sugerencia-btn-prev" class="btn-pag" type="button" disabled aria-label="Página anterior">← Anterior</button>
+    <div id="sugerencia-pag-numeros" class="pag-numeros" role="navigation" aria-label="Páginas"></div>
+    <span id="sugerencia-pag-info" class="pag-info pag-info-clickable" role="button" tabindex="0">Página 1 de 1</span>
+    <input type="number" id="sugerencia-pag-input" class="pag-input" min="1" style="display:none;" aria-label="Ir a página">
+    <button id="sugerencia-btn-next" class="btn-pag" type="button" disabled aria-label="Página siguiente">Siguiente →</button>
   </div>`
 
-  el.querySelectorAll('.sug-pag-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const pg = parseInt(btn.dataset.page)
-      if (pg < 1 || pg > totalPages) return
-      sugerenciaPage = pg
+  const prev = document.getElementById('sugerencia-btn-prev')
+  const next = document.getElementById('sugerencia-btn-next')
+
+  if (prev) prev.addEventListener('click', () => {
+    if (sugerenciaPage > 1) {
+      sugerenciaPage--
       renderSugerenciaPagina()
-    })
+    }
+  })
+  if (next) next.addEventListener('click', () => {
+    if (sugerenciaPage < totalPages) {
+      sugerenciaPage++
+      renderSugerenciaPagina()
+    }
+  })
+
+  jeshaRenderPaginacion({
+    currentPage: sugerenciaPage,
+    totalPages,
+    totalRegistros: items.length,
+    etiquetaRegistro: 'productos',
+    container: 'sugerencia-pagination',
+    prevButton: prev,
+    nextButton: next,
+    numbersContainer: 'sugerencia-pag-numeros',
+    label: 'sugerencia-pag-info',
+    input: 'sugerencia-pag-input',
+    onNavigate: (pag) => {
+      sugerenciaPage = pag
+      renderSugerenciaPagina()
+    }
   })
 }
 

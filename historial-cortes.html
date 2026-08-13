@@ -16,6 +16,7 @@
   <script src="theme.js"></script>
   <link rel="stylesheet" href="dashboard.css"/>
   <link rel="stylesheet" href="historial-cortes.css"/>
+  <link rel="stylesheet" href="pagination.css" />
 </head>
 <body data-page="historial-cortes">
 <div class="app-shell">
@@ -85,9 +86,11 @@
         </div>
 
         <div class="pagination" id="pagination-operativo" style="display:none;">
-          <button class="btn-pag" id="btn-ant" disabled>&#8592; Anterior</button>
-          <span id="page-info" class="pag-info">Página 1 de 1</span>
-          <button class="btn-pag" id="btn-sig" disabled>Siguiente &#8594;</button>
+          <button class="btn-pag" id="btn-ant" type="button" disabled aria-label="Página anterior">&#8592; Anterior</button>
+          <div id="pag-numeros-operativo" class="pag-numeros" role="navigation" aria-label="Páginas"></div>
+          <span id="page-info" class="pag-info pag-info-clickable" role="button" tabindex="0">Página 1 de 1</span>
+          <input type="number" id="page-info-input" class="pag-input" min="1" style="display:none;" aria-label="Ir a página">
+          <button class="btn-pag" id="btn-sig" type="button" disabled aria-label="Página siguiente">Siguiente &#8594;</button>
         </div>
       </section>
     </div>
@@ -207,6 +210,7 @@
 <script src="config.js"></script>
 <script src="sonidos.js"></script>
 <script src="sidebar.js"></script>
+<script src="pagination.js"></script>
 <script src="historial-cortes.js"></script>
 </body>
 </html>

@@ -240,13 +240,17 @@ function renderTabla(bitacoras) {
 }
 
 function renderPaginacion(total, pagina) {
-  const pag = document.getElementById('pagination')
-  if (total <= LIMIT) { pag.style.display = 'none'; return }
-  pag.style.display = 'flex'
   const totalPags = Math.ceil(total / LIMIT)
-  document.getElementById('pag-info').textContent = `Página ${pagina} de ${totalPags} (${total} registros)`
-  document.getElementById('btn-prev').disabled = pagina === 1
-  document.getElementById('btn-next').disabled = pagina >= totalPags
+  jeshaRenderPaginacion({
+    currentPage: pagina,
+    totalPages: totalPags,
+    totalRegistros: total,
+    etiquetaRegistro: 'registros',
+    onNavigate: (pag) => {
+      paginaActual = pag
+      cargarBitacoras(pag)
+    }
+  })
 }
 
 // ════════════════════════════════════════════════════════════════════

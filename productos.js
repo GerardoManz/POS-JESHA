@@ -2212,33 +2212,11 @@ function actualizarFecha() {
 // ═══════════════════════════════════════════════════════════════════
 
 function generarBotonesPagina(actual, total) {
-  const botones = []
-  const maxVisibles = 7
-
-  if (total <= maxVisibles) {
-    for (let i = 1; i <= total; i++) botones.push(i)
-    return botones
-  }
-
-  botones.push(1)
-
-  let inicio = Math.max(2, actual - 1)
-  let fin = Math.min(total - 1, actual + 1)
-
-  if (actual <= 3) {
-    inicio = 2
-    fin = Math.min(5, total - 1)
-  } else if (actual >= total - 2) {
-    inicio = Math.max(total - 4, 2)
-    fin = total - 1
-  }
-
-  if (inicio > 2) botones.push('...')
-  for (let i = inicio; i <= fin; i++) botones.push(i)
-  if (fin < total - 1) botones.push('...')
-
-  botones.push(total)
-  return botones
+  return jeshaPaginacionModel({
+    currentPage: actual,
+    totalPages: total,
+    blockSize: PAGES_PER_BLOCK
+  }).pages
 }
 
 function irAPaginaInput() {
@@ -2300,6 +2278,7 @@ function renderizarPaginacion() {
     const botones = generarBotonesPagina(paginaActual, totalPaginas)
     for (const b of botones) {
       const btn = document.createElement('button')
+      btn.type = 'button'
       btn.className = 'pag-num-btn'
       if (b === '...') {
         btn.className += ' ellipsis'
@@ -2308,7 +2287,11 @@ function renderizarPaginacion() {
       } else {
         btn.textContent = b
         btn.dataset.pagina = b
-        if (b === paginaActual) btn.className += ' active'
+        if (b === paginaActual) {
+          btn.className += ' active'
+          btn.setAttribute('aria-current', 'page')
+          btn.disabled = true
+        }
         btn.addEventListener('click', () => {
           if (b !== paginaActual) {
             paginaActual = b
@@ -2395,7 +2378,7 @@ function configurarEventos() {
       if (e.key === 'Enter') irAPaginaInput()
       if (e.key === 'Escape') cerrarInputPagina()
     })
-    pagInput.addEventListener('blur', () => irAPaginaInput())
+    pagInput.addEventListener('blur', () => cerrarInputPagina())
   }
 
   // Selects modal

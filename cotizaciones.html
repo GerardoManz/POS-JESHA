@@ -16,6 +16,7 @@
   <script src="theme.js"></script>
   <link rel="stylesheet" href="dashboard.css" />
   <link rel="stylesheet" href="cotizaciones.css" />
+  <link rel="stylesheet" href="pagination.css" />
 </head>
 <body data-page="cotizaciones">
 <div class="app-shell">
@@ -72,9 +73,11 @@
         </table>
       </div>
       <div class="pagination" id="pagination" style="display:none;">
-        <button id="btn-prev" class="btn-pag" disabled>&#8592; Anterior</button>
-        <span id="pag-info" class="pag-info"></span>
-        <button id="btn-next" class="btn-pag">Siguiente &#8594;</button>
+        <button id="btn-prev" class="btn-pag" type="button" disabled aria-label="Página anterior">&#8592; Anterior</button>
+        <div id="pag-numeros" class="pag-numeros" role="navigation" aria-label="Páginas"></div>
+        <span id="pag-info" class="pag-info pag-info-clickable" role="button" tabindex="0">Página 1 de 1</span>
+        <input type="number" id="pag-info-input" class="pag-input" min="1" style="display:none;" aria-label="Ir a página">
+        <button id="btn-next" class="btn-pag" type="button" disabled aria-label="Página siguiente">Siguiente &#8594;</button>
       </div>
     </section>
   </main>
@@ -307,6 +310,7 @@
 <script src="config.js"></script>
 <script src="sonidos.js"></script>
   <script src="sidebar.js"></script>
+<script src="pagination.js"></script>
 <script src="cotizaciones.js"></script>
 </body>
 </html>
