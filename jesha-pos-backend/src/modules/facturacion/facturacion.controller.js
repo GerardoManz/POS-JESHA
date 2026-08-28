@@ -123,7 +123,50 @@ function primerServicioInvalido(detalles) {
 //  Usado tanto en solicitarFactura como en timbrarManual.
 //  El idempotency_key se agrega en el call site (es campo top-level).
 // ════════════════════════════════════════════════════════════════════
-function buildInvoicePayload({ rfc, razonSocial, regimenFiscal, codigoPostal, usoCfdi, email, metodoPago, detalles, datosEmisor }) {
+function crearErrorPayload(codigo, mensaje) {
+  const error = new Error(mensaje)
+  error.codigo = codigo
+  error.status = 422
+  return error
+}
+
+function aplicarDescuentoVenta(items, descuentoVenta, totalVenta) {
+  const descuento = parseFloat(parseFloat(descuentoVenta || 0).toFixed(2))
+  const totalEsperado = parseFloat(parseFloat(totalVenta).toFixed(2))
+  const importes = items.map(item => parseFloat((item.quantity * item.product.price).toFixed(2)))
+  const bruto = parseFloat(importes.reduce((sum, importe) => sum + importe, 0).toFixed(2))
+
+  if (!Number.isFinite(descuento) || descuento < 0 || descuento > bruto) {
+    throw crearErrorPayload('FACTURAPI_DISCOUNT_INVALID', 'El descuento de la venta es inválido para el subtotal facturable')
+  }
+
+  if (descuento > 0) {
+    const descuentoCentavos = Math.round(descuento * 100)
+    let asignadoCentavos = 0
+
+    items.forEach((item, index) => {
+      const esUltimo = index === items.length - 1
+      const disponible = descuentoCentavos - asignadoCentavos
+      const proporcion = bruto > 0 ? importes[index] / bruto : 0
+      const centavos = esUltimo
+        ? disponible
+        : Math.min(disponible, Math.round(descuentoCentavos * proporcion))
+      item.discount = centavos / 100
+      asignadoCentavos += centavos
+    })
+  }
+
+  const descuentoPayload = parseFloat(items.reduce((sum, item) => sum + (item.discount || 0), 0).toFixed(2))
+  const netoPayload = parseFloat((bruto - descuentoPayload).toFixed(2))
+  const diferenciaCentavos = Math.abs(Math.round(netoPayload * 100) - Math.round(totalEsperado * 100))
+  if (!Number.isFinite(totalEsperado) || diferenciaCentavos > 1) {
+    throw crearErrorPayload('FACTURAPI_TOTAL_MISMATCH', `El total del payload Facturapi (${netoPayload.toFixed(2)}) no coincide con la venta (${Number.isFinite(totalEsperado) ? totalEsperado.toFixed(2) : 'inválido'})`)
+  }
+
+  return { bruto, descuento: descuentoPayload, neto: netoPayload }
+}
+
+function buildInvoicePayload({ rfc, razonSocial, regimenFiscal, codigoPostal, usoCfdi, email, metodoPago, detalles, datosEmisor, descuento = 0, totalVenta }) {
   const rfcUpper = rfc.trim().toUpperCase()
 
   const items = detalles.map(d => {
@@ -146,6 +189,8 @@ function buildInvoicePayload({ rfc, razonSocial, regimenFiscal, codigoPostal, us
       }
     }
   })
+
+  aplicarDescuentoVenta(items, descuento, totalVenta)
 
   // Nombre para el customer — normalizado: uppercase, sin acentos, sin espacios dobles
   let nombreFinal = normalizarRazonSocial(razonSocial)
@@ -184,6 +229,8 @@ function buildInvoicePayload({ rfc, razonSocial, regimenFiscal, codigoPostal, us
 
   return payload
 }
+
+exports.buildInvoicePayload = buildInvoicePayload
 
 function buildGlobalInvoicePayload({ ventas, metodoPago, periodicidad, mes, anio, datosEmisor }) {
   const paymentForm = FORMA_PAGO_SAT[metodoPago]
@@ -498,6 +545,21 @@ exports.solicitarFactura = async (req, res) => {
     const rfcUpper     = rfc.trim().toUpperCase()
     const nombreReceptor = razonSocial.trim()
     const emailTrimmed = email.trim()
+    const datosEmisor = resolverDatosEmisor(empresaId)
+    let invoicePayload
+    try {
+      invoicePayload = buildInvoicePayload({
+        rfc: rfcUpper, razonSocial: nombreReceptor, regimenFiscal, codigoPostal,
+        usoCfdi, email: emailTrimmed, metodoPago: venta.metodoPago,
+        detalles: venta.DetalleVenta, datosEmisor,
+        descuento: venta.descuento, totalVenta: venta.total
+      })
+    } catch (err) {
+      if (err?.codigo?.startsWith('FACTURAPI_')) {
+        return res.status(err.status || 422).json({ error: err.message, codigo: err.codigo })
+      }
+      throw err
+    }
 
     const datosFactura = {
       empresaId,
@@ -565,14 +627,9 @@ exports.solicitarFactura = async (req, res) => {
     const idempotencyKey = `jesha-factura-${factura.id}`
     let invoice = null
     let selladoOk = false
-    const datosEmisor = resolverDatosEmisor(empresaId)
     try {
       invoice = await trackFacturapi('invoices.create', { facturaId: factura.id }, () => fp.invoices.create({
-        ...buildInvoicePayload({
-          rfc: rfcUpper, razonSocial: nombreReceptor, regimenFiscal, codigoPostal,
-          usoCfdi, email: emailTrimmed, metodoPago: venta.metodoPago,
-          detalles: venta.DetalleVenta, datosEmisor
-        }),
+        ...invoicePayload,
         idempotency_key: idempotencyKey
       }))
       selladoOk = true
@@ -781,12 +838,14 @@ exports.timbrarManual = async (req, res) => {
 
       // ── Timbrar con idempotency_key ──
       const datosEmisor = resolverDatosEmisor(scope.empresaId)
+      const invoicePayload = buildInvoicePayload({
+        rfc: f.rfcReceptor, razonSocial: f.nombreReceptor, regimenFiscal: f.regimenFiscal,
+        codigoPostal: f.cpReceptor, usoCfdi: f.usoCfdi, email: f.emailReceptor,
+        metodoPago: venta.metodoPago, detalles: venta.DetalleVenta, datosEmisor,
+        descuento: venta.descuento, totalVenta: venta.total
+      })
       invoice = await trackFacturapi('invoices.create', { facturaId: id }, () => fp.invoices.create({
-        ...buildInvoicePayload({
-          rfc: f.rfcReceptor, razonSocial: f.nombreReceptor, regimenFiscal: f.regimenFiscal,
-          codigoPostal: f.cpReceptor, usoCfdi: f.usoCfdi, email: f.emailReceptor,
-          metodoPago: venta.metodoPago, detalles: venta.DetalleVenta, datosEmisor
-        }),
+        ...invoicePayload,
         idempotency_key: f.idempotencyKey
       }))
       selladoOk = true
@@ -847,7 +906,7 @@ exports.timbrarManual = async (req, res) => {
         const sugerencia = esErrorRazonSocial
           ? '. Verifica que la razón social esté en mayúsculas, sin acentos y coincida exactamente con la Constancia de Situación Fiscal. En muchos casos CFDI 4.0 requiere quitar "S.A. DE C.V." u otro régimen societario.'
           : ''
-        return res.status(422).json({ error: 'Error de validación al timbrar: ' + mensajeFacturapi + sugerencia, requiereCorreccion: true })
+        return res.status(422).json({ error: 'Error de validación al timbrar: ' + mensajeFacturapi + sugerencia, codigo: fpErr.codigo, requiereCorreccion: true })
       }
 
       // INCIERTO → NO liberar lock (procesandoTimbrado sigue true) → revisión manual.
