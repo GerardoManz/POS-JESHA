@@ -185,9 +185,7 @@ const crear = async (req, res) => {
       const campo = err.meta?.target?.[0] || 'campo'
       const mensajes = {
         rfc: 'Ya existe un cliente con ese RFC',
-        email: 'Ya existe un cliente con ese correo electrónico',
-        empresaId_rfc: 'Ya existe un cliente con ese RFC',
-        empresaId_email: 'Ya existe un cliente con ese correo electrónico'
+        empresaId_rfc: 'Ya existe un cliente con ese RFC'
       }
       return res.status(409).json({ success: false, error: mensajes[campo] || `El campo ${campo} ya está registrado` })
     }
@@ -211,7 +209,7 @@ const editar = async (req, res) => {
     const solicitante = req.usuario
     const empresaId = getEmpresaId(req)
 
-    const cliente = await prisma.cliente.findUnique({ where: { id: parseInt(id) } })
+    const cliente = await prisma.cliente.findFirst({ where: { id: parseInt(id), empresaId } })
     if (!cliente) return res.status(404).json({ error: 'Cliente no encontrado' })
 
     // RFC único solo si cambió
@@ -271,9 +269,7 @@ const editar = async (req, res) => {
       const campo = err.meta?.target?.[0] || 'campo'
       const mensajes = {
         rfc: 'Ya existe un cliente con ese RFC',
-        email: 'Ya existe un cliente con ese correo electrónico',
-        empresaId_rfc: 'Ya existe un cliente con ese RFC',
-        empresaId_email: 'Ya existe un cliente con ese correo electrónico'
+        empresaId_rfc: 'Ya existe un cliente con ese RFC'
       }
       return res.status(409).json({ success: false, error: mensajes[campo] || `El campo ${campo} ya está registrado` })
     }
@@ -297,7 +293,7 @@ const cambiarEstado = async (req, res) => {
       return res.status(400).json({ error: 'El campo activo debe ser booleano' })
     }
 
-    const cliente = await prisma.cliente.findUnique({ where: { id: parseInt(id) } })
+    const cliente = await prisma.cliente.findFirst({ where: { id: parseInt(id), empresaId } })
     if (!cliente) return res.status(404).json({ error: 'Cliente no encontrado' })
 
     const clienteActualizado = await prisma.cliente.update({

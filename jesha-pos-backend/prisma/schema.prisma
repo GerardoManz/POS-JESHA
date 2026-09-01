@@ -56,6 +56,39 @@ model Empresa {
   Usuario              Usuario[]
   Venta                Venta[]
   PrintJob             PrintJob[]
+  ConfiguracionFiscal  ConfiguracionFiscal?
+  TransferenciaInventario TransferenciaInventario[]
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  CONFIGURACION FISCAL (P1 — multi-tenant Facturapi)
+//  1:1 con Empresa. Guarda SOLO lo necesario para facturar con la
+//  Organization/keys PROPIAS de cada empresa. NUNCA guarda CSD, password
+//  ni keys en claro (las keys van cifradas con AES-256-GCM via
+//  FISCAL_SECRETS_MASTER_KEY; el CSD solo vive en memoria hacia Facturapi).
+//  TODO NULLABLE salvo empresaId: una Empresa puede operar sin configuración
+//  fiscal (timbrado → 409 FISCAL_CONFIG_NOT_READY, fail-closed sin fallback).
+// ════════════════════════════════════════════════════════════════════
+
+model ConfiguracionFiscal {
+  id                      Int       @id @default(autoincrement())
+  empresaId               Int       @unique
+  facturapiOrganizationId String?   @unique
+  regimenFiscal           String?
+  codigoPostalFiscal      String?
+  direccionFiscal         Json?
+  facturapiTestKeyEnc     String?
+  facturapiLiveKeyEnc     String?
+  isProductionReady       Boolean?
+  pendingSteps            Json?
+  csdSerial               String?
+  csdExpiraEn             DateTime?
+  creadaEn                DateTime  @default(now())
+  actualizadaEn           DateTime  @updatedAt
+
+  Empresa                 Empresa   @relation(fields: [empresaId], references: [id])
+
+  @@index([empresaId])
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -181,7 +214,6 @@ model Cliente {
   Venta              Venta[]
 
   @@unique([empresaId, rfc])
-  @@unique([empresaId, email])
   @@index([email])
   @@index([empresaId])
   @@index([nombre])
@@ -317,11 +349,13 @@ model MovimientoInventario {
   turnoId                 Int?
   stockMinimoEnEseMomento Decimal?                 @db.Decimal(10, 3)
   costoUnitario           Decimal?                 @db.Decimal(10, 2)
+  transferenciaDetalleId  Int?
   Empresa                 Empresa                  @relation(fields: [empresaId], references: [id])
   Producto                Producto                 @relation(fields: [productoId], references: [id], onDelete: Cascade)
   Sucursal                Sucursal                 @relation(fields: [sucursalId], references: [id])
   TurnoCaja               TurnoCaja?               @relation(fields: [turnoId], references: [id])
   Usuario                 Usuario?                 @relation(fields: [usuarioId], references: [id])
+  TransferenciaInventarioDetalle TransferenciaInventarioDetalle? @relation(fields: [transferenciaDetalleId], references: [id])
 
   @@index([creadoEn])
   @@index([empresaId])
@@ -330,6 +364,7 @@ model MovimientoInventario {
   @@index([tipo])
   @@index([turnoId])
   @@index([usuarioId])
+  @@index([transferenciaDetalleId])
 }
 
 model OrdenCompra {
@@ -428,6 +463,7 @@ model Producto {
   Categoria            Categoria              @relation(fields: [categoriaId], references: [id])
   ProveedorProducto    ProveedorProducto[]
   Promocion            Promocion[]            @relation("PromocionProducto")
+  TransferenciaInventarioDetalle TransferenciaInventarioDetalle[]
 
   @@unique([empresaId, codigoInterno])
   @@unique([empresaId, codigoBarras])
@@ -506,6 +542,8 @@ model Sucursal {
   TurnoCaja            TurnoCaja[]
   Usuario              Usuario[]
   Venta                Venta[]
+  TransferenciaOrigen  TransferenciaInventario[] @relation("SucursalOrigenTransferencia")
+  TransferenciaDestino TransferenciaInventario[] @relation("SucursalDestinoTransferencia")
 
   @@index([empresaId])
 }
@@ -711,6 +749,7 @@ model Usuario {
   TurnoCaja                  TurnoCaja[]
   Sucursal                   Sucursal?              @relation(fields: [sucursalId], references: [id])
   Venta                      Venta[]
+  TransferenciaCreada        TransferenciaInventario[]
 
   @@unique([empresaId, username])
   @@index([empresaId])
@@ -942,6 +981,52 @@ model Trabajador {
 }
 
 // ════════════════════════════════════════════════════════════════════
+//  TRANSFERENCIAS DE INVENTARIO
+// ════════════════════════════════════════════════════════════════════
+
+model TransferenciaInventario {
+  id                  Int      @id @default(autoincrement())
+  empresaId           Int
+  sucursalOrigenId    Int
+  sucursalDestinoId   Int
+  clientTransferId    String
+  requestHash         String?
+  notas               String?
+  creadoPorId         Int
+  creadoEn            DateTime @default(now())
+
+  Empresa             Empresa                      @relation(fields: [empresaId], references: [id])
+  SucursalOrigen      Sucursal                     @relation("SucursalOrigenTransferencia", fields: [sucursalOrigenId], references: [id])
+  SucursalDestino     Sucursal                     @relation("SucursalDestinoTransferencia", fields: [sucursalDestinoId], references: [id])
+  CreadoPor           Usuario                      @relation(fields: [creadoPorId], references: [id])
+  Detalle             TransferenciaInventarioDetalle[]
+
+  @@unique([empresaId, clientTransferId])
+  @@index([empresaId, creadoEn])
+  @@index([sucursalOrigenId, creadoEn])
+  @@index([sucursalDestinoId, creadoEn])
+}
+
+model TransferenciaInventarioDetalle {
+  id                    Int      @id @default(autoincrement())
+  transferenciaId       Int
+  productoId            Int
+  cantidad              Decimal  @db.Decimal(10, 3)
+  stockOrigenAntes      Decimal  @db.Decimal(10, 3)
+  stockOrigenDespues    Decimal  @db.Decimal(10, 3)
+  stockDestinoAntes     Decimal  @db.Decimal(10, 3)
+  stockDestinoDespues   Decimal  @db.Decimal(10, 3)
+  costoUnitario         Decimal? @db.Decimal(10, 2)
+
+  TransferenciaInventario TransferenciaInventario @relation(fields: [transferenciaId], references: [id])
+  Producto                Producto                @relation(fields: [productoId], references: [id])
+  MovimientoInventario    MovimientoInventario[]
+
+  @@unique([transferenciaId, productoId])
+  @@index([productoId])
+}
+
+// ════════════════════════════════════════════════════════════════════
 //  ENUMS
 // ════════════════════════════════════════════════════════════════════
 
@@ -1066,6 +1151,8 @@ enum TipoMovimientoInventario {
   SALIDA_BITACORA
   CANCELACION_VENTA
   REINTEGRO_BITACORA
+  TRANSFERENCIA_SALIDA
+  TRANSFERENCIA_ENTRADA
 }
 
 enum TipoPromocion {
