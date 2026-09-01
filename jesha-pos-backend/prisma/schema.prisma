@@ -181,7 +181,6 @@ model Cliente {
   Venta              Venta[]
 
   @@unique([empresaId, rfc])
-  @@unique([empresaId, email])
   @@index([email])
   @@index([empresaId])
   @@index([nombre])

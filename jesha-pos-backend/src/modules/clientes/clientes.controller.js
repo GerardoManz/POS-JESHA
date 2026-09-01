@@ -182,9 +182,7 @@ const crear = async (req, res) => {
       const campo = err.meta?.target?.[0] || 'campo'
       const mensajes = {
         rfc: 'Ya existe un cliente con ese RFC',
-        email: 'Ya existe un cliente con ese correo electrónico',
-        empresaId_rfc: 'Ya existe un cliente con ese RFC',
-        empresaId_email: 'Ya existe un cliente con ese correo electrónico'
+        empresaId_rfc: 'Ya existe un cliente con ese RFC'
       }
       return res.status(409).json({ success: false, error: mensajes[campo] || `El campo ${campo} ya está registrado` })
     }
@@ -268,9 +266,7 @@ const editar = async (req, res) => {
       const campo = err.meta?.target?.[0] || 'campo'
       const mensajes = {
         rfc: 'Ya existe un cliente con ese RFC',
-        email: 'Ya existe un cliente con ese correo electrónico',
-        empresaId_rfc: 'Ya existe un cliente con ese RFC',
-        empresaId_email: 'Ya existe un cliente con ese correo electrónico'
+        empresaId_rfc: 'Ya existe un cliente con ese RFC'
       }
       return res.status(409).json({ success: false, error: mensajes[campo] || `El campo ${campo} ya está registrado` })
     }
