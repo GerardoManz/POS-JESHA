@@ -45,7 +45,7 @@ async function cargarProveedores() {
 
     if (lista.length === 0) {
       tbody.innerHTML = `<tr><td colspan="8" class="loading-cell"><p>No hay proveedores con los filtros aplicados</p></td></tr>`
-      pagDiv.classList.remove('show'); return
+      pagDiv.style.display = 'none'; return
     }
 
     tbody.innerHTML = lista.map(p => {
@@ -65,14 +65,13 @@ async function cargarProveedores() {
     }).join('')
 
     const totalPags = Math.ceil(total / 25)
-    if (totalPags > 1) {
-      pagDiv.classList.add('show')
-      document.getElementById('pag-info').textContent = `Página ${paginaActual} de ${totalPags} (${total} proveedores)`
-      document.getElementById('btn-prev').disabled = paginaActual <= 1
-      document.getElementById('btn-next').disabled = paginaActual >= totalPags
-    } else {
-      pagDiv.classList.remove('show')
-    }
+    jeshaRenderPaginacion({
+      currentPage: paginaActual,
+      totalPages: totalPags,
+      totalRegistros: total,
+      etiquetaRegistro: 'proveedores',
+      onNavigate: (pag) => { paginaActual = pag; cargarProveedores() }
+    })
   } catch (err) {
     tbody.innerHTML = `<tr><td colspan="8" class="loading-cell"><p style="color:#f44336">Error: ${ESC(err.message)}</p></td></tr>`
   }

@@ -127,14 +127,13 @@ async function cargarFacturas() {
     ` }).join('')
 
     const totalPags = data.paginacion?.totalPaginas || Math.ceil(data.total / LIMIT)
-    if (totalPags > 1) {
-      pagDiv.style.display = 'flex'
-      document.getElementById('pag-info').textContent = `Página ${paginaActual} de ${totalPags} (${data.total} facturas)`
-      document.getElementById('btn-prev').disabled = paginaActual <= 1
-      document.getElementById('btn-next').disabled = paginaActual >= totalPags
-    } else {
-      pagDiv.style.display = 'none'
-    }
+    jeshaRenderPaginacion({
+      currentPage: paginaActual,
+      totalPages: totalPags,
+      totalRegistros: data.total,
+      etiquetaRegistro: 'facturas',
+      onNavigate: (pag) => { paginaActual = pag; cargarFacturas() }
+    })
 
   } catch (err) {
     tbody.innerHTML = `<tr><td colspan="9" class="loading-cell"><p style="color:#f44336">Error: ${err.message}</p></td></tr>`

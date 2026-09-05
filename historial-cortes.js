@@ -167,14 +167,22 @@ function renderTabla(turnos) {
 }
 
 function renderPagination(p) {
-  if (p.totalPages > 1) {
-    pagination.style.display = 'flex'
-    pageInfo.textContent = `Página ${p.page} de ${p.totalPages || 1}`
-    btnAnt.disabled = p.page <= 1
-    btnSig.disabled = p.page >= p.totalPages
-  } else {
-    pagination.style.display = 'none'
-  }
+  jeshaRenderPaginacion({
+    currentPage: p.page,
+    totalPages: p.totalPages || 1,
+    totalRegistros: Number.isFinite(Number(p.total)) ? Number(p.total) : undefined,
+    etiquetaRegistro: 'cortes',
+    container: pagination,
+    prevButton: btnAnt,
+    nextButton: btnSig,
+    numbersContainer: 'pag-numeros-operativo',
+    label: pageInfo,
+    input: 'page-info-input',
+    onNavigate: (pag) => {
+      paginaActual = pag
+      buscar()
+    }
+  })
 }
 
 // ── OFF-CANVAS TICKET ──

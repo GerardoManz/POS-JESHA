@@ -184,12 +184,13 @@ async function cargarCompras() {
     }).join('')
 
     const totalPags = Math.ceil(total / LIMIT)
-    if (totalPags > 1) {
-      pagDiv.style.display = 'flex'
-      document.getElementById('pag-info').textContent = `Página ${paginaActual} de ${totalPags} (${total} compras)`
-      document.getElementById('btn-prev').disabled = paginaActual <= 1
-      document.getElementById('btn-next').disabled = paginaActual >= totalPags
-    } else pagDiv.style.display = 'none'
+    jeshaRenderPaginacion({
+      currentPage: paginaActual,
+      totalPages: totalPags,
+      totalRegistros: total,
+      etiquetaRegistro: 'compras',
+      onNavigate: (pag) => { paginaActual = pag; cargarCompras() }
+    })
   } catch (err) {
     console.error('[DEBUG] cargarCompras catch:', err.message)
     tbody.innerHTML = `<tr><td colspan="8" class="loading-cell"><p style="color:#f44336">Error: ${err.message}</p></td></tr>`
