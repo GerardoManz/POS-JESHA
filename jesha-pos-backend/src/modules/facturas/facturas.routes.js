@@ -14,18 +14,31 @@ const facCtrl      = require('../facturacion/facturacion.controller')
 const resolverCtrl = require('./resolver-timbrado.controller')
 const { requireRole } = require('../../middlewares/auth.middleware')
 const { requestContext } = require('../../middlewares/request-context.middleware')
-const { tenantGlobal, branchOptional } = require('../../middlewares/scope.middleware')
+const { tenantGlobal, branchOptional, branchRequired } = require('../../middlewares/scope.middleware')
+const { BRANCH_MODE } = require('../../security/request-context')
 
 const ROLES_FISCAL = ['ADMIN_SUCURSAL', 'SUPERADMIN']
+
+// P0-4: la factura global opera sobre TODA la empresa (multi-sucursal).
+// Solo SUPERADMIN y solo en vista NONE (sin sucursal fija/seleccionada).
+function branchMustBeNone(req, res, next) {
+  if (req.context.branch.mode !== BRANCH_MODE.NONE) {
+    return res.status(400).json({
+      error: 'La factura global requiere vista de toda la empresa',
+      code: 'BRANCH_CONTEXT_MUST_BE_NONE'
+    })
+  }
+  return next()
+}
 
 router.use(requestContext)
 
 // ── Factura Global CFDI 4.0 (ANTES de :id para que no lo capture como parám.) ──
-router.get ('/global/preview',    tenantGlobal, requireRole(ROLES_FISCAL), ctrl.previewGlobal)
-router.post ('/global/timbrar',   tenantGlobal, requireRole(ROLES_FISCAL), ctrl.timbrarGlobal)
+router.get ('/global/preview',  tenantGlobal, requireRole(['SUPERADMIN']), branchMustBeNone, ctrl.previewGlobal)
+router.post('/global/timbrar',  tenantGlobal, requireRole(['SUPERADMIN']), branchMustBeNone, ctrl.timbrarGlobal)
 
 // ── Facturado manual desde mostrador (mismo solicitarFactura, canal INTERNO: sin gate de 72h) ──
-router.post('/manual', tenantGlobal, requireRole(ROLES_FISCAL), (req, res, next) => { req.canalFacturacion = 'INTERNO'; next() }, facCtrl.solicitarFactura)
+router.post('/manual', branchRequired, requireRole(ROLES_FISCAL), (req, res, next) => { req.canalFacturacion = 'INTERNO'; next() }, facCtrl.solicitarFactura)
 
 // ── Lectura (abierta a cualquier usuario autenticado) ──
 router.get('/',    tenantGlobal, ctrl.listar)

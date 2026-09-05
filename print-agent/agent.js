@@ -116,6 +116,11 @@ async function tick() {
     }
   }
 
+  // Determinar si el job requiere comando de cajón
+  const payload = job.payload || {}
+  const requiresDrawer = payload.abrirCajon === true || payload.tipo === 'CAJON'
+  const isCajonJob = payload.tipo === 'CAJON'
+
   // Fase A: verificar que la impresora esté en línea
   if (!checkPrinterOnline(PRINTER_NAME)) {
     console.log(`  -> impresora NO disponible (offline/desconectada)`)
@@ -123,10 +128,39 @@ async function tick() {
     return true
   }
 
-  // Fase B: construir + imprimir. Si falla aquí, NADA salió -> /fail (seguro reintentar).
+  // Fase B: consumir comando de cajón si aplica (atómico, antes de imprimir)
+  let shouldOpenDrawer = false
+  if (requiresDrawer) {
+    let consumeRes
+    try {
+      consumeRes = await api(`/impresion/agent/${job.printJobId}/consume-drawer`)
+    } catch (e) {
+      console.error('[consume-drawer] red:', e.name === 'AbortError' ? 'timeout' : e.message)
+      return false // fail-closed: no construir/imprimir si no podemos confirmar consumo
+    }
+    if (!consumeRes.ok) {
+      console.error('[consume-drawer] HTTP', consumeRes.status)
+      return false // fail-closed
+    }
+    const consumeData = await consumeRes.json()
+    shouldOpenDrawer = consumeData.shouldOpenDrawer === true
+    console.log(`  -> consume-drawer: ${shouldOpenDrawer ? 'autorizado' : 'ya consumido/omitido'}`)
+  }
+
+  // Si es job CAJON y ya consumido, omitir build/print y solo confirmar success
+  if (isCajonJob && !shouldOpenDrawer) {
+    console.log(`  -> job CAJON ya consumido, omitiendo hardware`)
+    const ok = await confirmSuccess(job.printJobId)
+    if (ok) console.log(`  -> ENVIADO_A_IMPRESORA (omitido)`)
+    return true
+  }
+
+  // Fase C: construir + imprimir con payload clonado y abertura de cajón controlada
   try {
     const printer = makePrinter(PRINTER)
-    buildTicket(printer, job.payload, PRINTER, LOGO_BUFFER)
+    // Clone payload para no mutar el original y controlar abrirCajon
+    const payloadForAttempt = { ...payload, abrirCajon: shouldOpenDrawer }
+    buildTicket(printer, payloadForAttempt, PRINTER, LOGO_BUFFER)
     printTicket(printer, PRINTER_NAME)
   } catch (err) {
     const msg = String((err && err.message) || err)
@@ -135,7 +169,7 @@ async function tick() {
     return true
   }
 
-  // Fase C: el ticket YA salió. Confirmar con reintentos; nunca /fail aquí.
+  // Fase D: el ticket YA salió. Confirmar con reintentos; nunca /fail aquí.
   const ok = await confirmSuccess(job.printJobId)
   if (ok) {
     console.log(`  -> ENVIADO_A_IMPRESORA`)

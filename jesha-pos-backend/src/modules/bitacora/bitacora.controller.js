@@ -7,8 +7,8 @@
 
 const prisma = require('../../lib/prisma')
 const getEmpresaId = require('../../helpers/getEmpresaId')
+const resolverSucursalId = require('../sucursal/sucursal.helper')
 const construirWhereScopeTenant = require('../../helpers/construirWhereScopeTenant')
-const { EMPRESA } = require('../../../config/empresa')
 const { buildAbonoSnapshot, buildRetiroSnapshot, formatFechaTicket } = require('../impresion/impresion.snapshot')
 const { encolarImpresion } = require('../impresion/impresion.service')
 const { normalizarUnidadVenta } = require('../../helpers/unidades.helper')
@@ -201,18 +201,22 @@ const obtener = async (req, res) => {
 const crear = async (req, res) => {
   try {
     const { titulo, descripcion, clienteId, notas } = req.body
-    const { id: usuarioId, sucursalId: sucursalIdToken } = req.usuario
-    const sucursalId = sucursalIdToken || parseInt(req.body.sucursalId) || 1
+    const { id: usuarioId } = req.usuario
+    // P0-BRANCH-ISOLATION: la sucursal operativa viene del contexto, nunca del body ni fallback a 1.
+    const sucursalId = resolverSucursalId(req)
+    if (!sucursalId) {
+      return res.status(400).json({ success: false, error: 'Se requiere contexto de sucursal para crear una bitácora', codigo: 'BRANCH_CONTEXT_REQUIRED' })
+    }
     const empresaId = getEmpresaId(req)
 
     if (!titulo?.trim()) {
       return res.status(400).json({ success: false, error: 'El título del proyecto es obligatorio', codigo: 'TITULO_REQUERIDO' })
     }
 
-    // Si se especifica cliente, validar que existe
+    // Si se especifica cliente, validar que existe y pertenece a la empresa
     if (clienteId) {
-      const cliente = await prisma.cliente.findUnique({ where: { id: parseInt(clienteId) }, select: { id: true } })
-      if (!cliente) return res.status(400).json({ success: false, error: 'Cliente no existe' })
+      const cliente = await prisma.cliente.findFirst({ where: { id: parseInt(clienteId), empresaId }, select: { id: true } })
+      if (!cliente) return res.status(404).json({ success: false, error: 'Cliente no existe' })
     }
 
     const bitacora = await prisma.$transaction(async tx => {
@@ -720,8 +724,12 @@ const agregarProducto = async (req, res) => {
   try {
     const { id } = req.params
     const { productoId, cantidad, precioUnitario, notas, fechaManual, responsableId, recibeTrabajadorId } = req.body
-    const { id: usuarioId, sucursalId: sucursalIdToken } = req.usuario
-    const sucursalId = sucursalIdToken || parseInt(req.body.sucursalId) || 1
+    const { id: usuarioId } = req.usuario
+    // P0-BRANCH-ISOLATION: la sucursal operativa viene del contexto, nunca del body ni fallback a 1.
+    const sucursalId = resolverSucursalId(req)
+    if (!sucursalId) {
+      return res.status(400).json({ success: false, error: 'Se requiere contexto de sucursal para operar la bitácora', codigo: 'BRANCH_CONTEXT_REQUIRED' })
+    }
     const empresaId = getEmpresaId(req)
 
     // ── Validaciones ──
@@ -916,8 +924,12 @@ const agregarProductosBatch = async (req, res) => {
   try {
     const { id } = req.params
     const { items } = req.body
-    const { id: usuarioId, sucursalId: sucursalIdToken } = req.usuario
-    const sucursalId = sucursalIdToken || parseInt(req.body.sucursalId) || 1
+    const { id: usuarioId } = req.usuario
+    // P0-BRANCH-ISOLATION: la sucursal operativa viene del contexto, nunca del body ni fallback a 1.
+    const sucursalId = resolverSucursalId(req)
+    if (!sucursalId) {
+      return res.status(400).json({ success: false, error: 'Se requiere contexto de sucursal para operar la bitácora', codigo: 'BRANCH_CONTEXT_REQUIRED' })
+    }
     const empresaId = getEmpresaId(req)
 
     // ── Validar lote ──
@@ -1167,8 +1179,12 @@ const editarDetalle = async (req, res) => {
   try {
     const { id, detalleId } = req.params
     const { cantidad, precioUnitario, recibeTrabajadorId } = req.body
-    const { id: usuarioId, sucursalId: sucursalIdToken } = req.usuario
-    const sucursalId = sucursalIdToken || 1
+    const { id: usuarioId } = req.usuario
+    // P0-BRANCH-ISOLATION: la sucursal operativa viene del contexto, nunca del fallback a 1.
+    const sucursalId = resolverSucursalId(req)
+    if (!sucursalId) {
+      return res.status(400).json({ success: false, error: 'Se requiere contexto de sucursal para operar la bitácora', codigo: 'BRANCH_CONTEXT_REQUIRED' })
+    }
     const empresaId = getEmpresaId(req)
 
     if (cantidad === undefined && precioUnitario === undefined && recibeTrabajadorId === undefined) {
@@ -1349,8 +1365,12 @@ const editarDetalle = async (req, res) => {
 const quitarProducto = async (req, res) => {
   try {
     const { id, detalleId } = req.params
-    const { id: usuarioId, sucursalId: sucursalIdToken } = req.usuario
-    const sucursalId = sucursalIdToken || 1
+    const { id: usuarioId } = req.usuario
+    // P0-BRANCH-ISOLATION: la sucursal operativa viene del contexto, nunca del fallback a 1.
+    const sucursalId = resolverSucursalId(req)
+    if (!sucursalId) {
+      return res.status(400).json({ success: false, error: 'Se requiere contexto de sucursal para operar la bitácora', codigo: 'BRANCH_CONTEXT_REQUIRED' })
+    }
     const empresaId = getEmpresaId(req)
 
     const bitacora = await prisma.bitacora.findUnique({
@@ -1475,7 +1495,11 @@ const registrarAbono = async (req, res) => {
     const empresaId = getEmpresaId(req)
     const usuarioId = req.usuario.id
     const { rol } = req.usuario
-    const sucursalOperativa = req.usuario.sucursalId  // puede ser null para SUPERADMIN
+    // P0-BRANCH-ISOLATION: la sucursal operativa viene del contexto (requerida para escribir).
+    const sucursalOperativa = resolverSucursalId(req)
+    if (!sucursalOperativa) {
+      return res.status(400).json({ success: false, error: 'Se requiere contexto de sucursal para registrar el abono', codigo: 'BRANCH_CONTEXT_REQUIRED' })
+    }
     // Para roles con sucursal fija, se valida contra la bitácora después del FOR UPDATE
 
     const METODOS_VALIDOS = ['EFECTIVO', 'DEBITO', 'CREDITO', 'TRANSFERENCIA']
@@ -1712,7 +1736,7 @@ const contextoCobranza = async (req, res) => {
     }
     const empresaId = getEmpresaId(req)
     const { rol } = req.usuario
-    const sucursalOperativa = req.usuario.sucursalId  // puede ser null para SUPERADMIN
+    const sucursalOperativa = resolverSucursalId(req)  // null para SUPERADMIN NONE
     // Para roles con sucursal fija, se valida contra la bitácora al cargar
 
     const bitacora = await prisma.bitacora.findUnique({

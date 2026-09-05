@@ -8,6 +8,8 @@
     "build": "npx prisma generate",
     "seed": "node prisma/seed.js",
     "studio": "npx prisma studio",
+    "platform:bootstrap-admin": "node scripts/platform-bootstrap-admin.js",
+    "db:manual-sql": "node prisma/apply-manual-sql.js --apply",
     "migrate": "npx prisma migrate dev"
   },
   "dependencies": {

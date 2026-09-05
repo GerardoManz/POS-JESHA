@@ -7,7 +7,10 @@
     token: 'jesha_token',
     usuario: 'jesha_usuario',
     empresaSlug: 'jesha_empresa_slug',
-    sucursalId: 'jesha_selected_sucursal_id'
+    sucursalId: 'jesha_selected_sucursal_id',
+    delegatedToken: 'jesha_delegated_token',
+    delegatedEmpresa: 'jesha_delegated_empresa',
+    delegatedUser: 'jesha_delegated_user'
   })
 
   const TENANT_ROLES = new Set(['SUPERADMIN', 'ADMIN_SUCURSAL', 'EMPLEADO', 'PRECIOS'])
@@ -27,15 +30,26 @@
     const sucursal = user.Sucursal && typeof user.Sucursal === 'object'
       ? { id: positiveInt(user.Sucursal.id), nombre: String(user.Sucursal.nombre || '') }
       : null
+    const empresa = user.Empresa && typeof user.Empresa === 'object'
+      ? {
+          id: positiveInt(user.Empresa.id),
+          slug: String(user.Empresa.slug || ''),
+          nombreComercial: String(user.Empresa.nombreComercial || '')
+        }
+      : null
 
     return {
       id: positiveInt(user.id),
       nombre: String(user.nombre || ''),
       username: String(user.username || ''),
       rol: user.rol,
+      actorRol: user.actorRol || null,
+      effectiveRole: user.effectiveRole || user.rol,
+      delegated: user.delegated === true,
       empresaId: positiveInt(user.empresaId),
       sucursalId,
       tema: user.tema === 'light' ? 'light' : 'dark',
+      Empresa: empresa && empresa.id ? empresa : null,
       Sucursal: sucursal && sucursal.id ? sucursal : null
     }
   }
@@ -53,6 +67,46 @@
 
   function clear() {
     Object.values(KEYS).forEach((key) => localStorage.removeItem(key))
+  }
+
+  function isDelegated() {
+    return Boolean(localStorage.getItem(KEYS.delegatedToken))
+  }
+
+  function getDelegatedToken() {
+    return localStorage.getItem(KEYS.delegatedToken) || ''
+  }
+
+  function getDelegatedEmpresa() {
+    try {
+      return JSON.parse(localStorage.getItem(KEYS.delegatedEmpresa) || 'null')
+    } catch {
+      return null
+    }
+  }
+
+  function clearDelegated() {
+    localStorage.removeItem(KEYS.delegatedToken)
+    localStorage.removeItem(KEYS.delegatedEmpresa)
+    localStorage.removeItem(KEYS.delegatedUser)
+    localStorage.removeItem(KEYS.sucursalId)
+  }
+
+  function setDelegatedUser(usuario) {
+    if (usuario && typeof usuario === 'object') {
+      localStorage.setItem(KEYS.delegatedUser, JSON.stringify(sanitizeUser(usuario) || usuario))
+    }
+  }
+
+  function getEffectiveToken() {
+    if (isDelegated()) return getDelegatedToken()
+    return localStorage.getItem(KEYS.token) || ''
+  }
+
+  function getEffectiveRol() {
+    if (isDelegated()) return 'SUPERADMIN'
+    const user = readUser()
+    return user?.rol || 'EMPLEADO'
   }
 
   function validateUser(user) {
@@ -88,6 +142,12 @@
   }
 
   function isValid() {
+    if (isDelegated()) {
+      return Boolean(
+        localStorage.getItem(KEYS.delegatedToken) &&
+        localStorage.getItem(KEYS.delegatedEmpresa)
+      )
+    }
     return Boolean(
       localStorage.getItem(KEYS.token) &&
       localStorage.getItem(KEYS.empresaSlug) &&
@@ -96,6 +156,9 @@
   }
 
   function getSelectedSucursalId() {
+    if (isDelegated()) {
+      return positiveInt(localStorage.getItem(KEYS.sucursalId))
+    }
     const user = readUser()
     if (!validateUser(user)) return null
 
@@ -106,12 +169,23 @@
   }
 
   function canSelectSucursal() {
+    if (isDelegated()) return true
     const user = readUser()
     if (!validateUser(user) || positiveInt(user.sucursalId) !== null) return false
     return user.rol === 'SUPERADMIN' || user.rol === 'PRECIOS'
   }
 
   function setSelectedSucursalId(value) {
+    if (isDelegated()) {
+      const requested = value === null || value === undefined || value === '' ? null : positiveInt(value)
+      if (requested === null) {
+        localStorage.removeItem(KEYS.sucursalId)
+        return null
+      }
+      localStorage.setItem(KEYS.sucursalId, String(requested))
+      return requested
+    }
+
     const user = readUser()
     if (!validateUser(user)) throw new Error('Sesión tenant inválida')
 
@@ -153,7 +227,8 @@
     if (context.actor?.id !== user.id) {
       throw new Error('Identidad de usuario no coincide')
     }
-    if (context.actor?.rol !== user.rol) {
+    const effectiveRol = isDelegated() ? 'SUPERADMIN' : user.rol
+    if (context.actor?.rol !== effectiveRol) {
       throw new Error('Rol de usuario no coincide')
     }
     if (context.tenant?.empresaId !== user.empresaId) {
@@ -219,7 +294,7 @@
     if (!isApiRequest(input)) return nativeFetch(input, init)
 
     const headers = new Headers(init.headers || (input instanceof Request ? input.headers : undefined))
-    const token = localStorage.getItem(KEYS.token)
+    const token = getEffectiveToken()
     const sucursalId = getSelectedSucursalId()
 
     if (token && !headers.has('Authorization')) headers.set('Authorization', `Bearer ${token}`)
@@ -234,8 +309,13 @@
     } catch (_) {}
 
     if (response.status === 401 && pathname !== '/auth/login' && pathname !== '/platform/auth/login') {
-      clear()
-      if (!window.location.pathname.endsWith('/login.html')) window.location.replace('login.html')
+      if (isDelegated()) {
+        clearDelegated()
+        window.location.replace('platform-empresas.html')
+      } else {
+        clear()
+        if (!window.location.pathname.endsWith('/login.html')) window.location.replace('login.html')
+      }
     }
     if (response.status === 403) {
       const payload = await response.clone().json().catch(() => null)
@@ -246,18 +326,103 @@
     return response
   }
 
+  // ── Empresa branding cache (for PDF generators) ──
+  let _empresaBrandingCache = null
+  let _empresaBrandingPromise = null
+
+  async function fetchEmpresaBranding() {
+    if (_empresaBrandingCache) return _empresaBrandingCache
+    if (_empresaBrandingPromise) return _empresaBrandingPromise
+
+    _empresaBrandingPromise = (async () => {
+      try {
+        const token = getEffectiveToken()
+        if (!token) return null
+        const base = window.__JESHA_API_URL__ || window.location.origin
+        const res = await nativeFetch(`${base}/auth/me`, {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+        if (!res.ok) return null
+        const data = await res.json()
+        const emp = data?.usuario?.Empresa || data?.empresa
+        if (!emp) return null
+        _empresaBrandingCache = {
+          nombre: emp.nombreComercial || 'Empresa',
+          slug: emp.slug || '',
+          logoUrl: emp.logoUrl || null,
+          colorPrimario: emp.colorPrimario || '#1e3a5f',
+          colorSecundario: emp.colorSecundario || '#3b82f6',
+          colorAcento: emp.colorAcento || '#10b981',
+          rfc: emp.rfc || null,
+          whatsapp: emp.whatsapp || null,
+          razonSocial: emp.razonSocial || null,
+          direccion: emp.direccion || null,
+          ciudad: emp.ciudad || null,
+          telefono: emp.whatsapp || null,
+          email: emp.email || null
+        }
+        return _empresaBrandingCache
+      } catch (_) {
+        return null
+      } finally {
+        _empresaBrandingPromise = null
+      }
+    })()
+    return _empresaBrandingPromise
+  }
+
+  function invalidateEmpresaBranding() {
+    _empresaBrandingCache = null
+  }
+
   window.jeshaSession = Object.freeze({
     KEYS,
     clear,
     start,
     isValid,
-    getToken: () => localStorage.getItem(KEYS.token),
-    getUsuario: readUser,
-    getEmpresaSlug: () => localStorage.getItem(KEYS.empresaSlug),
+    isDelegated,
+    getDelegatedToken,
+    getDelegatedEmpresa,
+    clearDelegated,
+    setDelegatedUser,
+    getEffectiveToken,
+    getEffectiveRol,
+    getToken: () => isDelegated() ? getDelegatedToken() : localStorage.getItem(KEYS.token),
+    getUsuario: () => {
+      if (isDelegated()) {
+        const emp = getDelegatedEmpresa()
+        try {
+          const stored = JSON.parse(localStorage.getItem(KEYS.delegatedUser) || 'null')
+          if (stored && stored.id) return stored
+        } catch (_) {}
+        return {
+          id: 1,
+          nombre: 'Plataforma',
+          username: 'platform',
+          rol: 'SUPERADMIN',
+          actorRol: 'PLATFORM_ADMIN',
+          effectiveRole: 'SUPERADMIN',
+          delegated: true,
+          empresaId: emp?.id || null,
+          sucursalId: positiveInt(localStorage.getItem(KEYS.sucursalId)),
+          tema: 'dark',
+          Empresa: emp ? { id: emp.id, slug: emp.slug, nombreComercial: emp.nombreComercial } : null,
+          Sucursal: null
+        }
+      }
+      return readUser()
+    },
+    getEmpresaSlug: () => isDelegated() ? (getDelegatedEmpresa()?.slug || null) : localStorage.getItem(KEYS.empresaSlug),
+    getEmpresaNombre: () => {
+      if (isDelegated()) return getDelegatedEmpresa()?.nombreComercial || null
+      return readUser()?.Empresa?.nombreComercial || null
+    },
     getSelectedSucursalId,
     canSelectSucursal,
     setSelectedSucursalId,
     validarContexto,
-    positiveInt
+    positiveInt,
+    fetchEmpresaBranding,
+    invalidateEmpresaBranding
   })
 })()

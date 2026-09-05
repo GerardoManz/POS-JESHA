@@ -1,16 +1,15 @@
 ;(function() {
   try {
-    const rol = JSON.parse(localStorage.getItem('jesha_usuario') || '{}').rol || 'EMPLEADO'
+    const rol = window.jeshaSession?.getUsuario()?.rol || 'EMPLEADO'
     if (['EMPLEADO'].includes(rol)) {
       window.location.replace('punto-venta.html')
     }
   } catch(e) { window.location.replace('punto-venta.html') }
 })()
 
-const TOKEN   = localStorage.getItem('jesha_token')
-const USUARIO = JSON.parse(localStorage.getItem('jesha_usuario') || '{}')
+const USUARIO = window.jeshaSession?.getUsuario() || {}
 
-if (!TOKEN) {
+if (!window.jeshaSession?.isValid()) {
   window.location.href = 'login.html'
   throw new Error('Sin auth')
 }
@@ -85,9 +84,7 @@ function limpiarFiltros() {
 
 async function cargarCajeros() {
   try {
-    const res = await fetch(`${API_URL}/usuarios/vendedores`, {
-      headers: { 'Authorization': `Bearer ${TOKEN}` }
-    })
+    const res = await fetch(`${API_URL}/usuarios/vendedores`)
     if (!res.ok) return
     const users = await res.json()
     filtroCajero.innerHTML = '<option value="">Todos</option>'
@@ -108,9 +105,7 @@ async function buscar() {
   if (filtroCajero.value) params.set('usuarioId', filtroCajero.value)
 
   try {
-    const res = await fetch(`${API_URL}/turnos-caja/historial?${params}`, {
-      headers: { 'Authorization': `Bearer ${TOKEN}` }
-    })
+    const res = await fetch(`${API_URL}/turnos-caja/historial?${params}`)
     if (window.handle401 && window.handle401(res.status)) return
     if (!res.ok) throw new Error('Error en respuesta')
 
@@ -194,7 +189,7 @@ function initOffcanvas() {
 
 window.abrirTicket = function(turnoId) {
   _ultimoTurnoId = turnoId
-  ticketIframe.src = `${API_URL}/turnos-caja/${turnoId}/ticket?token=${TOKEN}`
+  ticketIframe.src = `${API_URL}/turnos-caja/${turnoId}/ticket?token=${window.jeshaSession?.getEffectiveToken()}`
   offcanvas.classList.add('active')
   offcanvasOvl.classList.add('active')
   document.body.style.overflow = 'hidden'
@@ -205,7 +200,7 @@ window.descargarPDF = async function() {
   try {
     const r = await fetch(`${API_URL}/impresion/job`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ tipo: 'CORTE', turnoId: _ultimoTurnoId })
     })
     if (r.ok) {
@@ -249,9 +244,7 @@ async function generarResumenContable() {
   })
 
   try {
-    const res = await fetch(`${API_URL}/turnos-caja/resumen-contable?${params}`, {
-      headers: { 'Authorization': `Bearer ${TOKEN}` }
-    })
+    const res = await fetch(`${API_URL}/turnos-caja/resumen-contable?${params}`)
     if (window.handle401 && window.handle401(res.status)) return
     if (!res.ok) throw new Error('Error')
 

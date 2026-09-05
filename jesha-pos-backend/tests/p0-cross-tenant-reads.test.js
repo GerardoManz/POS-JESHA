@@ -306,11 +306,11 @@ describe('P0 — Cross-Tenant Reads (9 lecturas de registro único)', () => {
         'requireAuth debe hidratar el contexto tenant')
     })
 
-    it('12. app.js monta los 6 módulos con requireAuth (scope Prisma, sin duplicar middleware)', () => {
+    it('12. app.js monta los 6 módulos con requireAuth o requireTenantOrDelegated (scope Prisma, sin duplicar middleware)', () => {
       const src = readSource('app.js')
       for (const route of ['/clientes', '/pedidos', '/bitacoras', '/compras', '/cotizaciones', '/devoluciones']) {
-        assert.ok(hasPattern(src, new RegExp(`app\\.use\\('${route.replace(/\//g, '\\/')}',\\s*requireAuth,`)),
-          `app.js debe montar ${route} con requireAuth`)
+        assert.ok(hasPattern(src, new RegExp(`app\\.use\\('${route.replace(/\//g, '\\/')}',\\s*(requireAuth|requireTenantOrDelegated),`)),
+          `app.js debe montar ${route} con requireAuth o requireTenantOrDelegated`)
       }
     })
 
@@ -350,11 +350,12 @@ describe('P0 — Cross-Tenant Reads (9 lecturas de registro único)', () => {
       assert.strictEqual(countPatterns(src, /req\.params/g), 0, 'nunca params')
     })
 
-    it('F2.3 helper aplica empresaId siempre y sucursalId solo para roles no-SUPERADMIN', () => {
+    it('F2.3 helper aplica empresaId siempre y sucursalId desde contexto de rama (H5)', () => {
       const src = readSource('helpers/construirWhereScopeTenant.js')
       assert.ok(hasPattern(src, /empresaId: getEmpresaId\(req\)/), 'empresaId en el where base')
       assert.ok(hasPattern(src, /incluirSucursal/), 'opción incluirSucursal')
-      assert.ok(hasPattern(src, /rol !== 'SUPERADMIN'/), 'SUPERADMIN excluido del filtro de sucursal')
+      assert.ok(hasPattern(src, /resolverSucursalId\(req\)/), 'sucursal desde contexto de rama')
+      assert.strictEqual(countPatterns(src, /rol !== 'SUPERADMIN'/g), 0, 'SUPERADMIN ya no se excluye del filtro de sucursal (H5)')
       assert.ok(hasPattern(src, /where\.sucursalId = parseInt\(sucursalId/), 'sucursalId parseado como entero')
     })
   })

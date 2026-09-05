@@ -1,4 +1,6 @@
 'use strict'
+
+const { assertSafeTestDb } = require('./helpers/test-db-safety')
 // P0-PLATFORM-COMPANY-PROVISIONING — Pruebas PostgreSQL HTTP.
 // Cubre el README-APLICAR-Y-TESTEAR (casos 1-22) y los 4 casos clave:
 //  1) Crear Empresa deja exactamente 0 Sucursales y 0 Usuarios.
@@ -17,8 +19,8 @@ const bcrypt = require('bcryptjs')
 const jwt = require('jsonwebtoken')
 
 const BACKEND_DIR = path.resolve(__dirname, '..')
-const DB_PREFIX = 'jesha_p0_emp_test_'
-const DB_RE = /^jesha_p0_emp_test_[a-z0-9_]+$/
+const DB_PREFIX = 'jesha_p0_platform_integration_'
+const DB_RE = /^jesha_p0_platform_integration_[a-z0-9_]+$/
 const PLATFORM_SECRET = 'empresas-platform-secret-'.padEnd(64, 'p')
 const PLATFORM_ISSUER = 'jesha-empresas-platform-test'
 const PLATFORM_AUDIENCE = 'jesha-empresas-platform-api-test'
@@ -55,15 +57,12 @@ describe('P0-PLATFORM-COMPANY-PROVISIONING PostgreSQL HTTP', { concurrency:1, ti
   const pgConfig = resolvePgConfig()
   const dbName = validateDbName(`${DB_PREFIX}${Date.now()}_${process.pid}_${randomBytes(4).toString('hex')}`)
   const databaseUrl = connectionUrl(pgConfig, dbName)
+  assertSafeTestDb(databaseUrl)
   const adminPool = new pg.Pool({ connectionString: connectionUrl(pgConfig,'postgres'), max:1 })
   let created = false, prisma, app, server, baseUrl
 
-  let platformAdmin, empresa, empresaId, slug, superUsuario, tokenTenant
+  let platformAdmin, empresa, empresaId, slug, empresaSuspendible, tokenTenant
   let tokenPlatform
-
-  function signPlatform(userId) {
-    return jwt.sign({ version:1, kind:'PLATFORM', sub:userId, rol:'PLATFORM_ADMIN' }, PLATFORM_SECRET, { algorithm:'HS256', issuer:PLATFORM_ISSUER, audience:PLATFORM_AUDIENCE, expiresIn:'30m' })
-  }
   function signTenant(userId, rol) {
     return jwt.sign({ version:1, kind:'TENANT', sub:userId, rol }, TENANT_SECRET, { algorithm:'HS256', issuer:TENANT_ISSUER, audience:TENANT_AUDIENCE, expiresIn:'30m' })
   }
@@ -96,8 +95,6 @@ describe('P0-PLATFORM-COMPANY-PROVISIONING PostgreSQL HTTP', { concurrency:1, ti
       rol: 'PLATFORM_ADMIN', activo: true, empresaId: null, sucursalId: null
     } })
 
-    tokenPlatform = signPlatform(platformAdmin.id)
-
     app = require('../src/app')
     server = http.createServer(app)
     await new Promise((resolve) => { server.listen(0, '127.0.0.1', () => { baseUrl = `http://127.0.0.1:${server.address().port}`; resolve() }) })
@@ -113,9 +110,15 @@ describe('P0-PLATFORM-COMPANY-PROVISIONING PostgreSQL HTTP', { concurrency:1, ti
     delete require.cache[require.resolve('../src/app')]
     delete require.cache[require.resolve('../src/lib/prisma')]
     if (created) {
-      try { await adminPool.query(`DROP DATABASE "${dbName}" WITH (FORCE)`) } catch(e){}
+      await adminPool.query(
+        'SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()',
+        [dbName]
+      )
+      await adminPool.query(`DROP DATABASE "${dbName}"`)
+      const residual = await adminPool.query('SELECT 1 FROM pg_database WHERE datname = $1', [dbName])
+      assert.strictEqual(residual.rowCount, 0, 'la base temporal debe eliminarse')
     }
-    try { await adminPool.end() } catch(e){}
+    await adminPool.end()
     await new Promise((r) => setTimeout(r, 500))
   })
 
@@ -138,17 +141,29 @@ describe('P0-PLATFORM-COMPANY-PROVISIONING PostgreSQL HTTP', { concurrency:1, ti
   }
 
   // ── AUTENTICACIÓN ─────────────────────────────────────────────────
+  it('0. login Platform real + /me entrega sesión PLATFORM_ADMIN', async () => {
+    const login = await send('POST', '/platform/auth/login', null, { username:platformAdmin.username, password:'password' })
+    assert.strictEqual(login.status, 200)
+    assert.ok(login.body.token)
+    tokenPlatform = login.body.token
+
+    const me = await get('/platform/auth/me', tokenPlatform)
+    assert.strictEqual(me.status, 200)
+    assert.deepStrictEqual(me.body, { id:platformAdmin.id, rol:'PLATFORM_ADMIN', kind:'PLATFORM' })
+  })
+
+  it('0b. credenciales Platform inválidas → 401', async () => {
+    const res = await send('POST', '/platform/auth/login', null, { username:platformAdmin.username, password:'incorrecta' })
+    assert.strictEqual(res.status, 401)
+  })
+
   it('1. sin token platform → 401', async () => {
     const res = await get('/platform/empresas')
     assert.strictEqual(res.status, 401)
   })
 
   it('2. token tenant en /platform/empresas → 401 (jamás entra)', async () => {
-    const otrosuper = await prisma.usuario.create({ data: {
-      nombre: 'Tenant A', username: `t-tenant-${Date.now()}`, passwordHash: 'hash',
-      rol: 'SUPERADMIN', activo: true, empresaId: null, sucursalId: null
-    } })
-    tokenTenant = signTenant(otrosuper.id, 'SUPERADMIN')
+    tokenTenant = signTenant(999999, 'SUPERADMIN')
     const res = await get('/platform/empresas', tokenTenant)
     assert.strictEqual(res.status, 401)
   })
@@ -161,14 +176,14 @@ describe('P0-PLATFORM-COMPANY-PROVISIONING PostgreSQL HTTP', { concurrency:1, ti
 
   // ── CREAR ─────────────────────────────────────────────────────────
   it('4. crear Empresa válida → 201', async () => {
-    const body = { slug: 'ferre-plus', nombreComercial: 'Ferre Plus', razonSocial: 'Ferre Plus SA', whatsapp: '5555555555', rfc: 'FPL123456789', notas: 'Empresa de prueba' }
+    const body = { slug: 'ferreteria-pedregal', nombreComercial: 'FERRETERÍA PEDREGAL', razonSocial: 'FERRETERÍA PEDREGAL SA DE CV', whatsapp: '9611234567', notas: 'Empresa de prueba Platform' }
     const res = await send('POST', '/platform/empresas', tokenPlatform, body)
     assert.strictEqual(res.status, 201)
     empresa = res.body.empresa
     empresaId = empresa.id
     slug = empresa.slug
-    assert.strictEqual(slug, 'ferre-plus')
-    assert.strictEqual(empresa.nombreComercial, 'Ferre Plus')
+    assert.strictEqual(slug, 'ferreteria-pedregal')
+    assert.strictEqual(empresa.nombreComercial, 'FERRETERÍA PEDREGAL')
   })
 
   it('5. Empresa creada tiene activa=false', async () => {
@@ -177,11 +192,17 @@ describe('P0-PLATFORM-COMPANY-PROVISIONING PostgreSQL HTTP', { concurrency:1, ti
     assert.strictEqual(row.activa, false)
   })
 
-  it('6. crear Empresa deja 0 Sucursales y 0 Usuarios', async () => {
-    const sucursales = await prisma.sucursal.count({ where: { empresaId } })
-    const usuarios = await prisma.usuario.count({ where: { empresaId } })
-    assert.strictEqual(sucursales, 0)
-    assert.strictEqual(usuarios, 0)
+  it('6. FERRETERÍA PEDREGAL nace completamente vacía', async () => {
+    const counts = await Promise.all([
+      prisma.sucursal.count({ where: { empresaId } }),
+      prisma.usuario.count({ where: { empresaId } }),
+      prisma.producto.count({ where: { empresaId } }),
+      prisma.inventarioSucursal.count({ where: { Producto: { empresaId } } }),
+      prisma.movimientoCaja.count({ where: { empresaId } }),
+      prisma.turnoCaja.count({ where: { empresaId } }),
+      prisma.venta.count({ where: { empresaId } })
+    ])
+    assert.deepStrictEqual(counts, [0, 0, 0, 0, 0, 0, 0])
   })
 
   it('7. body.activa=true → 400', async () => {
@@ -204,7 +225,7 @@ describe('P0-PLATFORM-COMPANY-PROVISIONING PostgreSQL HTTP', { concurrency:1, ti
 
   it('9. slug duplicado → 409', async () => {
     const res = await send('POST', '/platform/empresas', tokenPlatform, {
-      slug: 'ferre-plus', nombreComercial: 'Duplicada', razonSocial: 'Dup SA', whatsapp: '5555555555'
+      slug: 'ferreteria-pedregal', nombreComercial: 'Duplicada', razonSocial: 'Dup SA', whatsapp: '5555555555'
     })
     assert.strictEqual(res.status, 409)
     assert.strictEqual(res.body.code, 'EMPRESA_SLUG_DUPLICADO')
@@ -221,14 +242,31 @@ describe('P0-PLATFORM-COMPANY-PROVISIONING PostgreSQL HTTP', { concurrency:1, ti
     assert.strictEqual(res.status, 400)
   })
 
+  it('10c. listado y detalle muestran FERRETERÍA PEDREGAL INACTIVA y vacía', async () => {
+    const listado = await get('/platform/empresas?buscar=PEDREGAL', tokenPlatform)
+    assert.strictEqual(listado.status, 200)
+    const pedregal = listado.body.empresas.find((item) => item.id === empresaId)
+    assert.ok(pedregal)
+    assert.strictEqual(pedregal.nombreComercial, 'FERRETERÍA PEDREGAL')
+    assert.strictEqual(pedregal.activa, false)
+    assert.strictEqual(pedregal.sucursales, 0)
+    assert.strictEqual(pedregal.usuarios, 0)
+
+    const detalle = await get(`/platform/empresas/${empresaId}`, tokenPlatform)
+    assert.strictEqual(detalle.status, 200)
+    assert.strictEqual(detalle.body.empresa.id, empresaId)
+    assert.strictEqual(detalle.body.empresa.activa, false)
+  })
+
   // ── PATCH ─────────────────────────────────────────────────────────
   it('11. PATCH edita solo campos permitidos', async () => {
-    assert.strictEqual(empresa.nombreComercial, 'Ferre Plus')
-    const res = await send('PATCH', `/platform/empresas/${empresaId}`, tokenPlatform, { nombreComercial: 'Ferre Plus Actualizado' })
+    assert.strictEqual(empresa.nombreComercial, 'FERRETERÍA PEDREGAL')
+    const res = await send('PATCH', `/platform/empresas/${empresaId}`, tokenPlatform, { notas:'Alta certificada desde Platform' })
     assert.strictEqual(res.status, 200)
-    assert.strictEqual(res.body.empresa.nombreComercial, 'Ferre Plus Actualizado')
+    assert.strictEqual(res.body.empresa.nombreComercial, 'FERRETERÍA PEDREGAL')
+    assert.strictEqual(res.body.empresa.notas, 'Alta certificada desde Platform')
     const row = await prisma.empresa.findUnique({ where: { id: empresaId } })
-    assert.strictEqual(row.nombreComercial, 'Ferre Plus Actualizado')
+    assert.strictEqual(row.nombreComercial, 'FERRETERÍA PEDREGAL')
     assert.strictEqual(row.activa, false, 'PATCH no debe tocar activa')
   })
 
@@ -255,39 +293,42 @@ describe('P0-PLATFORM-COMPANY-PROVISIONING PostgreSQL HTTP', { concurrency:1, ti
     assert.strictEqual(res.body.code, 'EMPRESA_SIN_SUPERADMIN')
   })
 
-  // ── SUPERADMIN FIXTURE + ACTIVAR ──────────────────────────────────
-  it('15. fixture SUPERADMIN activo para la Empresa', async () => {
+  // ── EMPRESA SEPARADA PARA ACTIVAR/SUSPENDER ───────────────────────
+  it('15. crea fixture separada activable con SUPERADMIN', async () => {
+    empresaSuspendible = await prisma.empresa.create({ data: {
+      slug:'fixture-suspendible', nombreComercial:'Fixture Suspendible', razonSocial:'Fixture Suspendible SA', whatsapp:'5555555555', activa:false
+    } })
     const hash = await bcrypt.hash('password', 10)
-    superUsuario = await prisma.usuario.create({ data: {
-      nombre: 'Super Ferre Plus', username: `pf-super-${Date.now()}`, passwordHash: hash,
-      rol: 'SUPERADMIN', activo: true, empresaId, sucursalId: null
+    const superUsuario = await prisma.usuario.create({ data: {
+      nombre:'Super Fixture', username:`pf-super-${Date.now()}`, passwordHash:hash,
+      rol:'SUPERADMIN', activo:true, empresaId:empresaSuspendible.id, sucursalId:null
     } })
     assert.ok(superUsuario.id > 0)
   })
 
-  it('16. activar con SUPERADMIN → 200 + activa=true (caso clave 4)', async () => {
-    const res = await send('POST', `/platform/empresas/${empresaId}/activar`, tokenPlatform, {})
+  it('16. activar fixture con SUPERADMIN → 200 + activa=true', async () => {
+    const res = await send('POST', `/platform/empresas/${empresaSuspendible.id}/activar`, tokenPlatform, {})
     assert.strictEqual(res.status, 200)
     assert.strictEqual(res.body.empresa.activa, true)
-    const row = await prisma.empresa.findUnique({ where: { id: empresaId } })
+    const row = await prisma.empresa.findUnique({ where: { id: empresaSuspendible.id } })
     assert.strictEqual(row.activa, true)
   })
 
   it('17. activar nuevamente → 200 idempotente', async () => {
-    const res = await send('POST', `/platform/empresas/${empresaId}/activar`, tokenPlatform, {})
+    const res = await send('POST', `/platform/empresas/${empresaSuspendible.id}/activar`, tokenPlatform, {})
     assert.strictEqual(res.status, 200)
     assert.strictEqual(res.body.empresa.activa, true)
   })
 
   it('18. suspender Empresa activa → 200 + activa=false', async () => {
-    const res = await send('POST', `/platform/empresas/${empresaId}/suspender`, tokenPlatform, {})
+    const res = await send('POST', `/platform/empresas/${empresaSuspendible.id}/suspender`, tokenPlatform, {})
     assert.strictEqual(res.status, 200)
     assert.strictEqual(res.body.empresa.activa, false)
   })
 
   it('19. suspender nuevamente → 200 idempotente y sin auditoría duplicada', async () => {
     const antes = await auditorias('PLATFORM_EMPRESA_SUSPENDER')
-    const res = await send('POST', `/platform/empresas/${empresaId}/suspender`, tokenPlatform, {})
+    const res = await send('POST', `/platform/empresas/${empresaSuspendible.id}/suspender`, tokenPlatform, {})
     assert.strictEqual(res.status, 200)
     const despues = await auditorias('PLATFORM_EMPRESA_SUSPENDER')
     assert.strictEqual(despues.length, antes.length, 'no debe duplicarse auditoría sin transición real')
@@ -318,18 +359,23 @@ describe('P0-PLATFORM-COMPANY-PROVISIONING PostgreSQL HTTP', { concurrency:1, ti
     assert.ok(activar.length >= 1)
     assert.ok(suspender.length >= 1)
     for (const row of [...activar, ...suspender]) {
-      assert.strictEqual(row.empresaId, empresaId)
+      assert.ok([empresaId, empresaSuspendible.id].includes(row.empresaId))
       assert.strictEqual(row.sucursalId, null)
       assert.strictEqual(row.usuarioId, platformAdmin.id)
     }
   })
 
   // ── CASO CLAVE 1: contar de nuevo tras todo el flujo ──────────────
-  it('23. estado final: Empresa sigue sin sucursales ni más usuarios implícitos', async () => {
-    const sucursales = await prisma.sucursal.count({ where: { empresaId } })
-    assert.strictEqual(sucursales, 0)
-    const usuarios = await prisma.usuario.count({ where: { empresaId } })
-    assert.strictEqual(usuarios, 1, 'solo el SUPERADMIN fixture debe existir como usuario de la empresa')
+  it('23. estado final: PEDREGAL sigue inactiva, vacía y sin SUPERADMIN', async () => {
+    const row = await prisma.empresa.findUnique({ where: { id:empresaId } })
+    assert.strictEqual(row.activa, false)
+    assert.strictEqual(await prisma.sucursal.count({ where: { empresaId } }), 0)
+    assert.strictEqual(await prisma.usuario.count({ where: { empresaId } }), 0)
+    assert.strictEqual(await prisma.producto.count({ where: { empresaId } }), 0)
+    assert.strictEqual(await prisma.inventarioSucursal.count({ where: { Producto: { empresaId } } }), 0)
+    assert.strictEqual(await prisma.movimientoCaja.count({ where: { empresaId } }), 0)
+    assert.strictEqual(await prisma.turnoCaja.count({ where: { empresaId } }), 0)
+    assert.strictEqual(await prisma.venta.count({ where: { empresaId } }), 0)
   })
 
   // ── AISLAMIENTO DE RUTA PLATFORM ──────────────────────────────────
@@ -345,5 +391,10 @@ describe('P0-PLATFORM-COMPANY-PROVISIONING PostgreSQL HTTP', { concurrency:1, ti
     const t = signTenant(superActiva.id, 'SUPERADMIN')
     const res = await get('/platform/empresas', t)
     assert.strictEqual(res.status, 401, 'un token tenant nunca lista empresas de plataforma')
+  })
+
+  it('25. token Platform no accede a rutas tenant', async () => {
+    const res = await get('/usuarios', tokenPlatform)
+    assert.strictEqual(res.status, 401)
   })
 })

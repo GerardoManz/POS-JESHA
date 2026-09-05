@@ -1,5 +1,7 @@
 'use strict'
 
+const { assertSafeTestDb } = require('./helpers/test-db-safety')
+
 const assert = require('node:assert/strict')
 const { describe, it, before, after } = require('node:test')
 const { execFileSync } = require('node:child_process')
@@ -9,6 +11,8 @@ const http = require('node:http')
 const pg = require('pg')
 const bcrypt = require('bcryptjs')
 const jwt = require('jsonwebtoken')
+
+const { applyManualSql } = require('./helpers/apply-manual-sql')
 
 const BACKEND_DIR = path.resolve(__dirname, '..')
 const DB_PREFIX = 'jesha_p0_reads_test_'
@@ -42,24 +46,14 @@ function dbPush(databaseUrl) {
   execFileSync('npx', args, { cwd: BACKEND_DIR, env, stdio:'pipe', timeout:120000 })
 }
 
-// Las secuencias de folios son manuales (no viven en schema.prisma ni en
-// migraciones). La BD temporal necesita crearlas para que los endpoints
-// que llaman nextval() funcionen igual que en producción.
-async function createFolioSequences(databaseUrl) {
-  const seqNames = [
-    'folio_bitacora_seq',
-    'folio_compra_seq',
-    'folio_cotizacion_seq',
-    'folio_devolucion_seq',
-    'folio_pedido_seq',
-    'folio_venta_seq'
-  ]
+// Estructura no representable por schema.prisma (secuencias de folio, índice
+// parcial de FacturaCfdi, NOT NULL de Bitacora) → proviene de la fuente
+// versionada prisma/manual-sql/ (P0-DB-STRUCTURE-DRIFT-RECONCILIATION).
+async function applyManualSqlToDb(databaseUrl) {
   const client = new pg.Client({ connectionString: databaseUrl })
   await client.connect()
   try {
-    for (const name of seqNames) {
-      await client.query(`CREATE SEQUENCE IF NOT EXISTS "${name}" START WITH 1000`)
-    }
+    await applyManualSql((sql) => client.query(sql))
   } finally {
     await client.end()
   }
@@ -69,6 +63,7 @@ describe('P0-CROSS-TENANT-READS PostgreSQL HTTP', { concurrency:1, timeout:30000
   const pgConfig = resolvePgConfig()
   const dbName = validateDbName(`${DB_PREFIX}${Date.now()}_${process.pid}_${randomBytes(4).toString('hex')}`)
   const databaseUrl = connectionUrl(pgConfig, dbName)
+  assertSafeTestDb(databaseUrl)
   const adminPool = new pg.Pool({ connectionString: connectionUrl(pgConfig,'postgres'), max:1 })
   let created = false, prisma, app, server, baseUrl
 
@@ -110,9 +105,10 @@ describe('P0-CROSS-TENANT-READS PostgreSQL HTTP', { concurrency:1, timeout:30000
     await adminPool.query(`CREATE DATABASE "${dbName}"`)
     created = true
     dbPush(databaseUrl)
-    await createFolioSequences(databaseUrl)
+    await applyManualSqlToDb(databaseUrl)
 
     prisma = require('../src/lib/prisma')
+  if (prisma?.pool && !prisma.pool.__p0ErrorGuard) { prisma.pool.__p0ErrorGuard = true; prisma.pool.on('error', () => {}) }
     const hash = await bcrypt.hash('password', 10)
 
     empresaA = await prisma.empresa.create({ data: { slug:'rd-a', nombreComercial:'RD A', razonSocial:'RD A SA de CV', whatsapp:'0000000201', activa:true } })
@@ -236,10 +232,12 @@ describe('P0-CROSS-TENANT-READS PostgreSQL HTTP', { concurrency:1, timeout:30000
   after(async () => {
     if (server) { try { await new Promise((r) => server.close(r)) } catch(e){} }
     if (prisma) { try { await prisma.$disconnect() } catch(e){} }
+    if (prisma?.pool) { try { await prisma.pool.end() } catch(e){} }
     await new Promise((r) => setTimeout(r, 1500))
     delete require.cache[require.resolve('../src/app')]
     delete require.cache[require.resolve('../src/lib/prisma')]
     if (created) {
+      try { await adminPool.query('SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()', [dbName]) } catch(e){}
       const ok = await dropDatabase(dbName)
       if (!ok) console.error('⚠️ DROP DATABASE falló tras reintentos:', dbName)
     }

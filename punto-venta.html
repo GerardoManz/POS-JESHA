@@ -2,13 +2,13 @@
 <html lang="es">
 <head>
   <script>
-    if (!localStorage.getItem('jesha_token') || !localStorage.getItem('jesha_usuario')) {
+    if (!localStorage.getItem('jesha_token') && !localStorage.getItem('jesha_delegated_token')) {
       window.location.replace('login.html')
     }
   </script>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>JESHA POS - Punto de Venta</title>
+  <title>POS - Punto de Venta</title>
   <link rel="icon" type="image/x-icon" href="favicon.ico"/>
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png"/>
   <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png"/>
@@ -219,7 +219,7 @@
       </div>
       <div>
         <h3 class="modal-turno-titulo">Abrir Turno de Caja</h3>
-        <p class="modal-turno-sub">Ferretería JESHA &mdash; Matriz</p>
+        <p class="modal-turno-sub" id="turno-modal-empresa">—</p>
       </div>
     </div>
 
@@ -501,68 +501,43 @@
   </div>
 </div>
 
-<!-- ══ MODAL: VENTA EXITOSA ══ -->
-<div id="modal-venta-exitosa" style="display:none; position:fixed; inset:0; background:var(--overlay-bg); backdrop-filter:blur(4px); z-index:999; align-items:center; justify-content:center; padding:20px;">
-  <div class="modal-confirm-card" style="max-width:400px;">
-
-    <!-- Header -->
-    <div class="modal-confirm-header" style="padding:28px 24px 20px; flex-direction:column; align-items:center; text-align:center; gap:16px;">
-      <div id="exito-icono-wrap" style="width:64px; height:64px; border-radius:50%; background:rgba(96,208,128,0.12); border:2px solid rgba(96,208,128,0.35); display:grid; place-items:center;">
-        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#60d080" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="20 6 9 17 4 12"/>
-        </svg>
-      </div>
+<!-- ══ EXPERIENCIA: CIERRE DE VENTA + TICKET ══ -->
+<div id="modal-venta-exitosa" class="sale-completion-overlay" role="dialog" aria-modal="true" aria-labelledby="sale-completion-title" style="display:none;">
+  <section class="sale-completion-card">
+    <header class="sale-completion-header">
+      <div class="sale-success-mark" aria-hidden="true"><span></span></div>
       <div>
-        <h3 style="font-family:'Barlow Condensed',sans-serif; font-size:1.4rem; font-weight:700; letter-spacing:0.05em; text-transform:uppercase; color:#60d080; margin:0 0 4px;">¡Venta Exitosa!</h3>
-        <p id="exito-folio" style="font-size:0.8rem; color:var(--muted); margin:0;">Folio: —</p>
+        <p class="sale-eyebrow">Venta confirmada</p>
+        <h2 id="sale-completion-title">El ticket está tomando forma</h2>
+        <p id="exito-folio" class="sale-folio">Folio: —</p>
       </div>
-    </div>
-
-    <div class="modal-confirm-divider"></div>
-
-    <!-- Resumen -->
-    <div class="modal-confirm-body">
-
-      <!-- Bloque CAMBIO destacado (solo si hay cambio > 0) -->
-      <div id="exito-cambio-destacado" class="cambio-destacado-exito" style="display:none;">
-        <div class="cambio-destacado-exito-label">Cambio a entregar</div>
-        <div class="cambio-destacado-exito-monto" id="exito-cambio">$0.00</div>
-      </div>
-
-      <!-- Bloque Pago exacto (cuando cambio = 0 en EFECTIVO o MIXTO) -->
-      <div id="exito-pago-exacto" class="pago-exacto-aviso" style="display:none;margin-bottom:14px;">
-        <span class="pago-exacto-icon">✓</span>
-        <div>
-          <div class="pago-exacto-titulo">Pago exacto</div>
-          <div class="pago-exacto-sub">Sin cambio a entregar</div>
+    </header>
+    <div class="sale-printer-stage">
+      <div class="sale-printer-glow" aria-hidden="true"></div>
+      <div class="sale-printer" aria-hidden="true">
+        <div class="sale-printer-face">
+          <div class="sale-printer-top"><span>POS</span><i></i></div>
+          <div class="sale-printer-display"><span>●●● PREPARANDO</span></div>
+          <div class="sale-printer-slot"><span></span></div>
+          <div class="sale-printer-led"></div>
         </div>
+        <div class="sale-printer-side sale-printer-side--left"></div>
+        <div class="sale-printer-side sale-printer-side--right"></div>
+        <div class="sale-printer-bottom"></div>
       </div>
-
-      <div class="modal-confirm-resumen">
-        <div class="modal-confirm-row">
-          <span class="modal-confirm-label">Total cobrado</span>
-          <span class="modal-confirm-valor exito-total-secundario" id="exito-total">$0.00</span>
-        </div>
-        <div class="modal-confirm-row">
-          <span class="modal-confirm-label">Método de pago</span>
-          <span class="modal-confirm-valor" id="exito-metodo">—</span>
-        </div>
-      </div>
+      <div class="receipt-viewport"><article id="sale-receipt-paper" class="receipt-paper" aria-label="Vista previa del ticket">
+        <div class="receipt-brand"><strong id="receipt-empresa">Empresa</strong><span id="receipt-sucursal">Sucursal</span><small id="receipt-rfc"></small></div>
+        <div class="receipt-meta"><span id="receipt-fecha">—</span><b id="receipt-folio">—</b></div>
+        <div id="receipt-items" class="receipt-items"></div>
+        <div class="receipt-totals"><div><span>Subtotal</span><b id="receipt-subtotal">$0.00</b></div><div id="receipt-descuento-row"><span>Descuento</span><b id="receipt-descuento">-$0.00</b></div><div class="receipt-total"><span>TOTAL</span><b id="receipt-total">$0.00</b></div></div>
+        <div class="receipt-payment"><span id="receipt-metodo">—</span><span id="receipt-pago">Pago: $0.00</span><span id="receipt-cambio"></span></div>
+        <div id="receipt-cliente" class="receipt-line"></div><div id="receipt-cajero" class="receipt-line"></div>
+        <div id="receipt-qr" class="receipt-qr" hidden><span>Factura tu compra</span><img id="receipt-qr-image" alt="Código QR para facturar" /><a id="receipt-qr-link" target="_blank" rel="noopener">Abrir facturación</a></div>
+      </article></div>
     </div>
-
-    <!-- Acción -->
-    <div class="modal-confirm-actions">
-      <button type="button" id="btn-imprimir-ticket-exito" class="modal-confirm-btn-cancel" style="flex:1;">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-        Imprimir Ticket
-      </button>
-      <button type="button" id="btn-cerrar-exito" class="modal-confirm-btn-confirm" style="flex:1;">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-        Continuar
-      </button>
-    </div>
-
-  </div>
+    <div class="sale-status-row" aria-live="polite"><span id="sale-status-dot" class="sale-status-dot"></span><div><strong id="sale-status-title">Preparando ticket…</strong><small id="sale-status-detail">La venta ya quedó registrada.</small></div></div>
+    <footer class="sale-completion-actions"><button type="button" id="btn-reimprimir-ticket-exito" class="sale-action-secondary">Reimprimir</button><button type="button" id="btn-facturar-ticket-exito" class="sale-action-secondary" hidden>Facturar</button><button type="button" id="btn-cerrar-exito" class="sale-action-primary">Nueva venta</button></footer>
+  </section>
 </div>
 
 <!-- ══ MODAL: CANTIDAD GRANEL ══ -->
@@ -911,6 +886,7 @@
 <script src="sonidos.js"></script>
   <script src="session.js"></script>
 <script src="sidebar.js"></script>
+<script src="gsap.min.js"></script>
 <script src="punto-venta.js"></script>
 
 </body>

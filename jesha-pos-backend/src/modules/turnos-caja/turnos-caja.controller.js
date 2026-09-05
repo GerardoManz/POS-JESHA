@@ -3,7 +3,6 @@ const prisma = require('../../lib/prisma')
 const getEmpresaId = require('../../helpers/getEmpresaId')
 const construirWhereScopeTenant = require('../../helpers/construirWhereScopeTenant')
 const resolverSucursalId = require('../sucursal/sucursal.helper')
-const { EMPRESA } = require('../../../config/empresa')
 const { buildCorteSnapshot, formatFechaTicket } = require('../impresion/impresion.snapshot')
 const { encolarImpresion } = require('../impresion/impresion.service')
 const { generarAlertasAutomaticas } = require('../reportes/reporte-stock.controller')
@@ -288,11 +287,15 @@ const cerrarTurno = async (req, res) => {
 
       const empresaRow = await tx.empresa.findUnique({
         where: { id: empresaId },
-        select: { rfc: true }
+        select: { rfc: true, nombreComercial: true, whatsapp: true }
       })
 
       const snapshot = buildCorteSnapshot({
-        empresa: { ...EMPRESA, telefono: EMPRESA.tel1, rfc: empresaRow?.rfc },
+        empresa: {
+          nombre: empresaRow?.nombreComercial || 'Empresa',
+          rfc: empresaRow?.rfc || null,
+          telefono: empresaRow?.whatsapp || null
+        },
         turnoId: turno.id,
         fecha: formatFechaTicket(new Date()),
         cajero: turnoCerrado.Usuario?.nombre || null,

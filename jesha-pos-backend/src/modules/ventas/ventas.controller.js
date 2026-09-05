@@ -5,10 +5,11 @@
 
 const prisma = require('../../lib/prisma')
 const getEmpresaId = require('../../helpers/getEmpresaId')
+const resolverSucursalId = require('../sucursal/sucursal.helper')
 const os = require('os')
 const { buildVentaSnapshot, formatFechaTicket } = require('../impresion/impresion.snapshot')
 const { encolarImpresion } = require('../impresion/impresion.service')
-const { EMPRESA, LOGO_URL } = require('../../../config/empresa')
+const QRCode = require('qrcode')
 const { verificarStockPostOperacion } = require('../../helpers/verificarStock')
 const { normalizarUnidadVenta, normalizarUnidadCompra, esFraccionable } = require('../../helpers/unidades.helper')
 
@@ -24,29 +25,20 @@ function getLanIp() {
   return '192.168.0.190'
 }
 
+// P0-BRANCH-ISOLATION (H5): el scope de ventas se construye desde el contexto de la
+// request (req.context), nunca de req.usuario ni de body/query.
+//  - empresaId: siempre desde el contexto (autoritativo).
+//  - sucursalId: solo cuando el modo de rama NO es NONE (FIXED o SELECTED).
+// Exportado para reutilizarse en ticket.controller.js (mismo scope de lectura).
 function construirWhereScopeVentas(req) {
-  const { rol, empresaId, sucursalId } = req.usuario || {}
-  const where = {}
-
-  if (!empresaId && rol !== 'SUPERADMIN') {
-    const err = new Error('empresaId requerido para este rol')
-    err.status = 401
-    throw err
+  const where = { empresaId: getEmpresaId(req) }
+  const sucursalId = resolverSucursalId(req)
+  if (sucursalId !== null && sucursalId !== undefined) {
+    where.sucursalId = parseInt(sucursalId, 10)
   }
-
-  if (empresaId) where.empresaId = parseInt(empresaId)
-
-  if (rol !== 'SUPERADMIN') {
-    if (!sucursalId) {
-      const err = new Error('Usuario sin sucursal asignada')
-      err.status = 400
-      throw err
-    }
-    where.sucursalId = parseInt(sucursalId)
-  }
-
   return where
 }
+exports.construirWhereScopeVentas = construirWhereScopeVentas
 
 // Convierte un instante UTC a la fecha de calendario local de Zacatecas (UTC-6, sin DST)
 // y la devuelve como Date a medianoche UTC, lista para columna @db.Date.
@@ -76,37 +68,56 @@ function resolverUnidad(detalle) {
  */
 exports.crearVenta = async (req, res) => {
   try {
-    const sucursalId = parseInt(req.body.sucursalId)
+    // P0-BRANCH-ISOLATION: la sucursal operativa SIEMPRE proviene del contexto
+    // (req.context.branch.sucursalId), nunca del body ni del query.
+    const sucursalId = resolverSucursalId(req)
+    const bodySucursalId = (req.body.sucursalId !== undefined && req.body.sucursalId !== null && req.body.sucursalId !== '')
+      ? parseInt(req.body.sucursalId) : null
+    if (bodySucursalId !== null && bodySucursalId !== sucursalId) {
+      return res.status(403).json({ error: 'La sucursal del body no coincide con el contexto', codigo: 'SUCURSAL_CONTEXT_MISMATCH' })
+    }
+    if (!sucursalId || isNaN(sucursalId)) {
+      return res.status(400).json({ error: 'Se requiere contexto de sucursal para registrar una venta', codigo: 'BRANCH_CONTEXT_REQUIRED' })
+    }
     const usuarioId  = req.usuario.id   // A4: autoridad de venta = usuario autenticado (JWT), no el body
     const turnoId    = parseInt(req.body.turnoId)
     const { metodoPago, subtotal, iva, descuento, total, detalles, notas, montoPagado: montoPagadoRaw, cotizacionId } = req.body
     const clienteId  = req.body.clienteId ? parseInt(req.body.clienteId) : null
     const empresaId = getEmpresaId(req)
 
-    if (!sucursalId || isNaN(sucursalId) || !usuarioId || isNaN(usuarioId) || !turnoId || isNaN(turnoId) || !metodoPago) {
-      return res.status(400).json({ error: 'Faltan campos requeridos', campos: ['sucursalId', 'usuarioId', 'turnoId', 'metodoPago'] })
+    if (!usuarioId || isNaN(usuarioId) || !turnoId || isNaN(turnoId) || !metodoPago) {
+      return res.status(400).json({ error: 'Faltan campos requeridos', campos: ['usuarioId', 'turnoId', 'metodoPago'] })
     }
     if (!detalles || detalles.length === 0) {
       return res.status(400).json({ error: 'La venta debe tener al menos 1 producto' })
     }
 
-    const turno = await prisma.turnoCaja.findUnique({ where: { id: turnoId } })
-    if (!turno || !turno.abierto) {
+    // P0-BRANCH-ISOLATION: el turno debe pertenecer a la empresa y a la sucursal operativa.
+    const turno = await prisma.turnoCaja.findFirst({
+      where: { id: turnoId, empresaId, sucursalId, abierto: true }
+    })
+    if (!turno) {
       return res.status(403).json({ error: 'Turno cerrado o no existe', codigo: 'SIN_TURNO_ABIERTO' })
     }
 
-    const usuario = await prisma.usuario.findUnique({ where: { id: usuarioId } })
-    if (!usuario || !usuario.activo) {
+    const esDelegada = req.delegation?.active === true
+    const usuario = await prisma.usuario.findFirst({
+      where: esDelegada
+        ? { id: usuarioId, empresaId: null, rol: req.delegation.actorRealRol, activo: true }
+        : { id: usuarioId, empresaId, activo: true }
+    })
+    if (!usuario) {
       return res.status(403).json({ error: 'Usuario inválido o inactivo' })
     }
+    const rolVenta = esDelegada ? req.usuario.rol : usuario.rol
     const rolesConVenta = ['EMPLEADO', 'ADMIN_SUCURSAL', 'SUPERADMIN']
-    if (!rolesConVenta.includes(usuario.rol)) {
+    if (!rolesConVenta.includes(rolVenta)) {
       return res.status(403).json({ error: 'Usuario sin permiso para vender', codigo: 'SIN_PERMISO_VENTA' })
     }
 
     // ── Validar descuento por rol ──────────────────────────────────
     const descuentoAmt = parseFloat(parseFloat(descuento || 0).toFixed(2))
-    if (descuentoAmt > 0 && usuario.rol === 'EMPLEADO') {
+    if (descuentoAmt > 0 && rolVenta === 'EMPLEADO') {
       return res.status(403).json({ error: 'Sin permiso para aplicar descuentos', codigo: 'SIN_PERMISO_DESCUENTO' })
     }
 
@@ -126,18 +137,14 @@ exports.crearVenta = async (req, res) => {
       if (isNaN(cotId)) {
         return res.status(400).json({ error: 'cotizacionId inválido' })
       }
-      const cot = await prisma.cotizacion.findUnique({
-        where: { id: cotId },
-        select: { id: true, empresaId: true, estado: true }
+      // P0-BRANCH-ISOLATION: la cotización debe pertenecer a la empresa y a la
+      // sucursal operativa y estar PENDIENTE; si no, 404 (sin distinguir causa).
+      const cot = await prisma.cotizacion.findFirst({
+        where: { id: cotId, empresaId, sucursalId, estado: 'PENDIENTE' },
+        select: { id: true }
       })
       if (!cot) {
         return res.status(404).json({ error: 'Cotización no encontrada' })
-      }
-      if (cot.empresaId !== empresaId) {
-        return res.status(403).json({ error: 'Cotización no pertenece a esta empresa' })
-      }
-      if (cot.estado !== 'PENDIENTE') {
-        return res.status(400).json({ error: `Cotización en estado "${cot.estado}", no puede convertirse a venta` })
       }
       cotizacionValida = cot
     }
@@ -161,10 +168,16 @@ exports.crearVenta = async (req, res) => {
 
     // ── Cargar productos para validación y snapshots ──────────────
     const productoIdsUnicos = [...new Set(detalles.map(d => parseInt(d.productoId)))]
+    const productoIdsValidos = productoIdsUnicos.filter(id => Number.isInteger(id))
     const productosVenta = await prisma.producto.findMany({
-      where: { id: { in: productoIdsUnicos }, empresaId },
+      where: { id: { in: productoIdsValidos }, empresaId },
       select: { id: true, unidadVenta: true, esGranel: true, factorConversion: true, tipo: true, unidadCompra: true }
     })
+    // P0-BRANCH-ISOLATION: si algún producto solicitado no pertenece a la empresa, rechazar
+    // (cross-tenant) en lugar de seguir con snapshots null.
+    if (productosVenta.length !== productoIdsValidos.length) {
+      return res.status(404).json({ error: 'Uno o más productos no disponibles', codigo: 'PRODUCTO_NO_DISPONIBLE' })
+    }
     const productoMap = new Map(productosVenta.map(p => [p.id, p]))
 
     // Determinar si la venta proviene de cotización (origen legacy sin metadata de captura)
@@ -354,13 +367,22 @@ exports.crearVenta = async (req, res) => {
       })
     }
     const esCredito = metodoPago === 'CREDITO_CLIENTE'
-    let clienteCredito = null
+    // P0-BRANCH-ISOLATION: si se referencia cliente, debe pertenecer a la empresa
+    // (anti-IDOR cross-tenant). Aplica a ventas de contado y a crédito.
+    let clienteValidado = null
+    if (clienteId) {
+      clienteValidado = await prisma.cliente.findFirst({
+        where: { id: clienteId, empresaId },
+        select: { id: true, nombre: true, tipo: true, limiteCredito: true, saldoPendiente: true }
+      })
+      if (!clienteValidado) {
+        return res.status(404).json({ error: 'Cliente no encontrado' })
+      }
+    }
     if (esCredito) {
       if (!clienteId) return res.status(400).json({ error: 'Se requiere cliente para venta a crédito' })
-      clienteCredito = await prisma.cliente.findUnique({ where: { id: clienteId } })
-      if (!clienteCredito) return res.status(404).json({ error: 'Cliente no encontrado' })
-      if (clienteCredito.tipo !== 'REGISTRADO') return res.status(400).json({ error: 'Solo clientes REGISTRADO pueden comprar a crédito' })
-      const disponible = parseFloat(clienteCredito.limiteCredito) - parseFloat(clienteCredito.saldoPendiente)
+      if (clienteValidado.tipo !== 'REGISTRADO') return res.status(400).json({ error: 'Solo clientes REGISTRADO pueden comprar a crédito' })
+      const disponible = parseFloat(clienteValidado.limiteCredito) - parseFloat(clienteValidado.saldoPendiente)
       if (disponible < totalEsperado) return res.status(400).json({ error: 'Crédito insuficiente', disponible, totalRequerido: totalEsperado })
     }
 
@@ -637,7 +659,12 @@ exports.crearVenta = async (req, res) => {
       // ═══ Impresión: encolar ticket de venta (atómico con la venta) ═══
       const empresaRow = await tx.empresa.findUnique({
         where: { id: empresaId },
-        select: { rfc: true }
+        select: { id: true, rfc: true, nombreComercial: true, whatsapp: true }
+      })
+
+      const sucursalRow = await tx.sucursal.findUnique({
+        where: { id: sucursalId },
+        select: { id: true, nombre: true, codigoPostal: true }
       })
 
       const clienteNombre = clienteId
@@ -667,7 +694,15 @@ exports.crearVenta = async (req, res) => {
       const urlFacturacion = `${baseUrl}${facturarPath}?token=${ventaCreada.tokenQr}`
 
       const snapshot = buildVentaSnapshot({
-        empresa: { ...EMPRESA, telefono: EMPRESA.tel1, rfc: empresaRow?.rfc },
+        empresa: {
+          id: empresaRow?.id,
+          nombre: empresaRow?.nombreComercial || 'Empresa',
+          nombreComercial: empresaRow?.nombreComercial || 'Empresa',
+          rfc: empresaRow?.rfc || null,
+          telefono: empresaRow?.whatsapp || null
+        },
+        sucursal: sucursalRow,
+        ventaId: ventaCreada.id,
         folio,
         fecha: formatFechaTicket(),
         subtotal,
@@ -687,11 +722,10 @@ exports.crearVenta = async (req, res) => {
         cajero:  req.usuario?.nombre || req.usuario?.username || null,
         cliente: clienteNombre,
         qrUrl:   urlFacturacion,
-        logoUrl: LOGO_URL,
         abrirCajon
       })
 
-      await encolarImpresion(tx, {
+      const printJob = await encolarImpresion(tx, {
         empresaId,
         tipo:      'VENTA',
         modo:      'ORIGINAL',
@@ -701,13 +735,25 @@ exports.crearVenta = async (req, res) => {
       })
       // ═══ fin impresión ═══
 
-      return ventaCreada
+      return { venta: ventaCreada, receipt: snapshot, printJobId: printJob.id }
     })
 
-    console.log(`✅ Venta creada: ${venta.folio} - Total: $${venta.total}`)
+    const ventaCreada = venta.venta
+    const receipt = venta.receipt
+    const printJobId = venta.printJobId
+
+    if (receipt?.qrUrl) {
+      try {
+        receipt.qrDataUrl = await QRCode.toDataURL(receipt.qrUrl, { width: 180, margin: 1 })
+      } catch (error) {
+        console.warn('⚠️ No se pudo generar QR visual:', error.message)
+      }
+    }
+
+    console.log(`✅ Venta creada: ${ventaCreada.folio} - Total: $${ventaCreada.total}`)
 
     // Verificar stock post-operación (no bloqueante)
-    const productoIds = venta.DetalleVenta?.map(d => d.productoId) || []
+    const productoIds = ventaCreada.DetalleVenta?.map(d => d.productoId) || []
     let stockAlerts = []
     if (productoIds.length > 0) {
       try {
@@ -717,7 +763,14 @@ exports.crearVenta = async (req, res) => {
       }
     }
 
-    res.status(201).json({ success: true, message: 'Venta registrada correctamente', data: venta, stockAlerts })
+    res.status(201).json({
+      success: true,
+      message: 'Venta registrada correctamente',
+      data: ventaCreada,
+      receipt: { ...receipt, printJobId, printMode: 'ORIGINAL' },
+      printJobId,
+      stockAlerts
+    })
 
   } catch (error) {
     console.error('❌ Error en crearVenta:', error)
@@ -1242,8 +1295,8 @@ exports.desbloquearFactura = async (req, res) => {
       return res.status(403).json({ error: 'Sin permiso para desbloquear facturación' })
     }
 
-    const venta = await prisma.venta.findUnique({
-      where: { id: ventaId, empresaId },
+    const venta = await prisma.venta.findFirst({
+      where: { id: ventaId, ...construirWhereScopeVentas(req) },
       include: { Cliente: true }
     })
     if (!venta) return res.status(404).json({ error: 'Venta no encontrada' })
@@ -1345,8 +1398,9 @@ exports.actualizarMetodoPago = async (req, res) => {
     }
 
     // ── Obtener venta ──
-    const venta = await prisma.venta.findUnique({
-      where:   { id: ventaId },
+    // P0-BRANCH-ISOLATION: scope de tenant y sucursal (anti cross-tenant/cross-branch)
+    const venta = await prisma.venta.findFirst({
+      where:   { id: ventaId, ...construirWhereScopeVentas(req) },
       include: { Cliente: true }
     })
 
@@ -1381,7 +1435,6 @@ exports.actualizarMetodoPago = async (req, res) => {
 exports.obtenerReporteVentas = async (req, res) => {
   try {
     const { desde, hasta } = req.query
-    const resolverSucursalId = require('../sucursal/sucursal.helper')
 
     if (!desde || !hasta) {
       return res.status(400).json({ error: 'Se requiere desde y hasta' })
@@ -1392,9 +1445,12 @@ exports.obtenerReporteVentas = async (req, res) => {
     hastaDate.setHours(23, 59, 59, 999)
 
     const sucursalId = resolverSucursalId(req)
+    const empresaId = getEmpresaId(req)
 
     // Query 1: Ventas con detalles + producto + categoría + usuario
+    // P0-BRANCH-ISOLATION (H2): el where SIEMPRE arranca con empresaId (tenant obligatorio).
     const ventasWhere = {
+      empresaId,
       creadaEn: { gte: desdeDate, lte: hastaDate },
       estado: { not: 'CANCELADA' }
     }
@@ -1431,8 +1487,10 @@ exports.obtenerReporteVentas = async (req, res) => {
     })
 
     // Query 2: Top productos pre-calculado (CORREGIDO: creadaEn no createdEn)
+    // P0-BRANCH-ISOLATION (H2): el where de Venta SIEMPRE incluye empresaId.
     const topWhere = {
       Venta: {
+        empresaId,
         creadaEn: { gte: desdeDate, lte: hastaDate },
         estado: { not: 'CANCELADA' }
       }
@@ -1454,8 +1512,9 @@ exports.obtenerReporteVentas = async (req, res) => {
 
     // Obtener datos completos de productos del top
     const productoIds = topProductos.map(t => t.productoId)
+    // P0-BRANCH-ISOLATION: productos scoped por empresa
     const productos = await prisma.producto.findMany({
-      where: { id: { in: productoIds } },
+      where: { id: { in: productoIds }, empresaId },
       select: {
         id: true,
         nombre: true,

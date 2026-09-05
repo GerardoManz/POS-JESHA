@@ -182,7 +182,6 @@
 /* ── LOADING ── */
 .loading-rep { text-align:center; padding:30px; color:var(--muted); font-size:0.875rem; }
 .spinner { width:24px; height:24px; border:3px solid var(--panel-border); border-top-color:var(--accent); border-radius:50%; animation:spin 0.8s linear infinite; margin:0 auto; }
-@keyframes spin { to { transform:rotate(360deg); } }
 
 /* ── MISC ── */
 .btn-primary { display:inline-flex; align-items:center; gap:7px; padding:9px 18px; background:var(--accent); border:none; border-radius:8px; color:#fff; font-family:'Barlow',sans-serif; font-size:0.875rem; font-weight:600; cursor:pointer; transition:background 0.15s; }

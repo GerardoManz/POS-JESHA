@@ -1,13 +1,12 @@
 // ════════════════════════════════════════════════════════════════════
 //  COMPRAS.JS
 // ════════════════════════════════════════════════════════════════════
-const TOKEN   = localStorage.getItem('jesha_token')
-const USUARIO = JSON.parse(localStorage.getItem('jesha_usuario') || '{}')
+const USUARIO = window.jeshaSession?.getUsuario() || {}
 const API_URL = window.__JESHA_API_URL__ || 'http://localhost:3000'
 const LIMIT   = 25
 const IVA_FACTOR = window.__JESHA_IVA_FACTOR__ || 1.16
 
-if (!TOKEN) {
+if (!window.jeshaSession?.isValid()) {
   localStorage.setItem('redirect_after_login', 'compras.html')
   window.location.href = 'login.html'
   throw new Error('Sin autenticación')
@@ -1360,10 +1359,15 @@ window.recRecalcularResumen = function() {
 // Comprobante de recepción imprimible / descargable (PDF vía window.print).
 // Reusa el patrón y estilo de cotizaciones.js. Usa cantidad PEDIDA, así el total
 // de la factura coincide con el nuevo total/deuda de la orden.
-window.generarComprobanteRecepcion = function() {
+window.generarComprobanteRecepcion = async function() {
   if (!ocActual) return
   const oc  = ocActual
-  const LOGO_URL = window.__JESHA_LOGO_URL__ || ''
+  const emp = await window.jeshaSession?.fetchEmpresaBranding() || {}
+  const empName = emp.nombre || 'Empresa'
+  const empDireccion = emp.direccion || ''
+  const empTelefono = emp.telefono || emp.whatsapp || ''
+  const empEmail = emp.email || ''
+  const LOGO_URL = emp.logoUrl || window.__JESHA_LOGO_URL__ || ''
 
   const { lineas: facLineas } = _facturaLineas()
   if (!facLineas.length) { jeshaToast('La orden no tiene productos', 'warning'); return }
@@ -1430,9 +1434,9 @@ window.generarComprobanteRecepcion = function() {
 </style></head><body>
   <div class="header">
     <div class="empresa">
-      ${LOGO_URL ? `<img src="${LOGO_URL}" alt="JESHA" style="height:60px;width:auto;display:block;margin-bottom:4px;" />` : `<div style="font-size:18px;font-weight:700;color:#1f3a66">FERRETERÍA E ILUMINACIÓN JESHA</div>`}
-      <p>Av. Vialidad San Simón 3, La Toma de Zacatecas, C.P. 98660</p>
-      <p>Guadalupe, Zacatecas · Tel: 492 101 6879 · jeshadelgado544@gmail.com</p>
+      ${LOGO_URL ? `<img src="${LOGO_URL}" alt="${empName}" style="height:60px;width:auto;display:block;margin-bottom:4px;" />` : `<div style="font-size:18px;font-weight:700;color:#1f3a66">${empName.toUpperCase()}</div>`}
+      ${empDireccion ? `<p>${empDireccion}</p>` : ''}
+      ${(empTelefono || empEmail) ? `<p>${[empTelefono ? `Tel: ${empTelefono}` : '', empEmail].filter(Boolean).join(' · ')}</p>` : ''}
     </div>
     <div class="folio-box">
       <div class="folio">${oc.folio}</div>
@@ -1464,7 +1468,7 @@ window.generarComprobanteRecepcion = function() {
   <div class="resumen-box">${resumenHtml}</div>
 
   <div class="footer">
-    <p>Documento interno de recepción — comparar contra la factura del proveedor · Ferretería e Iluminación JESHA</p>
+    <p>Documento interno de recepción — comparar contra la factura del proveedor · ${empName}</p>
   </div>
 </body></html>`
 

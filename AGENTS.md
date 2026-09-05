@@ -405,10 +405,10 @@ PLATFORM_ADMIN          → Todas las empresas, todas las sucursales
 
 | Gap | Archivo | Impacto |
 |-----|---------|---------|
-| `requireSucursalAccess` no reconoce `PLATFORM_ADMIN` | `auth.middleware.js:57` | PLATFORM_ADMIN restringido a una sucursal |
-| `resolverSucursalId()` no reconoce `PLATFORM_ADMIN` | `sucursal.helper.js:16` | PLATFORM_ADMIN no puede ver todas las sucursales |
 | Login no recibe `empresaSlug` — colisión de usernames | `auth.controller.js:13` | Dos empresas con mismo username = ambigüedad |
 | Login response no incluye `empresaId` | `auth.controller.js:45` | Frontend depende de `/auth/me` para saber la empresa |
+
+> **Nota (2026-08-20)**: El acceso multi-sucursal de `PLATFORM_ADMIN`/`SUPERADMIN` ya NO depende del rol dentro de `requireSucursalAccess` ni de `resolverSucursalId`. Ambos delegan en `request-context.middleware.js` + `src/security/request-context` (rol-agnóstico), que valida la sucursal operativa y su pertenencia al tenant. Las entradas previas de "deuda" por `PLATFORM_ADMIN` fueron eliminadas: no son deuda tenant.
 
 ---
 
@@ -581,7 +581,7 @@ Each page includes `config.js` + `sidebar.js` + page-specific JS:
 ### Sucursal (Branches)
 - **GET /sucursales**: Implementado — devuelve sucursales activas de la empresa del usuario (scoped por `empresaId`). Protegido con `requireAuth`.
 - **Helper**: `sucursal.helper.js` → `resolverSucursalId(req)` — centralized branch resolution
-- **CRUD completo**: Pendiente (POST/PUT/DELETE + frontend page)
+- **CRUD implementado** vía `/sucursales/gestion` (solo `SUPERADMIN`, con `requestContext` + `tenantGlobal`): `GET /gestion`, `GET /gestion/:id`, `POST /gestion` (crear), `PATCH /gestion/:id` (editar), `POST /gestion/:id/activar`, `POST /gestion/:id/desactivar`. Rutas operativas (cualquier rol autenticado): `GET /` y `GET /disponibles`.
 - Model exists in schema, belongs to an `Empresa`
 
 ## Environment Variables (Backend)
@@ -1127,7 +1127,7 @@ const resolverSucursalId = require('../sucursal/sucursal.helper')
 // Others: uses token's sucursalId
 ```
 
-**Known gap**: does not recognize `PLATFORM_ADMIN` role. See "Deuda Técnica" section.
+`resolverSucursalId(req)` delega en `assertTenantRequestContext(req.context)` (`src/security/request-context`), que ya validó la sucursal operativa y su pertenencia al tenant. Es rol-agnóstico (sirve para `PLATFORM_ADMIN` y `SUPERADMIN`). No es deuda tenant.
 
 ## Updated Auth Middleware (2026-05-20)
 
@@ -1405,15 +1405,8 @@ WHERE d.datname = 'jesha_db';
 - **Problema**: `POST /auth/login` no incluye `empresaId` en el objeto `usuario` de la respuesta. El frontend necesita decodificar el JWT o llamar `/auth/me` para saber la empresa.
 - **Fix**: Agregar `empresaId: usuario.empresaId` al objeto `usuario` en la respuesta.
 
-### Middleware — PLATFORM_ADMIN no reconocido
-- **Archivo**: `auth.middleware.js:57` (`requireSucursalAccess`)
-- **Problema**: Solo chequea `req.usuario.rol === 'SUPERADMIN'` para bypass. PLATFORM_ADMIN no tiene bypass.
-- **Fix**: Agregar `|| req.usuario.rol === 'PLATFORM_ADMIN'`.
-
-### sucursal.helper.js — PLATFORM_ADMIN no reconocido
-- **Archivo**: `sucursal.helper.js:16` (`resolverSucursalId`)
-- **Problema**: Solo chequea `rol === 'SUPERADMIN'` para acceso multi-sucursal. PLATFORM_ADMIN cae al path de usuario normal.
-- **Fix**: Agregar `rol === 'PLATFORM_ADMIN'` al bypass.
+### Middleware — PLATFORM_ADMIN (resuelto, no es deuda tenant)
+- **Estado (2026-08-20)**: `requireSucursalAccess` y `resolverSucursalId()` ya no dependen del rol. Ambos usan el `request-context` (`req.context.branch.sucursalId`), rol-agnóstico, que valida la sucursal operativa y su pertenencia al tenant. PLATFORM_ADMIN y SUPERADMIN obtienen acceso multi-sucursal vía ese contexto. Ver nota en "Gaps conocidos en middleware".
 
 ### requireSucursalAccess — Sin validación cross-empresa
 - **Archivo**: `auth.middleware.js:57`

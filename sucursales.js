@@ -22,11 +22,13 @@ const pag = { pagina: 1, porPagina: 100 }
 const estado = { filtro: 'todas', buscar: '', lista: [], total: 0, pagina: 1, porPagina: 100, editando: null }
 let nuevaCreadaId = null
 
-function toast(msg, tipo) {
-  if (typeof window !== 'undefined' && window.toast) window.toast(msg, tipo)
+function notificar(msg, tipo) {
+  if (typeof window !== 'undefined' && typeof window.jeshaToast === 'function') {
+    window.jeshaToast(msg, tipo)
+  }
 }
 function tokenActual() {
-  return (typeof localStorage !== 'undefined' && localStorage.getItem('jesha_token')) || ''
+  return (typeof window !== 'undefined' && window.jeshaSession?.getEffectiveToken()) || ''
 }
 function sucursalSeleccionada() {
   try {
@@ -114,28 +116,43 @@ function renderTabla() {
 function renderOnboarding() {
   const panel = document.getElementById('onboarding-panel')
   if (!panel) return
-  const activas = (estado.lista || []).filter(s => s.activa)
+
+  const lista = estado.lista || []
+  const activas = lista.filter(s => s.activa)
   const sinActivas = activas.length === 0
   const acciones = document.getElementById('onboarding-acciones')
   const once = document.getElementById('onboarding-once')
   const titulo = document.getElementById('onboarding-titulo')
   const desc = document.getElementById('onboarding-desc')
-  if (sinActivas) {
-    panel.hidden = false
-    if (titulo) titulo.textContent = 'Aún no tienes sucursales activas'
-    if (desc) desc.textContent = 'Crea y activa tu primera sucursal para comenzar a operar.'
-    if (acciones) acciones.hidden = false
-    if (once) once.hidden = true
-    const btn = document.getElementById('btn-onboarding-crear')
-    if (btn) btn.textContent = nuevaCreadaId ? 'Crear otra sucursal' : 'Crear mi primera sucursal'
-  } else {
+  const btnCrear = document.getElementById('btn-onboarding-crear')
+  const btnActivar = document.getElementById('btn-onboarding-activar')
+
+  const nuevaPendiente = nuevaCreadaId !== null && lista.some(
+    s => Number(s.id) === Number(nuevaCreadaId) && !s.activa
+  )
+
+  if (!sinActivas) {
     panel.hidden = true
+    if (acciones) acciones.hidden = true
+    if (once) once.hidden = true
+    return
   }
-  if (once) {
-    once.hidden = !(nuevaCreadaId !== null)
-    const btnActivar = document.getElementById('btn-onboarding-activar')
-    if (btnActivar) {
-      btnActivar.onclick = () => { if (nuevaCreadaId !== null) activarYUsar(nuevaCreadaId) }
+
+  panel.hidden = false
+  if (titulo) titulo.textContent = 'Aún no tienes sucursales activas'
+  if (desc) desc.textContent = 'Crea y activa tu primera sucursal para comenzar a operar.'
+
+  // Los dos CTA son estados alternativos: nunca deben mostrarse al mismo tiempo.
+  if (acciones) acciones.hidden = nuevaPendiente
+  if (once) once.hidden = !nuevaPendiente
+
+  if (btnCrear) {
+    btnCrear.textContent = nuevaCreadaId ? 'Crear otra sucursal' : 'Crear mi primera sucursal'
+  }
+
+  if (btnActivar) {
+    btnActivar.onclick = () => {
+      if (nuevaPendiente) activarYUsar(nuevaCreadaId)
     }
   }
 }
@@ -227,17 +244,19 @@ async function guardarSucursal() {
   try {
     if (estado.editando) {
       await api(`/sucursales/gestion/${estado.editando.id}`, { method: 'PATCH', body: JSON.stringify(body) })
-      toast('Sucursal actualizada', 'ok')
+      notificar('Sucursal actualizada', 'success')
     } else {
       const data = await api('/sucursales/gestion', { method: 'POST', body: JSON.stringify(body) })
       nuevaCreadaId = data.sucursal ? data.sucursal.id : null
-      toast('Sucursal creada', 'ok')
+      notificar('Sucursal creada', 'success')
     }
     cerrarModal()
     await cargarSucursales()
   } catch (err) {
     const campos = (err.data && err.data.errores) ? err.data.errores.map(e => 'suc-' + (e.campo === 'codigoPostal' ? 'codigoPostal' : e.campo)) : []
-    mostrarErrorModal(err.message, campos)
+    const msg = campos.length ? (err.data.message || err.message) : mensajeError(err)
+    mostrarErrorModal(msg, campos)
+    if (!campos.length) console.error('[sucursales] error al guardar:', err)
   } finally {
     if (btn) btn.disabled = false
   }
@@ -245,14 +264,15 @@ async function guardarSucursal() {
 
 async function activarSucursal(id) {
   const data = await api(`/sucursales/gestion/${id}/activar`, { method: 'POST' })
-  toast('Sucursal activada', 'ok')
+  if (nuevaCreadaId !== null && Number(id) === Number(nuevaCreadaId)) nuevaCreadaId = null
+  notificar('Sucursal activada', 'success')
   await cargarSucursales()
   return data
 }
 
 async function desactivarSucursal(id) {
   const data = await api(`/sucursales/gestion/${id}/desactivar`, { method: 'POST' })
-  toast('Sucursal desactivada', 'ok')
+  notificar('Sucursal desactivada', 'success')
   await cargarSucursales()
   return data
 }
@@ -274,10 +294,70 @@ function manejarClickAccion(btn) {
     const s = estado.lista.find(s => s.id === Number(id))
     abrirModal(s || { id: Number(id) })
   } else if (accion === 'activar') {
-    activarSucursal(id).catch(err => toast(err.message, 'error'))
+    activarSucursal(id).catch(err => notificar(mensajeError(err), 'error'))
   } else if (accion === 'desactivar') {
-    const confirmacion = (typeof window !== 'undefined' && window.confirm) ? window.confirm('¿Desactivar esta sucursal? Si tiene turnos de caja abiertos se bloqueará.') : true
-    if (confirmacion) desactivarSucursal(id).catch(err => toast(err.message, 'error'))
+    const s = estado.lista.find(s => s.id === Number(id))
+    abrirModalDesactivar(s || { id: Number(id) })
+  }
+}
+
+function mensajeError(err) {
+  if (!err) return 'No se pudo completar la operación. Intenta nuevamente.'
+  const data = err.data || {}
+  const codigo = data.error
+  const status = err.status
+  if (codigo === 'SUCURSAL_CON_TURNO_ABIERTO') {
+    return 'Esta sucursal tiene un turno de caja abierto. Ciérralo antes de desactivarla.'
+  }
+  if (status === 409) return data.message || 'Ya existe una sucursal con esos datos.'
+  if (status === 404) return 'La sucursal ya no está disponible.'
+  if (status === 403) return 'No tienes permisos para administrar esta sucursal.'
+  if (status === 401) return 'Tu sesión expiró. Vuelve a iniciar sesión.'
+  if (status === 400 && data.message) return data.message
+  if (status >= 500) return 'No se pudo completar la operación. Intenta nuevamente.'
+  return (err.message && err.message !== 'Error del servidor') ? err.message : 'No se pudo completar la operación. Intenta nuevamente.'
+}
+
+// ════════════════════════════════════════════════════════════════════════
+//  MODAL DESACTIVAR
+// ════════════════════════════════════════════════════════════════════════
+let desactivarPendiente = null
+
+function abrirModalDesactivar(sucursal) {
+  desactivarPendiente = sucursal
+  const overlay = document.getElementById('modal-desactivar')
+  const texto = document.getElementById('modal-desactivar-texto')
+  const error = document.getElementById('modal-desactivar-error')
+  if (texto) texto.textContent = sucursal.nombre ? `¿Deseas desactivar "${sucursal.nombre}"?` : '¿Deseas desactivar esta sucursal?'
+  if (error) { error.hidden = true; error.textContent = '' }
+  if (overlay) overlay.classList.add('open')
+}
+
+function cerrarModalDesactivar() {
+  const overlay = document.getElementById('modal-desactivar')
+  if (overlay) overlay.classList.remove('open')
+  desactivarPendiente = null
+  const error = document.getElementById('modal-desactivar-error')
+  if (error) { error.hidden = true; error.textContent = '' }
+}
+
+async function confirmarDesactivar() {
+  if (!desactivarPendiente) return
+  const btn = document.getElementById('btn-confirmar-desactivar')
+  const error = document.getElementById('modal-desactivar-error')
+  if (btn) btn.disabled = true
+  if (error) { error.hidden = true; error.textContent = '' }
+  try {
+    await desactivarSucursal(desactivarPendiente.id)
+    cerrarModalDesactivar()
+  } catch (err) {
+    if (error) {
+      error.textContent = mensajeError(err)
+      error.hidden = false
+    }
+    console.error('[sucursales] error al desactivar:', err)
+  } finally {
+    if (btn) btn.disabled = false
   }
 }
 
@@ -295,6 +375,14 @@ function bindEventos() {
   if (btnCerrar) btnCerrar.addEventListener('click', cerrarModal)
   const btnCancelar = document.getElementById('btn-cancelar-modal')
   if (btnCancelar) btnCancelar.addEventListener('click', cerrarModal)
+  const btnCerrarDesactivar = document.getElementById('btn-cerrar-desactivar')
+  if (btnCerrarDesactivar) btnCerrarDesactivar.addEventListener('click', cerrarModalDesactivar)
+  const btnCancelarDesactivar = document.getElementById('btn-cancelar-desactivar')
+  if (btnCancelarDesactivar) btnCancelarDesactivar.addEventListener('click', cerrarModalDesactivar)
+  const btnConfirmarDesactivar = document.getElementById('btn-confirmar-desactivar')
+  if (btnConfirmarDesactivar) btnConfirmarDesactivar.addEventListener('click', confirmarDesactivar)
+  const overlayDesactivar = document.getElementById('modal-desactivar')
+  if (overlayDesactivar) overlayDesactivar.addEventListener('click', e => { if (e.target === overlayDesactivar) cerrarModalDesactivar() })
   const overlay = document.getElementById('modal-sucursal')
   if (overlay) overlay.addEventListener('click', e => { if (e.target === overlay) cerrarModal() })
   const form = document.getElementById('form-sucursal')
@@ -326,6 +414,6 @@ function bindEventos() {
 //  INIT
 // ════════════════════════════════════════════════════════════════════════
 bindEventos()
-window.SucursalesUI = { cargarSucursales, render, renderTabla, renderOnboarding, renderPaginacion, abrirModal, cerrarModal, guardarSucursal, activarSucursal, desactivarSucursal, activarYUsar, manejarClickAccion, estado, getNuevaId: () => nuevaCreadaId }
+window.SucursalesUI = { cargarSucursales, render, renderTabla, renderOnboarding, renderPaginacion, abrirModal, cerrarModal, guardarSucursal, activarSucursal, desactivarSucursal, activarYUsar, manejarClickAccion, abrirModalDesactivar, cerrarModalDesactivar, confirmarDesactivar, mensajeError, estado, getNuevaId: () => nuevaCreadaId }
 if (new URLSearchParams(window.location.search).get('nueva') === '1') abrirModal(null)
-cargarSucursales().catch(err => toast((err && err.message) || 'Error al cargar sucursales', 'error'))
+cargarSucursales().catch(err => notificar((err && err.message) || 'Error al cargar sucursales', 'error'))

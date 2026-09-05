@@ -131,8 +131,9 @@ function validarDestino(target, rawUrl = process.env.DATABASE_URL) {
   }
 
   if (target === 'test') {
-    if (!dbName.startsWith('jesha_p0_seed_test_')) {
-      throw new SeedError('SEED_DATABASE_GUARD_FAILED', 'BD de test debe empezar con jesha_p0_seed_test_')
+    const isAllowedTestDb = dbName.startsWith('jesha_p0_seed_test_') || dbName.startsWith('jesha_final_')
+    if (!isAllowedTestDb) {
+      throw new SeedError('SEED_DATABASE_GUARD_FAILED', 'BD de test debe empezar con jesha_p0_seed_test_ o jesha_final_')
     }
     if (dbName === 'jesha_db') {
       throw new SeedError('SEED_DATABASE_GUARD_FAILED', 'jesha_db no permitida en modo test')

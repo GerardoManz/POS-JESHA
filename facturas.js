@@ -2,11 +2,10 @@
 //  FACTURAS.JS — Panel interno de administración de facturas CFDI
 // ════════════════════════════════════════════════════════════════════
 
-const TOKEN   = localStorage.getItem('jesha_token')
-const USUARIO = JSON.parse(localStorage.getItem('jesha_usuario') || '{}')
+const USUARIO = window.jeshaSession?.getUsuario() || {}
 const API_URL = window.__JESHA_API_URL__ || 'http://localhost:3000'
 
-if (!TOKEN) {
+if (!window.jeshaSession?.isValid()) {
   localStorage.setItem('redirect_after_login', 'facturas.html')
   window.location.href = 'login.html'
   throw new Error('Sin autenticación')
@@ -14,6 +13,7 @@ if (!TOKEN) {
 
 const fmt = v => `$${parseFloat(v || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 const fmtFecha = iso => iso ? new Date(iso).toLocaleString('es-MX', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'
+const escHtml = value => { const el = document.createElement('div'); el.textContent = value ?? ''; return el.innerHTML }
 
 let paginaActual = 1
 const LIMIT      = 20
@@ -57,7 +57,7 @@ function estadoBadge(estado) {
 async function cargarFacturas() {
   const tbody  = document.getElementById('fact-tbody')
   const pagDiv = document.getElementById('pagination')
-  tbody.innerHTML = `<tr><td colspan="9" class="loading-cell"><div class="spinner"></div><p>Cargando...</p></td></tr>`
+  tbody.innerHTML = `<tr><td colspan="10" class="loading-cell"><div class="spinner"></div><p>Cargando...</p></td></tr>`
 
   const q      = document.getElementById('search-input')?.value.trim() || ''
   const estado = document.getElementById('filtro-estado')?.value || ''
@@ -73,7 +73,7 @@ async function cargarFacturas() {
   if (metodo) params.set('metodoPago', metodo)
 
   try {
-    const res  = await fetch(`${API_URL}/facturas?${params}`, { headers: { 'Authorization': `Bearer ${TOKEN}` } })
+    const res  = await fetch(`${API_URL}/facturas?${params}`)
     const data = await res.json()
 
     if (!res.ok) throw new Error(data.error || 'Error cargando facturas')
@@ -89,7 +89,7 @@ async function cargarFacturas() {
 
     const lista = data.data || []
     if (lista.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="9" class="loading-cell"><p>No se encontraron facturas con los filtros aplicados</p></td></tr>`
+      tbody.innerHTML = `<tr><td colspan="10" class="loading-cell"><p>No se encontraron facturas con los filtros aplicados</p></td></tr>`
       pagDiv.style.display = 'none'
       return
     }
@@ -106,6 +106,7 @@ async function cargarFacturas() {
         <td><strong style="font-size:0.82rem">${f.Venta?.folio || '—'}</strong></td>
         <td style="font-size:0.82rem;color:var(--muted)">${fmtFecha(f.creadaEn)}</td>
         <td style="font-size:0.82rem">${f.metodoPago || '—'}</td>
+        <td style="font-size:0.78rem;color:var(--muted)">${escHtml(f.sucursal?.nombre || '—')}</td>
         <td>
           <div style="font-weight:600;font-size:0.875rem">${f.nombreReceptor}</div>
           <div style="font-size:0.75rem;color:var(--muted)">${f.rfcReceptor}</div>
@@ -136,7 +137,7 @@ async function cargarFacturas() {
     })
 
   } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="9" class="loading-cell"><p style="color:#f44336">Error: ${err.message}</p></td></tr>`
+    tbody.innerHTML = `<tr><td colspan="10" class="loading-cell"><p style="color:#f44336">Error: ${err.message}</p></td></tr>`
   }
 }
 
@@ -145,7 +146,7 @@ async function cargarFacturas() {
 // ════════════════════════════════════════════════════════════════════
 window.verDetalle = async function(id) {
   try {
-    const res  = await fetch(`${API_URL}/facturas/${id}`, { headers: { 'Authorization': `Bearer ${TOKEN}` } })
+    const res  = await fetch(`${API_URL}/facturas/${id}`)
     const data = await res.json()
     if (!res.ok) throw new Error(data.error)
     const f = data.data
@@ -235,9 +236,7 @@ window.verDetalle = async function(id) {
           pdfIframe.style.display = 'block'
           btnToggle.textContent = '▲ Ocultar PDF'
           // Usar blob URL para que el iframe cargue con autenticación
-          fetch(`${API_URL}/facturas/${f.id}/descargar/pdf`, {
-            headers: { 'Authorization': `Bearer ${TOKEN}` }
-          })
+          fetch(`${API_URL}/facturas/${f.id}/descargar/pdf`)
             .then(r => {
               if (!r.ok) throw new Error('No se pudo cargar PDF')
               return r.blob()
@@ -310,7 +309,7 @@ window.timbrarManual = async function(id) {
 
     const res  = await fetch(`${API_URL}/facturas/${id}/timbrar`, {
       method:  'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
+      headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify(body)
     })
     const data = await res.json()
@@ -320,17 +319,7 @@ window.timbrarManual = async function(id) {
     limpiarPdfPreview()
     cargarFacturas()
 
-    const toast = document.createElement('div')
-    toast.innerHTML = `✓ Factura timbrada — UUID: <strong style="font-size:0.8rem">${data.uuid}</strong>`
-    Object.assign(toast.style, {
-      position:'fixed', top:'20px', right:'20px', zIndex:'9999',
-      background:'#1a3a28', border:'1px solid rgba(96,208,128,0.3)',
-      color:'#60d080', padding:'14px 20px', borderRadius:'8px',
-      fontSize:'0.875rem', fontWeight:'600',
-      boxShadow:'0 4px 16px rgba(0,0,0,0.4)', transition:'opacity 0.4s', maxWidth:'480px'
-    })
-    document.body.appendChild(toast)
-    setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 400) }, 6000)
+    jeshaToast('Factura timbrada — UUID: ' + data.uuid, 'success', 6000)
 
   } catch (err) {
     jeshaToast('Error al timbrar: ' + err.message, 'error')
@@ -354,7 +343,6 @@ async function cancelarFactura(id, confirmacionManual = null) {
     const res = await fetch(`${API_URL}/facturas/${id}/cancelar`, {
       method: 'PATCH',
       headers: {
-        'Authorization': `Bearer ${TOKEN}`,
         ...(confirmacionManual ? { 'Content-Type': 'application/json' } : {})
       },
       ...(confirmacionManual ? { body: JSON.stringify({ confirmacionManual }) } : {})
@@ -429,9 +417,7 @@ window.verCandidatos = async function(facturaId) {
     if (empresaId) params.set('empresaId', empresaId)
     const qs = params.toString()
     const url = `${API_URL}/facturas/${facturaId}/timbrado-candidatos${qs ? '?' + qs : ''}`
-    const res  = await fetch(url, {
-      headers: { 'Authorization': `Bearer ${TOKEN}` }
-    })
+    const res  = await fetch(url)
     const data = await res.json()
 
     if (res.status === 502 || (res.status >= 500 && !res.ok)) {
@@ -504,7 +490,7 @@ window.reconciliarTimbrado = async function(facturaId, facturapiId) {
     if (empresaId) body.empresaId = empresaId
     const res  = await fetch(`${API_URL}/facturas/${facturaId}/reconciliar-timbrado`, {
       method:  'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
+      headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify(body)
     })
     const data = await res.json()
@@ -549,7 +535,7 @@ window.descartarTimbradoIncierto = async function(facturaId) {
     if (empresaId) body.empresaId = empresaId
     const res  = await fetch(`${API_URL}/facturas/${facturaId}/descartar-timbrado-incierto`, {
       method:  'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
+      headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify(body)
     })
     const data = await res.json()
@@ -572,9 +558,7 @@ window.descartarTimbradoIncierto = async function(facturaId) {
 // ════════════════════════════════════════════════════════════════════
 window.descargarFactura = async function(facturaId, tipo) {
   try {
-    const res = await fetch(`${API_URL}/facturas/${facturaId}/descargar/${tipo}`, {
-      headers: { 'Authorization': `Bearer ${TOKEN}` }
-    })
+    const res = await fetch(`${API_URL}/facturas/${facturaId}/descargar/${tipo}`)
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: 'Error desconocido' }))
       throw new Error(err.error || 'Error al descargar')
@@ -613,8 +597,7 @@ async function reenviarEmail(facturaId) {
   if (!ok) return
   try {
     const res = await fetch(`${API_URL}/facturas/${facturaId}/enviar-email`, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${TOKEN}` }
+      method: 'POST'
     })
     const data = await res.json()
     if (!res.ok) throw new Error(data.error)
@@ -633,7 +616,7 @@ let ventaParaFacturar = null
 async function cargarClientesCache() {
   if (clientesCache.length) return clientesCache
   try {
-    const res = await fetch(`${API_URL}/clientes?limit=500`, { headers: { 'Authorization': `Bearer ${TOKEN}` } })
+    const res = await fetch(`${API_URL}/clientes?limit=500`)
     const data = await res.json()
     const lista = Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : [])
     clientesCache = lista.filter(c => c.activo && c.tipo === 'FISCAL')
@@ -753,9 +736,7 @@ async function buscarVentaExactaParaFactura(folio) {
   document.getElementById('modal-manual').classList.add('active')
 
   try {
-    const res = await fetch(`${API_URL}/ventas/folio/${encodeURIComponent(folio)}`, {
-      headers: { 'Authorization': `Bearer ${TOKEN}` }
-    })
+    const res = await fetch(`${API_URL}/ventas/folio/${encodeURIComponent(folio)}`)
     const data = await res.json().catch(() => ({}))
 
     if (res.status === 404) {
@@ -901,7 +882,7 @@ async function facturarManualDesdeModal() {
   try {
     const res = await fetch(`${API_URL}/facturas/manual`, {
       method:  'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
+      headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify(body)
     })
     const data = await res.json()
@@ -951,6 +932,8 @@ window.abrirFacturaGlobal = function() {
   document.getElementById('g-resumen').style.display = 'none'
   document.getElementById('g-preview-table').style.display = 'none'
   document.getElementById('g-preview-table').innerHTML = ''
+  document.getElementById('g-sucursales').style.display = 'none'
+  document.getElementById('g-sucursales').innerHTML = ''
   document.getElementById('g-error').style.display = 'none'
   document.getElementById('g-mixto-info').style.display = 'none'
   document.getElementById('btn-global-timbrar').disabled = true
@@ -973,6 +956,8 @@ window.previsualizarGlobal = async function() {
   resumenDiv.style.display = 'none'
   previewDiv.style.display = 'none'
   previewDiv.innerHTML = ''
+  document.getElementById('g-sucursales').style.display = 'none'
+  document.getElementById('g-sucursales').innerHTML = ''
   mixtoDiv.style.display = 'none'
   btnTimbrar.disabled = true
   btnTimbrar.textContent = '⚡ Timbrar Factura Global'
@@ -1002,9 +987,7 @@ window.previsualizarGlobal = async function() {
   try {
     const params = new URLSearchParams({ desde, hasta, metodoPago })
     if (USUARIO.empresaId) params.set('empresaId', USUARIO.empresaId)
-    const res = await fetch(`${API_URL}/facturas/global/preview?${params.toString()}`, {
-      headers: { 'Authorization': `Bearer ${TOKEN}` }
-    })
+    const res = await fetch(`${API_URL}/facturas/global/preview?${params.toString()}`)
     const data = await res.json()
 
     if (!res.ok) {
@@ -1031,6 +1014,15 @@ window.previsualizarGlobal = async function() {
     document.getElementById('g-total').textContent = fmt(data.resumen.total)
     resumenDiv.style.display = 'grid'
 
+    const grupos = data.sucursales || []
+    const gruposDiv = document.getElementById('g-sucursales')
+    gruposDiv.innerHTML = `<div class="global-branch-summary"><strong>Se generarán ${grupos.filter(grupo => !grupo.error).length} CFDI</strong>${grupos.map(grupo => `
+      <div class="global-branch-row ${grupo.error ? 'has-error' : ''}">
+        <span><strong>${escHtml(grupo.sucursal || 'Sucursal no registrada')}</strong> · ${grupo.ventas} ventas · ${fmt(grupo.total)}</span>
+        <span>${grupo.codigoPostal ? `CP ${escHtml(grupo.codigoPostal)}` : escHtml(grupo.error?.mensaje || 'Sin lugar de expedición')}</span>
+      </div>`).join('')}</div>`
+    gruposDiv.style.display = 'block'
+
     previewDiv.innerHTML = `
       <table>
         <thead>
@@ -1044,9 +1036,9 @@ window.previsualizarGlobal = async function() {
         <tbody>
           ${data.ventas.map(v => `
           <tr>
-            <td>${v.folio}</td>
+            <td>${escHtml(v.folio)}</td>
             <td style="color:var(--muted)">${fmtFecha(v.creadaEn)}</td>
-            <td>${v.metodoPago}</td>
+            <td>${escHtml(v.metodoPago)}</td>
             <td><strong>${fmt(v.total)}</strong></td>
           </tr>`).join('')}
         </tbody>
@@ -1054,7 +1046,7 @@ window.previsualizarGlobal = async function() {
     previewDiv.style.display = 'block'
 
     btnTimbrar.disabled = false
-    globalPreviewData = { desde, hasta, metodoPago, periodicidad: '02', resumen: data.resumen }
+    globalPreviewData = { desde, hasta, metodoPago, periodicidad: document.getElementById('g-periodicidad').value, resumen: data.resumen }
 
   } catch (err) {
     errorDiv.textContent = 'Error de conexión: ' + err.message
@@ -1084,20 +1076,26 @@ window.timbrarGlobal = async function() {
     if (USUARIO.empresaId) bodyTimbrar.empresaId = USUARIO.empresaId
     const res = await fetch(`${API_URL}/facturas/global/timbrar`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(bodyTimbrar)
     })
     const data = await res.json()
 
-    if (!res.ok) throw new Error(data.error || 'Error al timbrar')
+    if (!res.ok && !Array.isArray(data.resultados)) throw new Error(data.error || 'Error al timbrar')
 
-    document.getElementById('modal-global').classList.remove('active')
     cargarFacturas()
 
-    if (data.requiereRevision) {
-      jeshaToast(data.mensaje || 'Factura marcada para revisión.', 'warning')
+    const resultados = data.resultados || []
+    if (resultados.length > 0) {
+      const exitosas = resultados.filter(resultado => resultado.estado === 'TIMBRADA').length
+      const fallidas = resultados.length - exitosas
+      errorDiv.innerHTML = `<strong>${fallidas ? 'Factura global procesada parcialmente' : 'Facturas globales procesadas'}</strong><br>${resultados.map(resultado => `${resultado.estado === 'TIMBRADA' ? '✓' : '!'} ${escHtml(resultado.sucursal || 'Sucursal')} — ${escHtml(resultado.estado)}${resultado.uuid ? ` — ${escHtml(resultado.uuid)}` : ''}${resultado.error ? ` — ${escHtml(resultado.error.mensaje)}` : ''}`).join('<br>')}`
+      errorDiv.style.display = 'block'
+      if (!fallidas) document.getElementById('modal-global').classList.remove('active')
+      jeshaToast(fallidas ? `${exitosas} sucursal(es) timbrada(s); ${fallidas} pendiente(s)` : `${exitosas} CFDI global(es) timbrado(s)`, fallidas ? 'warning' : 'success')
     } else {
-      jeshaToast(`✅ Factura Global timbrada — UUID: ${data.uuid}`, 'success')
+      document.getElementById('modal-global').classList.remove('active')
+      jeshaToast(data.mensaje || 'Factura Global procesada', 'success')
     }
 
   } catch (err) {
@@ -1118,8 +1116,7 @@ document.addEventListener('DOMContentLoaded', () => {
     })
   }
 
-  const rolFiscal = ['ADMIN_SUCURSAL','SUPERADMIN'].includes(USUARIO.rol)
-  if (rolFiscal) {
+  if (USUARIO.rol === 'SUPERADMIN') {
     const btn = document.getElementById('btn-factura-global')
     if (btn) btn.style.display = 'inline-flex'
   }

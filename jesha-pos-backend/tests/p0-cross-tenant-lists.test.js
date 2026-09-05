@@ -83,9 +83,11 @@ describe('P0 — Cross-Tenant Lists (contrato de listados)', () => {
       assert.strictEqual(countPatterns(helper, /req\.usuario\.empresaId/g), 0, 'nunca empresa desde usuario')
     })
 
-    it('empresaId siempre; sucursalId solo para no-SUPERADMIN', () => {
+    it('empresaId siempre; sucursalId desde contexto de rama (H5, incluye SUPERADMIN FIXED/SELECTED)', () => {
       assert.ok(hasPattern(helper, /empresaId: getEmpresaId\(req\)/))
-      assert.ok(hasPattern(helper, /rol !== 'SUPERADMIN'/))
+      assert.ok(hasPattern(helper, /resolverSucursalId\(req\)/))
+      assert.ok(hasPattern(helper, /incluirSucursal/))
+      assert.strictEqual(countPatterns(helper, /rol !== 'SUPERADMIN'/g), 0, 'SUPERADMIN ya no se excluye del filtro de sucursal (H5)')
     })
   })
 

@@ -561,20 +561,7 @@
   background: rgba(255, 255, 255, 0.02);
 }
 
-/* ── LOADING SPINNER ── */
-.spinner {
-  display: inline-block;
-  width: 20px;
-  height: 20px;
-  border: 3px solid var(--panel-border);
-  border-top-color: var(--accent);
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
+/* ── LOADING SPINNER (reutiliza .spinner de dashboard.css) ── */
 
 /* ── RESPONSIVE ── */
 @media (max-width: 1000px) {

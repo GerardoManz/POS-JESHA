@@ -1359,6 +1359,49 @@
   animation: jeshaCartValueBump 0.25s ease;
 }
 
+/* ── Total emphasis — brief scale when total changes ── */
+@keyframes jeshaTotalEmphasis {
+  0%   { transform: scale(1); }
+  35%  { transform: scale(1.025); }
+  100% { transform: scale(1); }
+}
+.total-emphasis {
+  animation: jeshaTotalEmphasis 0.22s ease;
+}
+
+/* ── Pause badge bump ── */
+@keyframes jeshaBadgeBump {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.25); }
+  100% { transform: scale(1); }
+}
+.badge-pausada-bump {
+  animation: jeshaBadgeBump 0.3s var(--ease-pop, cubic-bezier(0.34, 1.56, 0.64, 1));
+}
+
+/* ── Cart restore — container fade when restoring paused sale ── */
+@keyframes jeshaCartRestore {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.carrito-restore-fade {
+  animation: jeshaCartRestore 0.3s ease both;
+}
+
+/* ── Payment method section crossfade ── */
+.monto-efectivo-control {
+  transition: opacity 0.16s ease, transform 0.16s ease;
+}
+.monto-efectivo-control:not(.open) {
+  opacity: 0;
+  transform: translateY(-4px);
+  pointer-events: none;
+}
+.monto-efectivo-control.open {
+  opacity: 1;
+  transform: translateY(0);
+}
+
 @keyframes jeshaBtnShake {
   0%, 100% { transform: translateX(0); }
   20% { transform: translateX(-4px); }
@@ -2894,4 +2937,93 @@
 /* -- Banner de cobranza -- */
 #banner-cobranza {
   font-size: 0.85rem;
+}
+
+.receipt-qr { justify-items:center; }
+.receipt-qr img { width:66px; height:66px; }
+
+/* UX1/P4: cierre de venta — CSS 3D Printer Experience */
+
+/* ── Overlay ── */
+.sale-completion-overlay{position:fixed;inset:0;z-index:999;display:flex;align-items:center;justify-content:center;padding:18px;background:rgba(5,9,16,.78);backdrop-filter:blur(12px)}
+.sale-completion-card{width:min(680px,100%);max-height:calc(100dvh - 36px);overflow:auto;color:var(--text);background:linear-gradient(145deg,rgba(26,33,45,.98),rgba(13,18,27,.98));border:1px solid rgba(139,163,194,.2);border-radius:24px;box-shadow:0 28px 90px rgba(0,0,0,.5),0 0 0 1px rgba(255,255,255,.025) inset;scrollbar-width:thin}
+
+/* ── Header ── */
+.sale-completion-header{display:flex;align-items:center;gap:15px;padding:24px 28px 18px}
+.sale-success-mark{width:48px;height:48px;flex:0 0 48px;display:grid;place-items:center;border:1px solid rgba(87,220,133,.45);border-radius:50%;background:rgba(87,220,133,.1)}
+.sale-success-mark span{width:18px;height:10px;border-left:3px solid #63dc8b;border-bottom:3px solid #63dc8b;transform:rotate(-45deg) translate(2px,-2px)}
+.sale-eyebrow{margin:0 0 3px;color:#70df93;font:700 .67rem 'Barlow Condensed',sans-serif;letter-spacing:.14em;text-transform:uppercase}
+.sale-completion-header h2{margin:0;font:700 clamp(1.25rem,3vw,1.7rem) 'Barlow Condensed',sans-serif;letter-spacing:.02em}
+.sale-folio{margin:4px 0 0;color:var(--muted);font-size:.78rem}
+
+/* ── 3D Stage ── */
+.sale-printer-stage{position:relative;min-height:340px;padding:24px 28px 0;overflow:visible;perspective:900px;background:radial-gradient(circle at 50% 20%,rgba(69,112,174,.16),transparent 54%)}
+.sale-printer-glow{position:absolute;left:18%;right:18%;top:50px;height:200px;background:radial-gradient(ellipse,rgba(64,137,217,.2),transparent 67%);filter:blur(16px);opacity:0;pointer-events:none}
+
+/* ── Printer Body — 3D ── */
+.sale-printer{position:relative;z-index:2;width:min(390px,86%);height:110px;margin:0 auto;transform-style:preserve-3d;transform:rotateX(8deg) rotateY(-3deg) scale(.92) translateY(18px);opacity:0;will-change:transform,opacity}
+.sale-printer-face{position:absolute;inset:0;border:1px solid #53647a;border-bottom:0;border-radius:18px 18px 6px 6px;background:linear-gradient(160deg,#3e4c5e,#202b39 65%);box-shadow:0 15px 32px rgba(0,0,0,.35),inset 0 1px rgba(255,255,255,.13);backface-visibility:hidden}
+.sale-printer-side{position:absolute;top:2px;width:18px;height:calc(100% - 2px);background:linear-gradient(180deg,#2a3647,#1a2230);border:1px solid #3d4e62;border-bottom:0;transform-origin:left center;backface-visibility:hidden}
+.sale-printer-side--left{left:0;border-right:0;border-radius:4px 0 0 0;transform:rotateY(-72deg) translateZ(0px)}
+.sale-printer-side--right{right:0;border-left:0;border-radius:0 4px 0 0;transform:rotateY(72deg) translateZ(0px)}
+.sale-printer-bottom{position:absolute;bottom:-1px;left:0;right:0;height:12px;background:linear-gradient(180deg,#1e2a38,#151e29);border:1px solid #3d4e62;border-top:0;border-radius:0 0 6px 6px;transform:rotateX(70deg);transform-origin:top center;backface-visibility:hidden}
+
+/* ── Printer Top Bar ── */
+.sale-printer-top{position:relative;z-index:3;display:flex;align-items:center;justify-content:space-between;padding:16px 24px 0;color:#a9bbce;font:700 .65rem 'JetBrains Mono',monospace;letter-spacing:.16em}
+.sale-printer-top i{width:8px;height:8px;border-radius:50%;background:#63dc8b;box-shadow:0 0 12px #63dc8b;opacity:0}
+
+/* ── Printer Display ── */
+.sale-printer-display{position:absolute;top:42px;left:24px;right:24px;height:22px;border-radius:4px;background:#080e16;border:1px solid #2a3647;display:flex;align-items:center;justify-content:center;gap:6px;overflow:hidden;opacity:0}
+.sale-printer-display span{color:#63dc8b;font:700 .5rem 'JetBrains Mono',monospace;letter-spacing:.08em;white-space:nowrap}
+.sale-printer-display::before{content:'';position:absolute;inset:0;background:linear-gradient(180deg,rgba(99,220,139,.06),transparent 60%);pointer-events:none}
+
+/* ── Printer Slot ── */
+.sale-printer-slot{position:relative;z-index:3;height:14px;margin:19px 20px 0;padding:3px 10px;border-radius:5px;background:#0a111a;box-shadow:inset 0 2px 6px #000,inset 0 -1px 3px rgba(0,0,0,.4);overflow:hidden}
+.sale-printer-slot span{display:block;height:2px;background:rgba(153,181,210,.22);border-radius:1px}
+.sale-printer-slot::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,rgba(0,0,0,.5),transparent 15%,transparent 85%,rgba(0,0,0,.5));pointer-events:none;border-radius:5px}
+
+/* ── Printer LED ── */
+.sale-printer-led{position:absolute;right:24px;bottom:9px;width:4px;height:4px;border-radius:50%;background:#63dc8b;opacity:0}
+
+/* ── Receipt Viewport + Paper ── */
+.receipt-viewport{position:relative;z-index:1;width:min(350px,82%);max-height:220px;margin:-2px auto 0;overflow:hidden;border-radius:2px 2px 10px 10px;box-shadow:0 18px 30px rgba(0,0,0,.32)}
+.receipt-paper{min-height:240px;padding:17px 22px 24px;color:#17202b;background:#fbfaf5;background-image:linear-gradient(90deg,rgba(255,255,255,.7),transparent 20%,rgba(0,0,0,.025));font:500 .68rem 'JetBrains Mono',monospace;will-change:transform,opacity}
+.receipt-brand{display:grid;gap:2px;text-align:center;border-bottom:1px dashed #9fa7ae;padding-bottom:10px}.receipt-brand strong{font-size:.9rem;letter-spacing:.08em}.receipt-brand span{font-size:.65rem}.receipt-brand small{color:#697480}
+.receipt-meta,.receipt-payment,.receipt-totals div{display:flex;justify-content:space-between;gap:10px}.receipt-meta{padding:9px 0;color:#65717e;font-size:.62rem}
+.receipt-items{display:grid;gap:5px;padding:7px 0;border-top:1px solid #dfe2e3;border-bottom:1px dashed #9fa7ae}.receipt-item{display:grid;grid-template-columns:26px 1fr auto;gap:5px}.receipt-item-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.receipt-totals{display:grid;gap:4px;padding:9px 0}.receipt-total{margin-top:3px;padding-top:6px;border-top:1px solid #17202b;font-size:.86rem}
+.receipt-payment{padding:7px 0;border-top:1px dashed #9fa7ae;font-size:.62rem}
+.receipt-line{margin-top:4px;color:#687580;text-align:center;font-size:.6rem}
+.receipt-qr{display:grid;gap:5px;margin-top:9px;padding-top:8px;border-top:1px dashed #9fa7ae;text-align:center}.receipt-qr a{color:#1d68b3;font-weight:700}.receipt-qr[hidden]{display:none}
+
+/* ── Status + Actions ── */
+.sale-status-row{display:flex;align-items:center;gap:11px;margin:0 28px;padding:14px 16px;border:1px solid rgba(139,163,194,.16);border-radius:13px;background:rgba(255,255,255,.035);opacity:0}
+.sale-status-dot{width:9px;height:9px;flex:0 0 9px;border-radius:50%;background:#e5ad54;box-shadow:0 0 0 4px rgba(229,173,84,.11)}.sale-status-dot.is-success{background:#63dc8b;box-shadow:0 0 0 4px rgba(99,220,139,.11)}.sale-status-dot.is-error{background:#f17c7c;box-shadow:0 0 0 4px rgba(241,124,124,.11)}
+.sale-status-row div{display:grid;gap:2px}.sale-status-row strong{font-size:.84rem}.sale-status-row small{color:var(--muted);font-size:.72rem}
+.sale-completion-actions{display:flex;gap:10px;padding:18px 28px 24px;opacity:0}.sale-completion-actions button{min-height:44px;flex:1;border-radius:11px;cursor:pointer;font:700 .76rem 'Barlow',sans-serif;letter-spacing:.03em;transition:transform .18s,filter .18s}.sale-completion-actions button:hover{transform:translateY(-1px);filter:brightness(1.08)}.sale-action-secondary{color:var(--text);border:1px solid rgba(139,163,194,.28);background:rgba(255,255,255,.05)}.sale-action-primary{color:#07130b;border:1px solid #63dc8b;background:#63dc8b}
+
+/* ── Reduced Motion ── */
+@media (prefers-reduced-motion:reduce){
+  .sale-success-mark,.receipt-paper{animation:none!important}
+  .sale-printer{transform:none!important;opacity:1!important}
+  .receipt-paper{transform:none!important;opacity:1!important}
+  .sale-status-row,.sale-completion-actions{opacity:1!important}
+  .sale-printer-display,.sale-printer-top i,.sale-printer-led,.sale-printer-glow{opacity:1!important}
+  .sale-completion-actions button{transition:none}
+}
+
+/* ── Mobile ── */
+@media (max-width:600px){
+  .sale-completion-overlay{padding:8px;align-items:flex-end}
+  .sale-completion-card{max-height:calc(100dvh - 16px);border-radius:20px}
+  .sale-completion-header{padding:19px 18px 14px}
+  .sale-printer-stage{min-height:280px;padding:16px 14px 0;perspective:600px}
+  .sale-printer{height:90px;padding:13px 18px 0}
+  .sale-printer-side{width:12px}
+  .sale-printer-slot{margin-top:14px}
+  .receipt-viewport{max-height:180px}
+  .receipt-paper{padding:13px 17px 18px}
+  .sale-status-row{margin:0 18px}
+  .sale-completion-actions{padding:14px 18px 18px;flex-wrap:wrap}
+  .sale-action-primary{order:-1;flex-basis:100%}
 }

@@ -1,6 +1,7 @@
 const IDENTITY_KIND = Object.freeze({
   PLATFORM: 'PLATFORM',
-  TENANT: 'TENANT'
+  TENANT: 'TENANT',
+  DELEGATED: 'DELEGATED'
 })
 
 const PLATFORM_ROLES = Object.freeze([
@@ -189,6 +190,23 @@ function crearPrincipalTenant(usuario) {
   })
 }
 
+function crearPrincipalDelegado(actorUsuario, targetEmpresaId) {
+  const identidad = validarIdentidadFinalUsuario(actorUsuario)
+  if (!esRolPlataforma(identidad.rol)) {
+    throw new IdentityError('IDENTITY_ROLE_UNKNOWN', 'Solo PLATFORM_ADMIN puede generar principal delegado')
+  }
+  if (!esEnteroPositivo(targetEmpresaId)) {
+    throw new IdentityError('IDENTITY_EMPRESA_REQUIRED', 'targetEmpresaId debe ser un entero positivo')
+  }
+  return Object.freeze({
+    version: 1,
+    kind: 'DELEGATED',
+    sub: identidad.id,
+    rol: 'PLATFORM_ADMIN',
+    targetEmpresaId
+  })
+}
+
 module.exports = {
   IDENTITY_KIND,
   PLATFORM_ROLES,
@@ -204,5 +222,6 @@ module.exports = {
   validarIdentidadFinalUsuario,
   detectarIdentidadLegacy,
   crearPrincipalPlataforma,
-  crearPrincipalTenant
+  crearPrincipalTenant,
+  crearPrincipalDelegado
 }

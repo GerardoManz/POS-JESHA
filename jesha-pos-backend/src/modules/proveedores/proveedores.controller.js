@@ -84,7 +84,7 @@ const crear = async (req, res) => {
     const proveedor = await prisma.proveedor.create({
       data: { empresaId, nombreOficial: nombreOficial.trim(), alias: alias?.trim() || null, telefono: telefono || null, celular: celular || null, email: email || null }
     })
-    await audit(req.usuario.id, req.usuario.sucursalId, 'CREAR_PROVEEDOR', proveedor.nombreOficial)
+    await audit(req.usuario.id, req.context?.branch?.sucursalId ?? null, 'CREAR_PROVEEDOR', proveedor.nombreOficial)
     res.status(201).json({ success: true, data: proveedor })
   } catch (err) {
     if (err.code === 'P2002') return res.status(409).json({ success: false, error: 'Ya existe un proveedor con ese nombre o alias en esta empresa' })
@@ -111,7 +111,7 @@ const editar = async (req, res) => {
     if (activo !== undefined) data.activo = activo
 
     const proveedor = await prisma.proveedor.update({ where: { id: parseInt(req.params.id) }, data })
-    await audit(req.usuario.id, req.usuario.sucursalId, 'EDITAR_PROVEEDOR', proveedor.nombreOficial)
+    await audit(req.usuario.id, req.context?.branch?.sucursalId ?? null, 'EDITAR_PROVEEDOR', proveedor.nombreOficial)
     res.json({ success: true, data: proveedor })
   } catch (err) {
     if (err.code === 'P2002') return res.status(409).json({ success: false, error: 'Ya existe un proveedor con ese nombre o alias en esta empresa' })
@@ -132,7 +132,7 @@ const toggleActivo = async (req, res) => {
       data: { activo: !proveedor.activo }
     })
     const accion = updated.activo ? 'ACTIVAR_PROVEEDOR' : 'DESACTIVAR_PROVEEDOR'
-    await audit(req.usuario.id, req.usuario.sucursalId, accion, updated.nombreOficial)
+    await audit(req.usuario.id, req.context?.branch?.sucursalId ?? null, accion, updated.nombreOficial)
     res.json({ success: true, data: updated })
   } catch (err) {
     console.error('Error toggle proveedor:', err)
@@ -169,11 +169,21 @@ const vincularProducto = async (req, res) => {
   try {
     const { productoId, codigoProveedor, precioCosto, unidadCompra, factorConversion } = req.body
     const proveedorId = parseInt(req.params.id)
+    const productoIdNum = parseInt(productoId)
+    const empresaId = getEmpresaId(req)
 
     if (!productoId) return res.status(400).json({ success: false, error: 'Producto requerido' })
 
+    const [proveedor, producto] = await Promise.all([
+      prisma.proveedor.findFirst({ where: { id: proveedorId, empresaId }, select: { id: true } }),
+      prisma.producto.findFirst({ where: { id: productoIdNum, empresaId }, select: { id: true } })
+    ])
+    if (!proveedor || !producto) {
+      return res.status(404).json({ success: false, error: 'Proveedor o producto no encontrado' })
+    }
+
     const pp = await prisma.proveedorProducto.upsert({
-      where: { proveedorId_productoId: { proveedorId, productoId: parseInt(productoId) } },
+      where: { proveedorId_productoId: { proveedorId, productoId: productoIdNum } },
       update: {
         codigoProveedor: codigoProveedor || null,
         precioCosto: parseFloat(precioCosto || 0),
@@ -183,7 +193,7 @@ const vincularProducto = async (req, res) => {
       },
       create: {
         proveedorId,
-        productoId: parseInt(productoId),
+        productoId: productoIdNum,
         codigoProveedor: codigoProveedor || null,
         precioCosto: parseFloat(precioCosto || 0),
         unidadCompra: unidadCompra || null,
@@ -195,7 +205,7 @@ const vincularProducto = async (req, res) => {
         Producto: { select: { id: true, nombre: true, codigoInterno: true } }
       }
     })
-    await audit(req.usuario.id, req.usuario.sucursalId, 'VINCULAR_PRODUCTO', `Prov:${proveedorId} Prod:${productoId}`)
+    await audit(req.usuario.id, req.context?.branch?.sucursalId ?? null, 'VINCULAR_PRODUCTO', `Prov:${proveedorId} Prod:${productoIdNum}`)
     res.status(201).json({ success: true, data: pp })
   } catch (err) {
     console.error('Error vincular producto:', err)
@@ -208,6 +218,15 @@ const desvincularProducto = async (req, res) => {
   try {
     const proveedorId = parseInt(req.params.id)
     const productoId = parseInt(req.params.prodId)
+    const empresaId = getEmpresaId(req)
+
+    const [proveedor, producto] = await Promise.all([
+      prisma.proveedor.findFirst({ where: { id: proveedorId, empresaId }, select: { id: true } }),
+      prisma.producto.findFirst({ where: { id: productoId, empresaId }, select: { id: true } })
+    ])
+    if (!proveedor || !producto) {
+      return res.status(404).json({ success: false, error: 'Proveedor o producto no encontrado' })
+    }
 
     const pp = await prisma.proveedorProducto.findUnique({
       where: { proveedorId_productoId: { proveedorId, productoId } }
@@ -218,7 +237,7 @@ const desvincularProducto = async (req, res) => {
       where: { proveedorId_productoId: { proveedorId, productoId } },
       data: { activo: false }
     })
-    await audit(req.usuario.id, req.usuario.sucursalId, 'DESVINCULAR_PRODUCTO', `Prov:${proveedorId} Prod:${productoId}`)
+    await audit(req.usuario.id, req.context?.branch?.sucursalId ?? null, 'DESVINCULAR_PRODUCTO', `Prov:${proveedorId} Prod:${productoId}`)
     res.json({ success: true, message: 'Producto desvinculado' })
   } catch (err) {
     console.error('Error desvincular producto:', err)

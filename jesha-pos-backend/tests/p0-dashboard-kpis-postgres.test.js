@@ -1,5 +1,7 @@
 'use strict'
 
+const { assertSafeTestDb } = require('./helpers/test-db-safety')
+
 const assert = require('node:assert/strict')
 const { describe, it, before, after } = require('node:test')
 const { execFileSync } = require('node:child_process')
@@ -43,6 +45,7 @@ describe('P0-DASHBOARD-KPIS FIXED PostgreSQL HTTP', { concurrency: 1, timeout: 3
   const pgConfig = resolvePgConfig()
   const dbName = validateDbName(`${DB_PREFIX}${Date.now()}_${process.pid}_${randomBytes(4).toString('hex')}`)
   const databaseUrl = connectionUrl(pgConfig, dbName)
+  assertSafeTestDb(databaseUrl)
   const adminPool = new pg.Pool({ connectionString: connectionUrl(pgConfig, 'postgres'), max: 1 })
   let created = false, prisma, app, server, baseUrl
 
@@ -79,6 +82,7 @@ describe('P0-DASHBOARD-KPIS FIXED PostgreSQL HTTP', { concurrency: 1, timeout: 3
     dbPush(databaseUrl)
 
     prisma = require('../src/lib/prisma')
+  if (prisma?.pool && !prisma.pool.__p0ErrorGuard) { prisma.pool.__p0ErrorGuard = true; prisma.pool.on('error', () => {}) }
     const hash = await bcrypt.hash('password', 10)
 
     empresaA = await prisma.empresa.create({ data: { slug: 'kpis-a', nombreComercial: 'Empresa A', razonSocial: 'Empresa A SA', whatsapp: '0000000001', activa: true } })
@@ -126,10 +130,12 @@ describe('P0-DASHBOARD-KPIS FIXED PostgreSQL HTTP', { concurrency: 1, timeout: 3
   after(async () => {
     if (server) { try { await new Promise((r) => server.close(r)) } catch (e) {} }
     if (prisma) { try { await prisma.$disconnect() } catch (e) {} }
+    if (prisma?.pool) { try { await prisma.pool.end() } catch (e) {} }
     await new Promise((r) => setTimeout(r, 1500))
     delete require.cache[require.resolve('../src/app')]
     delete require.cache[require.resolve('../src/lib/prisma')]
     if (created) {
+      try { await adminPool.query('SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()', [dbName]) } catch (e) {}
       try { await adminPool.query(`DROP DATABASE "${dbName}"`) } catch (e) {}
     }
     try { await adminPool.end() } catch (e) {}

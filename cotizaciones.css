@@ -328,18 +328,7 @@
 
 .pag-info { font-size: 0.85rem; color: var(--muted); }
 
-/* ── SPINNER ── */
-.spinner {
-  display: inline-block;
-  width: 20px;
-  height: 20px;
-  border: 3px solid var(--panel-border);
-  border-top-color: var(--accent);
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin { to { transform: rotate(360deg); } }
+/* ── SPINNER (reutiliza .spinner de dashboard.css) ── */
 
 /* ════════════════════════════════════════════════════════════════════
    MODAL BASE

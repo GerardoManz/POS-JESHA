@@ -50,6 +50,33 @@ function subirImagenProducto(buffer, productoId) {
     })
 }
 
+function subirLogoEmpresa(buffer, empresaId) {
+    return new Promise((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream(
+            {
+                folder:    'jesha/branding',
+                public_id: `empresa_${empresaId}_logo`,
+                overwrite: true,
+                invalidate: true,
+                resource_type: 'image',
+                format: 'webp',
+                transformation: [
+                    { width: 400, height: 400, crop: 'limit' },
+                    { quality: 'auto:good' }
+                ]
+            },
+            (error, result) => {
+                if (error) return reject(error)
+                resolve({
+                    url:       result.secure_url,
+                    public_id: result.public_id
+                })
+            }
+        )
+        stream.end(buffer)
+    })
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // HELPER: Eliminar imagen de Cloudinary
 // (Opción suave — solo se llama cuando el usuario lo solicita explícitamente)
@@ -69,5 +96,6 @@ async function eliminarImagenProducto(publicId) {
 module.exports = {
     cloudinary,
     subirImagenProducto,
-    eliminarImagenProducto
+    eliminarImagenProducto,
+    subirLogoEmpresa
 }

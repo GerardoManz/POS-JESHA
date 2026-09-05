@@ -28,8 +28,9 @@ const CONFIG = (() => {
   const IVA        = 0.16    // 16% tasa estándar
   const IVA_FACTOR = 1.16    // = 1 + IVA
 
-  // Logo de la empresa (Cloudinary)
-  const LOGO_URL = 'https://res.cloudinary.com/dabyfymjd/image/upload/q_auto/f_auto/v1779317658/logo-jesha_hmlble.png'
+  // Logo de la empresa — cada Empresa provee su propio logoUrl via API.
+  // Null = sin logo fallback (cada tenant debe configurar su logo en Configuracion/Branding).
+  const LOGO_URL = null
 
   return { API_URL, IVA, IVA_FACTOR, LOGO_URL, isLocal }
 })()

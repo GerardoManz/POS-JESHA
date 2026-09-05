@@ -18,7 +18,8 @@
 
 const prisma = require('../../lib/prisma')
 const getEmpresaId = require('../../helpers/getEmpresaId')
-const { getFacturapi, modoActivo } = require('../../lib/facturapi')
+const { buildFacturaScope } = require('./factura-scope.helper')
+const { getFacturapiForEmpresa, verificarFacturacionEmpresa, FiscalError, modoActivo } = require('../../lib/facturapi')
 
 const RFC_GENERICOS = new Set(['XAXX010101000', 'XEXX010101000'])
 const MIN_CONFIRMACION = 10
@@ -154,10 +155,10 @@ function clasificar(factura, candidatos) {
 // ════════════════════════════════════════════════════════════════════
 exports.timbradoCandidatos = async (req, res) => {
   try {
-    const { empresaId } = scopeEstricto(req)
+    scopeEstricto(req)
     const id = parseInt(req.params.id)
 
-    const factura = await prisma.facturaCfdi.findFirst({ where: { id, empresaId } })
+    const factura = await prisma.facturaCfdi.findFirst({ where: { id, ...buildFacturaScope(req) } })
     if (!factura) return res.status(404).json({ error: 'Factura no encontrada' })
     if (factura.estado !== 'PENDIENTE_TIMBRADO') {
       return res.status(409).json({ error: `La factura está ${factura.estado}; no hay timbrado por reconciliar.` })
@@ -173,8 +174,15 @@ exports.timbradoCandidatos = async (req, res) => {
       })
     }
 
-    const fp = getFacturapi()
-    if (!fp) return res.status(503).json({ error: 'Facturapi no configurada' })
+    // ── FAIL-CLOSED (P1): cliente de la Organization PROPIA de la empresa ──
+    let fp
+    try {
+      await verificarFacturacionEmpresa(factura.empresaId)
+      fp = await getFacturapiForEmpresa(factura.empresaId)
+    } catch (err) {
+      if (err instanceof FiscalError) return res.status(err.status).json({ error: err.message, codigo: err.code })
+      throw err
+    }
 
     const candidatos = await buscarCandidatos(fp, factura)
     return res.json({ success: true, procesandoActivo: factura.procesandoTimbrado, ...clasificar(factura, candidatos) })
@@ -198,7 +206,7 @@ exports.reconciliarTimbrado = async (req, res) => {
       return res.status(400).json({ error: 'facturapiId requerido' })
     }
 
-    const factura = await prisma.facturaCfdi.findFirst({ where: { id, empresaId } })
+    const factura = await prisma.facturaCfdi.findFirst({ where: { id, ...buildFacturaScope(req) } })
     if (!factura) return res.status(404).json({ error: 'Factura no encontrada' })
     if (factura.estado !== 'PENDIENTE_TIMBRADO' || !factura.procesandoTimbrado) {
       return res.status(409).json({ error: 'La factura no está en estado reconciliable (PENDIENTE_TIMBRADO + proceso activo).' })
@@ -218,8 +226,15 @@ exports.reconciliarTimbrado = async (req, res) => {
       })
     }
 
-    const fp = getFacturapi()
-    if (!fp) return res.status(503).json({ error: 'Facturapi no configurada' })
+    // ── FAIL-CLOSED (P1): cliente de la Organization PROPIA de la empresa ──
+    let fp
+    try {
+      await verificarFacturacionEmpresa(factura.empresaId)
+      fp = await getFacturapiForEmpresa(factura.empresaId)
+    } catch (err) {
+      if (err instanceof FiscalError) return res.status(err.status).json({ error: err.message, codigo: err.code })
+      throw err
+    }
 
     let inv
     try {
@@ -288,7 +303,7 @@ exports.descartarTimbradoIncierto = async (req, res) => {
       return res.status(400).json({ error: `confirmacionManual (texto libre, ≥${MIN_CONFIRMACION} caracteres, describiendo lo que verificaste en el portal del SAT) es obligatorio.` })
     }
 
-    const factura = await prisma.facturaCfdi.findFirst({ where: { id, empresaId } })
+    const factura = await prisma.facturaCfdi.findFirst({ where: { id, ...buildFacturaScope(req) } })
     if (!factura) return res.status(404).json({ error: 'Factura no encontrada' })
     if (factura.facturapiId) {
       return res.status(409).json({ error: 'La factura ya tiene facturapiId; usa reconciliar, no descartar.' })

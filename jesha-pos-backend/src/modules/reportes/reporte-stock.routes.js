@@ -8,7 +8,10 @@ const express = require('express')
 const router = express.Router()
 const multer = require('multer')
 const { branchRequired } = require('../../middlewares/scope.middleware')
+const { requireRole } = require('../../middlewares/auth.middleware')
 const ctrl = require('./reporte-stock.controller')
+
+const ROLES_OPERATIVOS = ['SUPERADMIN', 'ADMIN_SUCURSAL', 'EMPLEADO']
 
 const uploadExcel = multer({
   storage: multer.memoryStorage(),
@@ -22,14 +25,16 @@ const uploadExcel = multer({
   limits: { fileSize: 10 * 1024 * 1024 }
 })
 
-// Endpoints públicos del módulo
+// Lectura (cualquier usuario autenticado)
 router.get('/stock', ctrl.obtenerReporteStock)
 router.get('/stock/excel', ctrl.generarExcelReporteStock)
 router.get('/stock/pdf', ctrl.generarPdfReporteStock)
-router.post('/stock/alertas/generar', branchRequired, ctrl.generarAlertasPorTurno)
-router.patch('/stock/alertas/:id', ctrl.marcarAlerta)
 router.get('/stock/alertas', ctrl.obtenerAlertas)
 router.get('/stock/plantilla-correccion', ctrl.generarPlantillaCorreccion)
-router.post('/stock/corregir-plantilla', branchRequired, uploadExcel.single('archivo'), ctrl.corregirPlantilla)
+
+// Escritura (solo roles operativos)
+router.post('/stock/alertas/generar', requireRole(...ROLES_OPERATIVOS), branchRequired, ctrl.generarAlertasPorTurno)
+router.patch('/stock/alertas/:id', requireRole(...ROLES_OPERATIVOS), ctrl.marcarAlerta)
+router.post('/stock/corregir-plantilla', requireRole(...ROLES_OPERATIVOS), branchRequired, uploadExcel.single('archivo'), ctrl.corregirPlantilla)
 
 module.exports = router

@@ -36,8 +36,8 @@ describe('P0-BRANCH-OPERATIONAL-SCOPE (estático)', () => {
 
   it('4. turnos.routes: branchRequired en abrir/cerrar y branchOptional en lecturas', () => {
     const src = read('modules/turnos-caja/turnos-caja.routes.js')
-    assert.ok(/post\('\/abrir',\s+requireAuth,\s+branchRequired/.test(src), 'abrir sin branchRequired')
-    assert.ok(/post\('\/cerrar',\s+requireAuth,\s+branchRequired/.test(src), 'cerrar sin branchRequired')
+    assert.ok(/post\('\/abrir'.+requireTenantOrDelegated.+branchRequired/.test(src), 'abrir sin branchRequired')
+    assert.ok(/post\('\/cerrar'.+requireTenantOrDelegated.+branchRequired/.test(src), 'cerrar sin branchRequired')
     for (const ruta of ['activo', 'resumen', 'historial', 'resumen-contable']) {
       assert.ok(src.includes(`'/${ruta}',`), `falta ruta /${ruta}`)
     }
@@ -68,13 +68,13 @@ describe('P0-BRANCH-OPERATIONAL-SCOPE (estático)', () => {
   it('8. compras: recibir scopa la OC por empresaId + sucursal operativa', () => {
     const src = read('modules/compras/compras.controller.js')
     assert.ok(src.includes('empresaId, sucursalId }'), 'falta ocScoped por empresaId+sucursalId en recibir')
-    assert.ok(src.includes("'No autorizado para recibir esta orden'"), 'falta rechazo de OC fuera de sucursal')
+    assert.ok(src.includes("error: 'Orden no encontrada'"), 'falta respuesta opaca para OC fuera de scope')
   })
 
   it('9. compras.routes: branchRequired en POST / y /:id/recibir', () => {
     const src = read('modules/compras/compras.routes.js')
-    assert.ok(/post\('\/',\s+branchRequired,\s+c\.crear/.test(src), 'crear sin branchRequired')
-    assert.ok(/post\('\/:id\/recibir',\s+branchRequired/.test(src), 'recibir sin branchRequired')
+    assert.ok(/post\('\/',[^\n]*branchRequired[^\n]*c\.crear/.test(src), 'crear sin branchRequired')
+    assert.ok(/post\('\/:id\/recibir',[^\n]*branchRequired[^\n]*c\.recibir/.test(src), 'recibir sin branchRequired')
   })
 
   // ── COTIZACIONES ───────────────────────────────────────────────
@@ -107,8 +107,8 @@ describe('P0-BRANCH-OPERATIONAL-SCOPE (estático)', () => {
 
   it('14. reporte-stock.routes: branchRequired en alertas/generar y corregir-plantilla', () => {
     const src = read('modules/reportes/reporte-stock.routes.js')
-    assert.ok(/post\('\/stock\/alertas\/generar',\s+branchRequired/.test(src), 'generar sin branchRequired')
-    assert.ok(/post\('\/stock\/corregir-plantilla',\s+branchRequired/.test(src), 'corregirPlantilla sin branchRequired')
+    assert.ok(/post\('\/stock\/alertas\/generar'.+branchRequired/.test(src), 'generar sin branchRequired')
+    assert.ok(/post\('\/stock\/corregir-plantilla'.+branchRequired/.test(src), 'corregirPlantilla sin branchRequired')
   })
 
   // ── HELPER ─────────────────────────────────────────────────────

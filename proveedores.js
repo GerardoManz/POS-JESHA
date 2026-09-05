@@ -1,7 +1,6 @@
-const TOKEN   = localStorage.getItem('jesha_token')
-const USUARIO = JSON.parse(localStorage.getItem('jesha_usuario') || '{}')
+const USUARIO = window.jeshaSession?.getUsuario() || {}
 
-if (!TOKEN) {
+if (!window.jeshaSession?.isValid()) {
   localStorage.setItem('redirect_after_login', 'proveedores.html')
   window.location.href = 'login.html'
 }

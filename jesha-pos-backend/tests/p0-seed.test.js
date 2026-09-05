@@ -205,7 +205,16 @@ describe('validarDestino', { concurrency: 1 }, () => {
   it('test prefijo ok', () => { const r = mod.validarDestino('test', 'postgresql://u@localhost/jesha_p0_seed_test_x'); assert.strictEqual(r.dbName, 'jesha_p0_seed_test_x') })
   it('local solo jesha_db', () => { const r = mod.validarDestino('local', 'postgresql://u@localhost/jesha_db'); assert.strictEqual(r.dbName, 'jesha_db') })
   it('local rechaza prefijo test', () => { assert.throws(() => mod.validarDestino('local', 'postgresql://u@localhost/jesha_p0_seed_test_x'), { code: 'SEED_DATABASE_GUARD_FAILED' }) })
-  it('DATABASE_URL undefined → INVALID', () => { assert.throws(() => mod.validarDestino('test', undefined), { code: 'SEED_DATABASE_URL_INVALID' }) })
+  it('DATABASE_URL undefined → INVALID', () => {
+    const prev = process.env.DATABASE_URL
+    try {
+      delete process.env.DATABASE_URL
+      assert.throws(() => mod.validarDestino('test', undefined), { code: 'SEED_DATABASE_URL_INVALID' })
+    } finally {
+      if (prev !== undefined) process.env.DATABASE_URL = prev
+      else delete process.env.DATABASE_URL
+    }
+  })
 
   it('IPv6 [::1] test → OK y hostname normalizado', () => {
     const r = mod.validarDestino('test', 'postgresql://u:p@[::1]:5432/jesha_p0_seed_test_ipv6')

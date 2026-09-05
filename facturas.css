@@ -389,6 +389,11 @@ select.det-field option { background: #1a1d22; color: var(--text); }
 #btn-global-preview { flex:0 0 auto; }
 #btn-global-timbrar { flex:1; justify-content:center; }
 
+.global-branch-summary { display:flex; flex-direction:column; gap:7px; padding:10px 12px; border:1px solid var(--panel-border); border-radius:8px; font-size:.82rem; }
+.global-branch-row { display:flex; justify-content:space-between; gap:12px; padding:7px 0; border-top:1px solid var(--panel-border); color:var(--text); }
+.global-branch-row span:last-child { color:var(--muted); text-align:right; }
+.global-branch-row.has-error { color:#f59e0b; }
+
 #g-mixto-info {
   display: flex; align-items: flex-start; gap: 8px;
   padding: 10px 14px; border-radius: 8px;

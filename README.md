@@ -393,4 +393,4 @@ Usado en 14 controllers para todo `.create()` y queries con scope de tenant.
 
 - **Login sin empresa**: `findFirst({ username })` puede colisionar entre empresas con el mismo username
 - **Login response**: no incluye `empresaId` en el objeto usuario (solo en JWT)
-- **`requireSucursalAccess`** y **`sucursal.helper.js`**: no reconocen `PLATFORM_ADMIN` ni validan cross-empresa
+- ~~**`requireSucursalAccess`** y **`sucursal.helper.js`**: no reconocen `PLATFORM_ADMIN` ni validan cross-empresa~~ — **Resuelto (2026-08-20)**: ambos delegan en `request-context` (rol-agnóstico) que valida la sucursal operativa y su pertenencia al tenant. No es deuda.

@@ -1,10 +1,9 @@
 // ════════════════════════════════════════════════════════════════════
 //  HISTORIAL DE VENTAS — JAVASCRIPT
 // ════════════════════════════════════════════════════════════════════
-const TOKEN   = localStorage.getItem('jesha_token')
-const USUARIO = JSON.parse(localStorage.getItem('jesha_usuario') || '{}')
+const USUARIO = window.jeshaSession?.getUsuario() || {}
 
-if (!TOKEN && !window.location.pathname.includes('login.html')) {
+if (!window.jeshaSession?.isValid() && !window.location.pathname.includes('login.html')) {
   localStorage.setItem('redirect_after_login', 'historial.html')
   window.location.href = 'login.html'
   throw new Error('Sin autenticación')
@@ -43,7 +42,7 @@ const metodoBadge = m => {
 // ════════════════════════════════════════════════════════════════════
 async function cargarCatalogos() {
   try {
-    const resC = await fetch(`${API_URL}/clientes?activo=true`, { headers: { 'Authorization': `Bearer ${TOKEN}` } })
+    const resC = await fetch(`${API_URL}/clientes?activo=true`)
     if (window.handle401 && window.handle401(resC.status)) return
     if (resC.ok) {
       const dataC    = await resC.json()
@@ -62,7 +61,7 @@ async function cargarCatalogos() {
         })
     }
 
-    const resU = await fetch(`${API_URL}/usuarios`, { headers: { 'Authorization': `Bearer ${TOKEN}` } })
+    const resU = await fetch(`${API_URL}/usuarios`)
     if (window.handle401 && window.handle401(resU.status)) return
     if (resU.ok) {
       const dataU    = await resU.json()
@@ -87,7 +86,7 @@ async function cargarVentas() {
 
   const params = construirParams()
   try {
-    const res   = await fetch(`${API_URL}/ventas?${params}`, { headers: { 'Authorization': `Bearer ${TOKEN}` } })
+    const res   = await fetch(`${API_URL}/ventas?${params}`)
     if (window.handle401 && window.handle401(res.status)) return
     if (!res.ok) throw new Error('Error cargando ventas')
     const data  = await res.json()
@@ -188,7 +187,7 @@ function actualizarKpis(ventas, totalRegistros) {
 // ════════════════════════════════════════════════════════════════════
 window.verDetalle = async function(id) {
   try {
-    const res  = await fetch(`${API_URL}/ventas/${id}`, { headers: { 'Authorization': `Bearer ${TOKEN}` } })
+    const res  = await fetch(`${API_URL}/ventas/${id}`)
     if (window.handle401 && window.handle401(res.status)) return
     if (!res.ok) throw new Error('No se pudo cargar la venta')
     const data = await res.json()
@@ -369,7 +368,7 @@ function abrirModalCancelacion(id, folio) {
     try {
       const res = await fetch(`${API_URL}/ventas/${id}/cancelar`, {
         method:  'PATCH',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
+      headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ motivo })
       })
       if (window.handle401 && window.handle401(res.status)) return
@@ -380,17 +379,7 @@ function abrirModalCancelacion(id, folio) {
       document.getElementById('modal-venta').classList.remove('active')
       cargarVentas()
 
-      const toast = document.createElement('div')
-      toast.textContent = `✓ Venta ${folio} cancelada`
-      Object.assign(toast.style, {
-        position:'fixed', top:'20px', right:'20px', zIndex:'9999',
-        background:'#3a1010', border:'1px solid rgba(255,107,107,0.3)',
-        color:'#ff6b6b', padding:'14px 20px', borderRadius:'8px',
-        fontSize:'0.875rem', fontWeight:'600',
-        boxShadow:'0 4px 16px rgba(0,0,0,0.4)', transition:'opacity 0.4s'
-      })
-      document.body.appendChild(toast)
-      setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 400) }, 4000)
+      jeshaToast('Venta ' + folio + ' cancelada', 'success')
 
     } catch (err) {
       errApi.textContent   = err.message
@@ -414,13 +403,13 @@ window.cancelarVenta = function(id, folio) {
 
 window.abrirModalDevolucion = async function(ventaId) {
   try {
-    const resV = await fetch(`${API_URL}/ventas/${ventaId}`, { headers: { 'Authorization': `Bearer ${TOKEN}` } })
+    const resV = await fetch(`${API_URL}/ventas/${ventaId}`)
     if (window.handle401 && window.handle401(resV.status)) return
     if (!resV.ok) throw new Error('No se pudo cargar la venta')
     const dataV  = await resV.json()
     devVentaData = dataV.data
 
-    const resD = await fetch(`${API_URL}/devoluciones/venta/${ventaId}`, { headers: { 'Authorization': `Bearer ${TOKEN}` } })
+    const resD = await fetch(`${API_URL}/devoluciones/venta/${ventaId}`)
     if (window.handle401 && window.handle401(resD.status)) return
     devResumenPrevio = {}
     if (resD.ok) {
@@ -553,9 +542,7 @@ async function confirmarDevolucion() {
 
   // Verificar turno activo antes de proceder
   try {
-    const resTurno = await fetch(`${API_URL}/turnos-caja/activo`, {
-      headers: { 'Authorization': `Bearer ${TOKEN}` }
-    })
+    const resTurno = await fetch(`${API_URL}/turnos-caja/activo`)
     if (window.handle401 && window.handle401(resTurno.status)) return
     if (!resTurno.ok) {
       if (devTipoSeleccionado === 'REEMBOLSO' || devTipoSeleccionado === 'CAMBIO_PARCIAL') {
@@ -580,7 +567,7 @@ async function confirmarDevolucion() {
   try {
     const res = await fetch(`${API_URL}/devoluciones`, {
       method:  'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
+      headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({
         ventaId:       devVentaData.id,
         motivo,
@@ -597,24 +584,13 @@ async function confirmarDevolucion() {
     cerrarModalDevolucion()
     cargarVentas()
 
-    const toast = document.createElement('div')
-    let mensajeToast = `✓ Devolución <strong>${data.folio}</strong> registrada — ${fmt(data.data.montoReembolso)}`
+    var msgDevolucion = 'Devolucion ' + data.folio + ' registrada — ' + fmt(data.data.montoReembolso)
     if (data.sinTurno) {
-      mensajeToast += `<br><span style="font-size:0.8rem;opacity:0.85">⚠️ Sin turno activo — egreso de caja no registrado</span>`
+      msgDevolucion += ' (Sin turno activo — egreso de caja no registrado)'
+      jeshaToast(msgDevolucion, 'warning', 6000)
+    } else {
+      jeshaToast(msgDevolucion, 'success', 6000)
     }
-    toast.innerHTML = mensajeToast
-    Object.assign(toast.style, {
-      position: 'fixed', top: '20px', right: '20px', zIndex: '9999',
-      background: data.sinTurno ? '#3a2a10' : '#1a3a28',
-      border: `1px solid ${data.sinTurno ? 'rgba(255,193,7,0.3)' : 'rgba(96,208,128,0.3)'}`,
-      color: data.sinTurno ? '#ffc107' : '#60d080',
-      padding: '14px 20px', borderRadius: '8px',
-      fontSize: '0.875rem', fontWeight: '600',
-      boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
-      transition: 'opacity 0.4s', maxWidth: '380px', lineHeight: '1.5'
-    })
-    document.body.appendChild(toast)
-    setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 400) }, 6000)
 
     if (devVentaData.facturaEstado === 'FACTURADA') {
       setTimeout(() => jeshaToast('Recuerda emitir la nota de crédito CFDI con tu contador', 'info', 7000), 600)
@@ -663,7 +639,7 @@ window.imprimirTicket = async function(id) {
   try {
     const r = await fetch(`${API_URL}/impresion/job`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ tipo: 'VENTA', ventaId: id })
     })
     if (r.ok) {
@@ -906,8 +882,7 @@ async function confirmarCambioMetodo(ventaId) {
     const res = await fetch(`${API_URL}/ventas/${ventaId}/metodo-pago`, {
       method:  'PATCH',
       headers: {
-        'Content-Type':  'application/json',
-        'Authorization': `Bearer ${TOKEN}`
+        'Content-Type':  'application/json'
       },
       body: JSON.stringify({ nuevoMetodo })
     })
@@ -920,17 +895,7 @@ async function confirmarCambioMetodo(ventaId) {
     document.getElementById('modal-venta').classList.remove('active')
     cargarVentas()
 
-    const toast = document.createElement('div')
-    toast.textContent = `✓ Método de pago actualizado correctamente`
-    Object.assign(toast.style, {
-      position:'fixed', top:'20px', right:'20px', zIndex:'9999',
-      background:'#1a3a28', border:'1px solid rgba(96,208,128,0.3)',
-      color:'#60d080', padding:'14px 20px', borderRadius:'8px',
-      fontSize:'0.875rem', fontWeight:'600',
-      boxShadow:'0 4px 16px rgba(0,0,0,0.4)', transition:'opacity 0.4s'
-    })
-    document.body.appendChild(toast)
-    setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 400) }, 4000)
+    jeshaToast('Metodo de pago actualizado correctamente', 'success')
 
   } catch (err) {
     errEl.textContent    = err.message

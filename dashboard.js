@@ -40,6 +40,12 @@ function animarKPI(el, valorFinal, formateador, duracion) {
     kpiAnimationFrames.delete(el)
     return
   }
+
+  el.classList.remove('kpi-value-emphasis')
+  void el.offsetWidth
+  el.classList.add('kpi-value-emphasis')
+  setTimeout(function() { el.classList.remove('kpi-value-emphasis') }, 300)
+
   const ms = duracion || 380
   const inicio = performance.now()
   function step(ahora) {
@@ -138,6 +144,14 @@ function categoriaStock(stock, minimo) {
 //  KPIs
 // ════════════════════════════════════════════════════════════════════
 async function cargarKPIs() {
+  if (!prefersReducedMotion()) {
+    document.querySelectorAll('.kpi-card').forEach(function(card) {
+      card.classList.remove('kpi-card-enter')
+      void card.offsetWidth
+      card.classList.add('kpi-card-enter')
+    })
+  }
+
   // Admin Sucursal: ocultar KPI Total Ventas con candado
   if (USUARIO.rol === 'ADMIN_SUCURSAL') {
     const kpiTotal = document.getElementById('kpi-total-ventas')

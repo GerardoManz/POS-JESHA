@@ -32,27 +32,20 @@ async function hydrateTenantRequestContext(req, usuario = req && req.usuario) {
     )
   }
 
-  const requestedSucursalId = parseSucursalHeader((req && req.headers) || {})
-  const intent = resolveBranchIntent(usuario, requestedSucursalId)
-
   if (req && Object.prototype.hasOwnProperty.call(req, 'context')) {
     const existing = assertTenantRequestContext(req.context)
-    if (
-      existing.actor.id !== intent.identidad.id ||
-      existing.actor.rol !== intent.identidad.rol ||
-      existing.tenant.empresaId !== intent.identidad.empresaId ||
-      existing.branch.mode !== intent.mode ||
-      existing.branch.sucursalId !== intent.sucursalId ||
-      !isDeepFrozen(existing)
-    ) {
+    if (!isDeepFrozen(existing)) {
       throw new RequestContextError(
         'REQUEST_CONTEXT_REHYDRATION_MISMATCH',
-        'El contexto existente no coincide con el usuario rehidratado',
+        'El contexto existente no es inmutable',
         500
       )
     }
     return existing
   }
+
+  const requestedSucursalId = parseSucursalHeader((req && req.headers) || {})
+  const intent = resolveBranchIntent(usuario, requestedSucursalId)
   let sucursal = null
 
   if (intent.sucursalId !== null) {

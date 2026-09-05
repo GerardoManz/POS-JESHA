@@ -9,15 +9,17 @@
 const prisma      = require('../../lib/prisma')
 const getEmpresaId = require('../../helpers/getEmpresaId')
 
-const EMPRESA = {
-  nombre:    'Ferretería e Iluminación JESHA',
-  slogan:    'Productos y Servicios de Máxima Calidad',
-  direccion: 'Av. San Simón #03',
-  ciudad:    'Guadalupe, Zacatecas',
-  tel1:      '492 101 6879',
+async function getEmpresaBranding(empresaId) {
+  const empresa = await prisma.empresa.findUnique({
+    where: { id: empresaId },
+    select: { nombreComercial: true, rfc: true, whatsapp: true }
+  })
+  return {
+    nombre: empresa?.nombreComercial || 'Empresa',
+    rfc: empresa?.rfc || '',
+    whatsapp: empresa?.whatsapp || ''
+  }
 }
-
-const LOGO_URL = 'https://res.cloudinary.com/dabyfymjd/image/upload/q_auto/f_auto/v1779317658/logo-jesha_hmlble.png'
 
 function nombreTrabajador(t) {
   if (!t) return '—'
@@ -140,7 +142,8 @@ const generarTicketMateriales = async (req, res) => {
     }
 
     const totalAbonado = parseFloat(bitacora.totalAbonado || 0)
-    const html = generarHTML(filas, totalRetiro, deudaAnterior, nuevaDeuda, totalAbonado, bitacora, recibeNombre, responsable, fechaStr)
+    const empresaData = await getEmpresaBranding(empresaId)
+    const html = generarHTML(filas, totalRetiro, deudaAnterior, nuevaDeuda, totalAbonado, bitacora, recibeNombre, responsable, fechaStr, empresaData)
     res.setHeader('Content-Type', 'text/html; charset=utf-8')
     res.send(html)
   } catch (err) {
@@ -206,8 +209,9 @@ const generarTicketRetiro = async (req, res) => {
     const responsable = retiro.Responsable || null
     const fechaStr = formatearFechaTicket(retiro.fechaManual || retiro.creadoEn)
     const totalAbonado = parseFloat(bitacora.totalAbonado || 0)
+    const empresaData = await getEmpresaBranding(empresaId)
 
-    const html = generarHTML(filas, totalRetiro, deudaAnterior, nuevaDeuda, totalAbonado, bitacora, recibeNombre, responsable, fechaStr)
+    const html = generarHTML(filas, totalRetiro, deudaAnterior, nuevaDeuda, totalAbonado, bitacora, recibeNombre, responsable, fechaStr, empresaData)
     res.setHeader('Content-Type', 'text/html; charset=utf-8')
     res.send(html)
   } catch (err) {
@@ -216,9 +220,9 @@ const generarTicketRetiro = async (req, res) => {
   }
 }
 
-function generarHTML(filas, totalRetiro, deudaAnterior, nuevaDeuda, totalAbonado, bitacora, recibeNombre, responsable, fechaStr) {
+function generarHTML(filas, totalRetiro, deudaAnterior, nuevaDeuda, totalAbonado, bitacora, recibeNombre, responsable, fechaStr, empresaData) {
   const fmt = v => `$${parseFloat(v || 0).toFixed(2)}`
-  const logoHTML = `<img src="${LOGO_URL}" alt="JESHA" class="logo" />`
+  const logoHTML = ''
   const descuentoMonto = parseFloat(bitacora.descuentoMonto || 0)
   const descuentoValor = parseFloat(bitacora.descuentoValor || 0)
   const subtotalConDesc = parseFloat((parseFloat(bitacora.totalMateriales || 0) - descuentoMonto).toFixed(2))
@@ -295,11 +299,8 @@ html, body { width:100%; max-width:100%; margin:0; padding:1mm 3mm; font-family:
 
 <div class="hdr">
   ${logoHTML}
-  <div class="emp">${EMPRESA.nombre.replace(' JESHA', '<br/>JESHA')}</div>
-  <div class="slg">${EMPRESA.slogan}</div>
-  <div class="dir">${EMPRESA.direccion}</div>
-  <div class="dir">${EMPRESA.ciudad}</div>
-  <div class="tel">Tel. ${EMPRESA.tel1}</div>
+  <div class="emp">${empresaData.nombre}</div>
+  ${empresaData.whatsapp ? `<div class="tel">Tel. ${empresaData.whatsapp}</div>` : ''}
 </div>
 
 <div class="doc-tipo">VALE DE MATERIALES</div>

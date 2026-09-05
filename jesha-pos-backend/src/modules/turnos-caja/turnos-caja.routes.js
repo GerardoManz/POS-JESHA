@@ -1,6 +1,7 @@
 const express = require('express')
 const router = express.Router()
-const { requireAuth } = require('../../middlewares/auth.middleware')
+const { requireTenantOrDelegated } = require('../../middlewares/tenant-or-delegated.middleware')
+const { requireRole } = require('../../middlewares/auth.middleware')
 const { branchRequired, branchOptional } = require('../../middlewares/scope.middleware')
 const {
   obtenerActivo,
@@ -12,12 +13,14 @@ const {
 } = require('./turnos-caja.controller')
 const { generarTicketCorte } = require('./ticket-corte.controller')
 
-router.get('/activo',                    requireAuth, branchOptional, obtenerActivo)
-router.get('/resumen',                   requireAuth, branchOptional, obtenerResumen)
-router.get('/historial',                 requireAuth, branchOptional, obtenerHistorial)
-router.get('/resumen-contable',          requireAuth, branchOptional, obtenerResumenContable)
-router.post('/abrir',                    requireAuth, branchRequired, abrirTurno)
-router.post('/cerrar',                   requireAuth, branchRequired, cerrarTurno)
-router.get('/:id/ticket',                requireAuth, generarTicketCorte)
+const ROLES_OPERATIVOS = ['SUPERADMIN', 'ADMIN_SUCURSAL', 'EMPLEADO']
+
+router.get('/activo',                    requireTenantOrDelegated, branchOptional, obtenerActivo)
+router.get('/resumen',                   requireTenantOrDelegated, branchOptional, obtenerResumen)
+router.get('/historial',                 requireTenantOrDelegated, branchOptional, obtenerHistorial)
+router.get('/resumen-contable',          requireTenantOrDelegated, branchOptional, obtenerResumenContable)
+router.post('/abrir',                    requireTenantOrDelegated, requireRole(...ROLES_OPERATIVOS), branchRequired, abrirTurno)
+router.post('/cerrar',                   requireTenantOrDelegated, requireRole(...ROLES_OPERATIVOS), branchRequired, cerrarTurno)
+router.get('/:id/ticket',                requireTenantOrDelegated, generarTicketCorte)
 
 module.exports = router

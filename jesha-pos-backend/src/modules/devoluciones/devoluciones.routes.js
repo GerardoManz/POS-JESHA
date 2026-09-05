@@ -6,6 +6,9 @@
 const express    = require('express')
 const router     = express.Router()
 const ctrl       = require('./devoluciones.controller')
+const { requireRole } = require('../../middlewares/auth.middleware')
+
+const ROLES_OPERATIVOS = ['SUPERADMIN', 'ADMIN_SUCURSAL', 'EMPLEADO']
 
 // GET  /devoluciones              — listado con filtros
 router.get('/',                 ctrl.listar)
@@ -14,6 +17,6 @@ router.get('/',                 ctrl.listar)
 router.get('/venta/:ventaId',   ctrl.porVenta)
 
 // POST /devoluciones              — crear devolución
-router.post('/',                ctrl.crear)
+router.post('/',                requireRole(...ROLES_OPERATIVOS), ctrl.crear)
 
 module.exports = router

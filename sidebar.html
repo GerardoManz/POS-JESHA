@@ -52,9 +52,8 @@
   <!-- ── BRAND ── -->
   <div>
     <div class="brand">
-      <img src="Imagenes/logo-jesha.png" alt="JESHA" />
       <div class="brand-text">
-        <h1>JESHA</h1>
+        <h1 id="sidebar-brand-name">POS</h1>
         <p>Sistema POS</p>
       </div>
       <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Cambiar a modo claro"></button>
@@ -131,6 +130,16 @@
           <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
         </svg>
         <span class="menu-text">Inventario</span>
+      </a>
+
+      <a href="transferencias.html" class="menu-item" data-page="transferencias">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="17 1 21 5 17 9"/>
+          <path d="M3 11V9a4 4 0 0 1 4-4h14"/>
+          <polyline points="7 23 3 19 7 15"/>
+          <path d="M21 13v2a4 4 0 0 1-4 4H3"/>
+        </svg>
+        <span class="menu-text">Transferencias</span>
       </a>
 
       <a href="compras.html" class="menu-item" data-page="compras">
@@ -232,6 +241,14 @@
         <span class="menu-text">Usuarios</span>
       </a>
 
+      <a href="configuracion.html" class="menu-item" data-page="configuracion">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+        <span class="menu-text">Configuración</span>
+      </a>
+
     </nav>
   </div>
 
@@ -245,7 +262,7 @@
       </svg>
       <span class="logout-text">Cerrar Sesión</span>
     </button>
-    <small>© 2026 Ferretería JESHA<br>Versión 1.0.0</small>
+    <small id="sidebar-footer-text">© 2026 POS<br>Versión 1.0.0</small>
   </div>
 
 </aside>

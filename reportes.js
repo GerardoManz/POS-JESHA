@@ -1,7 +1,7 @@
 // ── GUARD DE ACCESO ──
 ;(function() {
   try {
-    const rol = JSON.parse(localStorage.getItem('jesha_usuario') || '{}').rol
+    const rol = window.jeshaSession?.getUsuario()?.rol
     const ROLES_PERMITIDOS = ['SUPERADMIN', 'ADMIN_SUCURSAL']
     if (!ROLES_PERMITIDOS.includes(rol)) {
       window.location.replace('dashboard.html')
@@ -9,10 +9,9 @@
   } catch(e) { window.location.replace('dashboard.html') }
 })()
 
-const TOKEN   = localStorage.getItem('jesha_token')
 const API_URL = window.__JESHA_API_URL__ || 'http://localhost:3000'
 
-if (!TOKEN) { localStorage.setItem('redirect_after_login','reportes.html'); window.location.href = 'login.html'; throw new Error() }
+if (!window.jeshaSession?.isValid()) { localStorage.setItem('redirect_after_login','reportes.html'); window.location.href = 'login.html'; throw new Error() }
 
 // ── Helpers globales ──
 function escapeHTML(str) {
@@ -102,7 +101,6 @@ async function cargarReportes() {
     const params = new URLSearchParams({ desde: rango.desde, hasta: rango.hasta })
     if (filtros.categoriaId) params.append('categoriaId', filtros.categoriaId)
     if (filtros.vendedorId) params.append('vendedorId', filtros.vendedorId)
-    if (filtros.sucursalId) params.append('sucursalId', filtros.sucursalId)
 
     // Comparativo: rango anterior paralelo
     const rangoAnt = calcularRangoAnterior(periodoActual, rango.desde, rango.hasta)
@@ -1072,7 +1070,7 @@ function obtenerFiltros() {
   const cat = $id('filtro-categoria')
   const ven = $id('filtro-vendedor')
   const zon = $id('filtro-zona')
-  const usuario = JSON.parse(localStorage.getItem('jesha_usuario') || '{}')
+  const usuario = window.jeshaSession?.getUsuario() || {}
   return {
     categoriaId: cat ? cat.value || null : null,
     vendedorId: ven ? ven.value || null : null,
@@ -1095,7 +1093,7 @@ async function cargarFiltros() {
       }
     }
 
-    const usuario = JSON.parse(localStorage.getItem('jesha_usuario') || '{}')
+    const usuario = window.jeshaSession?.getUsuario() || {}
     const venSelect = $id('filtro-vendedor')
     if (venSelect && usuario.rol !== 'ADMIN_SUCURSAL') {
       // Intentar cargar vendedores desde /usuarios/vendedores o similar
@@ -1284,13 +1282,11 @@ function cargarReporteStock() {
     isLoadingStock = true
     try {
       const fecha = $id('stock-fecha')?.value
-      const sucursalId = $id('stock-sucursal')?.value
       if (!fecha) { jeshaToast('Selecciona una fecha', 'warning'); isLoadingStock = false; return }
 
       setStockLoading()
 
       const params = new URLSearchParams({ fecha })
-      if (sucursalId) params.append('sucursalId', sucursalId)
       if (soloNuevosMode) params.append('soloNuevos', 'true')
       const res = await apiFetch(`/reportes/stock?${params.toString()}`)
       stockData = res?.data || res
@@ -1534,18 +1530,20 @@ function renderSugerenciaPagina() {
 
 async function descargarExcelStock() {
   const fecha = $id('stock-fecha')?.value
-  const sucursalId = $id('stock-sucursal')?.value
   if (!fecha) { jeshaToast('Selecciona una fecha', 'warning'); return }
 
   const params = new URLSearchParams({ fecha })
-  if (sucursalId) params.append('sucursalId', sucursalId)
 
-  const token = localStorage.getItem('jesha_token')
+  const token = window.jeshaSession?.getEffectiveToken()
   const api = window.__JESHA_API_URL__ || 'http://localhost:3000'
+  const sucursalId = window.jeshaSession?.getSelectedSucursalId() ?? null
 
   try {
     const res = await fetch(`${api}/reportes/stock/excel?${params}`, {
-      headers: { Authorization: `Bearer ${token}` }
+      headers: {
+        Authorization: `Bearer ${token}`,
+        ...(sucursalId !== null ? { 'X-Sucursal-Id': String(sucursalId) } : {})
+      }
     })
     if (!res.ok) throw new Error(await res.text().catch(() => `HTTP ${res.status}`))
     const blob = await res.blob()
@@ -1564,18 +1562,20 @@ async function descargarExcelStock() {
 
 async function descargarPdfStock() {
   const fecha = $id('stock-fecha')?.value
-  const sucursalId = $id('stock-sucursal')?.value
   if (!fecha) { jeshaToast('Selecciona una fecha', 'warning'); return }
 
   const params = new URLSearchParams({ fecha })
-  if (sucursalId) params.append('sucursalId', sucursalId)
 
-  const token = localStorage.getItem('jesha_token')
+  const token = window.jeshaSession?.getEffectiveToken()
   const api = window.__JESHA_API_URL__ || 'http://localhost:3000'
+  const sucursalId = window.jeshaSession?.getSelectedSucursalId() ?? null
 
   try {
     const res = await fetch(`${api}/reportes/stock/pdf?${params}`, {
-      headers: { Authorization: `Bearer ${token}` }
+      headers: {
+        Authorization: `Bearer ${token}`,
+        ...(sucursalId !== null ? { 'X-Sucursal-Id': String(sucursalId) } : {})
+      }
     })
     if (!res.ok) throw new Error(await res.text().catch(() => `HTTP ${res.status}`))
     const blob = await res.blob()

@@ -26,7 +26,9 @@ function formatFechaTicket(d = new Date()) {
 
 function shapeEmpresa(e = {}) {
   return {
+    id: e.id == null ? null : e.id,
     nombre: e.nombre || '',
+    nombreComercial: e.nombreComercial || e.nombre || '',
     slogan: e.slogan || null,
     direccion: e.direccion || '',
     ciudad: e.ciudad || '',
@@ -37,7 +39,7 @@ function shapeEmpresa(e = {}) {
 
 // VENTA — incluye QR de facturación y, opcionalmente, cajón.
 function buildVentaSnapshot({
-  empresa, folio, fecha, subtotal, descuento = 0, total,
+  empresa, sucursal = null, ventaId = null, folio, fecha, subtotal, descuento = 0, total,
   productos = [], metodoPago, metodoLabel, montoPagado = 0, cambio = 0,
   cajero = null, cliente = null, qrUrl = null, logoUrl = null,
   abrirCajon = false, copia = false, copiaNum = null
@@ -45,12 +47,21 @@ function buildVentaSnapshot({
   return {
     tipo: 'VENTA',
     empresa: shapeEmpresa(empresa),
+    sucursal: sucursal ? {
+      id: sucursal.id == null ? null : sucursal.id,
+      nombre: sucursal.nombre || '',
+      codigoPostal: sucursal.codigoPostal || null
+    } : null,
     venta: {
+      id: ventaId,
       folio: folio == null ? null : String(folio),
       fecha,
       subtotal: num(subtotal),
       descuento: num(descuento),
-      total: num(total)
+      total: num(total),
+      metodoPago: metodoPago || null,
+      montoPagado: num(montoPagado),
+      cambio: num(cambio)
     },
     productos: productos.map((p) => ({
       nombre: String(p.nombre || ''),

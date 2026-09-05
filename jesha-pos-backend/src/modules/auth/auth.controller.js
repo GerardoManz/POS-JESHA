@@ -152,18 +152,19 @@ function signTenantToken(principal) {
   })
 }
 
-function serializarUsuario(usuario, identidad, sucursal = null) {
-  return {
-    id: identidad.id,
-    nombre: usuario.nombre,
-    username: usuario.username,
-    rol: identidad.rol,
-    sucursalId: identidad.sucursalId,
-    empresaId: identidad.empresaId,
-    tema: usuario.tema || 'dark',
-    Sucursal: sucursal ? { id: sucursal.id, nombre: sucursal.nombre } : null
+  function serializarUsuario(usuario, identidad, sucursal = null, empresa = null) {
+    return {
+      id: identidad.id,
+      nombre: usuario.nombre,
+      username: usuario.username,
+      rol: identidad.rol,
+      sucursalId: identidad.sucursalId,
+      empresaId: identidad.empresaId,
+      tema: usuario.tema || 'dark',
+      Empresa: empresa ? { id: empresa.id, slug: empresa.slug, nombreComercial: empresa.nombreComercial, logoUrl: empresa.logoUrl, colorPrimario: empresa.colorPrimario, colorSecundario: empresa.colorSecundario, colorAcento: empresa.colorAcento } : null,
+      Sucursal: sucursal ? { id: sucursal.id, nombre: sucursal.nombre } : null
+    }
   }
-}
 
 async function login(req, res) {
   try {
@@ -192,7 +193,7 @@ async function login(req, res) {
     return res.json({
       token,
       expiresIn: TENANT_AUTH_CONFIG.ttl,
-      usuario: serializarUsuario(resolved.usuario, resolved.identidad, resolved.sucursal)
+      usuario: serializarUsuario(resolved.usuario, resolved.identidad, resolved.sucursal, resolved.empresa)
     })
   } catch (err) {
     if (err instanceof TenantAuthError) {
@@ -215,6 +216,43 @@ async function login(req, res) {
 
 async function me(req, res) {
   try {
+    if (req.delegation && req.delegation.active) {
+      const empresa = await prisma.empresa.findUnique({
+        where: { id: req.delegation.targetEmpresaId },
+        select: { id: true, slug: true, nombreComercial: true, logoUrl: true, colorPrimario: true, colorSecundario: true, colorAcento: true, rfc: true, whatsapp: true, razonSocial: true }
+      })
+      const usuarioDelegado = {
+          id: req.usuario.id,
+          nombre: req.usuario.nombre,
+          username: req.usuario.username,
+          rol: 'SUPERADMIN',
+          actorRol: req.delegation.actorRealRol,
+          effectiveRole: 'SUPERADMIN',
+          delegated: true,
+          empresaId: req.delegation.targetEmpresaId,
+          sucursalId: req.usuario.sucursalId,
+          activo: true,
+          tema: 'dark',
+          Empresa: empresa || null,
+          Sucursal: null
+        }
+      return res.json({
+        usuario: usuarioDelegado,
+        kind: 'TENANT',
+        actorRole: req.delegation.actorRealRol,
+        effectiveRole: 'SUPERADMIN',
+        empresaId: req.delegation.targetEmpresaId,
+        Empresa: empresa || null,
+        branch: req.context?.branch || { mode: 'NONE', sucursalId: null },
+        delegation: {
+          active: true,
+          actorRealRol: req.delegation.actorRealRol,
+          actorUsername: req.delegation.actorUsername,
+          targetEmpresaId: req.delegation.targetEmpresaId
+        }
+      })
+    }
+
     const usuario = await prisma.usuario.findUnique({
       where: { id: req.usuario.id },
       select: { id: true, nombre: true, username: true, rol: true, sucursalId: true, empresaId: true, activo: true, tema: true }
@@ -222,11 +260,17 @@ async function me(req, res) {
     if (!usuario || !usuario.activo) return res.status(404).json({ error: 'Usuario no encontrado' })
 
     const identidad = validarIdentidadFinalUsuario(usuario)
+    const empresa = identidad.empresaId
+      ? await prisma.empresa.findUnique({
+          where: { id: identidad.empresaId },
+          select: { id: true, slug: true, nombreComercial: true, logoUrl: true, colorPrimario: true, colorSecundario: true, colorAcento: true }
+        })
+      : null
     const sucursal = identidad.sucursalId
       ? await prisma.sucursal.findUnique({ where: { id: identidad.sucursalId }, select: { id: true, nombre: true } })
       : null
 
-    return res.json({ usuario: serializarUsuario(usuario, identidad, sucursal) })
+    return res.json({ usuario: serializarUsuario(usuario, identidad, sucursal, empresa) })
   } catch (err) {
     if (err instanceof IdentityError) {
       return res.status(403).json({ error: 'Identidad de usuario inválida' })
@@ -250,11 +294,17 @@ async function actualizarPreferencias(req, res) {
     })
 
     const identidad = validarIdentidadFinalUsuario(usuario)
+    const empresa = identidad.empresaId
+      ? await prisma.empresa.findUnique({
+          where: { id: identidad.empresaId },
+          select: { id: true, slug: true, nombreComercial: true, logoUrl: true, colorPrimario: true, colorSecundario: true, colorAcento: true }
+        })
+      : null
     const sucursal = identidad.sucursalId
       ? await prisma.sucursal.findUnique({ where: { id: identidad.sucursalId }, select: { id: true, nombre: true } })
       : null
 
-    return res.json({ usuario: serializarUsuario(usuario, identidad, sucursal) })
+    return res.json({ usuario: serializarUsuario(usuario, identidad, sucursal, empresa) })
   } catch (err) {
     if (err instanceof IdentityError) {
       return res.status(403).json({ error: 'Identidad de usuario inválida' })

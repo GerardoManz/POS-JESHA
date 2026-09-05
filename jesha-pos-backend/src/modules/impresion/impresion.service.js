@@ -27,11 +27,14 @@ async function encolarImpresion(client, {
   const idempotencyKey = buildIdempotencyKey({
     tipo, modo, empresaId, entidadId, copiaNum: payload && payload.copiaNum
   })
+  const payloadWithState = payload && (payload.abrirCajon === true || payload.tipo === 'CAJON')
+    ? { ...payload, drawerCommandState: 'PENDING' }
+    : payload
   return client.printJob.create({
     data: {
       empresaId, idempotencyKey, tipo, modo,
       ventaId, turnoId, abonoId, retiroId,
-      queueName, payload
+      queueName, payload: payloadWithState
     }
   })
 }
@@ -156,6 +159,34 @@ async function getHealth(empresaId) {
   }
 }
 
+async function consumeDrawerCommand(id, empresaId) {
+  const rows = await prisma.$queryRawUnsafe(
+    `UPDATE "PrintJob"
+     SET payload = jsonb_set(
+           jsonb_set(
+             payload,
+             '{abrirCajon}',
+             'false'::jsonb,
+             true
+           ),
+           '{drawerCommandState}',
+           to_jsonb('CONSUMED'::text),
+           true
+         )
+     WHERE id = $1
+       AND "empresaId" = $2
+       AND "modo" <> 'COPIA'
+       AND (
+             payload->>'abrirCajon' = 'true'
+             OR payload->>'tipo' = 'CAJON'
+           )
+       AND COALESCE(payload->>'drawerCommandState', 'PENDING') = 'PENDING'
+     RETURNING id;`,
+    Number(id), Number(empresaId)
+  )
+  return rows.length > 0
+}
+
 module.exports = {
   DEFAULT_QUEUE,
   MAX_INTENTOS,
@@ -168,5 +199,6 @@ module.exports = {
   cleanupStaleJobs,
   getJob,
   listJobs,
-  getHealth
+  getHealth,
+  consumeDrawerCommand
 }

@@ -2,7 +2,7 @@
 
 const express = require('express')
 const rateLimit = require('express-rate-limit')
-const { login, me } = require('./platform-auth.controller')
+const { login, me, enterEmpresa } = require('./platform-auth.controller')
 const { autenticarPlataforma } = require('../../middlewares/platform-auth.middleware')
 
 const router = express.Router()
@@ -17,5 +17,6 @@ const platformLoginLimiter = rateLimit({
 
 router.post('/login', platformLoginLimiter, login)
 router.get('/me', autenticarPlataforma, me)
+router.post('/enter/:empresaId', autenticarPlataforma, enterEmpresa)
 
 module.exports = router

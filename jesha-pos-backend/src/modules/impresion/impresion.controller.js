@@ -419,6 +419,15 @@ const agentHealth = wrap(async (req, res) => {
   res.json(health)
 })
 
+// POST /impresion/agent/:id/consume-drawer — consumir comando de cajón de forma atómica (agent).
+const agentConsumeDrawer = wrap(async (req, res) => {
+  const id = Number(req.params.id)
+  const job = await service.getJob(id, req.agentEmpresaId) // scope T2
+  if (!job) return res.status(404).json({ error: 'Trabajo no encontrado' })
+  const shouldOpenDrawer = await service.consumeDrawerCommand(id, req.agentEmpresaId)
+  res.json({ shouldOpenDrawer })
+})
+
 // POST /impresion/drawer — abrir cajón de dinero manualmente (frontend, requireAuth).
 const abrirCajon = wrap(async (req, res) => {
   const empresaId = req.usuario.empresaId
@@ -442,5 +451,6 @@ module.exports = {
   agentFail,
   agentReset,
   agentHealth,
+  agentConsumeDrawer,
   abrirCajon
 }

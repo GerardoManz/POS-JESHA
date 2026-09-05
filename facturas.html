@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
   <script>
-    if (!localStorage.getItem('jesha_token') || !localStorage.getItem('jesha_usuario')) {
+    if (!localStorage.getItem('jesha_token') && !localStorage.getItem('jesha_delegated_token')) {
       window.location.replace('login.html')
     }
   </script>
@@ -89,6 +89,7 @@
               <th>Venta</th>
               <th>Fecha</th>
               <th>Método</th>
+              <th>Sucursal</th>
               <th>Receptor</th>
               <th>Uso CFDI</th>
               <th>Total</th>
@@ -98,7 +99,7 @@
             </tr>
           </thead>
           <tbody id="fact-tbody">
-            <tr><td colspan="9" class="loading-cell"><div class="spinner"></div><p>Cargando facturas...</p></td></tr>
+            <tr><td colspan="10" class="loading-cell"><div class="spinner"></div><p>Cargando facturas...</p></td></tr>
           </tbody>
         </table>
       </div>
@@ -300,7 +301,7 @@
 
       <div class="global-info-box">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
-        Agrupa todas las ventas <strong>DISPONIBLE</strong> de la semana en una sola factura global con RFC genérico.
+        Agrupa todas las ventas <strong>DISPONIBLE</strong> del periodo y genera un CFDI por sucursal con su lugar de expedición.
       </div>
 
       <div class="global-form">
@@ -352,6 +353,7 @@
         </div>
         <div id="g-mixto-info" class="venta-search-result" style="display:none;"></div>
         <div id="g-error" class="venta-search-result error" style="display:none;"></div>
+        <div id="g-sucursales" style="display:none; margin-top:12px;"></div>
         <div id="g-preview-table" style="display:none; margin-top:12px; max-height:280px; overflow-y:auto; border:1px solid var(--panel-border); border-radius:8px;"></div>
       </div>
 
@@ -370,6 +372,7 @@
 <script src="sidebar.js"></script>
 <script src="pagination.js"></script>
   <script src="catalogos-sat.js"></script>
+<script src="pagination.js"></script>
 <script src="facturas.js"></script>
 </body>
 </html>

@@ -1,7 +1,7 @@
 // ── GUARD DE ACCESO (FIX #4: whitelist en lugar de blacklist) ──
 ;(function() {
   try {
-    const rol = JSON.parse(localStorage.getItem('jesha_usuario') || '{}').rol
+    const rol = window.jeshaSession?.getUsuario()?.rol
     const ROLES_PERMITIDOS = ['SUPERADMIN']
     if (!ROLES_PERMITIDOS.includes(rol)) {
       window.location.replace('dashboard.html')
@@ -10,21 +10,18 @@
 })()
 
 
-// ── OBTENER TOKEN ──
-const TOKEN = localStorage.getItem('jesha_token')
-
 // ── PROTECCIÓN CONTRA BUCLES ──
 // Solo redirige si NO está en login.html
-if (!TOKEN && !window.location.pathname.includes('login.html')) {
+if (!window.jeshaSession?.isValid() && !window.location.pathname.includes('login.html')) {
   console.log('❌ No hay token, redirigiendo a login...')
   localStorage.setItem('redirect_after_login', 'usuarios.html')
   window.location.href = 'login.html'
   throw new Error('Sin autenticación')
 }
 
-// Si llegó aquí sin token, detener
-if (!TOKEN) {
-  console.error('❌ ERROR: Sin token y en usuarios.html')
+// Si llegó aquí sin sesión válida, detener
+if (!window.jeshaSession?.isValid()) {
+  console.error('❌ ERROR: Sin sesión y en usuarios.html')
   throw new Error('Sin autenticación')
 }
 
@@ -32,7 +29,6 @@ if (!TOKEN) {
 const API_URL = window.__JESHA_API_URL__ || 'http://localhost:3000'
 
 console.log('✅ Usuarios.js cargado correctamente')
-console.log('✅ Token encontrado:', TOKEN.substring(0, 20) + '...')
 
 // ══════════════════════════════════════════════════════════════════
 //  DOM ELEMENTS
@@ -102,9 +98,7 @@ async function cargarUsuarios() {
       params.append('rol', filtroRol.value)
     }
 
-    const response = await fetch(`${API_URL}/usuarios?${params}`, {
-      headers: { 'Authorization': `Bearer ${TOKEN}` }
-    })
+    const response = await fetch(`${API_URL}/usuarios?${params}`)
     if (window.handle401 && window.handle401(response.status)) return
 
     if (!response.ok) {
@@ -139,9 +133,7 @@ async function cargarUsuarios() {
 // FIX #2: cargarSucursales movida al scope global (antes estaba dentro del submit handler)
 async function cargarSucursales() {
   try {
-    const res = await fetch(`${API_URL}/usuarios/sucursales`, {
-      headers: { 'Authorization': `Bearer ${TOKEN}` }
-    })
+    const res = await fetch(`${API_URL}/usuarios/sucursales`)
     if (window.handle401 && window.handle401(res.status)) return
     if (!res.ok) return
     const sucursales = await res.json()
@@ -349,8 +341,7 @@ window.toggleEstadoUsuario = async function(usuarioId, nuevoEstado) {
     const response = await fetch(`${API_URL}/usuarios/${usuarioId}/estado`, {
       method: 'PATCH',
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${TOKEN}`
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify({ activo: nuevoEstado })
     })
@@ -414,8 +405,7 @@ if (formUsuario) {
       const response = await fetch(url, {
         method: metodo,
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${TOKEN}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify(datos)
       })
@@ -436,8 +426,8 @@ if (formUsuario) {
         try {
           const resPIN = await fetch(`${API_URL}/usuarios/${usuarioActual.id}/pin`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
-            body: JSON.stringify({ pin: pinVal })
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pin: pinVal })
           })
           if (window.handle401 && window.handle401(resPIN.status)) return
           if (!resPIN.ok) {
@@ -482,8 +472,7 @@ document.addEventListener('click', async (e) => {
     const response = await fetch(`${API_URL}/usuarios/${usuarioResetId}/reset-password`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${TOKEN}`
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify({ password, confirmarPassword: confirmar })
     })
@@ -597,9 +586,7 @@ async function cargarTrabajadores() {
     if (buscarTrab && buscarTrab.value) params.append('buscar', buscarTrab.value)
     params.append('activo', 'all')
 
-    const res = await fetch(`${API_URL}/trabajadores?${params}`, {
-      headers: { 'Authorization': `Bearer ${TOKEN}` }
-    })
+    const res = await fetch(`${API_URL}/trabajadores?${params}`)
     if (window.handle401 && window.handle401(res.status)) return
     if (!res.ok) throw new Error(`Error ${res.status}`)
     trabajadoresLista = await res.json()
@@ -655,7 +642,7 @@ async function toggleTrabajador(id) {
     if (!t) return
     const res = await fetch(`${API_URL}/trabajadores/${id}/estado`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ activo: !t.activo })
     })
     if (window.handle401 && window.handle401(res.status)) return
@@ -700,7 +687,7 @@ async function guardarTrabajador(e) {
 
     const res = await fetch(url, {
       method: metodo,
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
     })
     if (window.handle401 && window.handle401(res.status)) return

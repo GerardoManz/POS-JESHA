@@ -1,5 +1,7 @@
 'use strict'
 
+const { assertSafeTestDb } = require('./helpers/test-db-safety')
+
 const assert = require('node:assert/strict')
 const { describe, it, before, after } = require('node:test')
 const { execFileSync } = require('node:child_process')
@@ -74,6 +76,7 @@ describe('P0-LOGIN-CONTEXT-GATE PostgreSQL HTTP real', { concurrency: 1, timeout
   const pgConfig = resolvePgConfig()
   const dbName = validateDbName(`${DB_PREFIX}${Date.now()}_${process.pid}_${randomBytes(4).toString('hex')}`)
   const databaseUrl = connectionUrl(pgConfig, dbName)
+  assertSafeTestDb(databaseUrl)
   const adminPool = new pg.Pool({ connectionString: connectionUrl(pgConfig, 'postgres'), max: 1 })
 
   let created = false
@@ -129,6 +132,7 @@ describe('P0-LOGIN-CONTEXT-GATE PostgreSQL HTTP real', { concurrency: 1, timeout
     process.env.DEBUG_ENABLED = 'false'
 
     prisma = require('../src/lib/prisma')
+  if (prisma?.pool && !prisma.pool.__p0ErrorGuard) { prisma.pool.__p0ErrorGuard = true; prisma.pool.on('error', () => {}) }
 
     empresas.A = await prisma.empresa.create({ data: {
       slug: 'empresa-a', nombreComercial: 'Empresa A', razonSocial: 'Empresa A SA de CV',
@@ -212,6 +216,9 @@ describe('P0-LOGIN-CONTEXT-GATE PostgreSQL HTTP real', { concurrency: 1, timeout
     if (prisma) {
       try { await prisma.$disconnect() } catch (err) { /* swallow */ }
     }
+    if (prisma?.pool) {
+      try { await prisma.pool.end() } catch (err) { /* swallow */ }
+    }
     // Give pool connections time to fully close before dropping DB
     await new Promise((r) => setTimeout(r, 500))
 
@@ -219,6 +226,9 @@ describe('P0-LOGIN-CONTEXT-GATE PostgreSQL HTTP real', { concurrency: 1, timeout
     delete require.cache[require.resolve('../src/lib/prisma')]
 
     if (created) {
+      try {
+        await adminPool.query('SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()', [dbName])
+      } catch (err) { /* swallow */ }
       try {
         await adminPool.query(`DROP DATABASE ${quoteDb(dbName)}`)
       } catch (err) { /* swallow */ }

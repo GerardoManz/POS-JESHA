@@ -1,6 +1,8 @@
 'use strict'
 
 const prisma = require('../../lib/prisma')
+const bcrypt = require('bcryptjs')
+const { derivarEstadoFiscal } = require('../../helpers/estado-fiscal.helper')
 
 const SELECT_EMPRESA = {
   id: true,
@@ -33,6 +35,11 @@ const CAMPOS_PROHIBIDOS = new Set([
   'password',
   'passwordHash'
 ])
+
+// ── Campos permitidos en POST /platform/empresas/:id/superadmin ──
+const SUPERADMIN_BODY_KEYS = new Set(['nombre', 'username', 'password', 'confirmarPassword'])
+// Campos que el cliente jamás puede forzar: el backend impone su valor.
+const SUPERADMIN_CAMPOS_PROHIBIDOS = new Set(['id', 'empresaId', 'sucursalId', 'rol', 'activo', 'passwordHash'])
 
 class EmpresaPlatformError extends Error {
   constructor(status, code, message) {
@@ -165,6 +172,154 @@ function snapshotAuditoria(empresa) {
   }
 }
 
+function serializarSuperadmin(usuario) {
+  return {
+    id: usuario.id,
+    nombre: usuario.nombre,
+    username: usuario.username,
+    rol: usuario.rol,
+    activo: usuario.activo,
+    empresaId: usuario.empresaId,
+    sucursalId: usuario.sucursalId
+  }
+}
+
+function resolverEstadoSuperadmin(superadmins) {
+  const candidatos = Array.isArray(superadmins) ? superadmins : []
+  if (candidatos.length === 0) {
+    return {
+      superadminEstado: 'PENDIENTE',
+      superadminActivo: false,
+      superadminInactivo: false,
+      superadmin: null
+    }
+  }
+
+  if (candidatos.length > 1) {
+    return {
+      superadminEstado: 'AMBIGUO',
+      superadminActivo: false,
+      superadminInactivo: false,
+      superadmin: null
+    }
+  }
+
+  const usuario = candidatos[0]
+  const activo = usuario.activo === true
+  return {
+    superadminEstado: activo ? 'ACTIVO' : 'INACTIVO',
+    superadminActivo: activo,
+    superadminInactivo: !activo,
+    superadmin: {
+      id: usuario.id,
+      nombre: usuario.nombre,
+      username: usuario.username,
+      activo
+    }
+  }
+}
+
+// Valida y normaliza el body de POST /platform/empresas/:id/superadmin.
+// Devuelve { nombre, username, password } o lanza EmpresaPlatformError.
+function validarPayloadSuperadmin(body) {
+  if (!isPlainObject(body)) {
+    throw new EmpresaPlatformError(400, 'EMPRESA_SUPERADMIN_BODY_INVALIDO', 'Body inválido')
+  }
+
+  const keys = Object.keys(body)
+  if (keys.length === 0) {
+    throw new EmpresaPlatformError(400, 'EMPRESA_SUPERADMIN_BODY_INVALIDO', 'Body inválido')
+  }
+
+  const extra = keys.filter((key) => !SUPERADMIN_BODY_KEYS.has(key))
+  if (extra.length > 0) {
+    const prohibidos = extra.filter((key) => SUPERADMIN_CAMPOS_PROHIBIDOS.has(key))
+    const err = new EmpresaPlatformError(
+      400,
+      prohibidos.length > 0 ? 'EMPRESA_SUPERADMIN_CAMPOS_PROHIBIDOS' : 'EMPRESA_SUPERADMIN_BODY_INVALIDO',
+      prohibidos.length > 0 ? 'No se permiten campos de identidad en esta operación' : 'Campos desconocidos en la operación'
+    )
+    err.campos = extra
+    throw err
+  }
+
+  const nombre = normalizarTexto(body.nombre)
+  const username = normalizarTexto(body.username)
+  const password = typeof body.password === 'string' ? body.password : ''
+  const confirmarPassword = typeof body.confirmarPassword === 'string' ? body.confirmarPassword : ''
+
+  const errores = []
+  if (nombre.length < 2 || nombre.length > 150) {
+    errores.push({ campo: 'nombre', mensaje: 'nombre debe tener entre 2 y 150 caracteres' })
+  }
+  if (username.length < 1 || username.length > 100) {
+    errores.push({ campo: 'username', mensaje: 'username debe tener entre 1 y 100 caracteres' })
+  }
+  if (password.length < 6 || password.length > 512) {
+    errores.push({ campo: 'password', mensaje: 'password debe tener entre 6 y 512 caracteres' })
+  }
+  if (password !== confirmarPassword) {
+    errores.push({ campo: 'confirmarPassword', mensaje: 'Las contraseñas no coinciden' })
+  }
+
+  if (errores.length > 0) {
+    const err = new EmpresaPlatformError(400, 'EMPRESA_SUPERADMIN_DATOS_INVALIDOS', 'Datos del administrador inválidos')
+    err.errores = errores
+    throw err
+  }
+
+  return Object.freeze({ nombre, username, password })
+}
+
+// ── Campos permitidos en POST /platform/empresas/:id/superadmin/recover ──
+const RECOVER_BODY_KEYS = new Set(['password', 'confirmarPassword'])
+// Campos que el cliente jamás puede forzar en recuperación: el backend impone su valor.
+const RECOVER_CAMPOS_PROHIBIDOS = new Set(['id', 'empresaId', 'sucursalId', 'rol', 'activo', 'username', 'nombre', 'passwordHash', 'createdBy'])
+
+// Valida y normaliza el body de POST /platform/empresas/:id/superadmin/recover.
+// Devuelve la password nueva o lanza EmpresaPlatformError.
+function validarPayloadRecover(body) {
+  if (!isPlainObject(body)) {
+    throw new EmpresaPlatformError(400, 'EMPRESA_SUPERADMIN_RECOVER_BODY_INVALIDO', 'Body inválido')
+  }
+
+  const keys = Object.keys(body)
+  if (keys.length === 0) {
+    throw new EmpresaPlatformError(400, 'EMPRESA_SUPERADMIN_RECOVER_BODY_INVALIDO', 'Body inválido')
+  }
+
+  const extra = keys.filter((key) => !RECOVER_BODY_KEYS.has(key))
+  if (extra.length > 0) {
+    const prohibidos = extra.filter((key) => RECOVER_CAMPOS_PROHIBIDOS.has(key))
+    const err = new EmpresaPlatformError(
+      400,
+      prohibidos.length > 0 ? 'EMPRESA_SUPERADMIN_RECOVER_CAMPOS_PROHIBIDOS' : 'EMPRESA_SUPERADMIN_RECOVER_BODY_INVALIDO',
+      prohibidos.length > 0 ? 'No se permiten campos de identidad en esta operación' : 'Campos desconocidos en la operación'
+    )
+    err.campos = extra
+    throw err
+  }
+
+  const password = typeof body.password === 'string' ? body.password : ''
+  const confirmarPassword = typeof body.confirmarPassword === 'string' ? body.confirmarPassword : ''
+
+  const errores = []
+  if (password.length < 6 || password.length > 512) {
+    errores.push({ campo: 'password', mensaje: 'password debe tener entre 6 y 512 caracteres' })
+  }
+  if (password !== confirmarPassword) {
+    errores.push({ campo: 'confirmarPassword', mensaje: 'Las contraseñas no coinciden' })
+  }
+
+  if (errores.length > 0) {
+    const err = new EmpresaPlatformError(400, 'EMPRESA_SUPERADMIN_RECOVER_DATOS_INVALIDOS', 'Datos de recuperación inválidos')
+    err.errores = errores
+    throw err
+  }
+
+  return password
+}
+
 async function registrarAuditoria(tx, req, empresaId, accion, antes = null, despues = null) {
   const data = {
     empresaId,
@@ -234,12 +389,41 @@ async function listar(req, res) {
       })
     ])
 
+    const ids = empresas.map((empresa) => empresa.id)
+    const superadminsPorEmpresa = new Map()
+    const configFiscalPorEmpresa = new Map()
+    if (ids.length > 0) {
+      const superadmins = await prisma.usuario.findMany({
+        where: { empresaId: { in: ids }, rol: 'SUPERADMIN' },
+        select: { id: true, empresaId: true, nombre: true, username: true, activo: true },
+        orderBy: { id: 'asc' }
+      })
+      for (const item of superadmins) {
+        const actuales = superadminsPorEmpresa.get(item.empresaId) || []
+        actuales.push(item)
+        superadminsPorEmpresa.set(item.empresaId, actuales)
+      }
+
+      const configs = await prisma.configuracionFiscal.findMany({
+        where: { empresaId: { in: ids } },
+        select: { empresaId: true, facturapiOrganizationId: true, isProductionReady: true }
+      })
+      for (const c of configs) configFiscalPorEmpresa.set(c.empresaId, c)
+    }
+
     return res.json({
-      empresas: empresas.map(({ _count, ...empresa }) => ({
-        ...empresa,
-        sucursales: _count.Sucursal,
-        usuarios: _count.Usuario
-      })),
+      empresas: empresas.map(({ _count, ...empresa }) => {
+        const estadoSuperadmin = resolverEstadoSuperadmin(superadminsPorEmpresa.get(empresa.id))
+        return {
+          ...empresa,
+          sucursales: _count.Sucursal,
+          usuarios: _count.Usuario,
+          superadminEstado: estadoSuperadmin.superadminEstado,
+          superadminActivo: estadoSuperadmin.superadminActivo,
+          superadminInactivo: estadoSuperadmin.superadminInactivo,
+          facturacionEstado: derivarEstadoFiscal(configFiscalPorEmpresa.get(empresa.id) || null)
+        }
+      }),
       total,
       pagina,
       porPagina
@@ -267,7 +451,24 @@ async function obtener(req, res) {
     if (!empresa) throw new EmpresaPlatformError(404, 'EMPRESA_NO_ENCONTRADA', 'Empresa no encontrada')
 
     const { _count, ...data } = empresa
-    return res.json({ empresa: { ...data, sucursales: _count.Sucursal, usuarios: _count.Usuario } })
+    const superadmins = await prisma.usuario.findMany({
+      where: { empresaId: id, rol: 'SUPERADMIN' },
+      select: { id: true, nombre: true, username: true, activo: true },
+      orderBy: { id: 'asc' }
+    })
+    const configFiscal = await prisma.configuracionFiscal.findUnique({
+      where: { empresaId: id },
+      select: { facturapiOrganizationId: true, isProductionReady: true }
+    })
+    return res.json({
+      empresa: {
+        ...data,
+        sucursales: _count.Sucursal,
+        usuarios: _count.Usuario,
+        ...resolverEstadoSuperadmin(superadmins),
+        facturacionEstado: derivarEstadoFiscal(configFiscal)
+      }
+    })
   } catch (err) {
     if (responderErrorConocido(res, err)) return
     console.error('Error al obtener empresa de plataforma:', err)
@@ -398,14 +599,178 @@ async function suspender(req, res) {
   }
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// POST /platform/empresas/:id/superadmin — primer administrador
+// Crea el primer SUPERADMIN de la empresa (empresaId forzado al de la
+// ruta, sucursalId=null, rol=SUPERADMIN, activo=true). La empresa puede
+// estar inactiva: la activación ocurre después vía /activar.
+// Garantía anti-race sin schema: lock de fila (SELECT ... FOR UPDATE)
+// sobre la Empresa dentro de la transacción → solo una solicitud
+// concurrente crea el primer SUPERADMIN.
+// ═══════════════════════════════════════════════════════════════════
+async function crearSuperadmin(req, res) {
+  try {
+    const id = normalizarId(req.params.id)
+    if (!id) throw new EmpresaPlatformError(400, 'EMPRESA_ID_INVALIDO', 'id de empresa inválido')
+
+    const { nombre, username, password } = validarPayloadSuperadmin(req.body)
+
+    const usuario = await prisma.$transaction(async (tx) => {
+      const filas = await tx.$queryRaw`SELECT id FROM "Empresa" WHERE id = ${id} FOR UPDATE`
+      if (filas.length === 0) {
+        throw new EmpresaPlatformError(404, 'EMPRESA_NO_ENCONTRADA', 'Empresa no encontrada')
+      }
+
+      const superadmins = await tx.usuario.count({ where: { empresaId: id, rol: 'SUPERADMIN' } })
+      if (superadmins > 0) {
+        throw new EmpresaPlatformError(409, 'EMPRESA_YA_TIENE_SUPERADMIN', 'La empresa ya tiene un administrador configurado')
+      }
+
+      const passwordHash = await bcrypt.hash(password, 10)
+      const creado = await tx.usuario.create({
+        data: {
+          nombre,
+          username,
+          passwordHash,
+          rol: 'SUPERADMIN',
+          activo: true,
+          empresaId: id,
+          sucursalId: null
+        }
+      })
+
+      await tx.auditoria.create({
+        data: {
+          empresaId: id,
+          usuarioId: req.platformActor.id,
+          sucursalId: null,
+          accion: 'PLATFORM_EMPRESA_SUPERADMIN_CREAR',
+          modulo: 'platform-empresas',
+          referencia: `empresa:${id}:superadmin:${creado.id}`,
+          ip: req.ip || null
+        }
+      })
+
+      return creado
+    })
+
+    return res.status(201).json({ empresaId: id, usuario: serializarSuperadmin(usuario) })
+  } catch (err) {
+    if (err instanceof EmpresaPlatformError) {
+      const body = { error: err.message, code: err.code }
+      if (err.errores) body.errores = err.errores
+      if (err.campos) body.campos = err.campos
+      return res.status(err.status).json(body)
+    }
+    if (err && err.code === 'P2002') {
+      return res.status(409).json({
+        error: 'Ya existe un usuario con ese nombre de usuario en esta empresa',
+        code: 'EMPRESA_SUPERADMIN_USERNAME_DUPLICADO'
+      })
+    }
+    if (err && err.code === 'P2034') {
+      return res.status(409).json({
+        error: 'Conflicto de concurrencia. Reintenta la operación.',
+        code: 'EMPRESA_SUPERADMIN_CONCURRENCIA'
+      })
+    }
+    console.error('Error al crear SUPERADMIN de empresa:', err)
+    return res.status(500).json({ error: 'Error al crear el administrador de la empresa' })
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// POST /platform/empresas/:id/superadmin/recover — recuperación de emergencia
+// PLATFORM_ADMIN recupera el acceso del SUPERADMIN EXISTENTE de la Empresa:
+// reactiva la cuenta (activo=true) y asigna una nueva contraseña.
+// NO crea otro SUPERADMIN, NO cambia identidad (id, username, nombre),
+// rol, empresaId ni sucursalId. La empresa NO se activa con esta operación
+// (la activación sigue siendo vía /activar).
+// Garantías anti-race sin schema: lock de fila (FOR UPDATE) sobre la Empresa
+// + conteo de SUPERADMIN dentro de la transacción. `crearSuperadmin` ya
+// garantiza ≤1 SUPERADMIN por construcción, por lo que este path solo se
+// alcanza con exactamente 1; si hubiera más de 1, se responde 409 sin
+// elegir silenciosamente ni corregir datos históricos.
+// La auditoría registra SOLO metadata (empresaId, superadminId, wasInactive),
+// jamás password ni passwordHash.
+// ═══════════════════════════════════════════════════════════════════
+async function recuperarSuperadmin(req, res) {
+  try {
+    const id = normalizarId(req.params.id)
+    if (!id) throw new EmpresaPlatformError(400, 'EMPRESA_ID_INVALIDO', 'id de empresa inválido')
+
+    const password = validarPayloadRecover(req.body)
+
+    const usuario = await prisma.$transaction(async (tx) => {
+      const filas = await tx.$queryRaw`SELECT id FROM "Empresa" WHERE id = ${id} FOR UPDATE`
+      if (filas.length === 0) {
+        throw new EmpresaPlatformError(404, 'EMPRESA_NO_ENCONTRADA', 'Empresa no encontrada')
+      }
+
+      const superadmins = await tx.usuario.findMany({
+        where: { empresaId: id, rol: 'SUPERADMIN' },
+        select: { id: true, activo: true }
+      })
+      if (superadmins.length === 0) {
+        throw new EmpresaPlatformError(404, 'EMPRESA_SUPERADMIN_NO_ENCONTRADO', 'La empresa no tiene administrador configurado')
+      }
+      if (superadmins.length > 1) {
+        throw new EmpresaPlatformError(409, 'EMPRESA_SUPERADMIN_AMBIGUO', 'La empresa tiene más de un administrador configurado')
+      }
+
+      const target = superadmins[0]
+      const passwordHash = await bcrypt.hash(password, 10)
+      const actualizado = await tx.usuario.update({
+        where: { id: target.id },
+        data: { passwordHash, activo: true },
+        select: {
+          id: true, nombre: true, username: true, rol: true, activo: true,
+          empresaId: true, sucursalId: true
+        }
+      })
+
+      await tx.auditoria.create({
+        data: {
+          empresaId: id,
+          usuarioId: req.platformActor.id,
+          sucursalId: null,
+          accion: 'PLATFORM_EMPRESA_SUPERADMIN_RECOVER',
+          modulo: 'platform-empresas',
+          referencia: `empresa:${id}:superadmin:${target.id}`,
+          valorAntes: { empresaId: id, superadminId: target.id, wasInactive: !target.activo },
+          valorDespues: { empresaId: id, superadminId: target.id, activo: true },
+          ip: req.ip || null
+        }
+      })
+
+      return actualizado
+    })
+
+    return res.json({ empresaId: id, usuario: serializarSuperadmin(usuario) })
+  } catch (err) {
+    if (err instanceof EmpresaPlatformError) {
+      const body = { error: err.message, code: err.code }
+      if (err.errores) body.errores = err.errores
+      if (err.campos) body.campos = err.campos
+      return res.status(err.status).json(body)
+    }
+    console.error('Error al recuperar SUPERADMIN de empresa:', err)
+    return res.status(500).json({ error: 'Error al recuperar el acceso del administrador' })
+  }
+}
+
 module.exports = {
   EmpresaPlatformError,
   validarPayload,
   construirData,
+  validarPayloadSuperadmin,
+  resolverEstadoSuperadmin,
   listar,
   obtener,
   crear,
   editar,
   activar,
-  suspender
+  suspender,
+  crearSuperadmin,
+  recuperarSuperadmin
 }

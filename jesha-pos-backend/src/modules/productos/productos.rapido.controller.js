@@ -77,6 +77,25 @@ exports.crearArticuloRapido = async (req, res) => {
       claveSat
     } = req.body || {}
 
+    const contextSucursalId = req.context?.branch?.sucursalId
+    if (contextSucursalId == null) {
+      return res.status(400).json({
+        success: false,
+        error: 'Selecciona una sucursal para realizar esta operación',
+        codigo: 'BRANCH_CONTEXT_REQUIRED'
+      })
+    }
+
+    const sucursalIdNum = parseInt(contextSucursalId)
+    const sucursalIdBodyNum = parseInt(sucursalIdBody)
+    if (!isNaN(sucursalIdBodyNum) && sucursalIdBodyNum !== sucursalIdNum) {
+      return res.status(403).json({
+        success: false,
+        error: 'La sucursal del body no coincide con el contexto',
+        codigo: 'SUCURSAL_CONTEXT_MISMATCH'
+      })
+    }
+
     // ── Normalización y trim ───────────────────────────────────────
     const nombreLimpio = typeof nombre === 'string' ? nombre.trim() : ''
     const codigoInternoLimpio = typeof codigoInternoIn === 'string'
@@ -118,40 +137,24 @@ exports.crearArticuloRapido = async (req, res) => {
     }
 
     // ── Resolución de sucursalId y turnoId ────────────────────────
-    // Prioridad: 1) turnoId body (busca en BD), 2) body, 3) token.
     let turnoIdNum = parseInt(turnoId)
     if (isNaN(turnoIdNum)) turnoIdNum = null
 
-    let sucursalIdNum = parseInt(sucursalIdBody)
-    if (isNaN(sucursalIdNum)) sucursalIdNum = null
-
     if (turnoIdNum) {
-      const turno = await prisma.turnoCaja.findUnique({ where: { id: turnoIdNum } })
+      const turno = await prisma.turnoCaja.findFirst({
+        where: { id: turnoIdNum, empresaId, sucursalId: sucursalIdNum }
+      })
       if (!turno) {
-        return res.status(400).json({ success: false, error: 'turnoId no existe' })
+        return res.status(403).json({ success: false, error: 'turnoId inválido para el contexto de sucursal' })
       }
       if (!turno.abierto) {
         return res.status(400).json({ success: false, error: 'El turno está cerrado' })
       }
-      if (turno.empresaId !== empresaId) {
-        return res.status(403).json({ success: false, error: 'El turno no pertenece a tu empresa' })
-      }
-      sucursalIdNum = turno.sucursalId
-    }
-
-    if (!sucursalIdNum && req.usuario?.sucursalId) {
-      sucursalIdNum = parseInt(req.usuario.sucursalId)
-    }
-
-    if (!sucursalIdNum || isNaN(sucursalIdNum)) {
-      return res
-        .status(400)
-        .json({ success: false, error: 'No se pudo determinar la sucursal (envía sucursalId o turnoId)' })
     }
 
     // Validar que la sucursal pertenezca a la empresa
-    const sucursal = await prisma.sucursal.findUnique({ where: { id: sucursalIdNum } })
-    if (!sucursal || sucursal.empresaId !== empresaId) {
+    const sucursal = await prisma.sucursal.findFirst({ where: { id: sucursalIdNum, empresaId } })
+    if (!sucursal) {
       return res.status(403).json({ success: false, error: 'sucursalId inválida para tu empresa' })
     }
 

@@ -8,15 +8,17 @@
 const prisma      = require('../../lib/prisma')
 const getEmpresaId = require('../../helpers/getEmpresaId')
 
-const EMPRESA = {
-  nombre:    'Ferretería e Iluminación JESHA',
-  slogan:    'Productos y Servicios de Máxima Calidad',
-  direccion: 'Av. San Simón #03',
-  ciudad:    'Guadalupe, Zacatecas',
-  tel1:      '492 101 6879',
+async function getEmpresaBranding(empresaId) {
+  const empresa = await prisma.empresa.findUnique({
+    where: { id: empresaId },
+    select: { nombreComercial: true, rfc: true, whatsapp: true }
+  })
+  return {
+    nombre: empresa?.nombreComercial || 'Empresa',
+    rfc: empresa?.rfc || '',
+    whatsapp: empresa?.whatsapp || ''
+  }
 }
-
-const LOGO_URL = 'https://res.cloudinary.com/dabyfymjd/image/upload/q_auto/f_auto/v1779317658/logo-jesha_hmlble.png'
 
 function fmt(v) {
   return '$' + parseFloat(v || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -89,6 +91,8 @@ const generarReporte = async (req, res) => {
       return res.status(404).json({ error: 'Bitácora no encontrada' })
     }
 
+    const empresaData = await getEmpresaBranding(empresaId)
+
     // Agrupar detalles por retiroBitacoraId
     const retirosInfo = new Map()
     if (bitacora.RetiroBitacora) {
@@ -108,7 +112,7 @@ const generarReporte = async (req, res) => {
       }
     }
 
-    const html = generarHTMLReporte(bitacora, porRetiro, retirosInfo, sinRetiro)
+    const html = generarHTMLReporte(bitacora, porRetiro, retirosInfo, sinRetiro, empresaData)
     res.setHeader('Content-Type', 'text/html; charset=utf-8')
     res.send(html)
   } catch (err) {
@@ -117,7 +121,7 @@ const generarReporte = async (req, res) => {
   }
 }
 
-function generarHTMLReporte(bitacora, porRetiro, retirosInfo, sinRetiro) {
+function generarHTMLReporte(bitacora, porRetiro, retirosInfo, sinRetiro, empresaData) {
   const totalMateriales = parseFloat(bitacora.totalMateriales || 0)
   const totalAbonado    = parseFloat(bitacora.totalAbonado || 0)
   const saldoPendiente  = parseFloat(bitacora.saldoPendiente || 0)
@@ -273,11 +277,9 @@ html, body { font-family:Arial,Helvetica,sans-serif; font-size:10px; color:#1a1a
 <body>
 
 <div class="hdr">
-  <img src="${LOGO_URL}" alt="JESHA" class="logo" />
-  <div class="emp">${EMPRESA.nombre}</div>
-  <div class="slg">${EMPRESA.slogan}</div>
-  <div class="dir">${EMPRESA.direccion} — ${EMPRESA.ciudad}</div>
-  <div class="tel">Tel. ${EMPRESA.tel1}</div>
+
+  <div class="emp">${empresaData.nombre}</div>
+  ${empresaData.whatsapp ? `<div class="tel">Tel. ${empresaData.whatsapp}</div>` : ''}
 </div>
 
 <div class="doc-tipo">REPORTE DE BITÁCORA</div>
@@ -360,7 +362,7 @@ ${abonosHTML}
 ${bitacora.notas ? `<p style="font-size:8px;color:#555;margin-top:2mm;padding:2mm;background:#f9f9f9;border-left:3px solid #999;">Notas: ${bitacora.notas}</p>` : ''}
 
 <div class="pie">
-  Documento de control interno generado desde JESHA POS<br/>
+  Documento de control interno generado desde ${empresaData.nombre}<br/>
   ${new Date().toLocaleDateString('es-MX', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
 </div>
 <div class="pie-legal">

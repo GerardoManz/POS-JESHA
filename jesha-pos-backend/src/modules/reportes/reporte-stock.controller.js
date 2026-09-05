@@ -7,7 +7,6 @@
 const prisma = require('../../lib/prisma')
 const getEmpresaId = require('../../helpers/getEmpresaId')
 const resolverSucursalId = require('../sucursal/sucursal.helper')
-const { EMPRESA } = require('../../../config/empresa')
 const ExcelJS = require('exceljs')
 
 // ════════════════════════════════════════════════════════════════════
@@ -203,6 +202,18 @@ async function buildReporteData(empresaId, sucursalId, fecha, turnoId, soloNuevo
   }
 }
 
+async function getEmpresaBranding(empresaId) {
+  const empresa = await prisma.empresa.findUnique({
+    where: { id: empresaId },
+    select: { nombreComercial: true, rfc: true, whatsapp: true }
+  })
+  return {
+    nombre: empresa?.nombreComercial || 'Empresa',
+    rfc: empresa?.rfc || '',
+    whatsapp: empresa?.whatsapp || ''
+  }
+}
+
 // ════════════════════════════════════════════════════════════════════
 //  POST /reportes/stock/alertas/generar
 //  Escanea InventarioSucursal y crea AlertaStock para el turno activo
@@ -330,7 +341,7 @@ exports.generarExcelReporteStock = async (req, res) => {
     const data = await buildReporteData(empresaId, sucursalId, fecha, null)
 
     const workbook = new ExcelJS.Workbook()
-    workbook.creator = 'JESHA POS'
+    workbook.creator = 'POS'
     workbook.created = new Date()
 
     const headerFont = { bold: true, size: 11, color: { argb: 'FFFFFFFF' } }
@@ -648,15 +659,7 @@ exports.generarPdfReporteStock = async (req, res) => {
     const data = await buildReporteData(empresaId, sucursalId, fecha, null)
 
     // Generar HTML A4 (mismo patrón que bitacora/reporte.controller.js)
-    const EMP = {
-      nombre: 'Ferretería e Iluminación JESHA',
-      slogan: 'Productos y Servicios de Máxima Calidad',
-      direccion: 'Av. San Simón #03',
-      ciudad: 'Guadalupe, Zacatecas',
-      tel1: '492 101 6879'
-    }
-
-    const LOGO = 'https://res.cloudinary.com/dabyfymjd/image/upload/q_auto/f_auto/v1779317658/logo-jesha_hmlble.png'
+    const empresaData = await getEmpresaBranding(empresaId)
 
     function filaProductoHTML(p) {
       return `<tr>
@@ -858,10 +861,9 @@ html, body { font-family:Arial,Helvetica,sans-serif; font-size:10px; color:#1a1a
 <body>
 
 <div class="hdr">
-  <img src="${LOGO}" alt="JESHA" class="logo" />
-  <div class="emp">${EMP.nombre}</div>
-  <div class="slg">${EMP.slogan}</div>
-  <div class="dir">${EMP.direccion} — ${EMP.ciudad}</div>
+
+  <div class="emp">${empresaData.nombre}</div>
+  ${empresaData.whatsapp ? `<div class="tel">Tel. ${empresaData.whatsapp}</div>` : ''}
 </div>
 
 <div class="doc-tipo">Reporte Diario de Stock <span>— ${fecha}</span></div>
@@ -900,7 +902,7 @@ ${movsHTML}
 ${sugerenciasHTML}
 
 <div class="pie">
-  Reporte generado desde JESHA POS — ${new Date().toLocaleDateString('es-MX', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+  Reporte generado desde ${empresaData.nombre} — ${new Date().toLocaleDateString('es-MX', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
 </div>
 
 <button class="no-print" onclick="window.print()">Imprimir / Guardar PDF</button>
@@ -1000,7 +1002,7 @@ exports.generarPlantillaCorreccion = async (req, res) => {
     const productos = [...data.sinStock.filter(p => p.esNuevo), ...data.stockBajo.filter(p => p.esNuevo)]
 
     const workbook = new ExcelJS.Workbook()
-    workbook.creator = 'JESHA POS'
+    workbook.creator = 'POS'
     workbook.created = new Date()
 
     const ws = workbook.addWorksheet('Corrección')

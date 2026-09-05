@@ -1,13 +1,14 @@
 const router = require('express').Router()
-const { requireAuth, requireRole } = require('../../middlewares/auth.middleware')
+const { requireRole } = require('../../middlewares/auth.middleware')
+const { requireTenantOrDelegated } = require('../../middlewares/tenant-or-delegated.middleware')
 const { listar, crear, editar, cambiarEstado } = require('./trabajadores.controller')
 
 // Lectura — cualquier rol autenticado (para dropdown de Bitácora)
-router.get('/',           requireAuth, listar)
+router.get('/',           requireTenantOrDelegated, listar)
 
 // Gestión — solo SUPERADMIN y ADMIN_SUCURSAL
-router.post('/',          requireAuth, requireRole('SUPERADMIN', 'ADMIN_SUCURSAL'), crear)
-router.put('/:id',        requireAuth, requireRole('SUPERADMIN', 'ADMIN_SUCURSAL'), editar)
-router.patch('/:id/estado', requireAuth, requireRole('SUPERADMIN', 'ADMIN_SUCURSAL'), cambiarEstado)
+router.post('/',          requireTenantOrDelegated, requireRole('SUPERADMIN', 'ADMIN_SUCURSAL'), crear)
+router.put('/:id',        requireTenantOrDelegated, requireRole('SUPERADMIN', 'ADMIN_SUCURSAL'), editar)
+router.patch('/:id/estado', requireTenantOrDelegated, requireRole('SUPERADMIN', 'ADMIN_SUCURSAL'), cambiarEstado)
 
 module.exports = router

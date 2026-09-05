@@ -429,14 +429,16 @@ const resetPassword = async (req, res) => {
     const { id } = req.params
     const { password, confirmarPassword } = req.body
     const solicitante = req.usuario
+    const empresaId = getEmpresaId(req)
     if (!password || !confirmarPassword) return res.status(400).json({ error: 'Faltan campos obligatorios' })
     if (password !== confirmarPassword)  return res.status(400).json({ error: 'Las contrasenas no coinciden' })
     if (password.length < 6)            return res.status(400).json({ error: 'Minimo 6 caracteres' })
-    const objetivo = await prisma.usuario.findUnique({ where: { id: parseInt(id) } })
+    const objetivo = await prisma.usuario.findFirst({ where: { id: parseInt(id), empresaId } })
     if (!objetivo) return res.status(404).json({ error: 'Usuario no encontrado' })
     if (!puedeGestionar(solicitante.rol, objetivo.rol)) return res.status(403).json({ error: 'No tienes permisos para gestionar este usuario' })
     const hash = await bcrypt.hash(password, 10)
-    await prisma.usuario.update({ where: { id: parseInt(id) }, data: { passwordHash: hash } })
+    const actualizado = await prisma.usuario.updateMany({ where: { id: parseInt(id), empresaId }, data: { passwordHash: hash } })
+    if (actualizado.count !== 1) return res.status(404).json({ error: 'Usuario no encontrado' })
     await registrarAudit(solicitante, 'RESET_PASSWORD', `${solicitante.nombre} reseteo la contrasena de ${objetivo.username}`, req.ip)
     res.json({ mensaje: 'Contrasena actualizada correctamente' })
   } catch (err) { console.error(err); res.status(500).json({ error: 'Error al resetear contrasena' }) }
@@ -447,11 +449,12 @@ const establecerPin = async (req, res) => {
     const { id }  = req.params
     const { pin } = req.body
     const solicitante = req.usuario
+    const empresaId = getEmpresaId(req)
 
     if (!pin) return res.status(400).json({ error: 'PIN requerido' })
     if (!/^\d{4}$/.test(pin)) return res.status(400).json({ error: 'El PIN debe ser exactamente 4 dígitos numéricos' })
 
-    const objetivo = await prisma.usuario.findUnique({ where: { id: parseInt(id) } })
+    const objetivo = await prisma.usuario.findFirst({ where: { id: parseInt(id), empresaId } })
     if (!objetivo) return res.status(404).json({ error: 'Usuario no encontrado' })
 
     if (!puedeGestionar(solicitante.rol, objetivo.rol)) {
@@ -462,7 +465,8 @@ const establecerPin = async (req, res) => {
     }
 
     const pinHash = await bcrypt.hash(pin, 10)
-    await prisma.usuario.update({ where: { id: parseInt(id) }, data: { pin: pinHash, tienePin: true } })
+    const actualizado = await prisma.usuario.updateMany({ where: { id: parseInt(id), empresaId }, data: { pin: pinHash, tienePin: true } })
+    if (actualizado.count !== 1) return res.status(404).json({ error: 'Usuario no encontrado' })
 
     await registrarAudit(solicitante, 'ESTABLECER_PIN', `${solicitante.nombre} asignó PIN al usuario ${objetivo.username}`, req.ip)
     res.json({ success: true, mensaje: 'PIN establecido correctamente' })
@@ -473,10 +477,11 @@ const verificarPin = async (req, res) => {
   try {
     const { id }  = req.params
     const { pin } = req.body
+    const empresaId = getEmpresaId(req)
 
     if (!pin) return res.status(400).json({ error: 'PIN requerido' })
 
-    const usuario = await prisma.usuario.findUnique({ where: { id: parseInt(id) }, select: { id: true, nombre: true, pin: true, tienePin: true, activo: true } })
+    const usuario = await prisma.usuario.findFirst({ where: { id: parseInt(id), empresaId }, select: { id: true, nombre: true, pin: true, tienePin: true, activo: true } })
     if (!usuario)        return res.status(404).json({ error: 'Usuario no encontrado' })
     if (!usuario.activo) return res.status(403).json({ error: 'Usuario inactivo' })
     if (!usuario.tienePin || !usuario.pin) return res.status(400).json({ error: 'Este usuario no tiene PIN configurado — pide al administrador que lo asigne' })

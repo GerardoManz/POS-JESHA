@@ -1,5 +1,8 @@
 dist/
 dist-test/
+node_modules/
 
 .wrangler/
-jesha-pos-backend/scripts/
+# scripts del backend: solo se versiona platform-bootstrap-admin.js (requerido por tests P0)
+jesha-pos-backend/scripts/*
+!jesha-pos-backend/scripts/platform-bootstrap-admin.js

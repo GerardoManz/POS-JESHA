@@ -1,5 +1,7 @@
 'use strict'
 
+const { assertSafeTestDb } = require('./helpers/test-db-safety')
+
 const assert = require('node:assert/strict')
 const { describe, it, before, after } = require('node:test')
 const { execFileSync } = require('node:child_process')
@@ -107,6 +109,7 @@ describe('P0-TENANT-AUTH PostgreSQL aislado', { concurrency: 1, timeout: 300000 
   const pgConfig = resolvePgConfig()
   const dbName = validateDbName(`${DB_PREFIX}${Date.now()}_${process.pid}_${randomBytes(4).toString('hex')}`)
   const databaseUrl = connectionUrl(pgConfig, dbName)
+  assertSafeTestDb(databaseUrl)
   const adminPool = new pg.Pool({ connectionString: connectionUrl(pgConfig, 'postgres'), max: 1 })
 
   let created = false

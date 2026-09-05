@@ -38,9 +38,14 @@
   --motion-fast:     120ms;
   --motion-base:     180ms;
   --motion-slow:     240ms;
+  --motion-normal:    200ms;
+  --motion-emphasis:  350ms;
   --ease-standard:   cubic-bezier(0.4, 0, 0.2, 1);
   --ease-out:        cubic-bezier(0.16, 1, 0.3, 1);
   --ease-pop:        cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-enter:       cubic-bezier(0, 0, 0.2, 1);
+  --ease-exit:        cubic-bezier(0.4, 0, 1, 1);
+  --ease-emphasis:    cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 :root[data-theme="light"] {
@@ -80,9 +85,14 @@
   --motion-fast:     120ms;
   --motion-base:     180ms;
   --motion-slow:     240ms;
+  --motion-normal:    200ms;
+  --motion-emphasis:  350ms;
   --ease-standard:   cubic-bezier(0.4, 0, 0.2, 1);
   --ease-out:        cubic-bezier(0.16, 1, 0.3, 1);
   --ease-pop:        cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-enter:       cubic-bezier(0, 0, 0.2, 1);
+  --ease-exit:        cubic-bezier(0.4, 0, 1, 1);
+  --ease-emphasis:    cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -384,6 +394,31 @@ body {
   border-radius: 12px;
   padding: 16px 18px;
   transition: border-color var(--motion-base), transform var(--motion-base), box-shadow var(--motion-base);
+}
+
+/* ── KPI card entrance — staggered reveal ── */
+@keyframes kpiCardEnter {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.kpi-card-enter {
+  animation: kpiCardEnter 0.3s ease both;
+}
+.kpi-card:nth-child(1).kpi-card-enter { animation-delay: 0ms; }
+.kpi-card:nth-child(2).kpi-card-enter { animation-delay: 40ms; }
+.kpi-card:nth-child(3).kpi-card-enter { animation-delay: 80ms; }
+.kpi-card:nth-child(4).kpi-card-enter { animation-delay: 120ms; }
+.kpi-card:nth-child(5).kpi-card-enter { animation-delay: 160ms; }
+.kpi-card:nth-child(6).kpi-card-enter { animation-delay: 200ms; }
+
+/* ── KPI value emphasis — brief scale on change ── */
+@keyframes kpiValueEmphasis {
+  0%   { transform: scale(1); }
+  30%  { transform: scale(1.06); }
+  100% { transform: scale(1); }
+}
+.kpi-value-emphasis {
+  animation: kpiValueEmphasis 0.25s ease;
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -947,3 +982,74 @@ input[type="date"].filter-date:focus {
 .onboarding-sucursal-cta { white-space:nowrap; padding:8px 14px; background:#1f3a66; border:1px solid rgba(255,255,255,0.12); border-radius:8px; color:#fff; font-family:'Barlow',sans-serif; font-size:0.82rem; font-weight:600; text-decoration:none; }
 .onboarding-sucursal-cta:hover { background:#243f72; }
 [data-theme="light"] .onboarding-sucursal-body strong { color:#111827; }
+
+/* ════════════════════════════════════════════════════════════════════
+   MOTION SYSTEM — JESHA 2.0
+   Tokens, spinner canónico, modal backdrop
+   ════════════════════════════════════════════════════════════════════ */
+
+:root {
+  --brand-primary: #1e3a5f;
+  --brand-secondary: #3b82f6;
+  --brand-accent: #10b981;
+}
+
+/* ── Spinner canónico ── */
+.jesha-spinner {
+  display: inline-block;
+  width: 24px;
+  height: 24px;
+  border: 3px solid var(--border-color, rgba(255,255,255,0.15));
+  border-top-color: var(--accent, #2563eb);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+.jesha-spinner--sm { width: 16px; height: 16px; border-width: 2px; }
+.jesha-spinner--lg { width: 36px; height: 36px; border-width: 4px; }
+
+/* ── Modal backdrop unificado ── */
+.jesha-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: var(--overlay-bg, rgba(0,0,0,0.5));
+  z-index: var(--z-modal-backdrop, 500);
+  opacity: 0;
+  transition: opacity var(--motion-normal) var(--ease-exit);
+  pointer-events: none;
+}
+.jesha-modal-backdrop.jesha-active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* ── Branch switch overlay ── */
+#jesha-branch-switch-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal, 600);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  background: var(--bg, #0f1729);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--motion-normal) var(--ease-standard);
+}
+#jesha-branch-switch-overlay.jesha-active {
+  opacity: 1;
+  pointer-events: auto;
+}
+#jesha-branch-switch-overlay .branch-switch-label {
+  color: var(--text, #e9edf4);
+  font-family: 'Barlow', sans-serif;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+#jesha-branch-switch-overlay .branch-switch-name {
+  color: var(--accent, #2563eb);
+  font-family: 'Barlow', sans-serif;
+  font-size: 1.5rem;
+  font-weight: 700;
+}

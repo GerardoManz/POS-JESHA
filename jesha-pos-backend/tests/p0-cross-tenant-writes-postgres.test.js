@@ -1,5 +1,7 @@
 'use strict'
 
+const { assertSafeTestDb } = require('./helpers/test-db-safety')
+
 const assert = require('node:assert/strict')
 const { describe, it, before, after } = require('node:test')
 const { execFileSync } = require('node:child_process')
@@ -46,6 +48,7 @@ describe('P0-CROSS-TENANT-WRITES PostgreSQL HTTP', { concurrency:1, timeout:3000
   const pgConfig = resolvePgConfig()
   const dbName = validateDbName(`${DB_PREFIX}${Date.now()}_${process.pid}_${randomBytes(4).toString('hex')}`)
   const databaseUrl = connectionUrl(pgConfig, dbName)
+  assertSafeTestDb(databaseUrl)
   const adminPool = new pg.Pool({ connectionString: connectionUrl(pgConfig,'postgres'), max:1 })
   let created = false, prisma, app, server, baseUrl
 
@@ -53,8 +56,9 @@ describe('P0-CROSS-TENANT-WRITES PostgreSQL HTTP', { concurrency:1, timeout:3000
   let catA, catB
   let clienteA, clienteB, clienteGeneralA
   let productoA, productoB
-  let superA, adminA1, superB, empB
-  let tokenSuperA, tokenAdminA1, tokenSuperB, tokenEmpB
+  let superA, adminA1, superB, empB, preciosB
+  let proveedorA, proveedorB, ordenA, ordenB
+  let tokenSuperA, tokenAdminA1, tokenSuperB, tokenEmpB, tokenPreciosB
 
   function signToken(userId, rol) {
     return jwt.sign({ version:1, kind:'TENANT', sub:userId, rol }, TENANT_SECRET, { algorithm:'HS256', issuer:TENANT_ISSUER, audience:TENANT_AUDIENCE, expiresIn:'30m' })
@@ -93,6 +97,7 @@ describe('P0-CROSS-TENANT-WRITES PostgreSQL HTTP', { concurrency:1, timeout:3000
     dbPush(databaseUrl)
 
     prisma = require('../src/lib/prisma')
+  if (prisma?.pool && !prisma.pool.__p0ErrorGuard) { prisma.pool.__p0ErrorGuard = true; prisma.pool.on('error', () => {}) }
     const hash = await bcrypt.hash('password', 10)
 
     empresaA = await prisma.empresa.create({ data: { slug:'xt-a', nombreComercial:'XT A', razonSocial:'XT A SA de CV', whatsapp:'0000000101', activa:true } })
@@ -105,6 +110,7 @@ describe('P0-CROSS-TENANT-WRITES PostgreSQL HTTP', { concurrency:1, timeout:3000
     adminA1 = await prisma.usuario.create({ data: { nombre:'Admin A1', username:'xt.adma1', passwordHash:hash, rol:'ADMIN_SUCURSAL', activo:true, empresaId:empresaA.id, sucursalId:sucursalA1.id } })
     superB  = await prisma.usuario.create({ data: { nombre:'Super B', username:'xt.supb', passwordHash:hash, rol:'SUPERADMIN', activo:true, empresaId:empresaB.id, sucursalId:null } })
     empB    = await prisma.usuario.create({ data: { nombre:'Emp B', username:'xt.empb', passwordHash:hash, rol:'EMPLEADO', activo:true, empresaId:empresaB.id, sucursalId:sucursalB1.id } })
+    preciosB = await prisma.usuario.create({ data: { nombre:'Precios B', username:'xt.preciosb', passwordHash:hash, rol:'PRECIOS', activo:true, empresaId:empresaB.id, sucursalId:sucursalB1.id } })
 
     const deptoA = await prisma.departamento.create({ data: { empresaId:empresaA.id, nombre:'XT DEPT A', activo:true } })
     const deptoB = await prisma.departamento.create({ data: { empresaId:empresaB.id, nombre:'XT DEPT B', activo:true } })
@@ -121,10 +127,16 @@ describe('P0-CROSS-TENANT-WRITES PostgreSQL HTTP', { concurrency:1, timeout:3000
     await prisma.inventarioSucursal.create({ data: { productoId:productoA.id, sucursalId:sucursalA1.id, stockActual:5, stockMinimoAlerta:2 } })
     await prisma.inventarioSucursal.create({ data: { productoId:productoB.id, sucursalId:sucursalB1.id, stockActual:7, stockMinimoAlerta:2 } })
 
+    proveedorA = await prisma.proveedor.create({ data: { empresaId:empresaA.id, nombreOficial:'Proveedor XT A', alias:'P-XT-A', activo:true } })
+    proveedorB = await prisma.proveedor.create({ data: { empresaId:empresaB.id, nombreOficial:'Proveedor XT B', alias:'P-XT-B', activo:true } })
+    ordenA = await prisma.ordenCompra.create({ data: { empresaId:empresaA.id, folio:'OC-XT-A', sucursalId:sucursalA1.id, proveedorId:proveedorA.id, usuarioId:adminA1.id, estado:'ENVIADO', totalEstimado:100 } })
+    ordenB = await prisma.ordenCompra.create({ data: { empresaId:empresaB.id, folio:'OC-XT-B', sucursalId:sucursalB1.id, proveedorId:proveedorB.id, usuarioId:superB.id, estado:'ENVIADO', totalEstimado:200 } })
+
     tokenSuperA  = signToken(superA.id, 'SUPERADMIN')
     tokenAdminA1 = signToken(adminA1.id, 'ADMIN_SUCURSAL')
     tokenSuperB  = signToken(superB.id, 'SUPERADMIN')
     tokenEmpB    = signToken(empB.id, 'EMPLEADO')
+    tokenPreciosB = signToken(preciosB.id, 'PRECIOS')
 
     app = require('../src/app')
     server = http.createServer(app)
@@ -134,10 +146,12 @@ describe('P0-CROSS-TENANT-WRITES PostgreSQL HTTP', { concurrency:1, timeout:3000
   after(async () => {
     if (server) { try { await new Promise((r) => server.close(r)) } catch(e){} }
     if (prisma) { try { await prisma.$disconnect() } catch(e){} }
+    if (prisma?.pool) { try { await prisma.pool.end() } catch(e){} }
     await new Promise((r) => setTimeout(r, 1500))
     delete require.cache[require.resolve('../src/app')]
     delete require.cache[require.resolve('../src/lib/prisma')]
     if (created) {
+      try { await adminPool.query('SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()', [dbName]) } catch(e){}
       try { await adminPool.query(`DROP DATABASE "${dbName}"`) } catch(e){}
     }
     try { await adminPool.end() } catch(e){}
@@ -257,6 +271,42 @@ describe('P0-CROSS-TENANT-WRITES PostgreSQL HTTP', { concurrency:1, timeout:3000
     assert.strictEqual(res.body?.error, 'Acceso denegado - rol insuficiente', '403 debe venir de requireRole, no de requireAuth')
   })
 
+  it('15a. A no resetea password de usuario B y conserva su hash', async () => {
+    const antes = await prisma.usuario.findUnique({ where: { id:empB.id }, select: { passwordHash:true } })
+    const res = await send('POST', `/usuarios/${empB.id}/reset-password`, tokenSuperA, { password:'nueva123', confirmarPassword:'nueva123' })
+    assert.strictEqual(res.status, 404)
+    const despues = await prisma.usuario.findUnique({ where: { id:empB.id }, select: { passwordHash:true } })
+    assert.strictEqual(despues.passwordHash, antes.passwordHash)
+  })
+
+  it('15b. A no establece PIN de usuario B', async () => {
+    const antes = await prisma.usuario.findUnique({ where: { id:empB.id }, select: { pin:true, tienePin:true } })
+    const res = await send('POST', `/usuarios/${empB.id}/pin`, tokenSuperA, { pin:'1234' })
+    assert.strictEqual(res.status, 404)
+    const despues = await prisma.usuario.findUnique({ where: { id:empB.id }, select: { pin:true, tienePin:true } })
+    assert.deepStrictEqual(despues, antes)
+  })
+
+  it('15c. A no verifica PIN de usuario B ni revela PIN incorrecto', async () => {
+    const res = await send('POST', `/usuarios/${empB.id}/verificar-pin`, tokenSuperA, { pin:'0000' })
+    assert.strictEqual(res.status, 404)
+    assert.notStrictEqual(res.body?.error, 'PIN incorrecto')
+  })
+
+  it('15d. reset password y PIN legítimos de A funcionan', async () => {
+    const empA = await prisma.usuario.create({ data: { nombre:'Emp A PIN', username:'xt.epapin', passwordHash:await bcrypt.hash('password',10), rol:'EMPLEADO', activo:true, empresaId:empresaA.id, sucursalId:sucursalA1.id } })
+    const reset = await send('POST', `/usuarios/${empA.id}/reset-password`, tokenSuperA, { password:'nueva123', confirmarPassword:'nueva123' })
+    assert.strictEqual(reset.status, 200)
+    const almacenado = await prisma.usuario.findUnique({ where: { id:empA.id }, select: { passwordHash:true } })
+    assert.strictEqual(await bcrypt.compare('nueva123', almacenado.passwordHash), true)
+
+    const establecer = await send('POST', `/usuarios/${empA.id}/pin`, tokenSuperA, { pin:'2468' })
+    assert.strictEqual(establecer.status, 200)
+    const verificar = await send('POST', `/usuarios/${empA.id}/verificar-pin`, tokenSuperA, { pin:'2468' })
+    assert.strictEqual(verificar.status, 200)
+    assert.strictEqual(verificar.body.usuario.id, empA.id)
+  })
+
   // ═══════════════════════════════════════════════════════════════
   // P0-XTENANT-015 — AJUSTE RÁPIDO DE INVENTARIO
   // ═══════════════════════════════════════════════════════════════
@@ -298,6 +348,64 @@ describe('P0-CROSS-TENANT-WRITES PostgreSQL HTTP', { concurrency:1, timeout:3000
   it('22. ajuste con stock negativo → 400', async () => {
     const res = await send('POST', '/inventario/ajuste-rapido', tokenAdminA1, { productoId: productoA.id, nuevoStock: -1 })
     assert.strictEqual(res.status, 400)
+  })
+
+  // ═══════════════════════════════════════════════════════════════
+  // P0-XTENANT-016 — PROVEEDORES Y COMPRAS
+  // ═══════════════════════════════════════════════════════════════
+  it('22a. EMPLEADO lista proveedores y selector solo de su empresa', async () => {
+    const proveedores = await send('GET', '/proveedores', tokenEmpB)
+    assert.strictEqual(proveedores.status, 200)
+    const contenidoProveedores = JSON.stringify(proveedores.body)
+    assert.ok(contenidoProveedores.includes('Proveedor XT B'))
+    assert.ok(!contenidoProveedores.includes('Proveedor XT A'))
+
+    const selector = await send('GET', '/compras/proveedores', tokenEmpB)
+    assert.strictEqual(selector.status, 200)
+    const contenidoSelector = JSON.stringify(selector.body)
+    assert.ok(contenidoSelector.includes('Proveedor XT B'))
+    assert.ok(!contenidoSelector.includes('Proveedor XT A'))
+  })
+
+  it('22b. EMPLEADO y PRECIOS no mutan proveedores', async () => {
+    const emp = await send('POST', '/proveedores', tokenEmpB, { nombreOficial:'No permitido emp' })
+    assert.strictEqual(emp.status, 403)
+    const precios = await send('PUT', `/proveedores/${proveedorB.id}`, tokenPreciosB, { alias:'NO' })
+    assert.strictEqual(precios.status, 403)
+  })
+
+  it('22c. PRECIOS no accede a Compras ni al selector', async () => {
+    const lista = await send('GET', '/compras', tokenPreciosB)
+    assert.strictEqual(lista.status, 403)
+    const selector = await send('GET', '/compras/proveedores', tokenPreciosB)
+    assert.strictEqual(selector.status, 403)
+  })
+
+  it('22d. EMPLEADO consulta Compras pero no puede mutarlas', async () => {
+    const lista = await send('GET', '/compras', tokenEmpB)
+    assert.strictEqual(lista.status, 200)
+    assert.ok(JSON.stringify(lista.body).includes('OC-XT-B'))
+
+    assert.strictEqual((await send('PUT', `/compras/${ordenB.id}`, tokenEmpB, { notas:'NO' })).status, 403)
+    assert.strictEqual((await send('POST', `/compras/${ordenB.id}/abonos`, tokenEmpB, { monto:10 })).status, 403)
+    assert.strictEqual((await send('PATCH', `/compras/${ordenB.id}/cancelar`, tokenEmpB, {})).status, 403)
+  })
+
+  it('22e. SUPERADMIN A no edita, abona ni cancela orden B', async () => {
+    assert.strictEqual((await send('PUT', `/compras/${ordenB.id}`, tokenSuperA, { notas:'NO' }, sucursalA1.id)).status, 404)
+    assert.strictEqual((await send('POST', `/compras/${ordenB.id}/abonos`, tokenSuperA, { monto:10 }, sucursalA1.id)).status, 404)
+    assert.strictEqual((await send('PATCH', `/compras/${ordenB.id}/cancelar`, tokenSuperA, {}, sucursalA1.id)).status, 404)
+
+    const intacta = await prisma.ordenCompra.findUnique({ where: { id:ordenB.id }, select: { estado:true, totalPagado:true, notas:true } })
+    assert.strictEqual(intacta.estado, 'ENVIADO')
+    assert.strictEqual(parseFloat(intacta.totalPagado), 0)
+    assert.strictEqual(intacta.notas, null)
+  })
+
+  it('22f. ADMIN_SUCURSAL edita orden propia', async () => {
+    const res = await send('PUT', `/compras/${ordenA.id}`, tokenAdminA1, { notas:'Editada por A' })
+    assert.strictEqual(res.status, 200)
+    assert.strictEqual(res.body?.data?.notas, 'Editada por A')
   })
 
   // ═══════════════════════════════════════════════════════════════

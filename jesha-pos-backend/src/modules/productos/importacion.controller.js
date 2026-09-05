@@ -166,6 +166,12 @@ function validarFila(fila, idx) {
         errores.push({ fila: idx, clave, error: `UNIDAD SAT no existe en catálogo vigente: "${unidadSatLimpia}"` })
     }
 
+    // TIPO: solo PRODUCTO | SERVICIO (vacío → default PRODUCTO en mapearProducto)
+    const rawTipo = (fila['TIPO'] || fila['TIPO DE PRODUCTO'] || '').trim()
+    if (rawTipo !== '' && !['PRODUCTO', 'SERVICIO'].includes(rawTipo.toUpperCase())) {
+        errores.push({ fila: idx, clave, error: `TIPO inválido: "${rawTipo}". Solo se acepta PRODUCTO o SERVICIO` })
+    }
+
     return errores
 }
 

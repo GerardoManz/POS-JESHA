@@ -30,10 +30,45 @@ let pendingToken = null
 let pendingUsuario = null
 let pendingEmpresaSlug = null
 
+const loginBrandName = document.getElementById('login-brand-name')
+let brandingDebounce = null
+
+async function fetchBranding(slug) {
+  try {
+    const res = await fetch(`${API_URL}/branding?slug=${encodeURIComponent(slug)}`)
+    const data = await res.json()
+    if (data.branding) {
+      if (data.branding.nombreComercial) {
+        loginBrandName.textContent = data.branding.nombreComercial
+        loginBrandName.className = 'brand-name-tenant'
+      } else {
+        loginBrandName.textContent = 'POS'
+        loginBrandName.className = 'brand-name-neutral'
+      }
+      if (data.branding.colorPrimario) {
+        document.documentElement.style.setProperty('--brand-primary', data.branding.colorPrimario)
+      }
+    }
+  } catch {}
+}
+
+empresaSlugInput.addEventListener('input', () => {
+  clearTimeout(brandingDebounce)
+  const slug = empresaSlugInput.value.trim().toLowerCase()
+  if (slug.length >= 2) {
+    brandingDebounce = setTimeout(() => fetchBranding(slug), 300)
+  } else {
+    loginBrandName.textContent = 'POS'
+    loginBrandName.className = 'brand-name-neutral'
+    document.documentElement.style.removeProperty('--brand-primary')
+  }
+})
+
 const lastEmpresaSlug = localStorage.getItem(LAST_EMPRESA_KEY)
 if (lastEmpresaSlug) {
   empresaSlugInput.value = lastEmpresaSlug
   recordarCheck.checked = true
+  fetchBranding(lastEmpresaSlug).catch(() => {})
 }
 
 btnTogglePass.addEventListener('click', () => {

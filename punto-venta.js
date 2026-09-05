@@ -2,10 +2,9 @@
 //  PUNTO DE VENTA — JAVASCRIPT
 // ══════════════════════════════════════════════════════════════════
 
-const TOKEN   = localStorage.getItem('jesha_token')
-const USUARIO = JSON.parse(localStorage.getItem('jesha_usuario') || '{}')
+const USUARIO = window.jeshaSession?.getUsuario() || {}
 
-if (!TOKEN && !window.location.pathname.includes('login.html')) {
+if (!window.jeshaSession?.isValid()) {
   localStorage.setItem('redirect_after_login', 'punto-venta.html')
   window.location.href = 'login.html'
   throw new Error('Sin autenticación')
@@ -230,7 +229,11 @@ function animarMonto(elemento, valorFinal, formateador, duracion) {
 function guardarCarritoEnSession() {
   if (modoCobranza) return
   try {
+    const empresaId = Number(USUARIO?.empresaId) || null
+    const sucursalId = window.jeshaSession?.getSelectedSucursalId?.() ?? USUARIO?.sucursalId ?? null
     const estado = {
+      empresaId,
+      sucursalId: sucursalId == null ? null : Number(sucursalId),
       carrito,
       clienteSeleccionado,
       metodoPagoSeleccionado
@@ -248,6 +251,14 @@ function restaurarCarritoDeSession() {
 
     const estado = JSON.parse(raw)
     if (!Array.isArray(estado.carrito) || estado.carrito.length === 0) return false
+
+    const empresaActual = Number(USUARIO?.empresaId) || null
+    const sucursalActual = window.jeshaSession?.getSelectedSucursalId?.() ?? USUARIO?.sucursalId ?? null
+    if (estado.empresaId !== empresaActual || Number(estado.sucursalId) !== Number(sucursalActual)) {
+      sessionStorage.removeItem('jesha_carrito')
+      console.warn('Carrito descartado: contexto de Empresa/Sucursal distinto')
+      return false
+    }
 
     carrito = estado.carrito
 
@@ -383,9 +394,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 async function verificarTurno() {
   try {
-    const response = await fetch(`${API_URL}/turnos-caja/activo`, {
-      headers: { 'Authorization': `Bearer ${TOKEN}` }
-    })
+    const response = await fetch(`${API_URL}/turnos-caja/activo`)
     if (response.ok) {
       const data = await response.json()
       turnoActivo = data.data
@@ -398,7 +407,13 @@ async function verificarTurno() {
       turnoStatus.innerHTML  = '⚠️ Sin turno — Abrir'
       turnoStatus.className  = 'turno-badge turno-error'
       turnoStatus.style.cursor = 'pointer'
-      turnoStatus.onclick = () => { modalAbrirTurno.style.display = 'flex' }
+      turnoStatus.onclick = () => {
+        const empNombre = window.jeshaSession?.getEmpresaNombre() || ''
+        const sucNombre = USUARIO?.Sucursal?.nombre || ''
+        const el = document.getElementById('turno-modal-empresa')
+        if (el) el.textContent = [empNombre, sucNombre].filter(Boolean).join(' — ') || 'POS'
+        modalAbrirTurno.style.display = 'flex'
+      }
       btnCompletarVenta.disabled = true
     }
   } catch (err) {
@@ -423,7 +438,7 @@ async function abrirTurno() {
   try {
     const response = await fetch(`${API_URL}/turnos-caja/abrir`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ montoInicial: monto })
     })
     const data = await response.json()
@@ -459,9 +474,7 @@ async function abrirTurno() {
 
 async function cargarClientes() {
   try {
-    const response = await fetch(`${API_URL}/clientes?activo=true`, {
-      headers: { 'Authorization': `Bearer ${TOKEN}` }
-    })
+    const response = await fetch(`${API_URL}/clientes?activo=true`)
     if (!response.ok) throw new Error('Error cargando clientes')
     clientesLista = await response.json()
     console.log(`✅ Clientes cargados: ${clientesLista.length}`)
@@ -651,8 +664,7 @@ async function buscarProductos(query, skip = 0) {
   searchTimeout = setTimeout(async () => {
     try {
       const response = await fetch(
-        `${API_URL}/productos?q=${encodeURIComponent(q)}&take=30&skip=${skip}&contexto=pos`,
-        { headers: { 'Authorization': `Bearer ${TOKEN}` } }
+        `${API_URL}/productos?q=${encodeURIComponent(q)}&take=30&skip=${skip}&contexto=pos`
       )
       if (!response.ok) throw new Error('Error en búsqueda')
       const data      = await response.json()
@@ -1735,6 +1747,11 @@ function actualizarCarrito(opciones = {}) {
   itemsCount.textContent = `${carrito.length}`
   const total = carrito.reduce((sum, item) => sum + subtotalLinea(item), 0)
   animarMonto(resumenTotal, total, v => `$${v.toFixed(2)}`, 250)
+  if (resumenTotal && !prefersReducedMotion()) {
+    resumenTotal.classList.remove('total-emphasis')
+    void resumenTotal.offsetWidth
+    resumenTotal.classList.add('total-emphasis')
+  }
 
   btnCompletarVenta.disabled = !(carrito.length > 0 && turnoActivo && metodoPagoSeleccionado)
   const btnCotizar = document.getElementById('btn-cotizar-carrito')
@@ -1839,29 +1856,48 @@ function _escribirPausadas(arr) {
   }
 }
 
-// Purga diferida: elimina pausadas de turnos distintos al activo (cierre de turno)
+// Purga diferida: solo elimina entries inválidos (legacy sin metadata) y
+// turnos expirados. NO elimina pausadas de otra Empresa/Sucursal — esas
+// se ocultan mediante filtro en _misPausadas(), no se destruyen.
+// Esto permite que al volver a A1, la pausada siga ahí.
 function purgarPausadasDeOtroTurno() {
-  if (!turnoActivo?.id) return
+  const turnoId = turnoActivo?.id ?? null
+
   const arr = _leerPausadas()
-  const vivas = arr.filter(p => p.turnoId === turnoActivo.id)
+  const vivas = arr.filter(p => {
+    // FAIL CLOSED: sin empresaId/sucursalId = legacy → descartar
+    if (!p.empresaId || p.sucursalId == null) return false
+    // Debe coinciderecho turno si ambos están definidos
+    if (turnoId && p.turnoId && p.turnoId !== turnoId) return false
+    return true
+  })
   if (vivas.length !== arr.length) {
     _escribirPausadas(vivas)
-    console.log(`🧹 ${arr.length - vivas.length} venta(s) pausada(s) de turnos anteriores eliminadas`)
+    const eliminadas = arr.length - vivas.length
+    console.log(`🧹 ${eliminadas} venta(s) pausada(s) descartadas (legacy/turno expirado)`)
   }
 }
 
 // Pausadas visibles para este usuario en el turno activo
 function _misPausadas() {
   if (!turnoActivo?.id) return []
-  return _leerPausadas().filter(p => p.usuarioId === USUARIO?.id && p.turnoId === turnoActivo.id)
+  const sucursalId = window.jeshaSession?.getSelectedSucursalId?.() ?? USUARIO?.sucursalId ?? null
+  return _leerPausadas().filter(p => p.usuarioId === USUARIO?.id && p.turnoId === turnoActivo.id
+    && p.empresaId === USUARIO?.empresaId && Number(p.sucursalId) === Number(sucursalId))
 }
 
 function actualizarBadgePausadas() {
   const span = document.getElementById('pausadas-count')
   if (!span) return
   const n = _misPausadas().length
+  const hadContent = span.textContent !== ''
   span.textContent = n > 0 ? `(${n})` : ''
   span.style.display = n > 0 ? 'inline' : 'none'
+  if (n > 0 && !hadContent && !prefersReducedMotion()) {
+    span.classList.remove('badge-pausada-bump')
+    void span.offsetWidth
+    span.classList.add('badge-pausada-bump')
+  }
 }
 
 function _nombreDefaultPausa() {
@@ -1873,6 +1909,8 @@ function _snapshotVentaActual(nombre) {
   return {
     id:        _generarIdPausada(),
     nombre,
+    empresaId: USUARIO?.empresaId ?? null,
+    sucursalId: window.jeshaSession?.getSelectedSucursalId?.() ?? USUARIO?.sucursalId ?? null,
     usuarioId: USUARIO?.id ?? null,
     turnoId:   turnoActivo?.id ?? null,
     creadoEn:  Date.now(),
@@ -2033,6 +2071,15 @@ function _aplicarEstadoVenta(p) {
   }
 
   actualizarCarrito() // re-persiste el estado activo en sessionStorage
+
+  if (!prefersReducedMotion()) {
+    var cont = document.querySelector('.carrito-items-container')
+    if (cont) {
+      cont.classList.remove('carrito-restore-fade')
+      void cont.offsetWidth
+      cont.classList.add('carrito-restore-fade')
+    }
+  }
 }
 
 function recuperarVentaPausada(id) {
@@ -2119,55 +2166,11 @@ function mostrarToastDetalle(titulo, detalleHtml, duracion = 7000) {
 }
 
 function mostrarToast(mensaje, tipo = 'error', duracion = 4000) {
-  document.getElementById('pos-toast')?.remove()
-
-  const colores = {
-    error:   { bg: 'rgba(255,107,107,0.12)', border: 'rgba(255,107,107,0.35)', texto: '#ff6b6b', icono: '✕' },
-    warning: { bg: 'rgba(232,113,10,0.12)',  border: 'rgba(232,113,10,0.35)',  texto: '#e8710a', icono: '⚠' },
-    info:    { bg: 'rgba(74,144,226,0.12)',  border: 'rgba(74,144,226,0.35)',  texto: '#4a90e2', icono: 'ℹ' },
-    success: { bg: 'rgba(96,208,128,0.12)',  border: 'rgba(96,208,128,0.35)',  texto: '#60d080', icono: '✓' }
+  if (window.jeshaToast) {
+    window.jeshaToast(mensaje, tipo, duracion)
+  } else {
+    console.warn('jeshaToast not available:', mensaje)
   }
-  const c = colores[tipo] || colores.error
-
-  const toast = document.createElement('div')
-  toast.id = 'pos-toast'
-  Object.assign(toast.style, {
-    position: 'fixed', top: '20px', right: '20px', zIndex: '9999',
-    display: 'flex', alignItems: 'center', gap: '10px',
-    padding: '13px 18px',
-    background: c.bg,
-    border: `1px solid ${c.border}`,
-    borderRadius: '10px',
-    color: c.texto,
-    fontFamily: "'Barlow', sans-serif",
-    fontSize: '0.9rem',
-    fontWeight: '600',
-    boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
-    maxWidth: '380px',
-    lineHeight: '1.4',
-    animation: 'toastIn 0.2s ease',
-    transition: 'opacity 0.3s'
-  })
-
-  if (!document.getElementById('pos-toast-style')) {
-    const st = document.createElement('style')
-    st.id = 'pos-toast-style'
-    st.textContent = `@keyframes toastIn { from { opacity:0; transform:translateY(-8px) } to { opacity:1; transform:translateY(0) } }`
-    document.head.appendChild(st)
-  }
-
-  toast.innerHTML = `
-    <span style="font-size:1rem;flex-shrink:0;">${c.icono}</span>
-    <span>${mensaje}</span>
-    <button onclick="this.parentElement.remove()" style="background:none;border:none;color:${c.texto};font-size:1.1rem;cursor:pointer;padding:0 0 0 6px;opacity:0.7;line-height:1;">&times;</button>
-  `
-  document.body.appendChild(toast)
-  setTimeout(() => {
-    if (toast.parentElement) {
-      toast.style.opacity = '0'
-      setTimeout(() => toast.remove(), 300)
-    }
-  }, duracion)
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -2279,7 +2282,7 @@ function mostrarModalConfirmacion() {
     optPropio.value = USUARIO.id
     optPropio.textContent = `${USUARIO.nombre} (tú)`
     selVendedor.appendChild(optPropio)
-    fetch(`${API_URL}/usuarios/vendedores`, { headers: { 'Authorization': `Bearer ${TOKEN}` } })
+    fetch(`${API_URL}/usuarios/vendedores`)
       .then(r => r.json())
       .then(data => {
         const lista = Array.isArray(data) ? data : (data.data || [])
@@ -2455,7 +2458,7 @@ async function verificarPinVendedor(vendedorId) {
   try {
     const res  = await fetch(`${API_URL}/usuarios/${vendedorId}/verificar-pin`, {
       method:  'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
+      headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ pin })
     })
     const data = await res.json()
@@ -2482,93 +2485,245 @@ async function verificarPinVendedor(vendedorId) {
 //  MODAL VENTA EXITOSA
 // ══════════════════════════════════════════════════════════════════
 
-function mostrarModalExito(ventaData, totalFinal) {
+let completionStatusTimer = null
+let completionStatusGeneration = 0
+let currentSaleReceipt = null
+let saleCompletionTimeline = null
+
+function prefersReducedMotionGSAP() {
+  return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)
+}
+
+function killSaleCompletionTimeline() {
+  if (saleCompletionTimeline) {
+    try { saleCompletionTimeline.kill() } catch (_) {}
+    saleCompletionTimeline = null
+  }
+}
+
+function createSaleCompletionTimeline() {
+  const printer = document.querySelector('.sale-printer')
+  const glow = document.querySelector('.sale-printer-glow')
+  const display = document.querySelector('.sale-printer-display')
+  const statusLed = document.querySelector('.sale-printer-led')
+  const statusLight = document.querySelector('.sale-printer-top i')
+  const receipt = document.getElementById('sale-receipt-paper')
+  const statusRow = document.querySelector('.sale-status-row')
+  const actions = document.querySelector('.sale-completion-actions')
+  if (!printer || !receipt) return null
+
+  if (prefersReducedMotionGSAP()) {
+    gsap.set([printer, receipt], { clearProps: 'all' })
+    printer.style.opacity = '1'
+    printer.style.transform = 'none'
+    receipt.style.opacity = '1'
+    receipt.style.transform = 'none'
+    if (display) display.style.opacity = '1'
+    if (statusLed) statusLed.style.opacity = '1'
+    if (statusLight) statusLight.style.opacity = '1'
+    if (glow) glow.style.opacity = '1'
+    if (statusRow) statusRow.style.opacity = '1'
+    if (actions) actions.style.opacity = '1'
+    return null
+  }
+
+  const tl = gsap.timeline({ defaults: { ease: 'power3.out' } })
+
+  tl.set(printer, { opacity: 0, rotateX: 12, rotateY: -5, scale: 0.88, y: 24 })
+  tl.set(receipt, { y: -260, opacity: 0 })
+  if (display) tl.set(display, { opacity: 0 })
+  if (statusLed) tl.set(statusLed, { opacity: 0 })
+  if (statusLight) tl.set(statusLight, { opacity: 0 })
+  if (glow) tl.set(glow, { opacity: 0, scale: 0.8 })
+  if (statusRow) tl.set(statusRow, { opacity: 0, y: 10 })
+  if (actions) tl.set(actions, { opacity: 0, y: 10 })
+
+  tl.to(printer, { opacity: 1, rotateX: 4, rotateY: -1.5, scale: 0.97, y: 4, duration: 0.32, ease: 'power2.out' }, 0.06)
+
+  if (glow) tl.to(glow, { opacity: 1, scale: 1, duration: 0.35, ease: 'power1.out' }, 0.1)
+
+  if (display) {
+    tl.to(display, { opacity: 1, duration: 0.18 }, 0.28)
+    tl.to(display.querySelector('span'), { keyframes: [
+      { textContent: '●●● PREPARANDO', duration: 0 },
+      { textContent: '●● IMPRIMIENDO', duration: 0.4, delay: 0.3 },
+      { textContent: '● TICKET LISTO', duration: 0.3 }
+    ]}, 0.28)
+  }
+
+  if (statusLight) tl.to(statusLight, { opacity: 1, duration: 0.15 }, 0.32)
+  if (statusLed) tl.to(statusLed, { opacity: 1, duration: 0.15 }, 0.34)
+
+  tl.to(printer, { y: 2, duration: 0.08, ease: 'power1.in' }, 0.4)
+  tl.to(printer, { y: 0, duration: 0.12, ease: 'elastic.out(1,0.5)' }, 0.48)
+
+  tl.to(receipt, { y: 0, opacity: 1, duration: 0.8, ease: 'power2.out' }, 0.42)
+
+  tl.to(printer, { rotateX: 2, rotateY: 0, scale: 1, y: 0, duration: 0.45, ease: 'power2.inOut' }, 0.65)
+
+  tl.to(printer, { keyframes: [
+    { y: -1, duration: 0.06 },
+    { y: 0, duration: 0.1, ease: 'elastic.out(1,0.4)' }
+  ]}, 1.25)
+
+  if (statusRow) tl.to(statusRow, { opacity: 1, y: 0, duration: 0.25 }, 1.4)
+  if (actions) tl.to(actions, { opacity: 1, y: 0, duration: 0.25 }, 1.5)
+
+  return tl
+}
+
+function dinero(valor) {
+  return `$${(parseFloat(valor) || 0).toFixed(2)}`
+}
+
+function setCompletionStatus(estado, detail) {
+  const labels = {
+    PENDIENTE: ['Preparando ticket…', 'La venta ya quedó registrada.'],
+    EN_PROCESO: ['Enviando a impresora…', 'El agente está procesando el ticket.'],
+    ENVIADO_A_IMPRESORA: ['Ticket enviado a impresora', 'La venta está lista para continuar.'],
+    FALLIDO: ['No fue posible imprimir el ticket', detail || 'Puedes reintentar sin crear otra venta.'],
+    CANCELADO: ['Impresión cancelada', 'La venta sigue completada.']
+  }
+  const [title, fallback] = labels[estado] || labels.PENDIENTE
+  document.getElementById('sale-status-title').textContent = title
+  document.getElementById('sale-status-detail').textContent = detail || fallback
+  const dot = document.getElementById('sale-status-dot')
+  dot.classList.toggle('is-success', estado === 'ENVIADO_A_IMPRESORA')
+  dot.classList.toggle('is-error', ['FALLIDO', 'CANCELADO'].includes(estado))
+}
+
+function normalizeSaleReceipt(apiResponse) {
+  const source = apiResponse?.receipt
+  if (!source || typeof source !== 'object') return null
+  const venta = source.venta || {}
+  return {
+    ...source,
+    venta: {
+      ...venta,
+      id: venta.id ?? apiResponse?.data?.id ?? null,
+      folio: venta.folio ?? apiResponse?.data?.folio ?? null,
+      metodoPago: venta.metodoPago ?? apiResponse?.data?.metodoPago ?? null,
+      total: venta.total ?? apiResponse?.data?.total ?? null
+    },
+    printJobId: source.printJobId ?? apiResponse?.printJobId ?? null
+  }
+}
+
+function renderReceipt(receipt, ventaData) {
+  const r = receipt || {}
+  const v = r.venta || ventaData || {}
+  const empresa = r.empresa || {}
+  const sucursal = r.sucursal || {}
+  document.getElementById('receipt-empresa').textContent = empresa.nombreComercial || empresa.nombre || 'Empresa'
+  document.getElementById('receipt-sucursal').textContent = sucursal.nombre || 'Sucursal'
+  document.getElementById('receipt-rfc').textContent = empresa.rfc ? `RFC ${empresa.rfc}` : ''
+  document.getElementById('receipt-fecha').textContent = v.fecha || '—'
+  document.getElementById('receipt-folio').textContent = v.folio || ventaData?.folio || '—'
+  document.getElementById('receipt-subtotal').textContent = dinero(v.subtotal)
+  const descuento = parseFloat(v.descuento) || 0
+  document.getElementById('receipt-descuento-row').style.display = descuento > 0 ? 'flex' : 'none'
+  document.getElementById('receipt-descuento').textContent = `-${dinero(descuento)}`
+  document.getElementById('receipt-total').textContent = dinero(v.total ?? ventaData?.total)
+  document.getElementById('receipt-metodo').textContent = r.metodoLabel || v.metodoPago || '—'
+  document.getElementById('receipt-pago').textContent = `Pago: ${dinero(r.montoPagado ?? v.montoPagado)}`
+  const cambio = parseFloat(r.cambio ?? v.cambio) || 0
+  document.getElementById('receipt-cambio').textContent = cambio > 0 ? `Cambio: ${dinero(cambio)}` : ''
+  document.getElementById('receipt-cliente').textContent = r.cliente ? `Cliente: ${r.cliente}` : ''
+  document.getElementById('receipt-cajero').textContent = r.cajero ? `Cajero: ${r.cajero}` : ''
+  document.getElementById('receipt-items').innerHTML = (r.productos || []).map(p => `<div class="receipt-item"><span>${p.cantidad ?? 0}${p.unidad ? ` ${p.unidad}` : ''}</span><span class="receipt-item-name">${String(p.nombre || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}</span><b>${dinero(p.subtotal)}</b></div>`).join('') || '<div class="receipt-line">Sin productos</div>'
+  const qr = document.getElementById('receipt-qr')
+  const qrLink = document.getElementById('receipt-qr-link')
+  const qrImage = document.getElementById('receipt-qr-image')
+  if (r.qrUrl) { qr.hidden = false; qrLink.href = r.qrUrl; if (r.qrDataUrl) qrImage.src = r.qrDataUrl }
+  else { qr.hidden = true; qrLink.removeAttribute('href'); qrImage.removeAttribute('src') }
+}
+
+function iniciarPollingPrintJob(printJobId) {
+  if (completionStatusTimer) clearInterval(completionStatusTimer)
+  if (!printJobId) { setCompletionStatus('PENDIENTE', 'Ticket pendiente de impresión.'); return }
+  const generation = completionStatusGeneration
+  let intentos = 0
+  const consultar = async () => {
+    if (generation !== completionStatusGeneration) return
+    try {
+      const response = await fetch(`${API_URL}/impresion/jobs/${printJobId}`)
+      if (!response.ok) return
+      const job = await response.json()
+      if (generation !== completionStatusGeneration) return
+      setCompletionStatus(job.estado, job.error ? 'Puedes reintentar sin crear otra venta.' : null)
+      if (['ENVIADO_A_IMPRESORA', 'FALLIDO', 'CANCELADO'].includes(job.estado) || ++intentos >= 12) {
+        clearInterval(completionStatusTimer); completionStatusTimer = null
+        if (intentos >= 12 && job.estado === 'PENDIENTE') setCompletionStatus('PENDIENTE', 'Ticket pendiente de impresión. Puedes continuar.')
+      }
+    } catch (_) { /* La venta no depende de la consulta de impresión. */ }
+  }
+  consultar()
+  completionStatusTimer = setInterval(consultar, 850)
+}
+
+function closeSaleCompletion() {
+  completionStatusGeneration += 1
+  if (completionStatusTimer) { clearInterval(completionStatusTimer); completionStatusTimer = null }
+  killSaleCompletionTimeline()
+  currentSaleReceipt = null
+  const overlay = document.getElementById('modal-venta-exitosa')
+  if (overlay) overlay.style.display = 'none'
+  const printer = document.querySelector('.sale-printer')
+  if (printer) { printer.style.opacity = ''; printer.style.transform = '' }
+  const receipt = document.getElementById('sale-receipt-paper')
+  if (receipt) { receipt.style.transform = ''; receipt.style.opacity = '' }
+  const display = document.querySelector('.sale-printer-display')
+  if (display) display.style.opacity = ''
+  const led = document.querySelector('.sale-printer-led')
+  if (led) led.style.opacity = ''
+  const statusLight = document.querySelector('.sale-printer-top i')
+  if (statusLight) statusLight.style.opacity = ''
+  const glow = document.querySelector('.sale-printer-glow')
+  if (glow) glow.style.opacity = ''
+  const statusRow = document.querySelector('.sale-status-row')
+  if (statusRow) { statusRow.style.opacity = ''; statusRow.style.transform = '' }
+  const actions = document.querySelector('.sale-completion-actions')
+  if (actions) { actions.style.opacity = ''; actions.style.transform = '' }
+  document.getElementById('btn-reimprimir-ticket-exito')?.replaceWith(document.getElementById('btn-reimprimir-ticket-exito')?.cloneNode(true))
+  document.getElementById('btn-facturar-ticket-exito')?.replaceWith(document.getElementById('btn-facturar-ticket-exito')?.cloneNode(true))
+  document.getElementById('search-productos')?.focus()
+}
+
+function mostrarModalExito(apiResponse) {
+  const ventaData = apiResponse?.data || {}
+  const receipt = normalizeSaleReceipt(apiResponse)
   const overlay = document.getElementById('modal-venta-exitosa')
   if (!overlay) return
+  currentSaleReceipt = receipt
   window.Sonidos?.play?.('success')
-
-  document.getElementById('exito-folio').textContent  = `Folio: ${ventaData.folio}`
-  document.getElementById('exito-total').textContent  = `$${parseFloat(ventaData.total).toFixed(2)}`
-
-  const metodoLabel = {
-    EFECTIVO:        '💵 Efectivo',
-    CREDITO:         '💳 T. Crédito',
-    DEBITO:          '💳 T. Débito',
-    TRANSFERENCIA:   '🔄 Transferencia',
-    CREDITO_CLIENTE: '🏦 Crédito cliente',
-    MIXTO:           '🔀 Pago Mixto'
+  const folio = receipt?.venta?.folio || ventaData.folio || '—'
+  document.getElementById('exito-folio').textContent = `Folio: ${folio}`
+  try {
+    if (!receipt) throw new Error('La respuesta no contiene ReceiptDTO')
+    renderReceipt(receipt, ventaData)
+  } catch (error) {
+    console.error('No se pudo renderizar el recibo visual:', error)
+    document.getElementById('sale-status-title').textContent = 'Venta completada'
+    document.getElementById('sale-status-detail').textContent = `Folio ${folio}. El ticket sigue disponible para reimprimir.`
   }
-  document.getElementById('exito-metodo').textContent =
-    metodoLabel[ventaData.metodoPago] || metodoLabel[metodoPagoSeleccionado] || ventaData.metodoPago || '—'
-
-  // ── Bloques de cambio destacado / pago exacto ──
-  const cambioDestacado = document.getElementById('exito-cambio-destacado')
-  const cambioEl        = document.getElementById('exito-cambio')
-  const pagoExactoEl    = document.getElementById('exito-pago-exacto')
-
-  // Reset
-  if (cambioDestacado) cambioDestacado.style.display = 'none'
-  if (pagoExactoEl)    pagoExactoEl.style.display    = 'none'
-
-  let cambioFinal = 0
-  let aplicaLogica = false
-
-  if (metodoPagoSeleccionado === 'EFECTIVO') {
-    const montoRec = parseFloat(document.getElementById('confirm-monto-recibido')?.value) || 0
-    if (montoRec > 0) {
-      cambioFinal = parseFloat((montoRec - totalFinal).toFixed(2))
-      aplicaLogica = true
-    }
-  } else if (metodoPagoSeleccionado === 'MIXTO') {
-    cambioFinal = parseFloat(ventaData.cambio || 0)
-    aplicaLogica = cambioFinal > 0 || (ventaData.desglosePagos?.some(p => p.metodo === 'EFECTIVO'))
-  }
-
-  if (aplicaLogica) {
-    if (Math.abs(cambioFinal) < 0.005) {
-      // Pago exacto
-      if (pagoExactoEl) pagoExactoEl.style.display = 'flex'
-    } else if (cambioFinal > 0) {
-      // Cambio destacado
-      if (cambioEl)         cambioEl.textContent         = `$${cambioFinal.toFixed(2)}`
-      if (cambioDestacado)  cambioDestacado.style.display = 'block'
-    }
-    // cambio < 0 (no debería pasar) → no muestra nada
-  }
-
+  setCompletionStatus('PENDIENTE')
   overlay.style.display = 'flex'
-
-// Botón imprimir ticket — encola reimpresión al agente
-  const btnImprimir = document.getElementById('btn-imprimir-ticket-exito')
-  if (btnImprimir) {
-    btnImprimir.onclick = async () => {
-      const ventaId = ventaData.id
-      if (!ventaId) { mostrarToast('ID de venta no disponible', 'warning'); return }
-      btnImprimir.disabled = true
-      const origText = btnImprimir.textContent
-      btnImprimir.textContent = '⏳ Enviando...'
-      try {
-        const r = await fetch(`${API_URL}/impresion/job`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
-          body: JSON.stringify({ tipo: 'VENTA', ventaId })
-        })
-        if (r.ok) {
-          btnImprimir.textContent = '✅ Enviado a impresora'
-        } else {
-          const d = await r.json().catch(() => ({}))
-          btnImprimir.textContent = '❌ ' + (d.error || 'Error')
-        }
-      } catch (e) {
-        btnImprimir.textContent = '❌ Sin conexión'
-      }
-      setTimeout(() => { btnImprimir.textContent = origText; btnImprimir.disabled = false }, 3000)
+  saleCompletionTimeline = createSaleCompletionTimeline()
+  const btnReprint = document.getElementById('btn-reimprimir-ticket-exito')
+  btnReprint.onclick = async () => {
+    btnReprint.disabled = true
+    try {
+      const response = await fetch(`${API_URL}/impresion/job`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tipo: 'VENTA', ventaId: ventaData.id, accion: 'IMPRIMIR' }) })
+      if (!response.ok) throw new Error('La API rechazó la reimpresión')
+      mostrarToast('Reimpresión enviada', 'success')
     }
+    catch (_) { mostrarToast('No se pudo solicitar la reimpresión', 'error') }
+    finally { btnReprint.disabled = false }
   }
-
-  document.getElementById('btn-cerrar-exito').onclick = () => {
-    overlay.style.display = 'none'
-  }
+  document.getElementById('btn-facturar-ticket-exito').hidden = !receipt?.qrUrl
+  document.getElementById('btn-facturar-ticket-exito').onclick = () => { if (receipt?.qrUrl) window.open(receipt.qrUrl, '_blank', 'noopener') }
+  document.getElementById('btn-cerrar-exito').onclick = closeSaleCompletion
+  iniciarPollingPrintJob(receipt?.printJobId)
 }
 
 async function confirmarVenta() {
@@ -2748,7 +2903,7 @@ async function confirmarVenta() {
 
     const response = await fetch(`${API_URL}/ventas`, {
       method:  'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
+      headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify(payload)
     })
 
@@ -2768,7 +2923,7 @@ async function confirmarVenta() {
     }
 
     modalConfirmacion.style.display = 'none'
-    mostrarModalExito(venta.data, totalFinal)
+    mostrarModalExito(venta)
 
     resetVentaActual()
 
@@ -2834,7 +2989,7 @@ async function confirmarCotizar() {
 
     const response = await fetch(`${API_URL}/cotizaciones`, {
       method:  'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
+      headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify(payload)
     })
     const data = await response.json()
@@ -3040,12 +3195,6 @@ async function confirmarCobranza() {
 
     if (res.liquidada) {
       mostrarToast('✅ Bitácora liquidada correctamente', 'success')
-      if (typeof mostrarModalExito === 'function') {
-        document.getElementById('exito-total').textContent = '$' + montoStr
-        document.getElementById('exito-metodo').textContent = metodoPagoSeleccionado
-        document.getElementById('exito-cambio').textContent = '$0.00'
-        mostrarModalExito()
-      }
     } else {
       mostrarToast('✅ Abono registrado — Saldo pendiente: $' + (res.saldoPosterior || '0.00'), 'info')
     }
@@ -3077,6 +3226,13 @@ function cargarCotizacionDesdeStorage() {
   try {
     const payload = JSON.parse(raw)
     localStorage.removeItem('pos_cotizacion')
+
+    const empresaActual = Number(USUARIO?.empresaId) || null
+    const sucursalActual = window.jeshaSession?.getSelectedSucursalId?.() ?? USUARIO?.sucursalId ?? null
+    if (payload.empresaId !== empresaActual || Number(payload.sucursalId) !== Number(sucursalActual)) {
+      console.warn('Cotización descartada: contexto de Empresa/Sucursal distinto')
+      return
+    }
 
     if (!['cotizacion','pedido'].includes(payload.fuente) ||
         !Array.isArray(payload.items) || payload.items.length === 0) return
@@ -3130,9 +3286,7 @@ function cargarCotizacionDesdeStorage() {
 // ════════════════════════════════════════════════════════════════════
 async function verificarCreditoCliente(clienteId) {
   try {
-    const data = await fetch(`${API_URL}/clientes/${clienteId}`, {
-      headers: { 'Authorization': `Bearer ${TOKEN}` }
-    }).then(r => r.json())
+    const data = await fetch(`${API_URL}/clientes/${clienteId}`).then(r => r.json())
 
     const cliente = data.data || data
     const btnCredito  = document.getElementById('btn-metodo-credito-cliente')
@@ -3180,9 +3334,7 @@ async function cargarEmpleadosSelect() {
   if (!sel) return
   sel.innerHTML = '<option value="">— Sin descuento de empleado —</option>'
   try {
-    const res  = await fetch(`${API_URL}/usuarios?rol=EMPLEADO&activo=true`, {
-      headers: { 'Authorization': `Bearer ${TOKEN}` }
-    })
+    const res  = await fetch(`${API_URL}/usuarios?rol=EMPLEADO&activo=true`)
     const data = await res.json()
     const lista = Array.isArray(data) ? data : (data.data || [])
     lista
@@ -3245,8 +3397,7 @@ function configurarEventListeners() {
     if (searchTimeout) clearTimeout(searchTimeout)
 
     try {
-      const r    = await fetch(`${API_URL}/productos?q=${encodeURIComponent(codigo)}&take=5&contexto=pos`,
-                               { headers: { 'Authorization': `Bearer ${TOKEN}` } })
+      const r    = await fetch(`${API_URL}/productos?q=${encodeURIComponent(codigo)}&take=5&contexto=pos`)
       const data = await r.json()
       const res  = data.data || []
 
@@ -3428,7 +3579,7 @@ function configurarEventListeners() {
       modalAbrirTurno.style.display       = 'none'
       document.getElementById('modal-cotizar')?.classList.remove('open')
       const exitoOverlay = document.getElementById('modal-venta-exitosa')
-      if (exitoOverlay) exitoOverlay.style.display = 'none'
+      if (exitoOverlay && exitoOverlay.style.display !== 'none') closeSaleCompletion()
     }
   })
 
@@ -3545,9 +3696,7 @@ async function cargarCategoriasParaArticuloRapido(forceReload = false) {
       }
     } catch (_) { /* ignorar */ }
   }
-  const res = await fetch(`${API_URL}/productos/categorias`, {
-    headers: { 'Authorization': `Bearer ${TOKEN}` }
-  })
+  const res = await fetch(`${API_URL}/productos/categorias`)
   if (!res.ok) throw new Error('No se pudieron cargar las categorías')
   const data = await res.json()
   const lista = Array.isArray(data) ? data : (data.data || [])
@@ -3799,7 +3948,7 @@ async function abrirCajon() {
   try {
     const r = await fetch(`${API_URL}/impresion/drawer`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` }
+      headers: { 'Content-Type': 'application/json' }
     })
     if (r.ok) {
       btnAbrirCajon.innerHTML = '<span>✅ Cajón abierto</span>'
@@ -3923,7 +4072,7 @@ async function enviarArticuloRapido(e) {
   try {
     const res  = await fetch(`${API_URL}/productos/articulo-rapido`, {
       method:  'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
+      headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify(data)
     })
     const json = await res.json().catch(() => null)
@@ -4260,7 +4409,7 @@ async function enviarAjusteRapido() {
   try {
     const response = await fetch(`${API_URL}/inventario/ajuste-rapido`, {
       method:  'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
+      headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ productoId, sucursalId, nuevoStock })
     })
 

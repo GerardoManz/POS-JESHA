@@ -3,6 +3,19 @@ const QRCode  = require('qrcode')
 const fs      = require('fs')
 const path    = require('path')
 const os      = require('os')
+const { construirWhereScopeVentas } = require('./ventas.controller')
+
+async function getEmpresaBranding(empresaId) {
+  const empresa = await prisma.empresa.findUnique({
+    where: { id: empresaId },
+    select: { nombreComercial: true, rfc: true, whatsapp: true }
+  })
+  return {
+    nombre: empresa?.nombreComercial || 'Empresa',
+    rfc: empresa?.rfc || '',
+    whatsapp: empresa?.whatsapp || ''
+  }
+}
 
 function getLanIp() {
   const interfaces = os.networkInterfaces()
@@ -16,26 +29,15 @@ function getLanIp() {
   return '192.168.0.190'
 }
 
-// ── Datos fijos de JESHA ──
-const EMPRESA = {
-  nombre:   'Ferretería e Iluminación JESHA',
-  slogan:   'Productos y Servicios de Máxima Calidad',
-  direccion:'Av. San Simón #03',
-  ciudad:   'Guadalupe, Zacatecas',
-  tel1:     '492 101 6879',
-}
-
-// ── Logo desde Cloudinary ──
-const LOGO_URL = 'https://res.cloudinary.com/dabyfymjd/image/upload/q_auto/f_auto/v1779317658/logo-jesha_hmlble.png'
-
 // ════════════════════════════════════════════════════════════════════
 //  GET /ventas/:id/ticket
 // ════════════════════════════════════════════════════════════════════
 
 const generarTicket = async (req, res) => {
   try {
-    const venta = await prisma.venta.findUnique({
-      where: { id: parseInt(req.params.id) },
+    // P0-BRANCH-ISOLATION: ticket scoped por tenant + sucursal (mismo scope que la venta)
+    const venta = await prisma.venta.findFirst({
+      where: { id: parseInt(req.params.id), ...construirWhereScopeVentas(req) },
       include: {
         Cliente:  { select: { nombre: true } },
         Usuario:  { select: { nombre: true } },
@@ -67,6 +69,8 @@ const generarTicket = async (req, res) => {
       errorCorrectionLevel: 'M'
     })
 
+    const empresaData = await getEmpresaBranding(venta.empresaId)
+
     const totalEfectivo      = venta.metodoPago === 'EFECTIVO'                       ? parseFloat(venta.total) : 0
     const totalTarjeta       = ['CREDITO','DEBITO'].includes(venta.metodoPago)       ? parseFloat(venta.total) : 0
     const totalTransferencia = venta.metodoPago === 'TRANSFERENCIA'                  ? parseFloat(venta.total) : 0
@@ -76,7 +80,7 @@ const generarTicket = async (req, res) => {
     const fecha   = new Date(venta.creadaEn || venta.fecha || venta.createdAt)
     const fechaStr = `${String(fecha.getDate()).padStart(2,'0')}/${String(fecha.getMonth()+1).padStart(2,'0')}/${String(fecha.getFullYear()).slice(-2)}`
 
-    const html = generarHTMLTicket(venta, qrDataUrl, fechaStr, { totalEfectivo, totalTarjeta, totalTransferencia, totalCredito, esMixto })
+    const html = generarHTMLTicket(venta, qrDataUrl, fechaStr, { totalEfectivo, totalTarjeta, totalTransferencia, totalCredito, esMixto }, empresaData)
     res.setHeader('Content-Type', 'text/html; charset=utf-8')
     res.send(html)
 
@@ -103,7 +107,7 @@ const generarTicketThermal = async (req, res) => {
 //  - Font-size base reducidos ~1px para ganar margen horizontal
 // ════════════════════════════════════════════════════════════════════
 
-function generarHTMLTicket(venta, qrDataUrl, fechaStr, pagos) {
+function generarHTMLTicket(venta, qrDataUrl, fechaStr, pagos, empresaData) {
   const fmt = v => {
     const num = parseFloat(v || 0)
     return `$${num.toFixed(2)}`
@@ -174,7 +178,7 @@ function generarHTMLTicket(venta, qrDataUrl, fechaStr, pagos) {
        </div>`
     : ''
 
-  const logoHTML = `<img src="${LOGO_URL}" alt="JESHA" class="logo" />`
+  const logoHTML = ''
 
   return `<!DOCTYPE html>
 <html lang="es">
@@ -254,11 +258,8 @@ html, body {
 
 <div class="hdr">
   ${logoHTML}
-  <div class="emp">${EMPRESA.nombre.replace(' JESHA', '<br/>JESHA')}</div>
-  <div class="slg">${EMPRESA.slogan}</div>
-  <div class="dir">${EMPRESA.direccion}</div>
-  <div class="dir">${EMPRESA.ciudad}</div>
-  <div class="tel">Tel. ${EMPRESA.tel1}</div>
+  <div class="emp">${empresaData.nombre}</div>
+  ${empresaData.whatsapp ? `<div class="tel">Tel. ${empresaData.whatsapp}</div>` : ''}
 </div>
 
 <hr class="sep"/>
@@ -307,9 +308,9 @@ html, body {
 </div>
 
 <div class="pie">¡Gracias por su compra!<br/>Conserve su ticket para aclaraciones</div>
-<div class="pie-legal">
-  El cliente cuenta con 3 días para realizar su factura.<br/>
-  Pasado el plazo, JESHA no se hace responsable.<br/>
+  <div class="pie-legal">
+   El cliente cuenta con 3 días para realizar su factura.<br/>
+   Pasado el plazo, ${empresaData.nombre} no se hace responsable.<br/>
   No se aceptan devoluciones por mal uso.
 </div>
 

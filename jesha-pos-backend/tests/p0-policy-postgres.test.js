@@ -8,6 +8,9 @@
 process.env.DATABASE_URL = process.env.TEST_DATABASE_URL_OVERRIDE ||
   'postgresql://postgres:JESHA2026@localhost:5432/jesha_p0_policy_test'
 
+const { assertSafeTestDb } = require('./helpers/test-db-safety')
+assertSafeTestDb(process.env.DATABASE_URL)
+
 const { describe, it, before, after, beforeEach } = require('node:test')
 const assert = require('node:assert')
 const bcrypt = require('bcryptjs')

@@ -8,17 +8,17 @@ const prisma = require('../../lib/prisma')
 const fs     = require('fs')
 const path   = require('path')
 
-// ── Datos fijos de JESHA ──
-const EMPRESA = {
-  nombre:    'Ferretería e Iluminación JESHA',
-  slogan:    'Productos y Servicios de Máxima Calidad',
-  direccion: 'Av. San Simón #03',
-  ciudad:    'Guadalupe, Zacatecas',
-  tel1:      '492 101 6879',
+async function getEmpresaBranding(empresaId) {
+  const empresa = await prisma.empresa.findUnique({
+    where: { id: empresaId },
+    select: { nombreComercial: true, rfc: true, whatsapp: true }
+  })
+  return {
+    nombre: empresa?.nombreComercial || 'Empresa',
+    rfc: empresa?.rfc || '',
+    whatsapp: empresa?.whatsapp || ''
+  }
 }
-
-// ── Logo desde Cloudinary ──
-const LOGO_URL = 'https://res.cloudinary.com/dabyfymjd/image/upload/q_auto/f_auto/v1779317658/logo-jesha_hmlble.png'
 
 // ════════════════════════════════════════════════════════════════════
 //  GET /abonos/ticket?abonoId=123
@@ -35,7 +35,7 @@ const generarTicketAbono = async (req, res) => {
         TurnoCaja:    { select: { id: true } },
         Bitacora: {
           select: {
-            id: true, folio: true, titulo: true, estado: true,
+            id: true, folio: true, titulo: true, estado: true, empresaId: true,
             totalMateriales: true, totalAbonado: true, saldoPendiente: true,
             descuentoTipo: true, descuentoValor: true, descuentoMonto: true,
             Cliente: { select: { nombre: true, telefono: true, saldoPendiente: true } }
@@ -46,11 +46,13 @@ const generarTicketAbono = async (req, res) => {
 
     if (!abono) return res.status(404).json({ error: 'Abono no encontrado' })
 
+    const empresaData = await getEmpresaBranding(abono.Bitacora.empresaId)
+
     const fecha    = new Date(abono.creadoEn)
     const fechaStr = `${String(fecha.getDate()).padStart(2,'0')}/${String(fecha.getMonth()+1).padStart(2,'0')}/${String(fecha.getFullYear()).slice(-2)}`
     const horaStr  = `${String(fecha.getHours()).padStart(2,'0')}:${String(fecha.getMinutes()).padStart(2,'0')}`
 
-    const html = generarHTMLTicketAbono(abono, fechaStr, horaStr)
+    const html = generarHTMLTicketAbono(abono, fechaStr, horaStr, empresaData)
     res.setHeader('Content-Type', 'text/html; charset=utf-8')
     res.send(html)
   } catch (err) {
@@ -62,7 +64,7 @@ const generarTicketAbono = async (req, res) => {
 // ════════════════════════════════════════════════════════════════════
 //  HTML del ticket (58mm)
 // ════════════════════════════════════════════════════════════════════
-function generarHTMLTicketAbono(abono, fechaStr, horaStr) {
+function generarHTMLTicketAbono(abono, fechaStr, horaStr, empresaData) {
   const fmt = v => `$${parseFloat(v || 0).toFixed(2)}`
   const bitacora = abono.Bitacora
 
@@ -82,7 +84,7 @@ function generarHTMLTicketAbono(abono, fechaStr, horaStr) {
     ? ` (${descuentoValor}%)`
     : ''
 
-  const logoHTML = `<img src="${LOGO_URL}" alt="JESHA" class="logo" />`
+  const logoHTML = ''
 
   const folioCorto  = bitacora.folio?.split('-').pop() || bitacora.folio
   const abonoCorto  = String(abono.id).padStart(5, '0')
@@ -144,11 +146,8 @@ html, body { width:100%; max-width:100%; margin:0; padding:1mm 3mm; font-family:
 
 <div class="hdr">
   ${logoHTML}
-  <div class="emp">${EMPRESA.nombre.replace(' JESHA', '<br/>JESHA')}</div>
-  <div class="slg">${EMPRESA.slogan}</div>
-  <div class="dir">${EMPRESA.direccion}</div>
-  <div class="dir">${EMPRESA.ciudad}</div>
-  <div class="tel">Tel. ${EMPRESA.tel1}</div>
+  <div class="emp">${empresaData.nombre}</div>
+  ${empresaData.whatsapp ? `<div class="tel">Tel. ${empresaData.whatsapp}</div>` : ''}
 </div>
 
 <div class="doc-tipo">COMPROBANTE DE ABONO</div>

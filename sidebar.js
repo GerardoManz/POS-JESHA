@@ -5,11 +5,11 @@
 //  páginas que NO deben aparecer NI en menú NI ser accesibles
 // ════════════════════════════════════════════════════
 const ROL_BLOQUEADO = {
-  ADMIN_SUCURSAL: ['usuarios', 'sucursales'],
-  EMPLEADO:       ['reportes', 'usuarios', 'corte-caja', 'historial-cortes', 'dashboard', 'facturas', 'sucursales'],
+  ADMIN_SUCURSAL: ['usuarios', 'sucursales', 'configuracion'],
+  EMPLEADO:       ['reportes', 'usuarios', 'corte-caja', 'historial-cortes', 'dashboard', 'facturas', 'sucursales', 'configuracion'],
   PRECIOS:        ['dashboard', 'punto-venta', 'cotizaciones', 'corte-caja',
                    'historial-cortes', 'compras', 'historial', 'reportes',
-                   'facturas', 'bitacora', 'pedidos', 'clientes', 'usuarios', 'sucursales'],
+                   'facturas', 'bitacora', 'pedidos', 'clientes', 'usuarios', 'sucursales', 'configuracion'],
 }
 
 // Páginas donde el rol es redirigido a su página principal en vez del dashboard
@@ -28,8 +28,13 @@ const PAGINAS_SUCURSAL_REQUERIDA = new Set([
 
 function verificarAutenticacion() {
   if (!window.jeshaSession?.isValid()) {
-    window.jeshaSession?.clear()
-    window.location.href = 'login.html'
+    if (window.jeshaSession?.isDelegated()) {
+      window.jeshaSession?.clearDelegated()
+      window.location.href = 'platform-empresas.html'
+    } else {
+      window.jeshaSession?.clear()
+      window.location.href = 'login.html'
+    }
     return false
   }
   return true
@@ -37,7 +42,7 @@ function verificarAutenticacion() {
 
 function verificarAccesoPagina(pagina) {
   const rol = getRol()
-  if (rol === 'PLATFORM_ADMIN') {
+  if (rol === 'PLATFORM_ADMIN' && !window.jeshaSession?.isDelegated()) {
     window.jeshaSession?.clear()
     window.location.replace('login.html')
     return false
@@ -119,15 +124,48 @@ async function cargarSidebar(paginaActual) {
     container.innerHTML = html
     console.log('✓ Sidebar inyectado correctamente')
 
+    aplicarBranding()
     aplicarPermisosMenu()
     marcarPaginaActiva(paginaActual)
     configurarSidebarCollapse()
     configurarThemeToggle()
     configurarContextoSidebar()
     await configurarTopbarGlobal(paginaActual)
+    if (window.jeshaSession?.isDelegated()) inyectarBannerPlataforma()
     configurarLogoutConReintentos(10)
   } catch (error) {
     console.error('❌ Error cargando sidebar.html:', error)
+  }
+}
+
+function aplicarBranding() {
+  const usuario = window.jeshaSession?.getUsuario()
+  const empresa = usuario?.Empresa
+  if (!empresa) return
+
+  const brandName = document.getElementById('sidebar-brand-name')
+  const footerText = document.getElementById('sidebar-footer-text')
+
+  if (empresa.nombreComercial && brandName) {
+    brandName.textContent = empresa.nombreComercial
+    brandName.classList.remove('brand-name-neutral')
+    brandName.classList.add('brand-name-tenant')
+  }
+
+  if (footerText && empresa.nombreComercial) {
+    const delegado = window.jeshaSession?.isDelegated()
+    const subtitle = delegado ? 'Modo soporte de plataforma' : `Versión 1.0.0`
+    footerText.innerHTML = `© 2026 ${empresa.nombreComercial}<br>${subtitle}`
+  }
+
+  if (empresa.colorPrimario) {
+    document.documentElement.style.setProperty('--brand-primary', empresa.colorPrimario)
+  }
+  if (empresa.colorSecundario) {
+    document.documentElement.style.setProperty('--brand-secondary', empresa.colorSecundario)
+  }
+  if (empresa.colorAcento) {
+    document.documentElement.style.setProperty('--brand-accent', empresa.colorAcento)
   }
 }
 
@@ -244,11 +282,77 @@ function obtenerLogoutDesdeTarget(target) {
   return null
 }
 
+function inyectarBannerPlataforma() {
+  if (document.getElementById('jesha-platform-banner')) return
+  const emp = window.jeshaSession?.getDelegatedEmpresa()
+  if (!emp) return
+
+  const branchText = textoSucursalActual()
+  const banner = document.createElement('div')
+  banner.id = 'jesha-platform-banner'
+  Object.assign(banner.style, {
+    position: 'fixed', top: '0', left: '0', right: '0',
+    zIndex: '100001',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    gap: '14px', flexWrap: 'wrap',
+    padding: '10px 18px',
+    background: 'linear-gradient(135deg, rgba(31,58,102,0.97), rgba(16,185,129,0.15))',
+    borderBottom: '1px solid rgba(16,185,129,0.3)',
+    color: '#e9edf4',
+    fontFamily: "'Barlow', sans-serif",
+    fontSize: '0.88rem', fontWeight: '600',
+    boxShadow: '0 6px 24px rgba(0,0,0,0.45)'
+  })
+  banner.innerHTML = `
+    <span style="background:rgba(16,185,129,0.2);border:1px solid rgba(16,185,129,0.4);color:#60d080;padding:3px 10px;border-radius:6px;font-size:0.78rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;">MODO PLATAFORMA</span>
+    <span>${emp.nombreComercial} · ${branchText}</span>
+    <button id="jesha-btn-volver-plataforma" style="
+      margin-left:8px; padding:6px 16px; border-radius:8px; cursor:pointer;
+      background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.15);
+      color:#e9edf4; font-family:'Barlow',sans-serif; font-size:0.82rem; font-weight:600;
+    ">Volver a plataforma</button>
+  `
+  document.body.appendChild(banner)
+
+  document.getElementById('jesha-btn-volver-plataforma').addEventListener('click', () => {
+    window.jeshaSession?.clearDelegated()
+    window.location.href = 'platform-empresas.html'
+  })
+
+  const content = document.querySelector('.content') || document.querySelector('main')
+  if (content) content.style.marginTop = '52px'
+}
+
+function limpiarEstadoPOS() {
+  try { sessionStorage.removeItem('jesha_carrito') } catch (_) {}
+  try { localStorage.removeItem('pos_cotizacion') } catch (_) {}
+}
+
+function hayDatosPOS() {
+  try {
+    const raw = sessionStorage.getItem('jesha_carrito')
+    if (raw) {
+      const estado = JSON.parse(raw)
+      if (Array.isArray(estado.carrito) && estado.carrito.length > 0) return true
+    }
+  } catch (_) {}
+  try {
+    if (localStorage.getItem('pos_cotizacion')) return true
+  } catch (_) {}
+  return false
+}
+
 function cerrarSesion() {
   if (cerrandoSesion) return
   cerrandoSesion = true
-  window.jeshaSession?.clear()
-  window.location.replace('login.html')
+  limpiarEstadoPOS()
+  if (window.jeshaSession?.isDelegated()) {
+    window.jeshaSession?.clearDelegated()
+    window.location.replace('platform-empresas.html')
+  } else {
+    window.jeshaSession?.clear()
+    window.location.replace('login.html')
+  }
 }
 
 function configurarLogoutConReintentos(intentos) {
@@ -304,7 +408,7 @@ function configurarContextoSidebar() {
   const usuario = window.jeshaSession?.getUsuario()
   if (!usuario) return
 
-  empresa.textContent = window.jeshaSession.getEmpresaSlug() || 'Empresa'
+   empresa.textContent = window.jeshaSession.getEmpresaNombre?.() || window.jeshaSession.getEmpresaSlug() || 'Empresa'
   const fixedSucursalId = window.jeshaSession.positiveInt(usuario.sucursalId)
 
   if (fixedSucursalId) {
@@ -353,7 +457,7 @@ function construirTopbarGlobal() {
   const empresa = document.createElement('span')
   empresa.className = 'topbar-empresa'
   empresa.id = 'topbar-empresa-nombre'
-  empresa.textContent = window.jeshaSession.getEmpresaSlug() || 'JESHA'
+   empresa.textContent = window.jeshaSession.getEmpresaNombre?.() || window.jeshaSession.getEmpresaSlug() || 'Empresa'
 
   const rol = document.createElement('span')
   rol.className = 'topbar-rol'
@@ -425,6 +529,20 @@ async function cambiarSucursalGlobal(nextId, select, paginaActual) {
   const anterior = window.jeshaSession?.getSelectedSucursalId()
   const next = nextId || null
   try {
+    if (anterior !== next && hayDatosPOS()) {
+      const ok = window.jeshaConfirm
+        ? await window.jeshaConfirm({
+            title: 'Cambiar de sucursal',
+            message: 'Tienes productos en el carrito o una cotización pendiente. Al cambiar de sucursal se descartarán.',
+            confirmText: 'Cambiar y descartar',
+            cancelText: 'Cancelar',
+            type: 'warning'
+          })
+        : true
+      if (!ok) return
+      limpiarEstadoPOS()
+    }
+
     window.jeshaSession.setSelectedSucursalId(next)
     const context = await window.apiFetch('/auth/context')
     window.jeshaSession.validarContexto(context, usuario, next)
@@ -436,15 +554,41 @@ async function cambiarSucursalGlobal(nextId, select, paginaActual) {
       window.location.replace('dashboard.html?seleccionarSucursal=1')
       return
     }
-    if (window.jeshaToast) {
-      window.jeshaToast(next ? 'Sucursal actualizada' : 'Mostrando todas las sucursales', 'success')
-    }
-    window.location.reload()
+
+    mostrarBranchSwitchOverlay(next, select)
+
   } catch (err) {
     try { window.jeshaSession.setSelectedSucursalId(anterior) } catch (_) {}
     if (select) select.value = anterior !== null ? String(anterior) : ''
     if (window.jeshaToast) window.jeshaToast(err.message, 'error')
   }
+}
+
+function mostrarBranchSwitchOverlay(nextSucursalId, select) {
+  var overlay = document.getElementById('jesha-branch-switch-overlay')
+  if (!overlay) {
+    overlay = document.createElement('div')
+    overlay.id = 'jesha-branch-switch-overlay'
+    overlay.innerHTML =
+      '<div class="branch-switch-label">Cambiando a</div>' +
+      '<div class="branch-switch-name"></div>' +
+      '<div class="jesha-spinner" style="margin-top:12px"></div>'
+    document.body.appendChild(overlay)
+  }
+
+  var nombreEl = overlay.querySelector('.branch-switch-name')
+  if (select && select.selectedOptions && select.selectedOptions[0]) {
+    nombreEl.textContent = select.selectedOptions[0].textContent.trim()
+  } else if (!nextSucursalId) {
+    nombreEl.textContent = 'Todas las sucursales'
+  } else {
+    nombreEl.textContent = 'Sucursal ' + nextSucursalId
+  }
+
+  requestAnimationFrame(function () {
+    overlay.classList.add('jesha-active')
+    setTimeout(function () { window.location.reload() }, 350)
+  })
 }
 
 async function configurarTopbarGlobal(paginaActual) {
@@ -490,7 +634,7 @@ document.addEventListener('DOMContentLoaded', () => {
 //  Disponible en todos los módulos porque sidebar.js carga primero
 // ════════════════════════════════════════════════════════════════════
 window.apiFetch = async function(path, opts = {}) {
-  const token  = window.jeshaSession?.getToken()
+  const token  = window.jeshaSession?.getEffectiveToken() || window.jeshaSession?.getToken()
   const sucursalId = window.jeshaSession?.getSelectedSucursalId()
   const apiUrl = window.__JESHA_API_URL__ || 'http://localhost:3000'
   const debugOn = localStorage.getItem('jesha_debug') === '1'
@@ -556,7 +700,10 @@ window.apiFetch = async function(path, opts = {}) {
 
   if (!res.ok) {
     const msg = (data && data.error) || `Error ${res.status}: ${res.statusText}`
-    throw new Error(msg)
+    const error = new Error(msg)
+    error.status = res.status
+    error.code = data?.code || null
+    throw error
   }
 
   return data
@@ -987,6 +1134,106 @@ window.jeshaToast = function(mensaje, tipo = 'error', duracion = 4000) {
     if (oldest) cerrarToast(oldest)
   }
 }
+
+// ════════════════════════════════════════════════════════════════════
+//  openJeshaModal / closeJeshaModal — sistema unificado de modales
+//  Soporta: classList 'active', classList 'open', style.display='flex'
+//  Agrega: exit animation, Escape, backdrop click, focus restore
+// ════════════════════════════════════════════════════════════════════
+;(function () {
+  var FOCUS_STACK = []
+
+  function detectOpenClass(modal) {
+    if (modal.classList.contains('modal') || modal.classList.contains('modal-overlay')) return 'active'
+    if (modal.classList.contains('platform-modal-overlay')) return 'open'
+    if (modal.classList.contains('modal-overlay')) return 'open'
+    return 'active'
+  }
+
+  function isCurrentlyOpen(modal) {
+    if (modal.style.display === 'flex' || modal.style.display === 'grid') return true
+    var cls = detectOpenClass(modal)
+    return modal.classList.contains(cls)
+  }
+
+  window.openJeshaModal = function (modal, options) {
+    if (!modal) return
+    var opts = options || {}
+    var previousFocus = document.activeElement
+    if (previousFocus && previousFocus !== document.body) {
+      FOCUS_STACK.push(previousFocus)
+    }
+
+    modal.setAttribute('aria-hidden', 'false')
+    if (modal.hasAttribute('inert')) modal.removeAttribute('inert')
+
+    var cls = detectOpenClass(modal)
+    modal.classList.add(cls)
+    modal.style.display = ''
+
+    var firstFocusable = modal.querySelector('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')
+    if (firstFocusable) setTimeout(function () { firstFocusable.focus() }, 50)
+
+    function onKey(e) {
+      if (e.key === 'Escape' && opts.escape !== false) {
+        e.preventDefault()
+        e.stopPropagation()
+        window.closeJeshaModal(modal)
+      }
+    }
+    function onBackdrop(e) {
+      if (e.target === modal && opts.backdrop !== false) {
+        window.closeJeshaModal(modal)
+      }
+    }
+    modal._jeshaKeyHandler = onKey
+    modal._jeshaBackdropHandler = onBackdrop
+    document.addEventListener('keydown', onKey, true)
+    modal.addEventListener('click', onBackdrop)
+  }
+
+  window.closeJeshaModal = function (modal) {
+    if (!modal) return
+    var cls = detectOpenClass(modal)
+
+    modal.style.opacity = '0'
+    modal.style.transform = 'translateY(8px) scale(0.98)'
+    modal.style.transition = 'opacity 120ms var(--ease-exit), transform 120ms var(--ease-exit)'
+
+    setTimeout(function () {
+      modal.classList.remove(cls)
+      modal.style.display = 'none'
+      modal.style.opacity = ''
+      modal.style.transform = ''
+      modal.style.transition = ''
+      modal.setAttribute('aria-hidden', 'true')
+      if (!modal.hasAttribute('inert') && modal.getAttribute('data-use-inert') !== 'false') {
+        modal.setAttribute('inert', '')
+      }
+
+      if (modal._jeshaKeyHandler) {
+        document.removeEventListener('keydown', modal._jeshaKeyHandler, true)
+        delete modal._jeshaKeyHandler
+      }
+      if (modal._jeshaBackdropHandler) {
+        modal.removeEventListener('click', modal._jeshaBackdropHandler)
+        delete modal._jeshaBackdropHandler
+      }
+
+      var restored = FOCUS_STACK.pop()
+      if (restored && typeof restored.focus === 'function') {
+        try { restored.focus() } catch (_) {}
+      }
+    }, 130)
+  }
+
+  window.closeAllJeshaModals = function () {
+    var openModals = document.querySelectorAll('.modal[aria-hidden="false"], .modal-overlay[aria-hidden="false"], .platform-modal-overlay[aria-hidden="false"]')
+    for (var i = 0; i < openModals.length; i++) {
+      window.closeJeshaModal(openModals[i])
+    }
+  }
+})()
 
 // ════════════════════════════════════════════════════════════════════
 //  Banner de Alertas de Stock — se muestra después de operaciones

@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
   <script>
-    if (!localStorage.getItem('jesha_token') || !localStorage.getItem('jesha_usuario')) {
+    if (!localStorage.getItem('jesha_token') && !localStorage.getItem('jesha_delegated_token')) {
       window.location.replace('login.html')
     }
   </script>

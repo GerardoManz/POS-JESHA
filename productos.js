@@ -30,10 +30,10 @@ function formatearPrecioInventario(valor) {
   return '$' + numero.toFixed(2)
 }
 const API_URL = window.__JESHA_API_URL__ || 'http://localhost:3000'
-let TOKEN = localStorage.getItem('jesha_token')
 
 const IVA_FACTOR = window.__JESHA_IVA_FACTOR__ || 1.16
-const ROL_ACTUAL = JSON.parse(localStorage.getItem('jesha_usuario') || '{}').rol
+const USUARIO = window.jeshaSession?.getUsuario() || {}
+const ROL_ACTUAL = USUARIO.rol
 const ES_ADMIN = ['SUPERADMIN', 'ADMIN_SUCURSAL'].includes(ROL_ACTUAL)
 const ES_PRECIOS = ROL_ACTUAL === 'PRECIOS'
 const ES_EMPLEADO = ROL_ACTUAL === 'EMPLEADO'
@@ -74,7 +74,8 @@ let autosuggestDropdown
 
 // Grid / Vista
 let productosGrid, productosListaWrap, btnVistaGrid, btnVistaLista
-let vistaActual = localStorage.getItem('jesha_productos_view_mode') || 'grid'
+const VIEW_MODE_KEY = USUARIO.empresaId ? `jesha_productos_view_mode:${USUARIO.empresaId}` : 'jesha_productos_view_mode'
+let vistaActual = localStorage.getItem(VIEW_MODE_KEY) || 'grid'
 
 // Selects del modal (separados del toolbar)
 let modalDeptoSelect, modalCatSelect, modalProveedorSelect
@@ -88,7 +89,7 @@ let radioFacturaA, radioFacturaB, camposFacturaA, camposFacturaB
 
 document.addEventListener('DOMContentLoaded', async () => {
   console.log('🌱 Iniciando productos...')
-  if (!TOKEN) { console.error('❌ No hay token'); window.location.href = 'login.html'; return }
+  if (!window.jeshaSession?.isValid()) { console.error('❌ No hay token'); window.location.href = 'login.html'; return }
 
   // Capturar elementos DOM — TOOLBAR
   productosTbody   = document.getElementById('productos-tbody')
@@ -699,6 +700,10 @@ function accionesFila(p) {
   if (ES_ADMIN) {
     return `
       <button class="btn-icon btn-editar-producto" data-id="${p.id}" title="Editar">✏️</button>
+      <button class="btn-kardex" data-id="${p.id}" title="Kardex — historial de movimientos">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        Kardex
+      </button>
       <button class="btn-ajuste-inv" data-id="${p.id}" title="Ajustar stock">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
         Stock
@@ -2512,14 +2517,14 @@ function configurarEventos() {
   btnVistaGrid?.addEventListener('click', () => {
     if (vistaActual === 'grid') return
     vistaActual = 'grid'
-    localStorage.setItem('jesha_productos_view_mode', vistaActual)
+    localStorage.setItem(VIEW_MODE_KEY, vistaActual)
     renderizarProductos(productosLista)
   })
 
   btnVistaLista?.addEventListener('click', () => {
     if (vistaActual === 'lista') return
     vistaActual = 'lista'
-    localStorage.setItem('jesha_productos_view_mode', vistaActual)
+    localStorage.setItem(VIEW_MODE_KEY, vistaActual)
     renderizarProductos(productosLista)
   })
 
@@ -2544,6 +2549,13 @@ function configurarEventos() {
     if (btnEditar) {
       const id = parseInt(btnEditar.dataset.id)
       if (id) editarProducto(id)
+      return
+    }
+
+    const btnKardex = e.target.closest('.btn-kardex')
+    if (btnKardex) {
+      const id = parseInt(btnKardex.dataset.id)
+      if (id) window.location.href = `kardex.html?productoId=${id}`
       return
     }
 
@@ -3006,7 +3018,7 @@ function initAjusteInventario() {
 
 // ── Abrir modal con datos del producto ──
 window.abrirAjusteInventario = function(id) {
-  const usuario = JSON.parse(localStorage.getItem('jesha_usuario') || '{}')
+  const usuario = window.jeshaSession?.getUsuario() || {}
   if (!ROLES_AJUSTE.includes(usuario.rol)) {
     jeshaToast('No tienes permisos para ajustar inventario.', 'error')
     return
@@ -3077,18 +3089,7 @@ async function guardarAjuste() {
     document.getElementById('modal-ajuste-inv').style.display = 'none'
     productoAjuste = null
 
-    // Toast de éxito
-    const toast = document.createElement('div')
-    toast.textContent = '✅ Inventario actualizado correctamente'
-    Object.assign(toast.style, {
-      position:'fixed', top:'20px', right:'20px', zIndex:'9999',
-      background:'#1a3a1a', color:'#60d080', padding:'12px 20px',
-      borderRadius:'8px', fontSize:'0.875rem', fontWeight:'600',
-      border:'1px solid rgba(96,208,128,0.3)',
-      boxShadow:'0 4px 16px rgba(0,0,0,0.4)', transition:'opacity 0.4s'
-    })
-    document.body.appendChild(toast)
-    setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 400) }, 2500)
+    jeshaToast('Inventario actualizado correctamente', 'success', 2500)
 
     await cargarProductos()
 
@@ -3115,7 +3116,7 @@ function initPlantillaCorreccion() {
   if (!btnDescargar || !btnSubir || !inputFile) return
 
   btnDescargar.addEventListener('click', async () => {
-    const token = localStorage.getItem('jesha_token')
+    const token = window.jeshaSession?.getEffectiveToken()
     const api = window.__JESHA_API_URL__ || 'http://localhost:3000'
     try {
       btnDescargar.disabled = true

@@ -2,13 +2,13 @@
 <html lang="es">
 <head>
   <script>
-    if (!localStorage.getItem('jesha_token') || !localStorage.getItem('jesha_usuario')) {
+    if (!localStorage.getItem('jesha_token') && !localStorage.getItem('jesha_delegated_token')) {
       window.location.replace('login.html')
     }
   </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Importación de Productos - JESHA POS</title>
+    <title>Importación de Productos - POS</title>
   <link rel="icon" type="image/x-icon" href="favicon.ico"/>
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png"/>
   <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png"/>
@@ -147,7 +147,7 @@
     <div class="container">
         <div class="header" style="position:relative;">
             <h1>📦 Importación de Productos</h1>
-            <p>Sistema JESHA POS - Ferretería</p>
+            <p>Sistema POS</p>
             <button onclick="window.jeshaSession && window.jeshaSession.clear();location.href='login.html'"
                     style="position:absolute;top:16px;right:20px;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);color:white;padding:8px 16px;border-radius:8px;cursor:pointer;font-family:inherit;font-size:0.85rem;font-weight:500;">
               Cerrar Sesión

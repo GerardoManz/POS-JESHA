@@ -6,10 +6,13 @@ const prisma = require('../../lib/prisma')
 const debug = require('../../lib/debug')
 const {
   IdentityError,
+  esEnteroPositivo,
   detectarIdentidadLegacy,
-  crearPrincipalPlataforma
+  crearPrincipalPlataforma,
+  crearPrincipalDelegado
 } = require('../../security/identity')
 const { resolvePlatformAuthConfig } = require('./platform-auth.config')
+const { DELEGATED_TTL_SECONDS } = require('../../middlewares/delegated-auth.middleware')
 
 const PLATFORM_AUTH_CONFIG = resolvePlatformAuthConfig()
 const LOGIN_BODY_KEYS = new Set(['username', 'password'])
@@ -180,11 +183,77 @@ function me(req, res) {
   })
 }
 
+function signDelegatedToken(principal) {
+  return jwt.sign(principal, PLATFORM_AUTH_CONFIG.secret, {
+    algorithm: PLATFORM_AUTH_CONFIG.algorithm,
+    issuer: PLATFORM_AUTH_CONFIG.issuer,
+    audience: PLATFORM_AUTH_CONFIG.audience,
+    expiresIn: `${DELEGATED_TTL_SECONDS}s`
+  })
+}
+
+async function enterEmpresa(req, res) {
+  try {
+    const { empresaId: rawEmpresaId } = req.params
+    const empresaId = Number(rawEmpresaId)
+    if (!esEnteroPositivo(empresaId)) {
+      return res.status(400).json({ error: 'empresaId inválido' })
+    }
+
+    const empresa = await prisma.empresa.findUnique({
+      where: { id: empresaId },
+      select: { id: true, activa: true, nombreComercial: true, slug: true }
+    })
+    if (!empresa) {
+      return res.status(404).json({ error: 'Empresa no encontrada' })
+    }
+    if (!empresa.activa) {
+      return res.status(403).json({ error: 'Empresa no activa' })
+    }
+
+    const actor = req.platformActor
+    const principal = crearPrincipalDelegado(
+      { id: actor.id, rol: actor.rol, activo: true },
+      empresaId
+    )
+    const token = signDelegatedToken(principal)
+
+    await prisma.auditoria.create({
+      data: {
+        empresaId,
+        usuarioId: actor.id,
+        sucursalId: null,
+        accion: 'PLATFORM_TENANT_ENTER',
+        modulo: 'platform-auth',
+        ip: req.ip || null
+      }
+    })
+
+    return res.json({
+      token,
+      expiresIn: `${DELEGATED_TTL_SECONDS}s`,
+      empresa: {
+        id: empresa.id,
+        slug: empresa.slug,
+        nombreComercial: empresa.nombreComercial
+      }
+    })
+  } catch (err) {
+    if (err instanceof IdentityError) {
+      return res.status(400).json({ error: 'Solicitud inválida' })
+    }
+    console.error('Error en enterEmpresa:', err)
+    return res.status(500).json({ error: 'Error interno' })
+  }
+}
+
 module.exports = {
   PlatformAuthError,
   parsePlatformLoginBody,
   findPlatformCandidate,
   signPlatformToken,
+  signDelegatedToken,
   login,
-  me
+  me,
+  enterEmpresa
 }

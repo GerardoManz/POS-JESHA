@@ -2,12 +2,11 @@
 //  PEDIDOS.JS
 // ════════════════════════════════════════════════════════════════════
 
-const TOKEN   = localStorage.getItem('jesha_token')
-const USUARIO = JSON.parse(localStorage.getItem('jesha_usuario') || '{}')
+const USUARIO = window.jeshaSession?.getUsuario() || {}
 const API_URL = window.__JESHA_API_URL__ || 'http://localhost:3000'
 const LIMIT   = 25
 
-if (!TOKEN) {
+if (!window.jeshaSession?.isValid()) {
   localStorage.setItem('redirect_after_login', 'pedidos.html')
   window.location.href = 'login.html'
   throw new Error('Sin autenticación')
@@ -203,6 +202,9 @@ window.cargarEnPos = async function(id) {
         cantidad: parseInt(d.cantidad) || 1
       }))
     }
+    const usuarioSesion = window.jeshaSession?.getUsuario() || {}
+    payload.empresaId = usuarioSesion.empresaId ?? null
+    payload.sucursalId = window.jeshaSession?.getSelectedSucursalId?.() ?? usuarioSesion.sucursalId ?? null
     localStorage.setItem('pos_cotizacion', JSON.stringify(payload))
     window.location.href = 'punto-venta.html'
   } catch (err) { jeshaToast('Error: ' + err.message, 'error') }

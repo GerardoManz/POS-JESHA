@@ -75,9 +75,9 @@ describe('P0 — Tenant Global Scope', () => {
       facturacionRouter = require('../src/modules/facturacion/facturacion.routes')
     })
 
-    it('1. Usuarios GET / uses requireAuth + requestContext via router.use and tenantGlobal on route', () => {
+    it('1. Usuarios GET / uses requireTenantOrDelegated + requestContext via router.use and tenantGlobal on route', () => {
       const useMw = useMiddlewareNames(usuariosRouter.stack)
-      assert.ok(useMw.includes('requireAuth'), 'requireAuth debe estar en router.use')
+      assert.ok(useMw.includes('requireTenantOrDelegated'), 'requireTenantOrDelegated debe estar en router.use')
       assert.ok(useMw.includes('requestContext'), 'requestContext debe estar en router.use')
 
       const getRoot = findRoute(usuariosRouter.stack, 'get', '/')
@@ -148,18 +148,18 @@ describe('P0 — Tenant Global Scope', () => {
   })
 
   describe('MIDDLEWARE INTEGRITY', () => {
-    it('9. requireAuth no esta duplicado en usuarios — solo en router.use, no en rutas individuales', () => {
+    it('9. requireTenantOrDelegated no esta duplicado en usuarios — solo en router.use, no en rutas individuales', () => {
       const src = readSource('modules/usuarios/usuarios.routes.js')
-      // After router.use(requireAuth), requireAuth should NOT appear on individual routes
+      // After router.use(requireTenantOrDelegated), it should NOT appear on individual routes
       const routeLines = src.split('\n')
       let afterUse = false
       for (const line of routeLines) {
-        if (line.includes('router.use(requireAuth)')) {
+        if (line.includes('router.use(requireTenantOrDelegated)')) {
           afterUse = true
           continue
         }
-        if (afterUse && /\brouter\.(get|post|put|patch|delete)\b/.test(line) && line.includes('requireAuth')) {
-          assert.fail('requireAuth está duplicado en ruta individual: ' + line.trim())
+        if (afterUse && /\brouter\.(get|post|put|patch|delete)\b/.test(line) && line.includes('requireTenantOrDelegated')) {
+          assert.fail('requireTenantOrDelegated esta duplicado en ruta individual: ' + line.trim())
         }
       }
       assert.ok(true)

@@ -75,7 +75,7 @@ describe('P0-FRONTEND-TENANT session', () => {
     })
     const stored = JSON.parse(storage.getItem('jesha_usuario'))
     assert.deepStrictEqual(Object.keys(stored).sort(), [
-      'Sucursal', 'empresaId', 'id', 'nombre', 'rol', 'sucursalId', 'tema', 'username'
+      'Empresa', 'Sucursal', 'actorRol', 'delegated', 'effectiveRole', 'empresaId', 'id', 'nombre', 'rol', 'sucursalId', 'tema', 'username'
     ])
     assert.strictEqual(stored.passwordHash, undefined)
     assert.strictEqual(stored.pin, undefined)
@@ -242,6 +242,52 @@ describe('P0-FRONTEND-TENANT validarContexto', () => {
 })
 
 describe('P0-FRONTEND-TENANT fetch wrapper', () => {
+  it('prioriza token delegado sobre token tenant viejo', async () => {
+    let seen = null
+    const { storage, window } = loadSession(async (input, init) => {
+      seen = new Headers(init.headers)
+      return new Response('{}', { status: 200 })
+    })
+    storage.setItem('jesha_token', 'tenant-stale')
+    storage.setItem('jesha_delegated_token', 'delegated-current')
+    storage.setItem('jesha_delegated_empresa', JSON.stringify({ id: 10, slug: 'empresa-a', nombreComercial: 'Empresa A' }))
+    await window.fetch('http://localhost:3000/auth/me')
+    assert.strictEqual(seen.get('Authorization'), 'Bearer delegated-current')
+  })
+
+  it('expone rol efectivo y conserva el rol real del actor delegado', () => {
+    const { session, storage } = loadSession()
+    storage.setItem('jesha_delegated_token', 'delegated-current')
+    storage.setItem('jesha_delegated_empresa', JSON.stringify({ id: 10, slug: 'empresa-a', nombreComercial: 'Empresa A' }))
+    session.setDelegatedUser({
+      id: 7,
+      nombre: 'Gerardo',
+      username: 'Gerardo_Manz',
+      rol: 'SUPERADMIN',
+      actorRol: 'PLATFORM_ADMIN',
+      effectiveRole: 'SUPERADMIN',
+      delegated: true,
+      empresaId: 10,
+      sucursalId: null,
+      Empresa: { id: 10, slug: 'empresa-a', nombreComercial: 'Empresa A' }
+    })
+    const user = session.getUsuario()
+    assert.strictEqual(user.rol, 'SUPERADMIN')
+    assert.strictEqual(user.actorRol, 'PLATFORM_ADMIN')
+    assert.strictEqual(user.effectiveRole, 'SUPERADMIN')
+    assert.strictEqual(user.delegated, true)
+  })
+
+  it('clearDelegated conserva la sesión de plataforma', () => {
+    const { session, storage } = loadSession()
+    storage.setItem('jesha_platform_token', 'platform-current')
+    storage.setItem('jesha_delegated_token', 'delegated-current')
+    storage.setItem('jesha_delegated_empresa', '{}')
+    session.clearDelegated()
+    assert.strictEqual(storage.getItem('jesha_platform_token'), 'platform-current')
+    assert.strictEqual(storage.getItem('jesha_delegated_token'), null)
+  })
+
   it('agrega Authorization y X-Sucursal-Id a llamadas del API', async () => {
     let seen = null
     const { session, window } = loadSession(async (input, init) => {

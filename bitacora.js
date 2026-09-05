@@ -18,7 +18,7 @@ let descuentoGuardando   = false
 let paginaActual       = 1
 const LIMIT = 25
 
-const usuario  = JSON.parse(localStorage.getItem('jesha_usuario') || '{}')
+const usuario  = window.jeshaSession?.getUsuario() || {}
 const esSUPER  = ['SUPERADMIN'].includes(usuario.rol)
 
 // ════════════════════════════════════════════════════════════════════
@@ -972,7 +972,7 @@ function abrirReporteCompleto() {
   const b = bitacoraActual
   if (!b) return
   const base = (typeof API_URL !== 'undefined' ? API_URL : window.__JESHA_API_URL__ || '').replace(/\/$/, '')
-  const TOKEN = localStorage.getItem('jesha_token')
+  const TOKEN = window.jeshaSession?.getEffectiveToken() || ''
   const url = `${base}/bitacoras/${b.id}/reporte`
   window.open(`${url}?token=${TOKEN}`, '_blank', 'width=1100,height=800')
 }

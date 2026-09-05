@@ -591,20 +591,7 @@ mark.highlight {
   border-top: 1px solid var(--panel-border);
 }
 
-/* ── LOADING SPINNER ── */
-.spinner {
-  display: inline-block;
-  width: 20px;
-  height: 20px;
-  border: 3px solid var(--panel-border);
-  border-top-color: var(--accent);
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
+/* ── LOADING SPINNER (reutiliza .spinner de dashboard.css) ── */
 
 /* ── SUGERENCIA SAT ── */
 #sat-sugerencia-wrap {
@@ -1114,6 +1101,28 @@ mark.highlight {
 }
 /* Oculto para roles sin permiso */
 .btn-ajuste-inv.hidden { display: none !important; }
+
+/* ── Botón Kardex ── */
+.btn-kardex {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 9px;
+  background: rgba(107,157,232,0.08);
+  border: 1px solid rgba(107,157,232,0.2);
+  border-radius: 6px;
+  color: #6b9de8;
+  font-family: 'Barlow', sans-serif;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.btn-kardex:hover {
+  background: rgba(107,157,232,0.18);
+  border-color: rgba(107,157,232,0.4);
+}
 
 /* Overlay */
 .modal-ajuste-overlay {
@@ -1883,7 +1892,8 @@ mark.highlight {
 
 .producto-card-actions .btn-icon,
 .producto-card-actions .btn-ajuste-inv,
-.producto-card-actions .btn-toggle-estado {
+.producto-card-actions .btn-toggle-estado,
+.producto-card-actions .btn-kardex {
   min-width: 32px;
   height: 30px;
 }

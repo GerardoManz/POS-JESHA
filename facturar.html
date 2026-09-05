@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Solicitar Factura — JESHA</title>
+  <title>Solicitar Factura</title>
   <link rel="icon" type="image/x-icon" href="favicon.ico"/>
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png"/>
   <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png"/>
@@ -287,15 +287,15 @@
   <div id="estado-error">
     <div class="fact-container">
       <div class="fact-header">
-        <img src="Imagenes/logo-jesha.png" alt="JESHA" class="fact-logo" onerror="this.style.display='none'" />
-        <div class="fact-title">Facturación JESHA</div>
+        <img src="" alt="Logo" class="fact-logo" style="display:none" />
+        <div class="fact-title">Facturación</div>
       </div>
       <div class="fact-card" style="text-align:center;">
         <div class="estado-icono" id="error-icono">⚠️</div>
         <div class="estado-titulo" id="error-titulo">No disponible</div>
         <p class="estado-desc" id="error-desc">—</p>
       </div>
-      <p class="fact-footer">¿Necesitas ayuda? Llama al 4921016879 o visítanos en Av. San Simón #03, Guadalupe, Zacatecas.</p>
+      <p class="fact-footer" id="footer-ayuda">¿Necesitas ayuda? Contacta a tu sucursal.</p>
     </div>
   </div>
 
@@ -304,7 +304,7 @@
     <div class="fact-container">
 
       <div class="fact-header">
-        <img src="Imagenes/logo-jesha.png" alt="JESHA" class="fact-logo" onerror="this.style.display='none'" />
+        <img src="" alt="Logo" class="fact-logo" style="display:none" />
         <div class="fact-title">Solicitar Factura</div>
         <div class="fact-sub">Completa tus datos fiscales para emitir el CFDI 4.0</div>
       </div>
@@ -417,10 +417,7 @@
         </form>
       </div>
 
-      <p class="fact-footer">
-        JESHA — Ferretería e Iluminación · RFC: VADJ820305197<br/>
-        Av. San Simón #03, Guadalupe, Zacatecas · Tel: 4921016879
-      </p>
+      <p class="fact-footer" id="footer-form"></p>
     </div>
   </div>
 
@@ -428,8 +425,8 @@
   <div id="estado-exito">
     <div class="fact-container">
       <div class="fact-header">
-        <img src="Imagenes/logo-jesha.png" alt="JESHA" class="fact-logo" onerror="this.style.display='none'" />
-        <div class="fact-title">Facturación JESHA</div>
+        <img src="" alt="Logo" class="fact-logo" style="display:none" />
+        <div class="fact-title">Facturación</div>
       </div>
       <div class="fact-card" style="text-align:center;padding:32px 22px;">
         <div class="estado-icono">✅</div>
@@ -440,10 +437,7 @@
           Revisa tu bandeja de entrada y carpeta de spam.
         </p>
       </div>
-      <p class="fact-footer">
-        JESHA — Ferretería e Iluminación · RFC: VADJ820305197<br/>
-        Av. San Simón #03, Guadalupe, Zacatecas · Tel: 4921016879
-      </p>
+      <p class="fact-footer" id="footer-exito"></p>
     </div>
   </div>
 
@@ -463,6 +457,22 @@ const fmt = v => `$${parseFloat(v||0).toLocaleString('es-MX',{minimumFractionDig
 const fmtFecha = iso => new Date(iso).toLocaleDateString('es-MX',{day:'2-digit',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'})
 const metodoLabel = { EFECTIVO:'💵 Efectivo', CREDITO:'💳 Tarjeta crédito', DEBITO:'💳 Tarjeta débito', TRANSFERENCIA:'🔄 Transferencia' }
 const ACENTOS_RAZON_SOCIAL = /[ÁÉÍÓÚÜáéíóúü]/
+
+let empresaData = null
+
+function renderFooter(elementId) {
+  const el = document.getElementById(elementId)
+  if (!el) return
+  if (!empresaData) { el.textContent = ''; return }
+  const parts = []
+  if (empresaData.nombreComercial) parts.push(empresaData.nombreComercial)
+  if (empresaData.rfc) parts.push('RFC: ' + empresaData.rfc)
+  let linea1 = parts.join(' · ')
+  const linea2Parts = []
+  if (empresaData.whatsapp) linea2Parts.push('Tel: ' + empresaData.whatsapp)
+  const linea2 = linea2Parts.join(' · ')
+  el.innerHTML = linea1 + (linea2 ? '<br/>' + linea2 : '')
+}
 
 function mostrar(id) {
   ['estado-loading','estado-error','estado-form','estado-exito'].forEach(s => {
@@ -545,6 +555,17 @@ async function cargarDatos() {
       d.valida      = true
       d.datosFiscales = d.clienteDatos || null
     }
+    if (d.empresa) empresaData = d.empresa
+    // Logo dinámico desde la Empresa
+    if (empresaData?.logoUrl) {
+      document.querySelectorAll('.fact-logo').forEach(img => {
+        img.src = empresaData.logoUrl
+        img.style.display = ''
+      })
+    }
+    renderFooter('footer-ayuda')
+    renderFooter('footer-form')
+    renderFooter('footer-exito')
     renderFormulario(d)
   } catch(e) {
     mostrarError('ERROR_CONEXION', 'No se pudo conectar con el servidor. Detalle: ' + e.message)

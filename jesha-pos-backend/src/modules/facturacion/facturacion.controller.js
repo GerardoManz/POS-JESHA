@@ -15,10 +15,11 @@
 // ════════════════════════════════════════════════════════════════════
 
 const prisma = require('../../lib/prisma')
-const resolverEmpresaScope = require('../../helpers/resolverEmpresaScope')
+const getEmpresaId = require('../../helpers/getEmpresaId')
 const resolverDatosEmisor = require('../../helpers/resolverDatosEmisor')
-const { getFacturapi } = require('../../lib/facturapi')
+const { getFacturapiForEmpresa, verificarFacturacionEmpresa, FiscalError } = require('../../lib/facturapi')
 const { trackFacturapi, isEnabled } = require('../../lib/debug')
+const { buildFacturaScope } = require('../facturas/factura-scope.helper')
 
 const TASA_IVA   = parseFloat(process.env.TASA_IVA || '0.16')
 const IVA_FACTOR = 1 + TASA_IVA
@@ -224,6 +225,7 @@ function buildInvoicePayload({ rfc, razonSocial, regimenFiscal, codigoPostal, us
     use:            usoCfdi,
     payment_form:   resolverFormaPagoSat(metodoPago),
     payment_method: 'PUE',
+    address:        { zip: lugarExpedicion || datosEmisor.cp },
     items
   }
 
@@ -232,7 +234,7 @@ function buildInvoicePayload({ rfc, razonSocial, regimenFiscal, codigoPostal, us
 
 exports.buildInvoicePayload = buildInvoicePayload
 
-function buildGlobalInvoicePayload({ ventas, metodoPago, periodicidad, mes, anio, datosEmisor }) {
+function buildGlobalInvoicePayload({ ventas, metodoPago, periodicidad, mes, anio, datosEmisor, lugarExpedicion }) {
   const paymentForm = FORMA_PAGO_SAT[metodoPago]
   if (!paymentForm) {
     throw new Error(`metodoPago inválido para global: "${metodoPago}". Use uno de: ${METODOS_GLOBALES.join(', ')}`)
@@ -271,6 +273,7 @@ function buildGlobalInvoicePayload({ ventas, metodoPago, periodicidad, mes, anio
     use:            'S01',
     payment_form:   paymentForm,
     payment_method: 'PUE',
+    address:        { zip: lugarExpedicion || datosEmisor.cp },
     items,
     global: {
       periodicity: periodicityValue,
@@ -283,6 +286,15 @@ function buildGlobalInvoicePayload({ ventas, metodoPago, periodicidad, mes, anio
 exports.buildGlobalInvoicePayload = buildGlobalInvoicePayload
 exports.METODOS_GLOBALES = METODOS_GLOBALES
 exports.PERIODICIDAD_FACTURAPI = PERIODICIDAD_FACTURAPI
+
+async function resolverLugarExpedicion(empresaId, sucursalId, fallback) {
+  if (!sucursalId) return fallback
+  const sucursal = await prisma.sucursal.findFirst({
+    where: { id: sucursalId, empresaId },
+    select: { codigoPostal: true }
+  })
+  return sucursal?.codigoPostal || fallback
+}
 
 // ════════════════════════════════════════════════════════════════════
 //  Helpers Fase 2
@@ -399,6 +411,9 @@ exports.obtenerVentaPorToken = async (req, res) => {
             emailSecundario1: true, emailSecundario2: true
           }
         },
+        Empresa: {
+          select: { id: true, nombreComercial: true, rfc: true, whatsapp: true }
+        },
         DetalleVenta: { include: { Producto: { select: { nombre: true } } } },
         FacturaCfdi:  true,
         FacturaVenta: { include: { FacturaCfdi: true } }
@@ -487,8 +502,13 @@ exports.solicitarFactura = async (req, res) => {
     if (sec1 && !emailRegex.test(sec1)) return res.status(400).json({ error: 'Email secundario 1 inválido.' })
     if (sec2 && !emailRegex.test(sec2)) return res.status(400).json({ error: 'Email secundario 2 inválido.' })
 
+    // Fail-safe: cualquier valor que no sea 'INTERNO' explícito se trata como QR (canal restrictivo).
+    const esCanalQr = req.canalFacturacion !== 'INTERNO'
+
     const venta = await prisma.venta.findFirst({
-      where: { tokenQr: token },
+      where: esCanalQr
+        ? { tokenQr: token }
+        : { tokenQr: token, empresaId: getEmpresaId(req), sucursalId: req.context.branch.sucursalId },
       include: {
         FacturaCfdi: true,
         FacturaVenta: { include: { FacturaCfdi: true } },
@@ -507,7 +527,7 @@ exports.solicitarFactura = async (req, res) => {
       })
     }
 
-    const empresaId = venta.empresaId
+    const empresaId = esCanalQr ? venta.empresaId : getEmpresaId(req)
     if (venta.estado === 'CANCELADA') return res.status(400).json({ error: 'Venta cancelada.' })
     if (venta.metodoPago === 'CREDITO_CLIENTE') {
       return res.status(409).json({
@@ -518,7 +538,6 @@ exports.solicitarFactura = async (req, res) => {
     if (venta.facturaEstado === 'BLOQUEADA') return res.status(400).json({ error: 'Venta no facturable en línea.' })
     // Gate por canal: QR público = 72h desde la venta; interno (mostrador) = mes fiscal (facturaLimite).
     // Fail-safe: cualquier valor que no sea 'INTERNO' explícito se trata como QR (canal restrictivo).
-    const esCanalQr = req.canalFacturacion !== 'INTERNO'
     if (esCanalQr) {
       const horasQr = (new Date() - new Date(venta.creadaEn)) / 36e5
       if (horasQr > HORAS_LIMITE_QR) {
@@ -545,21 +564,21 @@ exports.solicitarFactura = async (req, res) => {
     const rfcUpper     = rfc.trim().toUpperCase()
     const nombreReceptor = razonSocial.trim()
     const emailTrimmed = email.trim()
-    const datosEmisor = resolverDatosEmisor(empresaId)
-    let invoicePayload
+
+    // ── FAIL-CLOSED (P1): la empresa debe tener ConfiguracionFiscal con key ──
+    // Se valida ANTES de crear el PENDIENTE (irrecuperable si no se puede timbrar).
+    // Nunca cae a la key global de JESHA (LEGACY_SINGLE_ISSUER).
+    let fp
     try {
-      invoicePayload = buildInvoicePayload({
-        rfc: rfcUpper, razonSocial: nombreReceptor, regimenFiscal, codigoPostal,
-        usoCfdi, email: emailTrimmed, metodoPago: venta.metodoPago,
-        detalles: venta.DetalleVenta, datosEmisor,
-        descuento: venta.descuento, totalVenta: venta.total
-      })
+      await verificarFacturacionEmpresa(empresaId)
+      fp = await getFacturapiForEmpresa(empresaId)
     } catch (err) {
-      if (err?.codigo?.startsWith('FACTURAPI_')) {
-        return res.status(err.status || 422).json({ error: err.message, codigo: err.codigo })
-      }
+      if (err instanceof FiscalError) return res.status(err.status).json({ error: err.message, codigo: err.code })
       throw err
     }
+
+    const datosEmisor = await resolverDatosEmisor(empresaId)
+    const lugarExpedicion = await resolverLugarExpedicion(empresaId, venta.sucursalId, datosEmisor.cp)
 
     const datosFactura = {
       empresaId,
@@ -569,7 +588,7 @@ exports.solicitarFactura = async (req, res) => {
       emailReceptor: emailTrimmed,
       emailSecundario1: sec1 || null,
       emailSecundario2: sec2 || null,
-      lugarExpedicion: process.env.JESHA_CP_EMISOR || '98660',
+      lugarExpedicion,
       subtotal, iva, total
     }
 
@@ -607,29 +626,17 @@ exports.solicitarFactura = async (req, res) => {
       throw e
     }
 
-    const fp = getFacturapi()
-
-    // Sin Facturapi: queda PENDIENTE_TIMBRADO para timbrado manual.
-    if (!fp) {
-      await prisma.facturaCfdi.update({
-        where: { id: factura.id },
-        data: { procesandoTimbrado: false, procesandoTimbradoEn: null }
-      })
-      console.log(`📋 Factura PENDIENTE_TIMBRADO creada (sin Facturapi): ${factura.id} | ${venta.folio} | ${rfcUpper}`)
-      return res.status(202).json({
-        success: true, timbrado: false,
-        mensaje: `Solicitud de factura recibida. Te enviaremos la factura a ${emailTrimmed} cuando sea procesada.`,
-        facturaId: factura.id
-      })
-    }
-
     // ── 2) Timbrar con idempotency_key (fuera de transacción) ──
     const idempotencyKey = `jesha-factura-${factura.id}`
     let invoice = null
     let selladoOk = false
     try {
       invoice = await trackFacturapi('invoices.create', { facturaId: factura.id }, () => fp.invoices.create({
-        ...invoicePayload,
+        ...buildInvoicePayload({
+          rfc: rfcUpper, razonSocial: nombreReceptor, regimenFiscal, codigoPostal,
+          usoCfdi, email: emailTrimmed, metodoPago: venta.metodoPago,
+          detalles: venta.DetalleVenta, datosEmisor, lugarExpedicion
+        }),
         idempotency_key: idempotencyKey
       }))
       selladoOk = true
@@ -719,8 +726,7 @@ exports.solicitarFactura = async (req, res) => {
 // ════════════════════════════════════════════════════════════════════
 exports.timbrarManual = async (req, res) => {
   try {
-    const scope = resolverEmpresaScope(req)
-    const whereScope = scope.modo === 'GLOBAL' ? {} : { empresaId: scope.empresaId }
+    const whereScope = buildFacturaScope(req)
 
     const id = parseInt(req.params.id)
     const factura = await prisma.facturaCfdi.findFirst({ where: { id, ...whereScope } })
@@ -728,8 +734,15 @@ exports.timbrarManual = async (req, res) => {
     if (!factura) return res.status(404).json({ error: 'Factura no encontrada' })
     if (factura.estado !== 'PENDIENTE_TIMBRADO') return res.status(400).json({ error: `Estado actual: ${factura.estado}. Solo PENDIENTE_TIMBRADO.` })
 
-    const fp = getFacturapi()
-    if (!fp) return res.status(503).json({ error: 'Facturapi no configurada. Agrega FACTURAPI_KEY al .env' })
+    // ── FAIL-CLOSED (P1): cliente de la Organization PROPIA de la empresa ──
+    let fp
+    try {
+      await verificarFacturacionEmpresa(factura.empresaId)
+      fp = await getFacturapiForEmpresa(factura.empresaId)
+    } catch (err) {
+      if (err instanceof FiscalError) return res.status(err.status).json({ error: err.message, codigo: err.code })
+      throw err
+    }
 
     // ── POLITICA P0.11: Validar metodoPago de la venta ANTES de tomar el lock ──
     const ventaIdsPre = await obtenerVentaIdsDeFactura(factura.id, factura.ventaId)
@@ -800,7 +813,7 @@ exports.timbrarManual = async (req, res) => {
       if (nuevaKey !== factura.idempotencyKey) updates.idempotencyKey = nuevaKey
 
       if (Object.keys(updates).length > 0) {
-        await prisma.facturaCfdi.update({ where: { id, ...whereScope }, data: updates })
+        await prisma.facturaCfdi.update({ where: { id }, data: updates })
         if (huboCorrecciones) console.log(`📝 Factura ${id}: datos corregidos antes de timbrar`)
       }
 
@@ -810,12 +823,12 @@ exports.timbrarManual = async (req, res) => {
       // ── Resolver venta(s) vía FacturaVenta (+ fallback legacy) ──
       const ventaIds = await obtenerVentaIdsDeFactura(f.id, f.ventaId)
       if (ventaIds.length === 0) {
-        await prisma.facturaCfdi.update({ where: { id, ...whereScope }, data: { procesandoTimbrado: false, procesandoTimbradoEn: null } }).catch(() => {})
+        await prisma.facturaCfdi.update({ where: { id }, data: { procesandoTimbrado: false, procesandoTimbradoEn: null } }).catch(() => {})
         return res.status(409).json({ error: 'La factura no tiene ventas asociadas.' })
       }
       if (ventaIds.length > 1) {
         // Fase 2 = individual. El retimbrado de conjunta llega en Fase 3 (service).
-        await prisma.facturaCfdi.update({ where: { id, ...whereScope }, data: { procesandoTimbrado: false, procesandoTimbradoEn: null } }).catch(() => {})
+        await prisma.facturaCfdi.update({ where: { id }, data: { procesandoTimbrado: false, procesandoTimbradoEn: null } }).catch(() => {})
         return res.status(400).json({ error: 'Retimbrado de factura conjunta no disponible en esta fase.' })
       }
 
@@ -824,7 +837,7 @@ exports.timbrarManual = async (req, res) => {
         include: { DetalleVenta: { include: { Producto: true } } }
       })
       if (!venta) {
-        await prisma.facturaCfdi.update({ where: { id, ...whereScope }, data: { procesandoTimbrado: false, procesandoTimbradoEn: null } }).catch(() => {})
+        await prisma.facturaCfdi.update({ where: { id }, data: { procesandoTimbrado: false, procesandoTimbradoEn: null } }).catch(() => {})
         return res.status(409).json({ error: 'La venta asociada no existe.' })
       }
 
@@ -832,20 +845,19 @@ exports.timbrarManual = async (req, res) => {
       // lock, dejando la factura PENDIENTE para corrección (patrón de L676/L690).
       const servMalo = primerServicioInvalido(venta.DetalleVenta)
       if (servMalo) {
-        await prisma.facturaCfdi.update({ where: { id, ...whereScope }, data: { procesandoTimbrado: false, procesandoTimbradoEn: null } }).catch(() => {})
+        await prisma.facturaCfdi.update({ where: { id }, data: { procesandoTimbrado: false, procesandoTimbradoEn: null } }).catch(() => {})
         return res.status(400).json({ error: `Servicio "${servMalo}" sin clave SAT de 8 dígitos. Corrige el producto antes de timbrar.` })
       }
 
       // ── Timbrar con idempotency_key ──
-      const datosEmisor = resolverDatosEmisor(scope.empresaId)
-      const invoicePayload = buildInvoicePayload({
-        rfc: f.rfcReceptor, razonSocial: f.nombreReceptor, regimenFiscal: f.regimenFiscal,
-        codigoPostal: f.cpReceptor, usoCfdi: f.usoCfdi, email: f.emailReceptor,
-        metodoPago: venta.metodoPago, detalles: venta.DetalleVenta, datosEmisor,
-        descuento: venta.descuento, totalVenta: venta.total
-      })
+      const datosEmisor = await resolverDatosEmisor(factura.empresaId)
       invoice = await trackFacturapi('invoices.create', { facturaId: id }, () => fp.invoices.create({
-        ...invoicePayload,
+        ...buildInvoicePayload({
+          rfc: f.rfcReceptor, razonSocial: f.nombreReceptor, regimenFiscal: f.regimenFiscal,
+          codigoPostal: f.cpReceptor, usoCfdi: f.usoCfdi, email: f.emailReceptor,
+          metodoPago: venta.metodoPago, detalles: venta.DetalleVenta, datosEmisor,
+          lugarExpedicion: f.lugarExpedicion || datosEmisor.cp
+        }),
         idempotency_key: f.idempotencyKey
       }))
       selladoOk = true
@@ -853,7 +865,7 @@ exports.timbrarManual = async (req, res) => {
       // ── Éxito ──
       const [actualizada] = await prisma.$transaction([
         prisma.facturaCfdi.update({
-          where: { id, ...whereScope },
+          where: { id },
           data: {
             folioFiscal: invoice.uuid, facturapiId: invoice.id,
             estado: 'TIMBRADA', timbradaEn: new Date(),
@@ -878,7 +890,7 @@ exports.timbrarManual = async (req, res) => {
       if (selladoOk) {
         // Selló pero falló el guardado local → NO liberar el lock; revisión manual.
         await prisma.facturaCfdi.update({
-          where: { id, ...whereScope },
+          where: { id },
           data: {
             folioFiscal: invoice?.uuid ?? undefined,
             facturapiId: invoice?.id ?? undefined,
@@ -895,7 +907,7 @@ exports.timbrarManual = async (req, res) => {
       if (tipo === 'VALIDACION') {
         // No se selló → liberar lock; queda PENDIENTE para corregir y reintentar.
         await prisma.facturaCfdi.update({
-          where: { id, ...whereScope },
+          where: { id },
           data: { procesandoTimbrado: false, procesandoTimbradoEn: null, ultimoErrorTimbrado: (fpErr.message || '').slice(0, 500) }
         }).catch(() => {})
         const mensajeFacturapi = fpErr.message || ''
@@ -911,7 +923,7 @@ exports.timbrarManual = async (req, res) => {
 
       // INCIERTO → NO liberar lock (procesandoTimbrado sigue true) → revisión manual.
       await prisma.facturaCfdi.update({
-        where: { id, ...whereScope },
+        where: { id },
         data: { ultimoErrorTimbrado: (fpErr.message || '').slice(0, 500) }
       }).catch(() => {})
       return res.status(502).json({
@@ -931,8 +943,7 @@ exports.timbrarManual = async (req, res) => {
 // ════════════════════════════════════════════════════════════════════
 exports.descargarPdf = async (req, res) => {
   try {
-    const scope = resolverEmpresaScope(req)
-    const whereScope = scope.modo === 'GLOBAL' ? {} : { empresaId: scope.empresaId }
+    const whereScope = buildFacturaScope(req)
 
     const factura = await prisma.facturaCfdi.findFirst({
       where: { id: parseInt(req.params.id), ...whereScope }
@@ -940,8 +951,14 @@ exports.descargarPdf = async (req, res) => {
     if (!factura) return res.status(404).json({ error: 'Factura no encontrada' })
     if (!factura.facturapiId) return res.status(400).json({ error: 'Factura sin ID de Facturapi — no se puede descargar' })
 
-    const fp = getFacturapi()
-    if (!fp) return res.status(503).json({ error: 'Facturapi no configurada' })
+    // ── FAIL-CLOSED (P1): cliente de la Organization PROPIA de la empresa ──
+    let fp
+    try {
+      fp = await getFacturapiForEmpresa(factura.empresaId)
+    } catch (err) {
+      if (err instanceof FiscalError) return res.status(err.status).json({ error: err.message, codigo: err.code })
+      throw err
+    }
 
     const stream = await trackFacturapi('invoices.downloadPdf', { facturaId: factura.id }, () => fp.invoices.downloadPdf(factura.facturapiId))
     res.setHeader('Content-Type', 'application/pdf')
@@ -958,8 +975,7 @@ exports.descargarPdf = async (req, res) => {
 // ════════════════════════════════════════════════════════════════════
 exports.descargarXml = async (req, res) => {
   try {
-    const scope = resolverEmpresaScope(req)
-    const whereScope = scope.modo === 'GLOBAL' ? {} : { empresaId: scope.empresaId }
+    const whereScope = buildFacturaScope(req)
 
     const factura = await prisma.facturaCfdi.findFirst({
       where: { id: parseInt(req.params.id), ...whereScope }
@@ -967,8 +983,14 @@ exports.descargarXml = async (req, res) => {
     if (!factura) return res.status(404).json({ error: 'Factura no encontrada' })
     if (!factura.facturapiId) return res.status(400).json({ error: 'Factura sin ID de Facturapi' })
 
-    const fp = getFacturapi()
-    if (!fp) return res.status(503).json({ error: 'Facturapi no configurada' })
+    // ── FAIL-CLOSED (P1): cliente de la Organization PROPIA de la empresa ──
+    let fp
+    try {
+      fp = await getFacturapiForEmpresa(factura.empresaId)
+    } catch (err) {
+      if (err instanceof FiscalError) return res.status(err.status).json({ error: err.message, codigo: err.code })
+      throw err
+    }
 
     const stream = await trackFacturapi('invoices.downloadXml', { facturaId: factura.id }, () => fp.invoices.downloadXml(factura.facturapiId))
     res.setHeader('Content-Type', 'application/xml')
@@ -985,8 +1007,7 @@ exports.descargarXml = async (req, res) => {
 // ════════════════════════════════════════════════════════════════════
 exports.enviarEmail = async (req, res) => {
   try {
-    const scope = resolverEmpresaScope(req)
-    const whereScope = scope.modo === 'GLOBAL' ? {} : { empresaId: scope.empresaId }
+    const whereScope = buildFacturaScope(req)
 
     const factura = await prisma.facturaCfdi.findFirst({
       where: { id: parseInt(req.params.id), ...whereScope }
@@ -994,8 +1015,14 @@ exports.enviarEmail = async (req, res) => {
     if (!factura) return res.status(404).json({ error: 'Factura no encontrada' })
     if (!factura.facturapiId) return res.status(400).json({ error: 'Factura sin ID de Facturapi' })
 
-    const fp = getFacturapi()
-    if (!fp) return res.status(503).json({ error: 'Facturapi no configurada' })
+    // ── FAIL-CLOSED (P1): cliente de la Organization PROPIA de la empresa ──
+    let fp
+    try {
+      fp = await getFacturapiForEmpresa(factura.empresaId)
+    } catch (err) {
+      if (err instanceof FiscalError) return res.status(err.status).json({ error: err.message, codigo: err.code })
+      throw err
+    }
 
     const emailsReenvio = [factura.emailReceptor, factura.emailSecundario1, factura.emailSecundario2].filter(Boolean)
     await trackFacturapi('invoices.sendByEmail', { facturaId: factura.id }, () => fp.invoices.sendByEmail(factura.facturapiId, { email: emailsReenvio }))

@@ -3,11 +3,10 @@
 //  Soporta PRODUCTOS (descuento por línea + IVA desglosado) y SERVICIOS
 // ════════════════════════════════════════════════════════════════════
 
-const TOKEN   = localStorage.getItem('jesha_token')
-const USUARIO = JSON.parse(localStorage.getItem('jesha_usuario') || '{}')
+const USUARIO = window.jeshaSession?.getUsuario() || {}
 const API_URL = window.__JESHA_API_URL__ || 'http://localhost:3000'
 
-if (!TOKEN) {
+if (!window.jeshaSession?.isValid()) {
   localStorage.setItem('redirect_after_login', 'cotizaciones.html')
   window.location.href = 'login.html'
   throw new Error('Sin autenticación')
@@ -987,6 +986,8 @@ window.cargarEnPos = async function(id) {
     if (!cot.DetalleCotizacion || cot.DetalleCotizacion.length === 0) { jeshaToast('Esta cotización no tiene productos', 'warning'); return }
     const posPayload = {
       fuente: 'cotizacion', cotFolio: cot.folio, cotId: cot.id,
+      empresaId: window.jeshaSession?.getUsuario()?.empresaId ?? null,
+      sucursalId: window.jeshaSession?.getSelectedSucursalId?.() ?? window.jeshaSession?.getUsuario()?.sucursalId ?? null,
       clienteId: cot.Cliente?.id || null, clienteNombre: cot.Cliente?.nombre || '',
       items: cot.DetalleCotizacion.map(d => ({
         id:          d.Producto?.id ?? d.productoId,
@@ -1032,18 +1033,25 @@ window.descargarPdf = async function(id) {
 
 const LOGO_URL = window.__JESHA_LOGO_URL__
 
-function logoPdfUrl() {
-  if (!LOGO_URL) return ''
-  return LOGO_URL.replace('/image/upload/', '/image/upload/e_trim/c_fit,w_840,h_300,q_100,f_png/')
+function logoPdfUrl(url) {
+  if (!url) return ''
+  return url.replace('/image/upload/', '/image/upload/e_trim/c_fit,w_840,h_300,q_100,f_png/')
 }
 
-function generarPdf(c) {
+async function generarPdf(c) {
+  const emp = await window.jeshaSession?.fetchEmpresaBranding() || {}
+  const empName = emp.nombre || 'Empresa'
+  const empDireccion = emp.direccion || ''
+  const empTelefono = emp.telefono || emp.whatsapp || ''
+  const empEmail = emp.email || ''
+  const empLogo = emp.logoUrl || LOGO_URL
+  const logoUrl = logoPdfUrl(empLogo)
+
   const esProductos = c.tipo !== 'SERVICIOS'
   const vigencia    = c.venceEn ? `<p><strong>Vigencia:</strong> ${fmtFecha(c.venceEn)}</p>` : ''
   const notas       = c.notas  ? `<p style="margin-top:16px;font-size:12px;color:#555"><strong>Notas:</strong> ${c.notas}</p>` : ''
   const totalNumerico = parseFloat(c.total || 0)
   const totalLetras = montoEnLetras(totalNumerico)
-  const logoUrl = logoPdfUrl()
 
   let tablaHtml = ''
   let resumenHtml = ''
@@ -1183,9 +1191,9 @@ function generarPdf(c) {
 <body>
   <div class="header">
     <div class="empresa">
-      ${logoUrl ? `<img src="${logoUrl}" alt="JESHA" class="logo-jesha" />` : `<div style="font-size:18px;font-weight:700;color:#1f3a66;margin-bottom:8px;">FERRETERÍA E ILUMINACIÓN JESHA</div>`}
-      <p>Av. Vialidad San Simón 3, La Toma de Zacatecas, C.P. 98660</p>
-      <p>Guadalupe, Zacatecas · Tel: 492 101 6879 · jeshadelgado544@gmail.com</p>
+      ${logoUrl ? `<img src="${logoUrl}" alt="${empName}" class="logo-jesha" />` : `<div style="font-size:18px;font-weight:700;color:#1f3a66;margin-bottom:8px;">${empName.toUpperCase()}</div>`}
+      ${empDireccion ? `<p>${empDireccion}</p>` : ''}
+      ${(empTelefono || empEmail) ? `<p>${[empTelefono ? `Tel: ${empTelefono}` : '', empEmail].filter(Boolean).join(' · ')}</p>` : ''}
     </div>
     <div class="folio-box">
       <div class="folio">${c.folio}</div>
@@ -1207,7 +1215,7 @@ function generarPdf(c) {
   ${notas}
 
   <div class="footer">
-    <p>${esProductos ? 'Los precios incluyen IVA · ' : ''}Cotización válida por los días indicados · Ferretería e Iluminación JESHA</p>
+    <p>${esProductos ? 'Los precios incluyen IVA · ' : ''}Cotización válida por los días indicados · ${empName}</p>
   </div>
 </body>
 </html>`

@@ -6,12 +6,9 @@
 //  - Eliminada duplicación de cargarSidebar()
 // ══════════════════════════════════════════════════════════════════
 
-// ── OBTENER TOKEN ──
-const TOKEN = localStorage.getItem('jesha_token')
-
 // ── PROTECCIÓN CONTRA BUCLES ──
 // Solo redirige si NO está en login.html
-if (!TOKEN && !window.location.pathname.includes('login.html')) {
+if (!window.jeshaSession?.isValid() && !window.location.pathname.includes('login.html')) {
   console.log('❌ No hay token, redirigiendo a login...')
   localStorage.setItem('redirect_after_login', 'clientes.html')
   window.location.href = 'login.html'
@@ -19,9 +16,9 @@ if (!TOKEN && !window.location.pathname.includes('login.html')) {
   throw new Error('Sin autenticación')
 }
 
-// Si llegó aquí sin token, detener
-if (!TOKEN) {
-  console.error('❌ ERROR: Sin token y en clientes.html')
+// Si llegó aquí sin sesión válida, detener
+if (!window.jeshaSession?.isValid()) {
+  console.error('❌ ERROR: Sin sesión y en clientes.html')
   throw new Error('Sin autenticación')
 }
 
@@ -29,7 +26,6 @@ if (!TOKEN) {
 const API_URL = window.__JESHA_API_URL__ || 'http://localhost:3000'
 
 console.log('✅ Clientes.js cargado correctamente')
-console.log('✅ Token encontrado:', TOKEN.substring(0, 20) + '...')
 
 // ══════════════════════════════════════════════════════════════════
 //  DOM ELEMENTS
@@ -110,9 +106,7 @@ async function cargarClientes() {
       params.append('buscar', searchInput.value)
     }
 
-    const response = await fetch(`${API_URL}/clientes?${params}`, {
-      headers: { 'Authorization': `Bearer ${TOKEN}` }
-    })
+    const response = await fetch(`${API_URL}/clientes?${params}`)
     if (window.handle401 && window.handle401(response.status)) return
 
     console.log('📡 Response status:', response.status)
@@ -270,9 +264,7 @@ window.verHistorial = async function(clienteId) {
 
 async function cargarVentas(clienteId) {
   try {
-    const response = await fetch(`${API_URL}/clientes/${clienteId}/ventas`, {
-      headers: { 'Authorization': `Bearer ${TOKEN}` }
-    })
+    const response = await fetch(`${API_URL}/clientes/${clienteId}/ventas`)
     if (window.handle401 && window.handle401(response.status)) return
 
     const ventas = await response.json()
@@ -304,9 +296,7 @@ async function cargarVentas(clienteId) {
 
 async function cargarAbonos(clienteId) {
   try {
-    const response = await fetch(`${API_URL}/clientes/${clienteId}/abonos`, {
-      headers: { 'Authorization': `Bearer ${TOKEN}` }
-    })
+    const response = await fetch(`${API_URL}/clientes/${clienteId}/abonos`)
     if (window.handle401 && window.handle401(response.status)) return
 
     const abonos = await response.json()
@@ -345,8 +335,7 @@ window.toggleEstadoCliente = async function(clienteId, nuevoEstado) {
     const response = await fetch(`${API_URL}/clientes/${clienteId}/estado`, {
       method: 'PATCH',
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${TOKEN}`
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify({ activo: nuevoEstado })
     })
@@ -421,8 +410,7 @@ if (clienteForm) {
       const response = await fetch(url, {
         method: metodo,
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${TOKEN}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify(datos)
       })

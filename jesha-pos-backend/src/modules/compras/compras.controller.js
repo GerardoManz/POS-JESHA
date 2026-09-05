@@ -96,23 +96,25 @@ const crear = async (req, res) => {
     const { proveedorId, detalles, notas } = req.body
     const { id: usuarioId } = req.usuario
     const sucursalId = resolverSucursalId(req)
+    const empresaId = getEmpresaId(req)
 
     if (!proveedorId) return res.status(400).json({ success: false, error: 'Proveedor requerido' })
     if (!detalles || detalles.length === 0)
       return res.status(400).json({ success: false, error: 'Agrega al menos un producto' })
 
-    const roles = ['ADMIN_SUCURSAL','SUPERADMIN']
-    const usuario = await prisma.usuario.findUnique({ where: { id: usuarioId }, select: { rol: true } })
-    if (!roles.includes(usuario.rol))
-      return res.status(403).json({ success: false, error: 'Sin permiso para crear compras' })
-
     const provId = parseInt(proveedorId)
     const productoIds = [...new Set(detalles.map(d => parseInt(d.productoId)))]
+
+    const proveedor = await prisma.proveedor.findFirst({
+      where: { id: provId, empresaId, activo: true },
+      select: { id: true }
+    })
+    if (!proveedor) return res.status(400).json({ success: false, error: 'Proveedor inválido' })
 
     // Productos activos + datos para snapshot de conversión (una sola query;
     // doble función: validación de activos y fuente del snapshot global)
     const productos = await prisma.producto.findMany({
-      where:  { id: { in: productoIds }, activo: true },
+      where:  { id: { in: productoIds }, empresaId, activo: true },
       select: { id: true, factorConversion: true, unidadCompra: true, unidadVenta: true }
     })
     const inactivos = productoIds.filter(id => !productos.find(p => p.id === id))
@@ -168,8 +170,6 @@ const crear = async (req, res) => {
 
     const totalEstimado = parseFloat(rows.reduce((s, r) => s + r.subtotalPedido, 0).toFixed(2))
     const folio = await generarFolio()
-    const empresaId = getEmpresaId(req)
-
     const oc = await prisma.ordenCompra.create({
       data: {
         empresaId, folio, sucursalId, proveedorId: provId, usuarioId, estado: 'ENVIADO',
@@ -192,9 +192,11 @@ const editar = async (req, res) => {
     const { proveedorId, detalles, notas } = req.body
     const { id: usuarioId } = req.usuario
     const sucursalId = resolverSucursalId(req)
+    const empresaId = getEmpresaId(req)
+    const scope = { id: parseInt(id), empresaId, sucursalId }
 
-    const existente = await prisma.ordenCompra.findUnique({
-      where:  { id: parseInt(id) },
+    const existente = await prisma.ordenCompra.findFirst({
+      where: scope,
       select: { id: true, folio: true, estado: true,
                 DetalleOrdenCompra: { select: { id: true, productoId: true, cantidadRecibida: true } } }
     })
@@ -206,16 +208,28 @@ const editar = async (req, res) => {
     const idsProtegidos        = new Set(detallesConRecepcion.map(d => d.productoId))
 
     const updateData = {}
-    if (proveedorId !== undefined) updateData.proveedorId = parseInt(proveedorId)
+    if (proveedorId !== undefined) {
+      const provId = parseInt(proveedorId)
+      const proveedor = await prisma.proveedor.findFirst({ where: { id: provId, empresaId, activo: true }, select: { id: true } })
+      if (!proveedor) return res.status(400).json({ success: false, error: 'Proveedor inválido' })
+      updateData.proveedorId = provId
+    }
     if (notas       !== undefined) updateData.notas       = notas
 
     if (detalles && detalles.length > 0) {
       const idsNuevos  = new Set(detalles.map(d => parseInt(d.productoId)))
+      const productosTenant = await prisma.producto.findMany({
+        where: { id: { in: [...idsNuevos] }, empresaId, activo: true },
+        select: { id: true }
+      })
+      if (productosTenant.length !== idsNuevos.size) {
+        return res.status(400).json({ success: false, error: 'Uno o más productos son inválidos' })
+      }
       const eliminados = [...idsProtegidos].filter(pid => !idsNuevos.has(pid))
 
       if (eliminados.length > 0) {
         const nombresElim = await prisma.producto.findMany({
-          where: { id: { in: eliminados } }, select: { nombre: true }
+          where: { id: { in: eliminados }, empresaId }, select: { nombre: true }
         })
         return res.status(400).json({
           success: false,
@@ -273,8 +287,8 @@ const recibir = async (req, res) => {
     if (!detalles || detalles.length === 0)
       return res.status(400).json({ success: false, error: 'Detalles de recepción requeridos' })
 
-    const oc = await prisma.ordenCompra.findUnique({
-      where:  { id: parseInt(id) },
+    const oc = await prisma.ordenCompra.findFirst({
+      where:  { id: parseInt(id), empresaId, sucursalId },
       select: {
         id: true, folio: true, estado: true, sucursalId: true, proveedorId: true,
         DetalleOrdenCompra: {
@@ -289,18 +303,6 @@ const recibir = async (req, res) => {
     if (!oc)                         return res.status(404).json({ success: false, error: 'Orden no encontrada' })
     if (oc.estado === 'CANCELADO')   return res.status(400).json({ success: false, error: 'Orden cancelada' })
     if (oc.estado === 'RECIBIDO')    return res.status(400).json({ success: false, error: 'Orden ya recibida completamente' })
-
-    // La OC debe pertenecer a la empresa y a la sucursal operativa del operador
-    const ocScoped = await prisma.ordenCompra.findFirst({
-      where:  { id: parseInt(id), empresaId, sucursalId },
-      select: { id: true }
-    })
-    if (!ocScoped) return res.status(403).json({ success: false, error: 'No autorizado para recibir esta orden' })
-
-    const roles = ['ADMIN_SUCURSAL','SUPERADMIN']
-    const usuario = await prisma.usuario.findUnique({ where: { id: usuarioId }, select: { rol: true } })
-    if (!roles.includes(usuario.rol))
-      return res.status(403).json({ success: false, error: 'Sin permiso para recibir mercancía' })
 
     let totalRecibidoNuevo = 0
 
@@ -506,11 +508,15 @@ const registrarAbono = async (req, res) => {
     const { monto, metodoPago, notas }  = req.body
     const { id: usuarioId } = req.usuario
     const sucursalId = resolverSucursalId(req)
+    const empresaId = getEmpresaId(req)
 
     if (!monto || parseFloat(monto) <= 0)
       return res.status(400).json({ success: false, error: 'Monto debe ser mayor a 0' })
 
-    const oc = await prisma.ordenCompra.findUnique({ where: { id: parseInt(id) }, select: { id: true, folio: true, totalPagado: true, totalEstimado: true } })
+    const oc = await prisma.ordenCompra.findFirst({
+      where: { id: parseInt(id), empresaId, sucursalId },
+      select: { id: true, folio: true, totalPagado: true, totalEstimado: true }
+    })
     if (!oc) return res.status(404).json({ success: false, error: 'Orden no encontrada' })
 
     const montoAbono     = parseFloat(parseFloat(monto).toFixed(2))
@@ -540,7 +546,7 @@ const registrarAbono = async (req, res) => {
     })
 
     await audit(usuarioId, sucursalId, 'ABONO_COMPRA', `${oc.folio} +$${montoAbono}`)
-    const ocActualizada = await prisma.ordenCompra.findUnique({ where: { id: parseInt(id) }, select: OC_SELECT })
+    const ocActualizada = await prisma.ordenCompra.findFirst({ where: { id: parseInt(id), empresaId, sucursalId }, select: OC_SELECT })
     res.json({ success: true, data: ocActualizada })
   } catch (err) {
     console.error('❌ abono compra:', err)
@@ -554,8 +560,12 @@ const cancelar = async (req, res) => {
     const { id } = req.params
     const { id: usuarioId } = req.usuario
     const sucursalId = resolverSucursalId(req)
+    const empresaId = getEmpresaId(req)
 
-    const oc = await prisma.ordenCompra.findUnique({ where: { id: parseInt(id) }, select: { id: true, folio: true, estado: true } })
+    const oc = await prisma.ordenCompra.findFirst({
+      where: { id: parseInt(id), empresaId, sucursalId },
+      select: { id: true, folio: true, estado: true }
+    })
     if (!oc) return res.status(404).json({ success: false, error: 'Orden no encontrada' })
     if (!['ENVIADO','RECIBIDO_PARCIAL'].includes(oc.estado))
       return res.status(400).json({ success: false, error: 'Solo se puede cancelar antes de recibir completamente' })

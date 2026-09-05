@@ -1180,6 +1180,7 @@ async function ajustarInventario(req, res) {
     const { stockActual, stockMinimoAlerta, motivo } = req.body
     const usuario = req.usuario  // viene del middleware requireAuth
     const empresaId = getEmpresaId(req)
+    const sucursalId = req.context?.branch?.sucursalId
 
     // ── Validar rol ──
     const rolesPermitidos = ['SUPERADMIN', 'ADMIN_SUCURSAL']
@@ -1189,13 +1190,20 @@ async function ajustarInventario(req, res) {
       })
     }
 
+    if (sucursalId == null) {
+      return res.status(400).json({
+        error: 'Selecciona una sucursal para realizar esta operación',
+        codigo: 'BRANCH_CONTEXT_REQUIRED'
+      })
+    }
+
     // ── Validar que el producto existe ──
-const producto = await prisma.producto.findUnique({
-        where: { id: parseInt(id) },
+    const producto = await prisma.producto.findFirst({
+        where: { id: parseInt(id), empresaId },
         include: {
           Categoria: { include: { Departamento: true } },
           InventarioSucursal: {
-            where: { sucursalId: usuario.sucursalId || 1 }
+            where: { sucursalId }
           }
         }
       })
@@ -1208,8 +1216,6 @@ const producto = await prisma.producto.findUnique({
     if (stockMinimoAlerta !== undefined && (isNaN(parseFloat(stockMinimoAlerta)) || parseFloat(stockMinimoAlerta) < 0)) {
       return res.status(400).json({ error: 'Stock mínimo debe ser un número >= 0' })
     }
-
-    const sucursalId = usuario.sucursalId || 1
 
     // ── Normalización a Decimal(10,3): parseFloat + toFixed(3) ──
     const stockAnterior = producto.InventarioSucursal[0]

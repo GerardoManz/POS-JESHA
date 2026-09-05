@@ -2,13 +2,13 @@
 <html lang="es">
 <head>
   <script>
-    if (!localStorage.getItem('jesha_token') || !localStorage.getItem('jesha_usuario')) {
+    if (!localStorage.getItem('jesha_token') && !localStorage.getItem('jesha_delegated_token')) {
       window.location.replace('login.html')
     }
   </script>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>JESHA POS - Sucursales</title>
+  <title>POS - Sucursales</title>
   <link rel="icon" type="image/x-icon" href="favicon.ico"/>
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png"/>
   <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png"/>
@@ -17,9 +17,10 @@
   <link rel="stylesheet" href="dashboard.css" />
   <link rel="stylesheet" href="sucursales.css" />
 </head>
-<body>
-  <div id="sidebar-container"></div>
-  <main class="main-content">
+<body data-page="sucursales">
+  <div class="app-shell">
+    <div id="sidebar-container"></div>
+    <main class="content">
     <div class="page-container">
 
       <div class="page-header">
@@ -86,7 +87,8 @@
       </div>
 
     </div>
-  </main>
+    </main>
+  </div>
 
   <!-- ── Modal crear / editar ── -->
   <div class="modal-overlay" id="modal-sucursal">
@@ -118,6 +120,23 @@
           <button id="btn-guardar-sucursal" class="btn-primary" type="submit">Guardar sucursal</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- ── Modal desactivar sucursal ── -->
+  <div class="modal-overlay" id="modal-desactivar">
+    <div class="modal modal-alerta">
+      <div class="modal-header">
+        <h3 id="modal-desactivar-titulo">Desactivar sucursal</h3>
+        <button id="btn-cerrar-desactivar" class="btn-close" type="button" aria-label="Cerrar">✕</button>
+      </div>
+      <div id="modal-desactivar-error" class="modal-error" hidden></div>
+      <p id="modal-desactivar-texto">¿Deseas desactivar esta sucursal?</p>
+      <p class="modal-nota">Si tiene un turno de caja abierto, la operación será bloqueada.<br />La información histórica de la sucursal se conservará.</p>
+      <div class="form-acciones">
+        <button id="btn-cancelar-desactivar" class="btn-secundario" type="button">Cancelar</button>
+        <button id="btn-confirmar-desactivar" class="btn-danger" type="button">Desactivar sucursal</button>
+      </div>
     </div>
   </div>
 

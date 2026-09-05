@@ -1,5 +1,7 @@
 'use strict'
 
+const { assertSafeTestDb } = require('./helpers/test-db-safety')
+
 const assert = require('node:assert/strict')
 const { describe, it, before, after } = require('node:test')
 const { execFileSync } = require('node:child_process')
@@ -59,6 +61,7 @@ describe('P0-PLATFORM-BOUNDARY PostgreSQL', { concurrency: 1, timeout: 300000 },
   const pgConfig = resolvePgConfig()
   const dbName = validateDbName(`${DB_PREFIX}${Date.now()}_${process.pid}_${randomBytes(4).toString('hex')}`)
   const databaseUrl = connectionUrl(pgConfig, dbName)
+  assertSafeTestDb(databaseUrl)
   const adminPool = new pg.Pool({ connectionString: connectionUrl(pgConfig, 'postgres'), max: 1 })
 
   let created = false
@@ -80,16 +83,32 @@ describe('P0-PLATFORM-BOUNDARY PostgreSQL', { concurrency: 1, timeout: 300000 },
   })
 
   after(async () => {
+    const failures = []
     if (prisma) {
-      try { await prisma.$disconnect() } catch (err) { /* swallow */ }
+      try { await prisma.$disconnect() } catch (err) { failures.push(`prisma disconnect: ${err.message}`) }
+      if (prisma.pool && typeof prisma.pool.end === 'function') {
+        try { await prisma.pool.end() } catch (err) { failures.push(`prisma pool end: ${err.message}`) }
+      }
     }
     await new Promise((r) => setTimeout(r, 500))
     delete require.cache[require.resolve('../src/lib/prisma')]
 
     if (created) {
-      try { await adminPool.query(`DROP DATABASE "${dbName}"`) } catch (err) { /* swallow */ }
+      try {
+        await adminPool.query(
+          'SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname=$1 AND pid<>pg_backend_pid()',
+          [dbName]
+        )
+        await adminPool.query(`DROP DATABASE "${dbName}"`)
+        const result = await adminPool.query('SELECT 1 FROM pg_database WHERE datname=$1', [dbName])
+        if (result.rows.length !== 0) failures.push('base temporal residual')
+      } catch (err) {
+        failures.push(`drop: ${err.message}`)
+      }
     }
-    try { await adminPool.end() } catch (err) { /* swallow */ }
+
+    try { await adminPool.end() } catch (err) { failures.push(`admin pool end: ${err.message}`) }
+    if (failures.length > 0) throw new Error(failures.join(' | '))
   })
 
   it('1. prevalidarActor rechaza PLATFORM_ADMIN como actor', () => {

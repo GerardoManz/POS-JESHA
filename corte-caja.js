@@ -1,16 +1,15 @@
 ;(function() {
   try {
-    const rol = JSON.parse(localStorage.getItem('jesha_usuario') || '{}').rol || 'EMPLEADO'
+    const rol = window.jeshaSession?.getUsuario()?.rol || 'EMPLEADO'
     if (['EMPLEADO'].includes(rol)) {
       window.location.replace('punto-venta.html')
     }
   } catch(e) { window.location.replace('punto-venta.html') }
 })()
 
-const TOKEN   = localStorage.getItem('jesha_token')
-const USUARIO = JSON.parse(localStorage.getItem('jesha_usuario') || '{}')
+const USUARIO = window.jeshaSession?.getUsuario() || {}
 
-if (!TOKEN && !window.location.pathname.includes('login.html')) {
+if (!window.jeshaSession?.isValid() && !window.location.pathname.includes('login.html')) {
   localStorage.setItem('redirect_after_login', 'corte-caja.html')
   window.location.href = 'login.html'
   throw new Error('Sin autenticación')
@@ -71,9 +70,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 async function cargarTurno() {
   try {
-    const response = await fetch(`${API_URL}/turnos-caja/activo`, {
-      headers: { 'Authorization': `Bearer ${TOKEN}` }
-    })
+    const response = await fetch(`${API_URL}/turnos-caja/activo`)
     if (window.handle401 && window.handle401(response.status)) return
     if (!response.ok) {
       estadoSinTurno.style.display = 'flex'
@@ -106,9 +103,7 @@ function renderizarTurno() {
 
 async function cargarResumen() {
   try {
-    const response = await fetch(`${API_URL}/turnos-caja/resumen`, {
-      headers: { 'Authorization': `Bearer ${TOKEN}` }
-    })
+    const response = await fetch(`${API_URL}/turnos-caja/resumen`)
     if (window.handle401 && window.handle401(response.status)) return
     if (!response.ok) throw new Error('Error cargando resumen')
     const data = await response.json()
@@ -210,7 +205,7 @@ async function cerrarTurno() {
   try {
     const response = await fetch(`${API_URL}/turnos-caja/cerrar`, {
       method:  'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
+      headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({
         montoFinalDeclarado,
         notasCierre: notasCierreInput?.value?.trim() || null
@@ -308,7 +303,7 @@ function configurarEventListeners() {
     try {
       const r = await fetch(`${API_URL}/impresion/job`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tipo: 'CORTE', turnoId: parseInt(turnoId) })
       })
       if (r.ok) {

@@ -3,7 +3,10 @@
 .page-header { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:20px; }
 .page-title { font-family:'Barlow Condensed',sans-serif; font-size:2rem; font-weight:700; letter-spacing:0.04em; text-transform:uppercase; margin:0; }
 .page-sub { color:var(--muted); font-size:0.85rem; margin-top:4px; }
-.page-container { max-width:1100px; }
+.page-container { width:100%; max-width:none; }
+
+/* Respeta de forma explícita el atributo hidden frente a reglas display:flex. */
+[hidden] { display:none !important; }
 
 .btn-primary { display:flex; align-items:center; gap:6px; padding:9px 16px; background:#1f3a66; border:1px solid rgba(255,255,255,0.1); border-radius:8px; color:#fff; font-family:'Barlow',sans-serif; font-size:0.875rem; font-weight:600; cursor:pointer; transition:background 0.15s; white-space:nowrap; }
 .btn-primary:hover { background:#243f72; }
@@ -75,8 +78,33 @@ tbody td { padding:12px 16px; font-size:0.875rem; vertical-align:middle; }
 .btn-close { background:none; border:none; color:var(--muted); cursor:pointer; padding:4px; border-radius:4px; font-size:1rem; }
 .btn-close:hover { color:var(--text); }
 
+/* ── Modal de confirmación (desactivar) ── */
+.btn-danger { padding:8px 14px; background:rgba(200,60,40,0.85); border:1px solid rgba(200,60,40,0.5); border-radius:8px; color:#fff; font-family:'Barlow',sans-serif; font-size:0.85rem; font-weight:600; cursor:pointer; transition:background 0.15s; }
+.btn-danger:hover { background:rgba(200,60,40,1); }
+.btn-danger:disabled { opacity:0.6; cursor:not-allowed; }
+.modal-alerta { max-width:440px; }
+.modal-alerta .modal-header { margin-bottom:14px; }
+.modal-alerta p { margin:0; }
+#modal-desactivar-texto { font-size:0.95rem; color:var(--text); line-height:1.4; }
+.modal-nota { margin-top:8px !important; font-size:0.82rem; color:var(--muted); line-height:1.5; }
+[data-theme="light"] .btn-danger { background:#d64545; border-color:#c23a3a; }
+
 [data-theme="light"] .modal { background:#ffffff; border-color:#d6dee9; }
 [data-theme="light"] .form-group input { background:#f3f6fb; border-color:#d6dee9; color:#111827; }
 [data-theme="light"] .form-group label { color:#59677a; }
 [data-theme="light"] .filter-select { background:#ffffff; border-color:#d6dee9; color:#111827; }
 [data-theme="light"] .filter-select option { background:#ffffff; }
+
+/* ── Responsive: mismo patrón de las pantallas administrativas JESHA ── */
+@media (max-width: 768px) {
+  .page-header { flex-direction:column; gap:12px; }
+  .toolbar { flex-direction:column; align-items:stretch; }
+  .search-wrap { min-width:100%; }
+  .filter-select { width:100%; }
+  .modal { max-width:calc(100vw - 32px); }
+}
+
+@media (max-width: 480px) {
+  .table-wrap { overflow-x:auto; }
+  table { min-width:820px; }
+}

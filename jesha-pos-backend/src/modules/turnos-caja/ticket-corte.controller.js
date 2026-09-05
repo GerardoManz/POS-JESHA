@@ -2,16 +2,17 @@ const prisma  = require('../../lib/prisma')
 const fs      = require('fs')
 const path    = require('path')
 
-const EMPRESA = {
-  nombre:   'Ferretería e Iluminación JESHA',
-  slogan:   'Productos y Servicios de Máxima Calidad',
-  direccion:'Av. San Simón #03',
-  ciudad:   'Guadalupe, Zacatecas',
-  tel1:     '492 101 6879',
+async function getEmpresaBranding(empresaId) {
+  const empresa = await prisma.empresa.findUnique({
+    where: { id: empresaId },
+    select: { nombreComercial: true, rfc: true, whatsapp: true }
+  })
+  return {
+    nombre: empresa?.nombreComercial || 'Empresa',
+    rfc: empresa?.rfc || '',
+    whatsapp: empresa?.whatsapp || ''
+  }
 }
-
-// ── Logo desde Cloudinary ──
-const LOGO_URL = 'https://res.cloudinary.com/dabyfymjd/image/upload/q_auto/f_auto/v1779317658/logo-jesha_hmlble.png'
 
 // ════════════════════════════════════════════════════════════════════
 //  GET /turnos-caja/:id/ticket
@@ -56,6 +57,8 @@ const generarTicketCorte = async (req, res) => {
       prisma.venta.count({ where: { turnoId: turno.id, estado: 'COMPLETADA' } })
     ])
 
+    const empresaData = await getEmpresaBranding(turno.empresaId)
+
     const totalPorMetodo = Object.fromEntries(
       totalesRaw.map(t => [t.metodoPago, parseFloat(t._sum.monto || 0)])
     )
@@ -75,7 +78,7 @@ const generarTicketCorte = async (req, res) => {
 
     const html = generarHTMLCorte({
       turno, numVentas, totalEfectivo, totalTarjeta, totalTransferencia, totalGeneral,
-      abonosEfectivo, abonosTarjeta, abonosTransferencia, abonosTotal
+      abonosEfectivo, abonosTarjeta, abonosTransferencia, abonosTotal, empresaData
     })
     res.setHeader('Content-Type', 'text/html; charset=utf-8')
     res.send(html)
@@ -85,7 +88,7 @@ const generarTicketCorte = async (req, res) => {
   }
 }
 
-function generarHTMLCorte({ turno, numVentas, totalEfectivo, totalTarjeta, totalTransferencia, totalGeneral, abonosEfectivo, abonosTarjeta, abonosTransferencia, abonosTotal }) {
+function generarHTMLCorte({ turno, numVentas, totalEfectivo, totalTarjeta, totalTransferencia, totalGeneral, abonosEfectivo, abonosTarjeta, abonosTransferencia, abonosTotal, empresaData }) {
   const fmt = v => `$${parseFloat(v || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`
 
   const fmtFecha = (d) => {
@@ -99,7 +102,7 @@ function generarHTMLCorte({ turno, numVentas, totalEfectivo, totalTarjeta, total
   const diffLabel = diff === 0 ? 'Sin diferencia' : diff > 0 ? 'Sobrante' : 'Faltante'
   const diffSigno = diff >= 0 ? '+' : '-'
 
-  const logoHTML  = `<img src="${LOGO_URL}" alt="JESHA" class="logo" />`
+  const logoHTML  = ''
 
   const notasHTML = turno.notasCierre
     ? `<div class="notas">${turno.notasCierre.replace(/\n/g, '<br/>')}</div><hr class="sep"/>`
@@ -152,11 +155,8 @@ html, body {
 
 <div class="hdr">
   ${logoHTML}
-  <div class="emp">${EMPRESA.nombre.replace(' JESHA', '<br/>JESHA')}</div>
-  <div class="slg">${EMPRESA.slogan}</div>
-  <div class="dir">${EMPRESA.direccion}</div>
-  <div class="dir">${EMPRESA.ciudad}</div>
-  <div class="tel">Tel. ${EMPRESA.tel1}</div>
+  <div class="emp">${empresaData.nombre}</div>
+  ${empresaData.whatsapp ? `<div class="tel">Tel. ${empresaData.whatsapp}</div>` : ''}
 </div>
 
 <hr class="sep"/>
@@ -229,7 +229,7 @@ ${notasHTML}
 
 <hr class="sep"/>
 
-<div class="pie">¡Gracias por su trabajo!<br/>JESHA POS</div>
+<div class="pie">¡Gracias por su trabajo!<br/>${empresaData.nombre}</div>
 
 <button class="no-print" onclick="window.print()">Imprimir Ticket</button>
 <script>window.addEventListener('load',()=>{setTimeout(()=>window.print(),600)})</script>

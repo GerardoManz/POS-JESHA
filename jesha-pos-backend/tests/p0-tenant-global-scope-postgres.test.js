@@ -1,5 +1,7 @@
 'use strict'
 
+const { assertSafeTestDb } = require('./helpers/test-db-safety')
+
 const assert = require('node:assert/strict')
 const { describe, it, before, after } = require('node:test')
 const { execFileSync } = require('node:child_process')
@@ -46,10 +48,11 @@ describe('P0-TENANT-GLOBAL-SCOPE PostgreSQL HTTP', { concurrency:1, timeout:3000
   const pgConfig = resolvePgConfig()
   const dbName = validateDbName(`${DB_PREFIX}${Date.now()}_${process.pid}_${randomBytes(4).toString('hex')}`)
   const databaseUrl = connectionUrl(pgConfig, dbName)
+  assertSafeTestDb(databaseUrl)
   const adminPool = new pg.Pool({ connectionString: connectionUrl(pgConfig,'postgres'), max:1 })
   let created = false, prisma, app, server, baseUrl
 
-  let empresaA, empresaB, sucursalA1, sucursalA2, sucursalB1, clienteA, proveedorA
+  let empresaA, empresaB, sucursalA1, sucursalA2, sucursalB1, clienteA, proveedorA, proveedorB, productoA, productoB
   let superA, adminA1, empA2, superB, pricesGlobal
   let tokenSuperA, tokenAdminA1, tokenEmpA2, tokenSuperB, tokenPrices
 
@@ -77,6 +80,7 @@ describe('P0-TENANT-GLOBAL-SCOPE PostgreSQL HTTP', { concurrency:1, timeout:3000
     dbPush(databaseUrl)
 
     prisma = require('../src/lib/prisma')
+  if (prisma?.pool && !prisma.pool.__p0ErrorGuard) { prisma.pool.__p0ErrorGuard = true; prisma.pool.on('error', () => {}) }
     const hash = await bcrypt.hash('password', 10)
 
     empresaA = await prisma.empresa.create({ data: { slug:'empresa-a', nombreComercial:'Empresa A', razonSocial:'Empresa A SA de CV', whatsapp:'0000000001', activa:true } })
@@ -95,7 +99,14 @@ describe('P0-TENANT-GLOBAL-SCOPE PostgreSQL HTTP', { concurrency:1, timeout:3000
     clienteA = await prisma.cliente.create({ data: { empresaId:empresaA.id, nombre:'Cliente A', tipo:'REGISTRADO', rfc:'XAXX010101000' } })
     proveedorA = await prisma.proveedor.create({ data: { empresaId:empresaA.id, nombreOficial:'Proveedor A', alias:'prov-a' } })
     await prisma.cliente.create({ data: { empresaId:empresaB.id, nombre:'Cliente B', tipo:'REGISTRADO', rfc:'XEXX010101000' } })
-    await prisma.proveedor.create({ data: { empresaId:empresaB.id, nombreOficial:'Proveedor B', alias:'prov-b' } })
+    proveedorB = await prisma.proveedor.create({ data: { empresaId:empresaB.id, nombreOficial:'Proveedor B', alias:'prov-b' } })
+
+    const deptoA = await prisma.departamento.create({ data: { empresaId:empresaA.id, nombre:'TG DEPT A', activo:true } })
+    const deptoB = await prisma.departamento.create({ data: { empresaId:empresaB.id, nombre:'TG DEPT B', activo:true } })
+    const catA = await prisma.categoria.create({ data: { empresaId:empresaA.id, departamentoId:deptoA.id, nombre:'TG Cat A' } })
+    const catB = await prisma.categoria.create({ data: { empresaId:empresaB.id, departamentoId:deptoB.id, nombre:'TG Cat B' } })
+    productoA = await prisma.producto.create({ data: { empresaId:empresaA.id, nombre:'TG Producto A', codigoInterno:'TG-A', precioBase:10, categoriaId:catA.id, activo:true } })
+    productoB = await prisma.producto.create({ data: { empresaId:empresaB.id, nombre:'TG Producto B', codigoInterno:'TG-B', precioBase:20, categoriaId:catB.id, activo:true } })
 
     tokenSuperA = signToken(superA.id, 'SUPERADMIN')
     tokenAdminA1 = signToken(adminA1.id, 'ADMIN_SUCURSAL')
@@ -111,10 +122,11 @@ describe('P0-TENANT-GLOBAL-SCOPE PostgreSQL HTTP', { concurrency:1, timeout:3000
   after(async () => {
     if (server) { try { await new Promise((r) => server.close(r)) } catch(e){} }
     if (prisma) { try { await prisma.$disconnect() } catch(e){} }
+    if (prisma?.pool) { try { await prisma.pool.end() } catch(e){} }
     await new Promise((r) => setTimeout(r, 500))
     delete require.cache[require.resolve('../src/app')]
     delete require.cache[require.resolve('../src/lib/prisma')]
-    if (created) { try { await adminPool.query(`DROP DATABASE "${dbName}"`) } catch(e){} }
+    if (created) { try { await adminPool.query('SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()', [dbName]) } catch(e){} try { await adminPool.query(`DROP DATABASE "${dbName}"`) } catch(e){} }
     try { await adminPool.end() } catch(e){} 
   })
 
@@ -123,6 +135,13 @@ describe('P0-TENANT-GLOBAL-SCOPE PostgreSQL HTTP', { concurrency:1, timeout:3000
     if (sucursalId !== undefined) headers['X-Sucursal-Id'] = String(sucursalId)
     const res = await fetch(`${baseUrl}${path}`, { headers })
     return { status: res.status, body: await res.json().catch(() => null) }
+  }
+
+  async function send(method, path, token, body, sucursalId) {
+    const headers = { Authorization: `Bearer ${token}`, 'Content-Type':'application/json' }
+    if (sucursalId !== undefined) headers['X-Sucursal-Id'] = String(sucursalId)
+    const res = await fetch(`${baseUrl}${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) })
+    return { status:res.status, body:await res.json().catch(() => null) }
   }
 
   // USUARIOS
@@ -167,6 +186,34 @@ describe('P0-TENANT-GLOBAL-SCOPE PostgreSQL HTTP', { concurrency:1, timeout:3000
     const nombres = res.body.data.map(p => p.nombreOficial)
     assert.ok(nombres.includes('Proveedor A'))
     assert.ok(!nombres.includes('Proveedor B'))
+  })
+
+  it('5a. A vincula Proveedor A con Producto A', async () => {
+    const res = await send('POST', `/proveedores/${proveedorA.id}/productos`, tokenSuperA, { productoId:productoA.id, precioCosto:8 })
+    assert.strictEqual(res.status, 201)
+    const relacion = await prisma.proveedorProducto.findUnique({ where: { proveedorId_productoId: { proveedorId:proveedorA.id, productoId:productoA.id } } })
+    assert.ok(relacion)
+    assert.strictEqual(relacion.activo, true)
+  })
+
+  it('5b. A no vincula Proveedor A con Producto B', async () => {
+    const res = await send('POST', `/proveedores/${proveedorA.id}/productos`, tokenSuperA, { productoId:productoB.id, precioCosto:8 })
+    assert.strictEqual(res.status, 404)
+    assert.strictEqual(await prisma.proveedorProducto.count({ where: { proveedorId:proveedorA.id, productoId:productoB.id } }), 0)
+  })
+
+  it('5c. A no vincula Proveedor B con Producto A', async () => {
+    const res = await send('POST', `/proveedores/${proveedorB.id}/productos`, tokenSuperA, { productoId:productoA.id, precioCosto:8 })
+    assert.strictEqual(res.status, 404)
+    assert.strictEqual(await prisma.proveedorProducto.count({ where: { proveedorId:proveedorB.id, productoId:productoA.id } }), 0)
+  })
+
+  it('5d. A no desvincula relación B y ésta queda intacta', async () => {
+    await prisma.proveedorProducto.create({ data: { proveedorId:proveedorB.id, productoId:productoB.id, precioCosto:15, activo:true } })
+    const res = await send('DELETE', `/proveedores/${proveedorB.id}/productos/${productoB.id}`, tokenSuperA)
+    assert.strictEqual(res.status, 404)
+    const relacion = await prisma.proveedorProducto.findUnique({ where: { proveedorId_productoId: { proveedorId:proveedorB.id, productoId:productoB.id } } })
+    assert.strictEqual(relacion.activo, true)
   })
 
   // SUCURSALES

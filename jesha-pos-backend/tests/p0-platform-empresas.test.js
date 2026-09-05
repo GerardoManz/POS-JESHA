@@ -9,7 +9,8 @@ const { describe, it } = require('node:test')
 const {
   EmpresaPlatformError,
   validarPayload,
-  construirData
+  construirData,
+  validarPayloadSuperadmin
 } = require('../src/modules/empresas/empresas.controller')
 
 function capturar(build) {
@@ -207,5 +208,61 @@ describe('P0-PLATFORM-EMPRESAS unit — EmpresaPlatformError shape', () => {
     assert.strictEqual(err.code, 'EMPRESA_SIN_SUPERADMIN')
     assert.strictEqual(err.expose, true)
     assert.strictEqual(err.message, 'mensaje')
+  })
+})
+
+describe('P0-PLATFORM-EMPRESAS unit — validarPayloadSuperadmin', () => {
+  const valido = { nombre: 'Pedro Super', username: 'pedro', password: 'secreto123', confirmarPassword: 'secreto123' }
+
+  it('body nulo o vacío → EMPRESA_SUPERADMIN_BODY_INVALIDO', () => {
+    for (const body of [null, {}, undefined]) {
+      const err = capturar(() => validarPayloadSuperadmin(body))
+      assert.ok(err instanceof EmpresaPlatformError, 'debe ser EmpresaPlatformError')
+      assert.strictEqual(err.code, 'EMPRESA_SUPERADMIN_BODY_INVALIDO')
+    }
+  })
+
+  it('campos de identidad forjados (empresaId/sucursalId/rol/activo/id/passwordHash) → 400 prohibido', () => {
+    for (const campo of ['id', 'empresaId', 'sucursalId', 'rol', 'activo', 'passwordHash']) {
+      const err = capturar(() => validarPayloadSuperadmin({ ...valido, [campo]: 'cualquier-valor' }))
+      assert.ok(err instanceof EmpresaPlatformError, `campo ${campo}`)
+      assert.strictEqual(err.code, 'EMPRESA_SUPERADMIN_CAMPOS_PROHIBIDOS')
+      assert.ok(err.campos.includes(campo), `debe reportar ${campo}`)
+    }
+  })
+
+  it('campo desconocido → EMPRESA_SUPERADMIN_BODY_INVALIDO', () => {
+    const err = capturar(() => validarPayloadSuperadmin({ ...valido, inventado: 'x' }))
+    assert.strictEqual(err.code, 'EMPRESA_SUPERADMIN_BODY_INVALIDO')
+    assert.ok(err.campos.includes('inventado'))
+  })
+
+  it('password corta (<6) → EMPRESA_SUPERADMIN_DATOS_INVALIDOS', () => {
+    const err = capturar(() => validarPayloadSuperadmin({ ...valido, password: '12345', confirmarPassword: '12345' }))
+    assert.strictEqual(err.code, 'EMPRESA_SUPERADMIN_DATOS_INVALIDOS')
+    assert.ok(err.errores.some((e) => e.campo === 'password'))
+  })
+
+  it('confirmarPassword distinto → error de coincidencia', () => {
+    const err = capturar(() => validarPayloadSuperadmin({ ...valido, confirmarPassword: 'otra' }))
+    assert.strictEqual(err.code, 'EMPRESA_SUPERADMIN_DATOS_INVALIDOS')
+    assert.ok(err.errores.some((e) => e.campo === 'confirmarPassword'))
+  })
+
+  it('nombre de 1 char → error de nombre', () => {
+    const err = capturar(() => validarPayloadSuperadmin({ ...valido, nombre: 'A' }))
+    assert.strictEqual(err.code, 'EMPRESA_SUPERADMIN_DATOS_INVALIDOS')
+    assert.ok(err.errores.some((e) => e.campo === 'nombre'))
+  })
+
+  it('body válido → devuelve datos normalizados sin confirmarPassword ni extra', () => {
+    const data = validarPayloadSuperadmin(valido)
+    assert.deepStrictEqual(data, { nombre: 'Pedro Super', username: 'pedro', password: 'secreto123' })
+  })
+
+  it('username y nombre se recortan', () => {
+    const data = validarPayloadSuperadmin({ ...valido, nombre: '  Pedro Super  ', username: '  pedro  ' })
+    assert.strictEqual(data.nombre, 'Pedro Super')
+    assert.strictEqual(data.username, 'pedro')
   })
 })

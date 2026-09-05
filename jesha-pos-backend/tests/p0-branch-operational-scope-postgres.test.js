@@ -1,4 +1,6 @@
 'use strict'
+
+const { assertSafeTestDb } = require('./helpers/test-db-safety')
 // P0-TURNOS-IMPORTACION-BRANCH-SCOPE — Pruebas PostgreSQL HTTP.
 // Verifica que toda operación branch-dependiente use req.context.branch.sucursalId
 // (helper resolverSucursalId) y que NO existan fallbacks a Sucursal 1 ni fuga cross-tenant.
@@ -11,6 +13,8 @@ const http = require('node:http')
 const pg = require('pg')
 const bcrypt = require('bcryptjs')
 const jwt = require('jsonwebtoken')
+
+const { applyManualSql } = require('./helpers/apply-manual-sql')
 
 const BACKEND_DIR = path.resolve(__dirname, '..')
 const DB_PREFIX = 'jesha_p0_bbrscp_test_'
@@ -48,6 +52,7 @@ describe('P0-BRANCH-OPERATIONAL-SCOPE PostgreSQL HTTP', { concurrency:1, timeout
   const pgConfig = resolvePgConfig()
   const dbName = validateDbName(`${DB_PREFIX}${Date.now()}_${process.pid}_${randomBytes(4).toString('hex')}`)
   const databaseUrl = connectionUrl(pgConfig, dbName)
+  assertSafeTestDb(databaseUrl)
   const adminPool = new pg.Pool({ connectionString: connectionUrl(pgConfig,'postgres'), max:1 })
   let created = false, prisma, app, server, baseUrl
 
@@ -83,12 +88,13 @@ describe('P0-BRANCH-OPERATIONAL-SCOPE PostgreSQL HTTP', { concurrency:1, timeout
     dbPush(databaseUrl)
 
     prisma = require('../src/lib/prisma')
+  if (prisma?.pool && !prisma.pool.__p0ErrorGuard) { prisma.pool.__p0ErrorGuard = true; prisma.pool.on('error', () => {}) }
     const hash = await bcrypt.hash('password', 10)
 
-    // Secuencias de folio que el backend consume via nextval() (viven en migraciones
-    // SQL; `prisma db push` no las crea desde el schema).
-    await prisma.$queryRawUnsafe('CREATE SEQUENCE IF NOT EXISTS folio_compra_seq START 1000')
-    await prisma.$queryRawUnsafe('CREATE SEQUENCE IF NOT EXISTS folio_cotizacion_seq START 1000')
+    // Estructura no representable por schema.prisma (secuencias de folio, índice
+    // parcial de FacturaCfdi, NOT NULL de Bitacora) → proviene de la fuente
+    // versionada prisma/manual-sql/ (P0-DB-STRUCTURE-DRIFT-RECONCILIATION).
+    await applyManualSql((sql) => prisma.$executeRawUnsafe(sql))
 
     // ── Empresas ──
     empresaA = await prisma.empresa.create({ data: { slug:'bs-a', nombreComercial:'Branch A', razonSocial:'Branch A SA', whatsapp:'0000000011', activa:true } })
@@ -133,11 +139,13 @@ describe('P0-BRANCH-OPERATIONAL-SCOPE PostgreSQL HTTP', { concurrency:1, timeout
   after(async () => {
     if (server) { try { await new Promise((r) => server.close(r)) } catch(e){} }
     if (prisma) { try { await prisma.$disconnect() } catch(e){} }
+    if (prisma?.pool) { try { await prisma.pool.end() } catch(e){} }
     await new Promise((r) => setTimeout(r, 1500))
     delete require.cache[require.resolve('../src/app')]
     delete require.cache[require.resolve('../src/lib/prisma')]
     if (created) {
-      try { await adminPool.query(`DROP DATABASE "${dbName}" WITH (FORCE)`) } catch(e){}
+      try { await adminPool.query('SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()', [dbName]) } catch(e){}
+      try { await adminPool.query(`DROP DATABASE "${dbName}"`) } catch(e){}
     }
     try { await adminPool.end() } catch(e){}
   })
@@ -283,15 +291,15 @@ describe('P0-BRANCH-OPERATIONAL-SCOPE PostgreSQL HTTP', { concurrency:1, timeout
     ocB = res.body.data
   })
 
-  it('18. recibir OC de B con token de A (SELECTED A1) → 403', async () => {
+  it('18. recibir OC de B con token de A (SELECTED A1) → 404 sin revelar existencia', async () => {
     const res = await send('POST', `/compras/${ocB.id}/recibir`, tokenSuperA, { detalles:[{ detalleId:1, cantidadRecibida:1 }] }, sucursalA1.id)
-    assert.strictEqual(res.status, 403)
+    assert.strictEqual(res.status, 404)
   })
 
-  it('19. recibir OC de A1 con adminA2 (FIXED A2) → 403 (branch mismatch)', async () => {
+  it('19. recibir OC de A1 con adminA2 (FIXED A2) → 404 sin revelar branch mismatch', async () => {
     detA1 = await prisma.detalleOrdenCompra.findFirst({ where: { ordenCompraId: ocA1.id } })
     const res = await send('POST', `/compras/${ocA1.id}/recibir`, tokenAdminA2, { detalles:[{ detalleId:detA1.id, cantidadRecibida:5 }] })
-    assert.strictEqual(res.status, 403)
+    assert.strictEqual(res.status, 404)
   })
 
   it('20. recibir OC de A1 con SELECTED A1 → 200', async () => {
