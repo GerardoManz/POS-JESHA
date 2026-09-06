@@ -178,6 +178,7 @@ function crearConfiguracionFiscalController(dependencies = {}) {
   const admin = dependencies.facturapiAdmin || facturapiAdmin
   const encrypt = dependencies.cifrarSecreto || cifrarSecreto
   const validateMaster = dependencies.obtenerMasterKey || obtenerMasterKey
+  const sdkFactory = dependencies.facturapiSdk || null
 
   async function cargarEmpresa(empresaId) {
     return db.empresa.findUnique({
@@ -385,7 +386,77 @@ function crearConfiguracionFiscalController(dependencies = {}) {
     }
   }
 
-  return { obtener, actualizar, iniciarOrganization, sincronizarStatus, crearLiveKey, subirCsd }
+  async function reconcile(req, res) {
+    try {
+      const empresaId = getEmpresaId(req)
+      validateMaster()
+      const legacyKey = process.env.FACTURAPI_KEY_TEST
+      if (typeof legacyKey !== 'string' || !legacyKey.trim()) {
+        return res.status(409).json({
+          error: 'No hay credencial legacy de Facturapi para reconciliar',
+          code: 'FISCAL_NO_LEGACY_KEY',
+          codigo: 'FISCAL_NO_LEGACY_KEY'
+        })
+      }
+
+      const empresa = await cargarEmpresa(empresaId)
+      if (!empresa) return res.status(404).json({ error: 'Empresa no encontrada' })
+
+      const result = await db.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT pg_advisory_xact_lock(73001::int, ${empresaId}::int)::text`
+        const config = await tx.configuracionFiscal.findUnique({ where: { empresaId } })
+        if (config?.facturapiOrganizationId) {
+          return { reconciled: false, organizationId: config.facturapiOrganizationId, reason: 'already_linked' }
+        }
+
+        const FacturapiSdk = sdkFactory || require('facturapi').default
+        const orgClient = typeof FacturapiSdk === 'function' && FacturapiSdk.prototype
+          ? new FacturapiSdk(legacyKey.trim())
+          : FacturapiSdk(legacyKey.trim())
+        let remoteOrg
+        try {
+          remoteOrg = await orgClient.organizations.me()
+        } catch (err) {
+          throw Object.assign(new Error('No se pudo consultar la Organization en Facturapi: ' + (err.message || 'error desconocido')), { status: 502, expose: true })
+        }
+        if (!remoteOrg?.id) {
+          throw Object.assign(new Error('Facturapi no devolvió un identificador de Organization'), { status: 502, expose: true })
+        }
+
+        const orgTaxId = remoteOrg.legal?.tax_id ?? remoteOrg.tax_id ?? null
+        if (empresa.rfc && orgTaxId && empresa.rfc.trim().toUpperCase() !== orgTaxId.trim().toUpperCase()) {
+          throw Object.assign(new Error(`El RFC de la Organization Facturapi (${orgTaxId}) no coincide con el RFC de la empresa (${empresa.rfc})`), { status: 409, code: 'FISCAL_RFC_MISMATCH', expose: true })
+        }
+
+        const encryptedKey = encrypt(legacyKey.trim())
+        const meta = metadataOrganization(remoteOrg)
+        const data = {
+          facturapiOrganizationId: remoteOrg.id,
+          facturapiTestKeyEnc: encryptedKey,
+          ...cambiosStatus(meta)
+        }
+        if (config) {
+          await tx.configuracionFiscal.update({ where: { empresaId }, data })
+        } else {
+          await tx.configuracionFiscal.create({ data: { empresaId, ...data } })
+        }
+        return { reconciled: true, organizationId: remoteOrg.id }
+      }, { timeout: 30000, maxWait: 10000 })
+
+      resetFacturapiCache()
+      await auditar(db, req, empresaId, 'FISCAL_ORGANIZATION_RECONCILIAR', result)
+      const empresaActualizada = await cargarEmpresa(empresaId)
+      return res.status(result.reconciled ? 200 : 200).json({
+        reconciled: result.reconciled,
+        organizationId: result.organizationId,
+        configuracion: sanitizarConfiguracion(empresaActualizada, empresaActualizada.ConfiguracionFiscal)
+      })
+    } catch (error) {
+      return responderError(res, error, 'No se pudo reconciliar la configuración fiscal legacy')
+    }
+  }
+
+  return { obtener, actualizar, iniciarOrganization, sincronizarStatus, crearLiveKey, subirCsd, reconcile }
 }
 
 const controller = crearConfiguracionFiscalController()

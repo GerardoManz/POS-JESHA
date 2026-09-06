@@ -33,5 +33,6 @@ router.post('/organization', controller.iniciarOrganization)
 router.post('/apikeys/live', controller.crearLiveKey)
 router.post('/csd', uploadCsd, controller.subirCsd)
 router.post('/sincronizar-status', controller.sincronizarStatus)
+router.post('/reconcile', controller.reconcile)
 
 module.exports = router
