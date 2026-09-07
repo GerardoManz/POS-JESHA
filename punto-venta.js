@@ -130,7 +130,6 @@ if (fechaActual) {
 let carrito                = []
 let _carritoRestaurado     = false // flag para evitar doble carga de cotización
 let vendedorSeleccionado   = null   // { id, nombre } — usuario que hizo la venta
-let sellerAuthorization    = null   // SAT firmado por backend tras verificación de PIN
 let descuentoManual        = 0      // porcentaje de descuento aplicado
 let creditoCliente         = null   // { limite, saldo, disponible } si cliente es REGISTRADO
 let turnoActivo            = null
@@ -1798,7 +1797,6 @@ function resetVentaActual() {
   vendedorSeleccionado   = null
   descuentoManual        = 0
   pinVendedorVerificado  = false
-  sellerAuthorization    = null
   creditoCliente         = null
   ocultarCreditoCliente()
   if (montoRecibido) montoRecibido.value = ''
@@ -1922,7 +1920,6 @@ function _snapshotVentaActual(nombre) {
     cotizacionId:    cotIdActual || null,
     descuentoManual: descuentoManual || 0,
     vendedorSeleccionado: vendedorSeleccionado ? { ...vendedorSeleccionado } : null,
-    sellerAuthorization: sellerAuthorization || null,
     total: carrito.reduce((s, i) => s + subtotalLinea(i), 0),
     items: carrito.length
   }
@@ -2048,7 +2045,6 @@ function _aplicarEstadoVenta(p) {
   descuentoManual       = p.descuentoManual || 0
   vendedorSeleccionado  = p.vendedorSeleccionado || null
   pinVendedorVerificado = false // el PIN del vendedor siempre se re-verifica al cobrar
-  sellerAuthorization  = null  // SAT siempre se re-verifica al cobrar
 
   if (p.clienteSeleccionado?.id) {
     clienteSeleccionado = p.clienteSeleccionado
@@ -2443,7 +2439,6 @@ function pedirPinVendedor(vendedorId, selectEl) {
 
 function ocultarPinVendedor() {
   pinVendedorVerificado = true
-  sellerAuthorization = null
   const wrap = document.getElementById('confirm-pin-wrap')
   if (wrap) wrap.style.display = 'none'
 }
@@ -2464,19 +2459,17 @@ async function verificarPinVendedor(vendedorId) {
     const res  = await fetch(`${API_URL}/usuarios/${vendedorId}/verificar-pin`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ pin, sucursalId: turnoActivo?.sucursalId || null })
+      body:    JSON.stringify({ pin })
     })
     const data = await res.json()
 
     if (res.ok && data.success) {
       pinVendedorVerificado = true
-      sellerAuthorization = data.sellerAuthorization || null
       if (msgEl) { msgEl.textContent = `✓ Verificado — ${data.usuario.nombre}`; msgEl.style.color = '#60d080' }
       document.getElementById('confirm-pin-input').style.borderColor = 'rgba(96,208,128,0.4)'
       if (btn) { btn.style.display = 'none' }
     } else {
       pinVendedorVerificado = false
-      sellerAuthorization = null
       if (msgEl) { msgEl.textContent = data.error || 'PIN incorrecto'; msgEl.style.color = '#ff6b6b' }
       document.getElementById('confirm-pin-input').value = ''
       document.getElementById('confirm-pin-input').focus()
@@ -2891,7 +2884,6 @@ async function confirmarVenta() {
     const payload = {
       sucursalId:  parseInt(sucursalIdSeguro, 10),
       usuarioId:   vendId,
-      sellerAuthorization: sellerAuthorization || undefined,
       turnoId:     turnoActivo.id,
       clienteId:   clienteSeleccionado?.id || null,
       empleadoId:  empleadoId,              
