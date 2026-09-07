@@ -7,6 +7,7 @@ const {
   crearErrorPoliticaUsuario
 } = require('../../utils/usuario-policy')
 const getEmpresaId = require('../../helpers/getEmpresaId')
+const { signSellerAuthorization } = require('../../security/seller-auth')
 
 function policyError(code, message) {
   const err = new Error(message)
@@ -476,12 +477,12 @@ const establecerPin = async (req, res) => {
 const verificarPin = async (req, res) => {
   try {
     const { id }  = req.params
-    const { pin } = req.body
+    const { pin, sucursalId: sucursalIdBody } = req.body
     const empresaId = getEmpresaId(req)
 
     if (!pin) return res.status(400).json({ error: 'PIN requerido' })
 
-    const usuario = await prisma.usuario.findFirst({ where: { id: parseInt(id), empresaId }, select: { id: true, nombre: true, pin: true, tienePin: true, activo: true } })
+    const usuario = await prisma.usuario.findFirst({ where: { id: parseInt(id), empresaId }, select: { id: true, nombre: true, pin: true, tienePin: true, activo: true, rol: true, sucursalId: true } })
     if (!usuario)        return res.status(404).json({ error: 'Usuario no encontrado' })
     if (!usuario.activo) return res.status(403).json({ error: 'Usuario inactivo' })
     if (!usuario.tienePin || !usuario.pin) return res.status(400).json({ error: 'Este usuario no tiene PIN configurado — pide al administrador que lo asigne' })
@@ -489,7 +490,43 @@ const verificarPin = async (req, res) => {
     const valido = await bcrypt.compare(pin, usuario.pin)
     if (!valido) return res.status(401).json({ error: 'PIN incorrecto' })
 
-    res.json({ success: true, usuario: { id: usuario.id, nombre: usuario.nombre } })
+    // ── Seller Authorization Token (SAT) ──────────────────────────
+    // Determine target sucursalId for the SAT:
+    // - Use the body's sucursalId if provided (POS target branch)
+    // - Fall back to the session user's branch context
+    const { branch } = req.context
+    let sucursalIdSat = null
+    if (sucursalIdBody != null && sucursalIdBody !== '') {
+      sucursalIdSat = parseInt(sucursalIdBody)
+      if (isNaN(sucursalIdSat) || sucursalIdSat <= 0) {
+        return res.status(400).json({ error: 'sucursalId inválido' })
+      }
+      // Validate branch exists, is active, and belongs to this tenant
+      const sucursal = await prisma.sucursal.findFirst({
+        where: { id: sucursalIdSat, empresaId, activa: true },
+        select: { id: true }
+      })
+      if (!sucursal) {
+        return res.status(403).json({ error: 'Sucursal inválida o inactiva', codigo: 'BRANCH_INVALID' })
+      }
+      // Validate seller can operate in this branch
+      if (usuario.rol === 'EMPLEADO' || usuario.rol === 'ADMIN_SUCURSAL') {
+        if (usuario.sucursalId !== sucursalIdSat) {
+          return res.status(403).json({ error: 'El vendedor no tiene acceso a esta sucursal', codigo: 'SELLER_BRANCH_FORBIDDEN' })
+        }
+      }
+    } else if (branch.sucursalId) {
+      sucursalIdSat = branch.sucursalId
+    }
+
+    const sellerAuth = signSellerAuthorization({
+      sellerId: usuario.id,
+      sessionUserId: req.usuario.id,
+      empresaId,
+      sucursalId: sucursalIdSat
+    })
+
+    res.json({ success: true, usuario: { id: usuario.id, nombre: usuario.nombre }, sellerAuthorization: sellerAuth })
   } catch (err) { console.error(err); res.status(500).json({ error: 'Error al verificar PIN' }) }
 }
 

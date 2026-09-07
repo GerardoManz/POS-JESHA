@@ -10,6 +10,7 @@ const os = require('os')
 const { buildVentaSnapshot, formatFechaTicket } = require('../impresion/impresion.snapshot')
 const { encolarImpresion } = require('../impresion/impresion.service')
 const QRCode = require('qrcode')
+const { verifySellerAuthorization, SellerAuthError } = require('../../security/seller-auth')
 const { verificarStockPostOperacion } = require('../../helpers/verificarStock')
 const { normalizarUnidadVenta, normalizarUnidadCompra, esFraccionable } = require('../../helpers/unidades.helper')
 
@@ -79,7 +80,42 @@ exports.crearVenta = async (req, res) => {
     if (!sucursalId || isNaN(sucursalId)) {
       return res.status(400).json({ error: 'Se requiere contexto de sucursal para registrar una venta', codigo: 'BRANCH_CONTEXT_REQUIRED' })
     }
-    const usuarioId  = req.usuario.id   // A4: autoridad de venta = usuario autenticado (JWT), no el body
+    const rawSellerAuth = req.body.sellerAuthorization || null
+    const bodyUsuarioId = req.body.usuarioId != null ? parseInt(req.body.usuarioId) : null
+    let usuarioId
+    if (bodyUsuarioId != null && !isNaN(bodyUsuarioId) && bodyUsuarioId !== req.usuario.id) {
+      // Case C/D: frontend claims a different seller — SAT is mandatory
+      if (!rawSellerAuth) {
+        return res.status(403).json({ error: 'Se requiere autorización de vendedor para atribuir la venta a otro usuario', codigo: 'SELLER_AUTH_REQUIRED' })
+      }
+      let satClaims
+      try {
+        satClaims = verifySellerAuthorization(rawSellerAuth)
+      } catch (err) {
+        const code = err.code || 'SELLER_AUTH_INVALID'
+        return res.status(401).json({ error: err.message, codigo: code })
+      }
+      // SAT must be for this session
+      if (satClaims.sid !== req.usuario.id) {
+        return res.status(403).json({ error: 'La autorización de vendedor no corresponde a esta sesión', codigo: 'SELLER_AUTH_SESSION_MISMATCH' })
+      }
+      // SAT must be for this tenant
+      if (satClaims.eid !== empresaId) {
+        return res.status(403).json({ error: 'La autorización de vendedor no pertenece a esta empresa', codigo: 'SELLER_AUTH_TENANT_MISMATCH' })
+      }
+      // SAT must be for this branch
+      if (satClaims.bid != null && satClaims.bid !== sucursalId) {
+        return res.status(403).json({ error: 'La autorización de vendedor no corresponde a esta sucursal', codigo: 'SELLER_AUTH_BRANCH_MISMATCH' })
+      }
+      // SAT.sub must match the claimed seller
+      if (satClaims.sub !== bodyUsuarioId) {
+        return res.status(403).json({ error: 'El vendedor en la autorización no coincide con el solicitado', codigo: 'SELLER_AUTH_SELLER_MISMATCH' })
+      }
+      usuarioId = satClaims.sub
+    } else {
+      // Case A/B: selling as self — no SAT needed
+      usuarioId = req.usuario.id
+    }
     const turnoId    = parseInt(req.body.turnoId)
     const { metodoPago, subtotal, iva, descuento, total, detalles, notas, montoPagado: montoPagadoRaw, cotizacionId } = req.body
     const clienteId  = req.body.clienteId ? parseInt(req.body.clienteId) : null
@@ -719,7 +755,7 @@ exports.crearVenta = async (req, res) => {
         metodoLabel,
         montoPagado: montoPagadoFinal,
         cambio:      cambioFinal,
-        cajero:  req.usuario?.nombre || req.usuario?.username || null,
+        cajero:  usuario?.nombre || req.usuario?.nombre || req.usuario?.username || null,
         cliente: clienteNombre,
         qrUrl:   urlFacturacion,
         abrirCajon
