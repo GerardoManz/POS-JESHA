@@ -7,6 +7,7 @@ const {
   crearErrorPoliticaUsuario
 } = require('../../utils/usuario-policy')
 const getEmpresaId = require('../../helpers/getEmpresaId')
+const { signSellerAuthorization } = require('../../security/seller-auth')
 
 function policyError(code, message) {
   const err = new Error(message)
@@ -476,20 +477,54 @@ const establecerPin = async (req, res) => {
 const verificarPin = async (req, res) => {
   try {
     const { id }  = req.params
-    const { pin } = req.body
+    const { pin, sucursalId: sucursalIdBody } = req.body
     const empresaId = getEmpresaId(req)
 
     if (!pin) return res.status(400).json({ error: 'PIN requerido' })
 
-    const usuario = await prisma.usuario.findFirst({ where: { id: parseInt(id), empresaId }, select: { id: true, nombre: true, pin: true, tienePin: true, activo: true } })
+    if (!Number.isInteger(sucursalIdBody) || sucursalIdBody <= 0) {
+      return res.status(400).json({ error: 'Se requiere sucursal para autorizar vendedor', codigo: 'SELLER_AUTH_BRANCH_REQUIRED' })
+    }
+    const sucursalIdInt = sucursalIdBody
+
+    const sucursal = await prisma.sucursal.findFirst({
+      where: { id: sucursalIdInt, empresaId, activa: true },
+      select: { id: true }
+    })
+    if (!sucursal) {
+      return res.status(403).json({ error: 'Sucursal inválida o inactiva', codigo: 'BRANCH_INVALID' })
+    }
+
+    const usuarioId = Number(id)
+    if (!Number.isInteger(usuarioId) || usuarioId <= 0) {
+      return res.status(400).json({ error: 'Usuario inválido' })
+    }
+
+    const usuario = await prisma.usuario.findFirst({ where: { id: usuarioId, empresaId }, select: { id: true, nombre: true, pin: true, tienePin: true, activo: true, rol: true, sucursalId: true } })
     if (!usuario)        return res.status(404).json({ error: 'Usuario no encontrado' })
     if (!usuario.activo) return res.status(403).json({ error: 'Usuario inactivo' })
+    if (!['EMPLEADO', 'ADMIN_SUCURSAL', 'SUPERADMIN'].includes(usuario.rol)) {
+      return res.status(403).json({ error: 'Usuario sin permiso para vender', codigo: 'SIN_PERMISO_VENTA' })
+    }
     if (!usuario.tienePin || !usuario.pin) return res.status(400).json({ error: 'Este usuario no tiene PIN configurado — pide al administrador que lo asigne' })
+
+    if (usuario.rol === 'EMPLEADO' || usuario.rol === 'ADMIN_SUCURSAL') {
+      if (usuario.sucursalId !== sucursalIdInt) {
+        return res.status(403).json({ error: 'El vendedor no tiene acceso a esta sucursal', codigo: 'SELLER_BRANCH_FORBIDDEN' })
+      }
+    }
 
     const valido = await bcrypt.compare(pin, usuario.pin)
     if (!valido) return res.status(401).json({ error: 'PIN incorrecto' })
 
-    res.json({ success: true, usuario: { id: usuario.id, nombre: usuario.nombre } })
+    const sellerAuth = signSellerAuthorization({
+      sellerId: usuario.id,
+      sessionUserId: req.usuario.id,
+      empresaId,
+      sucursalId: sucursalIdInt
+    })
+
+    res.json({ success: true, usuario: { id: usuario.id, nombre: usuario.nombre }, sellerAuthorization: sellerAuth })
   } catch (err) { console.error(err); res.status(500).json({ error: 'Error al verificar PIN' }) }
 }
 

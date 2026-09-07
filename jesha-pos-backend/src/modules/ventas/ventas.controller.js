@@ -10,6 +10,7 @@ const os = require('os')
 const { buildVentaSnapshot, formatFechaTicket } = require('../impresion/impresion.snapshot')
 const { encolarImpresion } = require('../impresion/impresion.service')
 const QRCode = require('qrcode')
+const { verifySellerAuthorization } = require('../../security/seller-auth')
 const { verificarStockPostOperacion } = require('../../helpers/verificarStock')
 const { normalizarUnidadVenta, normalizarUnidadCompra, esFraccionable } = require('../../helpers/unidades.helper')
 
@@ -68,6 +69,7 @@ function resolverUnidad(detalle) {
  */
 exports.crearVenta = async (req, res) => {
   try {
+    const empresaId = getEmpresaId(req)
     // P0-BRANCH-ISOLATION: la sucursal operativa SIEMPRE proviene del contexto
     // (req.context.branch.sucursalId), nunca del body ni del query.
     const sucursalId = resolverSucursalId(req)
@@ -79,12 +81,49 @@ exports.crearVenta = async (req, res) => {
     if (!sucursalId || isNaN(sucursalId)) {
       return res.status(400).json({ error: 'Se requiere contexto de sucursal para registrar una venta', codigo: 'BRANCH_CONTEXT_REQUIRED' })
     }
-    const usuarioId  = req.usuario.id   // A4: autoridad de venta = usuario autenticado (JWT), no el body
+    const rawSellerAuth = req.body.sellerAuthorization || null
+    const usuarioIdFueEnviado = req.body.usuarioId !== undefined && req.body.usuarioId !== null
+    const bodyUsuarioId = usuarioIdFueEnviado ? Number(req.body.usuarioId) : null
+    if (usuarioIdFueEnviado && (!Number.isInteger(bodyUsuarioId) || bodyUsuarioId <= 0)) {
+      return res.status(400).json({ error: 'usuarioId debe ser un entero positivo', codigo: 'SELLER_ID_INVALID' })
+    }
+    let usuarioId
+    if (bodyUsuarioId != null && !isNaN(bodyUsuarioId) && bodyUsuarioId !== req.usuario.id) {
+      // Case C/D: frontend claims a different seller — SAT is mandatory
+      if (!rawSellerAuth) {
+        return res.status(403).json({ error: 'Se requiere autorización de vendedor para atribuir la venta a otro usuario', codigo: 'SELLER_AUTH_REQUIRED' })
+      }
+      let satClaims
+      try {
+        satClaims = verifySellerAuthorization(rawSellerAuth)
+      } catch (err) {
+        const code = err.code || 'SELLER_AUTH_INVALID'
+        return res.status(401).json({ error: err.message, codigo: code })
+      }
+      // SAT must be for this session
+      if (satClaims.sid !== req.usuario.id) {
+        return res.status(403).json({ error: 'La autorización de vendedor no corresponde a esta sesión', codigo: 'SELLER_AUTH_SESSION_MISMATCH' })
+      }
+      // SAT must be for this tenant
+      if (satClaims.eid !== empresaId) {
+        return res.status(403).json({ error: 'La autorización de vendedor no pertenece a esta empresa', codigo: 'SELLER_AUTH_TENANT_MISMATCH' })
+      }
+      // SAT must be for this exact branch — NO exceptions for any role
+      if (satClaims.bid !== sucursalId) {
+        return res.status(403).json({ error: 'La autorización de vendedor no corresponde a esta sucursal', codigo: 'SELLER_AUTH_BRANCH_MISMATCH' })
+      }
+      // SAT.sub must match the claimed seller
+      if (satClaims.sub !== bodyUsuarioId) {
+        return res.status(403).json({ error: 'El vendedor en la autorización no coincide con el solicitado', codigo: 'SELLER_AUTH_SELLER_MISMATCH' })
+      }
+      usuarioId = satClaims.sub
+    } else {
+      // Case A/B: selling as self — no SAT needed
+      usuarioId = req.usuario.id
+    }
     const turnoId    = parseInt(req.body.turnoId)
     const { metodoPago, subtotal, iva, descuento, total, detalles, notas, montoPagado: montoPagadoRaw, cotizacionId } = req.body
     const clienteId  = req.body.clienteId ? parseInt(req.body.clienteId) : null
-    const empresaId = getEmpresaId(req)
-
     if (!usuarioId || isNaN(usuarioId) || !turnoId || isNaN(turnoId) || !metodoPago) {
       return res.status(400).json({ error: 'Faltan campos requeridos', campos: ['usuarioId', 'turnoId', 'metodoPago'] })
     }
@@ -101,18 +140,22 @@ exports.crearVenta = async (req, res) => {
     }
 
     const esDelegada = req.delegation?.active === true
+    const ventaComoActorDelegado = esDelegada && usuarioId === req.usuario.id
     const usuario = await prisma.usuario.findFirst({
-      where: esDelegada
+      where: ventaComoActorDelegado
         ? { id: usuarioId, empresaId: null, rol: req.delegation.actorRealRol, activo: true }
         : { id: usuarioId, empresaId, activo: true }
     })
     if (!usuario) {
       return res.status(403).json({ error: 'Usuario inválido o inactivo' })
     }
-    const rolVenta = esDelegada ? req.usuario.rol : usuario.rol
+    const rolVenta = ventaComoActorDelegado ? req.usuario.rol : usuario.rol
     const rolesConVenta = ['EMPLEADO', 'ADMIN_SUCURSAL', 'SUPERADMIN']
     if (!rolesConVenta.includes(rolVenta)) {
       return res.status(403).json({ error: 'Usuario sin permiso para vender', codigo: 'SIN_PERMISO_VENTA' })
+    }
+    if (['EMPLEADO', 'ADMIN_SUCURSAL'].includes(usuario.rol) && usuario.sucursalId !== sucursalId) {
+      return res.status(403).json({ error: 'El vendedor no tiene acceso a esta sucursal', codigo: 'SELLER_BRANCH_FORBIDDEN' })
     }
 
     // ── Validar descuento por rol ──────────────────────────────────
@@ -719,7 +762,7 @@ exports.crearVenta = async (req, res) => {
         metodoLabel,
         montoPagado: montoPagadoFinal,
         cambio:      cambioFinal,
-        cajero:  req.usuario?.nombre || req.usuario?.username || null,
+        cajero:  usuario?.nombre || req.usuario?.nombre || req.usuario?.username || null,
         cliente: clienteNombre,
         qrUrl:   urlFacturacion,
         abrirCajon
