@@ -131,27 +131,61 @@ function crearErrorPayload(codigo, mensaje) {
   return error
 }
 
+/**
+ * Normaliza un valor monetario a centavos enteros (integer).
+ * Acepta: number, string numérico, Prisma.Decimal (via toString).
+ * Rechaza: null, undefined, NaN, Infinity, strings no numéricos, negativos.
+ * @returns {number|null} centavos enteros, o null si la entrada es inválida
+ */
+function monedaACentavos(valor) {
+  if (valor == null) return null
+  let num
+  if (typeof valor === 'number') {
+    num = valor
+  } else if (typeof valor === 'string') {
+    const trimmed = valor.trim()
+    if (trimmed === '') return null
+    num = Number(trimmed)
+  } else {
+    try { num = Number(String(valor)) } catch { return null }
+  }
+  if (!Number.isFinite(num)) return null
+  return Math.round(num * 100)
+}
+
 function aplicarDescuentoVenta(items, descuentoVenta, totalVenta) {
-  const descuento = parseFloat(parseFloat(descuentoVenta || 0).toFixed(2))
-  const totalEsperado = parseFloat(parseFloat(totalVenta).toFixed(2))
+  const totalCents = monedaACentavos(totalVenta)
+  if (totalCents == null) {
+    throw crearErrorPayload('FACTURAPI_TOTAL_MISMATCH', 'El total de la venta es inválido para conciliación facturación')
+  }
+
+  let descuentoCents = 0
+  if (descuentoVenta != null) {
+    const d = monedaACentavos(descuentoVenta)
+    if (d == null || d < 0) {
+      throw crearErrorPayload('FACTURAPI_DISCOUNT_INVALID', 'El descuento de la venta es inválido para el subtotal facturable')
+    }
+    descuentoCents = d
+  }
+
   const importes = items.map(item => parseFloat((item.quantity * item.product.price).toFixed(2)))
   const bruto = parseFloat(importes.reduce((sum, importe) => sum + importe, 0).toFixed(2))
+  const brutoCents = Math.round(bruto * 100)
 
-  if (!Number.isFinite(descuento) || descuento < 0 || descuento > bruto) {
+  if (descuentoCents > brutoCents) {
     throw crearErrorPayload('FACTURAPI_DISCOUNT_INVALID', 'El descuento de la venta es inválido para el subtotal facturable')
   }
 
-  if (descuento > 0) {
-    const descuentoCentavos = Math.round(descuento * 100)
+  if (descuentoCents > 0) {
     let asignadoCentavos = 0
 
     items.forEach((item, index) => {
       const esUltimo = index === items.length - 1
-      const disponible = descuentoCentavos - asignadoCentavos
+      const disponible = descuentoCents - asignadoCentavos
       const proporcion = bruto > 0 ? importes[index] / bruto : 0
       const centavos = esUltimo
         ? disponible
-        : Math.min(disponible, Math.round(descuentoCentavos * proporcion))
+        : Math.min(disponible, Math.round(descuentoCents * proporcion))
       item.discount = centavos / 100
       asignadoCentavos += centavos
     })
@@ -159,15 +193,17 @@ function aplicarDescuentoVenta(items, descuentoVenta, totalVenta) {
 
   const descuentoPayload = parseFloat(items.reduce((sum, item) => sum + (item.discount || 0), 0).toFixed(2))
   const netoPayload = parseFloat((bruto - descuentoPayload).toFixed(2))
-  const diferenciaCentavos = Math.abs(Math.round(netoPayload * 100) - Math.round(totalEsperado * 100))
-  if (!Number.isFinite(totalEsperado) || diferenciaCentavos > 1) {
-    throw crearErrorPayload('FACTURAPI_TOTAL_MISMATCH', `El total del payload Facturapi (${netoPayload.toFixed(2)}) no coincide con la venta (${Number.isFinite(totalEsperado) ? totalEsperado.toFixed(2) : 'inválido'})`)
+  const payloadCents = Math.round(netoPayload * 100)
+
+  if (payloadCents !== totalCents) {
+    const totalFmt = (totalCents / 100).toFixed(2)
+    throw crearErrorPayload('FACTURAPI_TOTAL_MISMATCH', `El total del payload Facturapi (${netoPayload.toFixed(2)}) no coincide con la venta ($${totalFmt})`)
   }
 
   return { bruto, descuento: descuentoPayload, neto: netoPayload }
 }
 
-function buildInvoicePayload({ rfc, razonSocial, regimenFiscal, codigoPostal, usoCfdi, email, metodoPago, detalles, datosEmisor, descuento = 0, totalVenta }) {
+function buildInvoicePayload({ rfc, razonSocial, regimenFiscal, codigoPostal, usoCfdi, email, metodoPago, detalles, datosEmisor, descuento = 0, totalVenta, lugarExpedicion }) {
   const rfcUpper = rfc.trim().toUpperCase()
 
   const items = detalles.map(d => {
@@ -635,7 +671,8 @@ exports.solicitarFactura = async (req, res) => {
         ...buildInvoicePayload({
           rfc: rfcUpper, razonSocial: nombreReceptor, regimenFiscal, codigoPostal,
           usoCfdi, email: emailTrimmed, metodoPago: venta.metodoPago,
-          detalles: venta.DetalleVenta, datosEmisor, lugarExpedicion
+          detalles: venta.DetalleVenta, datosEmisor, lugarExpedicion,
+          descuento: venta.descuento, totalVenta: venta.total
         }),
         idempotency_key: idempotencyKey
       }))
@@ -856,7 +893,8 @@ exports.timbrarManual = async (req, res) => {
           rfc: f.rfcReceptor, razonSocial: f.nombreReceptor, regimenFiscal: f.regimenFiscal,
           codigoPostal: f.cpReceptor, usoCfdi: f.usoCfdi, email: f.emailReceptor,
           metodoPago: venta.metodoPago, detalles: venta.DetalleVenta, datosEmisor,
-          lugarExpedicion: f.lugarExpedicion || datosEmisor.cp
+          lugarExpedicion: f.lugarExpedicion || datosEmisor.cp,
+          descuento: venta.descuento, totalVenta: venta.total
         }),
         idempotency_key: f.idempotencyKey
       }))
