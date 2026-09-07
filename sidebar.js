@@ -154,7 +154,7 @@ function aplicarBranding() {
 
   if (footerText && empresa.nombreComercial) {
     const delegado = window.jeshaSession?.isDelegated()
-    const subtitle = delegado ? 'Modo soporte de plataforma' : `Versión 2.0.1`
+    const subtitle = delegado ? 'Modo soporte de plataforma' : `Versión 1.0.0`
     footerText.innerHTML = `© 2026 ${empresa.nombreComercial}<br>${subtitle}`
   }
 
