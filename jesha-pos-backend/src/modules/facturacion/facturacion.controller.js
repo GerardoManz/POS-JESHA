@@ -209,18 +209,20 @@ function buildInvoicePayload({ rfc, razonSocial, regimenFiscal, codigoPostal, us
   const items = detalles.map(d => {
     const esServicio  = d.Producto?.tipo === 'SERVICIO'
     const claveValida = d.Producto?.claveSat && /^\d{8}$/.test(d.Producto.claveSat)
-    // Defensa en profundidad: un servicio sin clave válida NO cae al default de
-    // ferretería. El pre-check en el call site evita llegar aquí con el lock puesto.
     if (esServicio && !claveValida) {
       throw new Error(`Servicio "${d.Producto?.nombre || '?'}" requiere clave SAT de 8 dígitos válida`)
     }
+    const pu       = parseFloat(d.precioUnitario)
+    const cant     = parseFloat(d.cantidad)
+    const dtoLinea = parseFloat(d.descuento || 0)
+    const netoLinea = cant > 0 ? parseFloat((pu - dtoLinea / cant).toFixed(6)) : pu
     return {
-      quantity: parseFloat(d.cantidad),
+      quantity: cant,
       product: {
         description:  d.Producto?.nombre || 'Mercancía',
         product_key:  claveValida ? d.Producto.claveSat : '31161500',
         unit_key:     d.Producto?.unidadSat || (esServicio ? 'E48' : 'H87'),
-        price:        parseFloat(d.precioUnitario),
+        price:        netoLinea,
         tax_included: true,
         taxes: [{ type: 'IVA', rate: TASA_IVA, factor: 'Tasa', withholding: false }]
       }

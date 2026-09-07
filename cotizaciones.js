@@ -984,16 +984,22 @@ window.cargarEnPos = async function(id) {
     const cot = d.data
     cotizacionActual = cot
     if (!cot.DetalleCotizacion || cot.DetalleCotizacion.length === 0) { jeshaToast('Esta cotización no tiene productos', 'warning'); return }
+    const totalLineasCot = cot.DetalleCotizacion.reduce((s, d) => s + parseFloat(d.precioUnitario) * parseFloat(d.cantidad), 0)
+    const descGlobalCot  = parseFloat(cot.descuento || 0)
     const posPayload = {
       fuente: 'cotizacion', cotFolio: cot.folio, cotId: cot.id,
       empresaId: window.jeshaSession?.getUsuario()?.empresaId ?? null,
       sucursalId: window.jeshaSession?.getSelectedSucursalId?.() ?? window.jeshaSession?.getUsuario()?.sucursalId ?? null,
       clienteId: cot.Cliente?.id || null, clienteNombre: cot.Cliente?.nombre || '',
+      cotDescuento: descGlobalCot,
+      cotSubtotalBruto: parseFloat(totalLineasCot.toFixed(2)),
       items: cot.DetalleCotizacion.map(d => ({
         id:          d.Producto?.id ?? d.productoId,
         nombre:      d.Producto?.nombre || '—',
         precio:      parseFloat(d.precioUnitario),
         cantidad:    parseFloat(d.cantidad) || 1,
+        descuentoLinea: parseFloat(d.descuento || 0),
+        detalleCotizacionId: d.id,
         esGranel:    d.Producto?.esGranel ?? false,
         unidadVenta: d.Producto?.unidadVenta || ''
       }))

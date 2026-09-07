@@ -139,6 +139,8 @@ let clienteSeleccionado    = null
 let ventaEnProceso         = false
 let clientesLista          = []
 let cotIdActual            = null
+let cotDescuentoGlobal     = 0
+let cotDescuentoLocked     = false
 let modoCobranza           = false
 let carritoSoloLectura     = false
 let saldoPendienteCobranza = null
@@ -1137,18 +1139,20 @@ function construirDetalleVentaPayload(item) {
       throw new Error(`"${nombre}": cantidad inválida para importe`)
     }
 
-    return {
-      productoId,
-      cantidad,
-      precioUnitario,
-      subtotal:           Number(importeCapturado.toFixed(2)),
-      modoCaptura:        'IMPORTE',
-      cantidadCapturada:  null,
-      importeCapturado:   Number(importeCapturado.toFixed(2)),
-      unidadCapturada:    null,
-      unidadVenta,
-      esGranel
-    }
+  return {
+    productoId,
+    cantidad,
+    precioUnitario,
+    descuentoLinea:  Number(item.descuentoLinea || 0),
+    detalleCotizacionId: item.detalleCotizacionId || null,
+    subtotal:           Number(importeCapturado.toFixed(2)),
+    modoCaptura:        'IMPORTE',
+    cantidadCapturada:  null,
+    importeCapturado:   Number(importeCapturado.toFixed(2)),
+    unidadCapturada:    null,
+    unidadVenta,
+    esGranel
+  }
   }
 
   if (unidadElegida === 'empaque' && factor > 1) {
@@ -1165,6 +1169,8 @@ function construirDetalleVentaPayload(item) {
       productoId,
       cantidad:           cantidadFinal,
       precioUnitario,
+      descuentoLinea:  Number(item.descuentoLinea || 0),
+      detalleCotizacionId: item.detalleCotizacionId || null,
       subtotal:           Number((cantidadFinal * precioUnitario).toFixed(2)),
       modoCaptura:        'CONVERSION',
       cantidadCapturada:  cantidadVisible,
@@ -1189,6 +1195,8 @@ function construirDetalleVentaPayload(item) {
     productoId,
     cantidad:           cantidadFinal,
     precioUnitario,
+    descuentoLinea:  Number(item.descuentoLinea || 0),
+    detalleCotizacionId: item.detalleCotizacionId || null,
     subtotal:           Number((cantidadFinal * precioUnitario).toFixed(2)),
     modoCaptura:        'CANTIDAD',
     cantidadCapturada:  esGranel ? cantidad : cantidadFinal,
@@ -1793,6 +1801,8 @@ async function limpiarCarrito() {
 function resetVentaActual() {
   carrito                = []
   cotIdActual            = null
+  cotDescuentoGlobal     = 0
+  cotDescuentoLocked     = false
   clienteSeleccionado    = null
   _carritoRestaurado     = false
   vendedorSeleccionado   = null
@@ -2303,7 +2313,23 @@ function mostrarModalConfirmacion() {
   }
 
   const inputDesc = document.getElementById('confirm-descuento-input')
-  if (inputDesc) inputDesc.value = descuentoManual > 0 ? descuentoManual : ''
+  if (cotDescuentoLocked && cotDescuentoGlobal > 0) {
+    if (inputDesc) {
+      const totalBruto = carrito.reduce((s, i) => s + subtotalLinea(i), 0)
+      const pctShow = totalBruto > 0 ? parseFloat(((cotDescuentoGlobal / totalBruto) * 100).toFixed(1)) : 0
+      inputDesc.value = pctShow
+      inputDesc.readOnly = true
+      inputDesc.style.opacity = '0.6'
+      inputDesc.style.cursor = 'not-allowed'
+    }
+  } else {
+    if (inputDesc) {
+      inputDesc.readOnly = false
+      inputDesc.style.opacity = ''
+      inputDesc.style.cursor = ''
+      inputDesc.value = descuentoManual > 0 ? descuentoManual : ''
+    }
+  }
 
   // Ocultar bloque de descuento manual para EMPLEADO
   const puedeDescuento = ['SUPERADMIN', 'ADMIN_SUCURSAL'].includes(USUARIO.rol)
@@ -2335,6 +2361,13 @@ function mostrarModalConfirmacion() {
 }
 
 function getPctEfectivo() {
+  if (cotDescuentoLocked && cotDescuentoGlobal > 0) {
+    const totalBruto = carrito.reduce((s, i) => s + subtotalLinea(i), 0)
+    if (totalBruto > 0) {
+      const pctCalc = Math.min(10, parseFloat(((cotDescuentoGlobal / totalBruto) * 100).toFixed(1)))
+      return { pct: pctCalc, esEmpleado: false, cotDescuentoMonto: cotDescuentoGlobal }
+    }
+  }
   const inputDesc = document.getElementById('confirm-descuento-input')
   const selEmp    = document.getElementById('confirm-empleado-select')
   const pctManual = parseFloat(inputDesc?.value) || 0
@@ -2840,10 +2873,12 @@ async function confirmarVenta() {
 
     const selVend            = document.getElementById('confirm-vendedor-select')
     const vendId             = selVend ? parseInt(selVend.value) : USUARIO.id
-    const { pct, esEmpleado } = getPctEfectivo()
+    const { pct, esEmpleado, cotDescuentoMonto } = getPctEfectivo()
     const selEmpVenta        = document.getElementById('confirm-empleado-select')
     const empleadoId         = esEmpleado && selEmpVenta?.value ? parseInt(selEmpVenta.value) : null
-    const descAmt            = parseFloat((total * (pct / 100)).toFixed(2))
+    const descAmt            = cotDescuentoMonto != null && cotDescuentoMonto > 0
+      ? parseFloat(cotDescuentoMonto.toFixed(2))
+      : parseFloat((total * (pct / 100)).toFixed(2))
     const totalFinal         = parseFloat((total - descAmt).toFixed(2))
 
     vendedorSeleccionado = selVend ? { id: vendId, nombre: selVend.options[selVend.selectedIndex]?.text } : null
@@ -2903,6 +2938,8 @@ async function confirmarVenta() {
       esCredito,
       desglosePagos: desglosePagosPayload,
       cotizacionId: cotIdActual || null,
+      cotDescuentoOriginal: cotDescuentoGlobal || 0,
+      cotSubtotalBruto: cotDescuentoLocked ? parseFloat(carrito.reduce((s, i) => s + subtotalLinea(i), 0).toFixed(2)) : 0,
       notas: esTarjetaPago ? `Ref. Ingenico: ${refTarjeta}` : null,
       detalles
     }
@@ -3247,10 +3284,13 @@ function cargarCotizacionDesdeStorage() {
 
     if (payload.fuente === 'cotizacion' && payload.cotId) {
       cotIdActual = payload.cotId
+      cotDescuentoGlobal = parseFloat(payload.cotDescuento || 0)
+      cotDescuentoLocked = cotDescuentoGlobal > 0
     }
 
     payload.items.forEach(item => {
-      carrito.push({ id: item.id, nombre: item.nombre, precio: parseFloat(item.precio), cantidad: parseFloat(item.cantidad) || 1, esGranel: item.esGranel || false, unidadVenta: item.unidadVenta || '', unidadCompra: item.unidadCompra || '', factorConversion: item.factorConversion || 1, unidadElegida: 'base', cantidadVisible: parseFloat(item.cantidad) || 1 })
+      const descLinea = parseFloat(item.descuentoLinea || 0)
+      carrito.push({ id: item.id, nombre: item.nombre, precio: parseFloat(item.precio), cantidad: parseFloat(item.cantidad) || 1, esGranel: item.esGranel || false, unidadVenta: item.unidadVenta || '', unidadCompra: item.unidadCompra || '', factorConversion: item.factorConversion || 1, unidadElegida: 'base', cantidadVisible: parseFloat(item.cantidad) || 1, descuentoLinea: descLinea, detalleCotizacionId: item.detalleCotizacionId || null })
       productoCache.set(item.id, { id: item.id, nombre: item.nombre, precioVenta: item.precio, precioBase: item.precio, stock: null, esGranel: item.esGranel || false, unidadVenta: item.unidadVenta || '', unidadCompra: item.unidadCompra || '', factorConversion: item.factorConversion || 1 })
     })
 

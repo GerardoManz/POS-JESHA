@@ -161,7 +161,13 @@ exports.crearVenta = async (req, res) => {
     // ── Validar descuento por rol ──────────────────────────────────
     const descuentoAmt = parseFloat(parseFloat(descuento || 0).toFixed(2))
     if (descuentoAmt > 0 && rolVenta === 'EMPLEADO') {
-      return res.status(403).json({ error: 'Sin permiso para aplicar descuentos', codigo: 'SIN_PERMISO_DESCUENTO' })
+      if (!cotizacionValida) {
+        return res.status(403).json({ error: 'Sin permiso para aplicar descuentos', codigo: 'SIN_PERMISO_DESCUENTO' })
+      }
+      const descCot = parseFloat(cotizacionValida.descuento || 0)
+      if (Math.abs(descuentoAmt - descCot) > 0.01) {
+        return res.status(403).json({ error: 'El descuento no coincide con la cotización autorizada', codigo: 'COTIZACION_DESCUENTO_MISMATCH' })
+      }
     }
 
     // ── Validar referencia Ingenico si es tarjeta (opcional) ─────
@@ -175,21 +181,21 @@ exports.crearVenta = async (req, res) => {
 
     // ── Validar cotización, si se especifica (debe existir y pertenecer a la empresa) ──
     let cotizacionValida = null
+    let cotizacionDetalles = null
     if (cotizacionId) {
       const cotId = parseInt(cotizacionId)
       if (isNaN(cotId)) {
         return res.status(400).json({ error: 'cotizacionId inválido' })
       }
-      // P0-BRANCH-ISOLATION: la cotización debe pertenecer a la empresa y a la
-      // sucursal operativa y estar PENDIENTE; si no, 404 (sin distinguir causa).
       const cot = await prisma.cotizacion.findFirst({
         where: { id: cotId, empresaId, sucursalId, estado: 'PENDIENTE' },
-        select: { id: true }
+        include: { DetalleCotizacion: true }
       })
       if (!cot) {
         return res.status(404).json({ error: 'Cotización no encontrada' })
       }
       cotizacionValida = cot
+      cotizacionDetalles = cot.DetalleCotizacion
     }
 
     // ── Validar desglose de pagos mixtos ─────────────────────────
@@ -231,7 +237,7 @@ exports.crearVenta = async (req, res) => {
     const detallesMetadata = []
     for (let i = 0; i < detalles.length; i++) {
       const detalle = detalles[i]
-      const { productoId, cantidad, precioUnitario, modoCaptura, cantidadCapturada, importeCapturado, unidadCapturada } = detalle
+      const { productoId, cantidad, precioUnitario, modoCaptura, cantidadCapturada, importeCapturado, unidadCapturada, descuentoLinea: descLineaRaw } = detalle
       if (!productoId || !cantidad || !precioUnitario) {
         return res.status(400).json({ error: 'Detalle incompleto', detalle })
       }
@@ -240,6 +246,7 @@ exports.crearVenta = async (req, res) => {
       }
       const cantidadFloat   = parseFloat(cantidad)
       const subtotalDetalle = parseFloat((cantidadFloat * parseFloat(precioUnitario)).toFixed(2))
+      const descLinea = parseFloat(descLineaRaw || 0)
       totalRecalculado += subtotalDetalle
 
       const prod = productoMap.get(parseInt(productoId))
@@ -265,7 +272,8 @@ exports.crearVenta = async (req, res) => {
           productoId:     parseInt(productoId),
           cantidad:       cantidadFloat,
           precioUnitario: parseFloat(precioUnitario),
-          subtotal:       subtotalDetalle
+          subtotal:       subtotalDetalle,
+          descuentoLinea: descLinea
         })
         detallesMetadata.push({
           unidadVentaSnapshot:       unidadVentaSnapLegacy,
@@ -351,7 +359,8 @@ exports.crearVenta = async (req, res) => {
         productoId:     parseInt(productoId),
         cantidad:       cantidadFloat,
         precioUnitario: parseFloat(precioUnitario),
-        subtotal:       subtotalDetalle
+        subtotal:       subtotalDetalle,
+        descuentoLinea: descLinea
       })
       detallesMetadata.push({
         unidadVentaSnapshot: unidadVentaSnap,
@@ -364,6 +373,45 @@ exports.crearVenta = async (req, res) => {
       })
     }
     totalRecalculado = parseFloat(totalRecalculado.toFixed(2))
+
+    // ── Validación canónica de cotización ─────────────────────────
+    if (cotizacionValida && cotizacionDetalles) {
+      const descGlobalCot = parseFloat(cotizacionValida.descuento || 0)
+      if (Math.abs(descuentoAmt - descGlobalCot) > 0.01) {
+        return res.status(400).json({ error: 'El descuento global no coincide con la cotización', codigo: 'COTIZACION_MISMATCH', campo: 'descuento', esperado: descGlobalCot, recibido: descuentoAmt })
+      }
+
+      const detallesFrontend = Array.isArray(detalles) ? detalles : []
+      if (detallesFrontend.length !== cotizacionDetalles.length) {
+        return res.status(400).json({ error: 'El número de renglones no coincide con la cotización', codigo: 'COTIZACION_MISMATCH', campo: 'detalles', esperado: cotizacionDetalles.length, recibido: detallesFrontend.length })
+      }
+
+      const cotMap = new Map(cotizacionDetalles.map(d => [d.id, d]))
+      for (const df of detallesFrontend) {
+        const detCot = df.detalleCotizacionId ? cotMap.get(parseInt(df.detalleCotizacionId)) : null
+        if (!detCot) {
+          return res.status(400).json({ error: `DetalleCotizacion ${df.detalleCotizacionId || '?'} no encontrado en cotización`, codigo: 'COTIZACION_MISMATCH', campo: 'detalleId' })
+        }
+        if (parseInt(df.productoId) !== detCot.productoId) {
+          return res.status(400).json({ error: 'Producto no coincide con cotización', codigo: 'COTIZACION_MISMATCH', campo: 'productoId', cotizacionId: df.detalleCotizacionId })
+        }
+        const cantEnv = parseFloat(df.cantidad)
+        const cantCot = parseFloat(detCot.cantidad)
+        if (Math.abs(cantEnv - cantCot) > 0.001) {
+          return res.status(400).json({ error: 'Cantidad no coincide con cotización', codigo: 'COTIZACION_MISMATCH', campo: 'cantidad', cotizacionId: df.detalleCotizacionId })
+        }
+        const puEnv = parseFloat(df.precioUnitario)
+        const puCot = parseFloat(detCot.precioUnitario)
+        if (Math.abs(puEnv - puCot) > 0.01) {
+          return res.status(400).json({ error: 'Precio unitario no coincide con cotización', codigo: 'COTIZACION_MISMATCH', campo: 'precioUnitario', cotizacionId: df.detalleCotizacionId })
+        }
+        const dtoEnv = parseFloat(df.descuentoLinea || 0)
+        const dtoCot = parseFloat(detCot.descuento || 0)
+        if (Math.abs(dtoEnv - dtoCot) > 0.01) {
+          return res.status(400).json({ error: 'Descuento por línea no coincide con cotización', codigo: 'COTIZACION_MISMATCH', campo: 'descuentoLinea', cotizacionId: df.detalleCotizacionId })
+        }
+      }
+    }
 
     const totalEsperado = parseFloat((totalRecalculado - descuentoAmt).toFixed(2))
     const diferencia    = Math.abs(totalEsperado - parseFloat(total))
@@ -503,7 +551,7 @@ exports.crearVenta = async (req, res) => {
               cantidad:       d.cantidad,
               precioUnitario: d.precioUnitario,
               subtotal:       d.subtotal,
-              descuento:      0,
+              descuento:      d.descuentoLinea || 0,
               ...detallesMetadata[idx]
             }))
           }
