@@ -7,6 +7,7 @@
 const prisma = require('../../lib/prisma')
 const fs     = require('fs')
 const path   = require('path')
+const getEmpresaId = require('../../helpers/getEmpresaId')
 
 async function getEmpresaBranding(empresaId) {
   const empresa = await prisma.empresa.findUnique({
@@ -21,12 +22,17 @@ async function getEmpresaBranding(empresaId) {
 }
 
 // ════════════════════════════════════════════════════════════════════
-//  GET /abonos/ticket?abonoId=123
-// ════════════════════════════════════════════════════════════════════════
+//  GET /abonos/:abonoId/ticket
+// ════════════════════════════════════════════════════════════════════
 const generarTicketAbono = async (req, res) => {
   try {
-    const abonoId = parseInt(req.query.abonoId)
-    if (!abonoId) return res.status(400).json({ error: 'abonoId inválido' })
+    const abonoIdRaw = req.params.abonoId
+    const abonoId = Number(abonoIdRaw)
+    if (!Number.isInteger(abonoId) || abonoId <= 0) {
+      return res.status(400).json({ error: 'abonoId inválido' })
+    }
+
+    const empresaId = getEmpresaId(req)
 
     const abono = await prisma.abonoBitacora.findUnique({
       where: { id: abonoId },
@@ -45,6 +51,9 @@ const generarTicketAbono = async (req, res) => {
     })
 
     if (!abono) return res.status(404).json({ error: 'Abono no encontrado' })
+    if (abono.Bitacora.empresaId !== empresaId) {
+      return res.status(404).json({ error: 'Abono no encontrado' })
+    }
 
     const empresaData = await getEmpresaBranding(abono.Bitacora.empresaId)
 
