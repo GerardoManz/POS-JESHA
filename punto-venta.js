@@ -144,6 +144,7 @@ let cotDescuentoLocked     = false
 let modoCobranza           = false
 let carritoSoloLectura     = false
 let saldoPendienteCobranza = null
+let bitacoraIdCobranza     = null
 const productoCache        = new Map()
 
 const CONFIRMAR_BTN_HTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Confirmar venta'
@@ -397,10 +398,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 async function verificarTurno() {
   try {
-    const response = await fetch(`${API_URL}/turnos-caja/activo`)
-    if (response.ok) {
-      const data = await response.json()
-      turnoActivo = data.data
+    const response = await apiFetch('/turnos-caja/activo')
+    if (response && response.data) {
+      turnoActivo = response.data
       turnoStatus.innerHTML  = '✓ Turno abierto'
       turnoStatus.className  = 'turno-badge turno-ok'
       turnoStatus.style.cursor = 'default'
@@ -3160,8 +3160,16 @@ async function activarModoCobranza() {
       }
     }
 
+    // Re-verificar turno con header correcto (asegura turnoActivo para esta sucursal)
+    await verificarTurno()
+
     actualizarCarrito()
-    btnCompletarVenta.disabled = false
+
+    // En modo cobranza, habilitar botón si hay carrito + turno
+    // (el método de pago se valida en confirmarCobranza, no en actualizarCarrito)
+    if (modoCobranza && carrito.length > 0 && turnoActivo) {
+      btnCompletarVenta.disabled = false
+    }
 
     // Verificar si existe una intención previa (recarga tras timeout)
     const intentPrevia = obtenerIntencionCobranza()
