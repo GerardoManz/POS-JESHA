@@ -67,6 +67,8 @@ async function construirSnapshotImpresion(req, tipo, entidadId) {
         Bitacora: {
           select: {
             sucursalId: true, folio: true, estado: true,
+            totalMateriales: true, totalAbonado: true, saldoPendiente: true,
+            descuentoTipo: true, descuentoValor: true, descuentoMonto: true,
             Cliente: { select: { nombre: true } }
           }
         }
@@ -105,8 +107,13 @@ async function construirSnapshotImpresion(req, tipo, entidadId) {
       montoAbono: abono.monto,
       metodoPago: abono.metodoPago,
       metodoLabel,
-      saldoAnterior: null,
-      saldoNuevo: null,
+      saldoAnterior: abono.saldoAntesSnapshot ?? null,
+      saldoNuevo: abono.saldoDespuesSnapshot ?? null,
+      totalMateriales: abono.Bitacora.totalMateriales ?? null,
+      totalAbonado: abono.Bitacora.totalAbonado ?? null,
+      descuentoMonto: abono.Bitacora.descuentoMonto ?? null,
+      descuentoTipo: abono.Bitacora.descuentoTipo ?? null,
+      descuentoValor: abono.Bitacora.descuentoValor ?? null,
       abrirCajon: false
     })
   }

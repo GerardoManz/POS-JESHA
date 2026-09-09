@@ -468,16 +468,43 @@ function buildAbonoTicket(printer, payload, printerCfg = {}, logoBuffer = null) 
     pprintln(printer, `Cliente: ${payload.cliente || 'No especificado'}`)
 
     printer.drawLine()
-    const metodo = payload.metodoLabel || payload.metodoPago || ''
-    pprintln(printer, lineLR(metodo, `Abonado: ${money(a.monto)}`, w))
 
-    if (a.saldoAnterior != null) {
-      pprintln(printer, lineLR('Saldo anterior:', money(a.saldoAnterior), w))
+    // Resumen financiero
+    if (a.totalMateriales != null) {
+      pprintln(printer, lineLR('Total materiales:', money(a.totalMateriales), w))
     }
+    if (a.descuentoMonto != null && Number(a.descuentoMonto) > 0) {
+      const descLabel = a.descuentoTipo === 'PORCENTAJE' && a.descuentoValor > 0
+        ? `Descuento (${a.descuentoValor}%):`
+        : 'Descuento:'
+      pprintln(printer, lineLR(descLabel, `-${money(a.descuentoMonto)}`, w))
+    }
+    if (a.saldoAnterior != null && a.totalMateriales != null) {
+      const totalMat = Number(a.totalMateriales) || 0
+      const descMonto = Number(a.descuentoMonto) || 0
+      const subConDesc = totalMat - descMonto
+      const abonadoAntes = subConDesc - Number(a.saldoAnterior)
+      if (abonadoAntes > 0.005) {
+        pprintln(printer, lineLR('Abonado antes:', money(abonadoAntes), w))
+      }
+    }
+
+    printer.drawLine()
+    const metodo = payload.metodoLabel || payload.metodoPago || ''
+    pprintln(printer, lineLR(metodo, '', w))
+    pprintln(printer, lineLR('Abono actual:', money(a.monto), w))
+
+    if (a.totalAbonado != null) {
+      pprintln(printer, lineLR('Total abonado:', money(a.totalAbonado), w))
+    }
+
+    printer.drawLine()
     if (a.saldoNuevo != null) {
       const saldo = Number(a.saldoNuevo) || 0
       if (saldo <= 0) {
-        pprintln(printer, lineLR('Saldo:', 'LIQUIDADA', w))
+        printer.bold(true)
+        pprintln(printer, lineLR('SALDO:', 'LIQUIDADA', w))
+        printer.bold(false)
       } else {
         pprintln(printer, lineLR('Saldo pendiente:', money(a.saldoNuevo), w))
       }
@@ -506,13 +533,35 @@ function buildAbonoTicket(printer, payload, printerCfg = {}, logoBuffer = null) 
     pprintln(printer, `Cliente: ${payload.cliente || 'No especificado'}`)
     printer.drawLine()
 
-    pleftRight(printer, 'Metodo:', payload.metodoLabel || payload.metodoPago || '')
-    pleftRight(printer, 'Monto abonado:', money(a.monto))
+    // Resumen financiero
+    if (a.totalMateriales != null) {
+      pleftRight(printer, 'Total materiales:', money(a.totalMateriales))
+    }
+    if (a.descuentoMonto != null && Number(a.descuentoMonto) > 0) {
+      const descLabel = a.descuentoTipo === 'PORCENTAJE' && a.descuentoValor > 0
+        ? `Descuento (${a.descuentoValor}%):`
+        : 'Descuento:'
+      pleftRight(printer, descLabel, `-${money(a.descuentoMonto)}`)
+    }
+    if (a.saldoAnterior != null && a.totalMateriales != null) {
+      const totalMat = Number(a.totalMateriales) || 0
+      const descMonto = Number(a.descuentoMonto) || 0
+      const subConDesc = totalMat - descMonto
+      const abonadoAntes = subConDesc - Number(a.saldoAnterior)
+      if (abonadoAntes > 0.005) {
+        pleftRight(printer, 'Abonado antes:', money(abonadoAntes))
+      }
+    }
 
     printer.drawLine()
-    if (a.saldoAnterior != null) {
-      pleftRight(printer, 'Saldo anterior:', money(a.saldoAnterior))
+    pleftRight(printer, 'Metodo:', payload.metodoLabel || payload.metodoPago || '')
+    pleftRight(printer, 'Abono actual:', money(a.monto))
+
+    if (a.totalAbonado != null) {
+      pleftRight(printer, 'Total abonado:', money(a.totalAbonado))
     }
+
+    printer.drawLine()
     if (a.saldoNuevo != null) {
       const saldo = Number(a.saldoNuevo) || 0
       if (saldo <= 0) {

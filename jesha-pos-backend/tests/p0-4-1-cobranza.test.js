@@ -49,26 +49,26 @@ const HDR = () => ({
 describe('P0-4.1: Cobranza Bitácora — Monto Abono', () => {
 
   it('C04: monto=0 rechazado', async () => {
-    const r = await req('POST', '/bitacoras/45/abonos', {
+    const r = await req('POST', '/bitacoras/23/abonos', {
       monto: '0.00', metodoPago: 'EFECTIVO'
     }, { ...HDR(), 'Idempotency-Key': require('crypto').randomUUID() })
     assert.ok(r.status >= 400, `expected 4xx for monto=0, got ${r.status}`)
   })
 
   it('C05: monto negativo rechazado', async () => {
-    const r = await req('POST', '/bitacoras/45/abonos', {
+    const r = await req('POST', '/bitacoras/23/abonos', {
       monto: '-50.00', metodoPago: 'EFECTIVO'
     }, { ...HDR(), 'Idempotency-Key': require('crypto').randomUUID() })
     assert.ok(r.status >= 400, `expected 4xx, got ${r.status}`)
   })
 
   it('C07: abono parcial aceptado', async () => {
-    const ctxRes = await req('GET', '/bitacoras/45/contexto-cobranza', null, HDR())
+    const ctxRes = await req('GET', '/bitacoras/23/contexto-cobranza', null, HDR())
     const saldo = parseFloat(ctxRes.data.data.saldoPendiente)
     const montoAbono = Math.min(5, saldo)
     assert.ok(saldo > 0, `saldo should be > 0, got ${saldo}`)
 
-    const r = await req('POST', '/bitacoras/45/abonos', {
+    const r = await req('POST', '/bitacoras/23/abonos', {
       monto: montoAbono.toFixed(2), metodoPago: 'EFECTIVO'
     }, { ...HDR(), 'Idempotency-Key': require('crypto').randomUUID() })
     assert.equal(r.status, 201)
@@ -78,9 +78,9 @@ describe('P0-4.1: Cobranza Bitácora — Monto Abono', () => {
   })
 
   it('C06: monto > saldo rechazado', async () => {
-    const ctxRes = await req('GET', '/bitacoras/45/contexto-cobranza', null, HDR())
+    const ctxRes = await req('GET', '/bitacoras/23/contexto-cobranza', null, HDR())
     const saldo = parseFloat(ctxRes.data.data.saldoPendiente)
-    const r = await req('POST', '/bitacoras/45/abonos', {
+    const r = await req('POST', '/bitacoras/23/abonos', {
       monto: String(saldo + 100), metodoPago: 'EFECTIVO'
     }, { ...HDR(), 'Idempotency-Key': require('crypto').randomUUID() })
     assert.ok(r.status >= 400, `should reject, got ${r.status}`)
@@ -88,13 +88,13 @@ describe('P0-4.1: Cobranza Bitácora — Monto Abono', () => {
 
   it('C28: idempotencia — misma key devuelve mismo abono', async () => {
     const key = require('crypto').randomUUID()
-    const r1 = await req('POST', '/bitacoras/45/abonos', {
+    const r1 = await req('POST', '/bitacoras/23/abonos', {
       monto: '1.00', metodoPago: 'EFECTIVO'
     }, { ...HDR(), 'Idempotency-Key': key })
     assert.equal(r1.status, 201)
     assert.equal(r1.data.idempotent, false)
 
-    const r2 = await req('POST', '/bitacoras/45/abonos', {
+    const r2 = await req('POST', '/bitacoras/23/abonos', {
       monto: '1.00', metodoPago: 'EFECTIVO'
     }, { ...HDR(), 'Idempotency-Key': key })
     assert.equal(r2.status, 200)
@@ -104,7 +104,7 @@ describe('P0-4.1: Cobranza Bitácora — Monto Abono', () => {
 
   it('C29: MovimientoCaja usa monto real (no efectivo recibido)', async () => {
     const key = require('crypto').randomUUID()
-    const r = await req('POST', '/bitacoras/45/abonos', {
+    const r = await req('POST', '/bitacoras/23/abonos', {
       monto: '1.00', metodoPago: 'EFECTIVO'
     }, { ...HDR(), 'Idempotency-Key': key })
     assert.equal(r.status, 201)
@@ -130,7 +130,7 @@ describe('P0-4.1: Snapshots', () => {
   it('saldoAntes/saldoDespues presentes y coherentes', async () => {
     const prisma = require('../src/lib/prisma')
     const abono = await prisma.abonoBitacora.findFirst({
-      where: { bitacoraId: 45 },
+      where: { bitacoraId: 23 },
       orderBy: { creadoEn: 'desc' },
       select: { saldoAntesSnapshot: true, saldoDespuesSnapshot: true, monto: true }
     })
@@ -156,19 +156,19 @@ describe('P0-4.1: Backend Validation', () => {
       algorithm: config.algorithm, issuer: config.issuer,
       audience: config.audience, expiresIn: '5m'
     })
-    const r = await req('PATCH', '/bitacoras/45/descuento', {
+    const r = await req('PATCH', '/bitacoras/23/descuento', {
       descuentoTipo: 'PORCENTAJE', descuentoValor: 5
     }, { Authorization: `Bearer ${empToken}`, 'X-Sucursal-Id': '1' })
     assert.equal(r.status, 403)
   })
 
   it('C18: descuento no se duplica — apply idempotente', async () => {
-    const r1 = await req('PATCH', '/bitacoras/45/descuento', {
+    const r1 = await req('PATCH', '/bitacoras/23/descuento', {
       descuentoTipo: null, descuentoValor: 0
     }, HDR())
     assert.equal(r1.status, 200)
 
-    const r2 = await req('PATCH', '/bitacoras/45/descuento', {
+    const r2 = await req('PATCH', '/bitacoras/23/descuento', {
       descuentoTipo: null, descuentoValor: 0
     }, HDR())
     assert.equal(r2.status, 200)

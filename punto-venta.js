@@ -3232,8 +3232,6 @@ function mostrarModalConfirmacionCobranza() {
   if (rowTotal) rowTotal.style.display = 'none'
   const rowDesc = document.getElementById('confirm-row-descuento')
   if (rowDesc) rowDesc.style.display = 'none'
-  const wrapDesc = document.getElementById('confirm-descuento-wrap')
-  if (wrapDesc) wrapDesc.style.display = 'none'
   const wrapEmp = document.getElementById('confirm-venta-empleado-wrap')
   if (wrapEmp) wrapEmp.style.display = 'none'
   const wrapVend = document.getElementById('confirm-vendedor-wrap')
@@ -3242,6 +3240,45 @@ function mostrarModalConfirmacionCobranza() {
   if (wrapTarjeta) wrapTarjeta.style.display = 'none'
   const wrapMixto = document.getElementById('confirm-mixto-wrap')
   if (wrapMixto) wrapMixto.style.display = 'none'
+
+  const puedeDescCobranza = ['SUPERADMIN', 'ADMIN_SUCURSAL'].includes(USUARIO.rol)
+  const wrapDesc = document.getElementById('confirm-descuento-wrap')
+  if (wrapDesc) {
+    wrapDesc.style.display = puedeDescCobranza ? '' : 'none'
+    if (puedeDescCobranza) {
+      const descInput = document.getElementById('confirm-descuento-input')
+      if (descInput) {
+        descInput.value = ''
+        descInput.oninput = async () => {
+          let pct = parseFloat(descInput.value) || 0
+          if (pct < 0) pct = 0
+          if (pct > 10) { pct = 10; descInput.value = '10' }
+          try {
+            const payload = pct > 0
+              ? { descuentoTipo: 'PORCENTAJE', descuentoValor: pct }
+              : { descuentoTipo: null, descuentoValor: 0 }
+            await apiFetch(`/bitacoras/${bitacoraIdCobranza}/descuento`, {
+              method: 'PATCH', body: JSON.stringify(payload)
+            })
+            const ctxRes = await apiFetch(`/bitacoras/${bitacoraIdCobranza}/contexto-cobranza`)
+            if (ctxRes?.data) {
+              saldoPendienteCobranza = ctxRes.data.saldoPendiente
+              const nuevoSaldo = parseFloat(saldoPendienteCobranza)
+              document.getElementById('confirmacion-total').textContent = `$${nuevoSaldo.toFixed(2)}`
+              const abonarInput = document.getElementById('confirm-cobranza-abonar')
+              if (abonarInput) {
+                abonarInput.value = nuevoSaldo.toFixed(2)
+                abonarInput.max = nuevoSaldo
+              }
+              recalcularCambioCobranza()
+            }
+          } catch (e) {
+            mostrarToast('Error al aplicar descuento: ' + (e.message || e), 'error')
+          }
+        }
+      }
+    }
+  }
 
   const abonarWrap = document.getElementById('confirm-cobranza-abonar-wrap')
   const abonarInput = document.getElementById('confirm-cobranza-abonar')
@@ -3315,7 +3352,7 @@ function mostrarModalConfirmacionCobranza() {
       if (btnConfirmar) btnConfirmar.textContent = 'Confirmar venta'
       if (sub) sub.textContent = 'Revisa los datos antes de procesar'
       montoAbonarCobranza = abonarVal.toFixed(2)
-      await confirmarCobranza()
+      await confirmarCobranza(montoAbonarCobranza)
       montoAbonarCobranza = null
     }
     btnConfirmarOriginal.addEventListener('click', handlerCobranza)

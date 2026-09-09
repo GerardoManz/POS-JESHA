@@ -114,7 +114,9 @@ function buildCorteSnapshot({
 function buildAbonoSnapshot({
   empresa, abonoId = null, fecha, cajero = null, cliente = null,
   montoAbono, metodoPago, metodoLabel,
-  saldoAnterior = null, saldoNuevo = null, abrirCajon = false
+  saldoAnterior = null, saldoNuevo = null, abrirCajon = false,
+  totalMateriales = null, totalAbonado = null,
+  descuentoMonto = null, descuentoTipo = null, descuentoValor = null
 }) {
   return {
     tipo: 'ABONO',
@@ -124,7 +126,12 @@ function buildAbonoSnapshot({
       fecha,
       monto: num(montoAbono),
       saldoAnterior: saldoAnterior == null ? null : num(saldoAnterior),
-      saldoNuevo: saldoNuevo == null ? null : num(saldoNuevo)
+      saldoNuevo: saldoNuevo == null ? null : num(saldoNuevo),
+      totalMateriales: totalMateriales == null ? null : num(totalMateriales),
+      totalAbonado: totalAbonado == null ? null : num(totalAbonado),
+      descuentoMonto: descuentoMonto == null ? null : num(descuentoMonto),
+      descuentoTipo: descuentoTipo || null,
+      descuentoValor: descuentoValor == null ? null : num(descuentoValor)
     },
     cliente,
     cajero,
