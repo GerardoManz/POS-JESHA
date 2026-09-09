@@ -75,14 +75,22 @@ function generarHTMLTicketAbono(abono, fechaStr, horaStr, empresaData) {
     TRANSFERENCIA: 'Transferencia'
   }[abono.metodoPago] || abono.metodoPago
 
-  const bitacoraLiquidada = bitacora.estado === 'CERRADA_VENTA'
-  const saldoCliente      = bitacora.Cliente ? parseFloat(bitacora.Cliente.saldoPendiente || 0) : null
-  const descuentoMonto    = parseFloat(bitacora.descuentoMonto || 0)
-  const descuentoValor    = parseFloat(bitacora.descuentoValor || 0)
-  const subtotalConDesc   = parseFloat((parseFloat(bitacora.totalMateriales || 0) - descuentoMonto).toFixed(2))
-  const descuentoLabel    = bitacora.descuentoTipo === 'PORCENTAJE' && descuentoValor > 0
-    ? ` (${descuentoValor}%)`
-    : ''
+const bitacoraLiquidada = bitacora.estado === 'CERRADA_VENTA'
+  || bitacora.estado === 'CERRADA_INTERNA'
+  || bitacora.estado === 'CERRADA_PAGO_TOTAL'
+  || bitacora.estado === 'CERRADA_SALDO_CERO'
+const saldoCliente      = bitacora.Cliente ? parseFloat(bitacora.Cliente.saldoPendiente || 0) : null
+const descuentoMonto    = parseFloat(bitacora.descuentoMonto || 0)
+const descuentoValor    = parseFloat(bitacora.descuentoValor || 0)
+const subtotalConDesc   = parseFloat((parseFloat(bitacora.totalMateriales || 0) - descuentoMonto).toFixed(2))
+const descuentoLabel    = bitacora.descuentoTipo === 'PORCENTAJE' && descuentoValor > 0
+  ? ` (${descuentoValor}%)`
+  : ''
+
+const saldoAntesAbono   = abono.saldoAntesSnapshot != null ? parseFloat(abono.saldoAntesSnapshot) : null
+const saldoDespuesAbono = abono.saldoDespuesSnapshot != null ? parseFloat(abono.saldoDespuesSnapshot) : null
+const abonoActual       = parseFloat(abono.monto || 0)
+const abonadoAntes      = saldoAntesAbono != null ? parseFloat((subtotalConDesc - saldoAntesAbono).toFixed(2)) : null
 
   const logoHTML = ''
 
@@ -191,6 +199,11 @@ ${bitacora.Cliente ? `
     <tr><td class="lbl">Total materiales:</td><td class="val">${fmt(bitacora.totalMateriales)}</td></tr>
     ${descuentoMonto > 0 ? `<tr><td class="lbl">Descuento${descuentoLabel}:</td><td class="val">-${fmt(descuentoMonto)}</td></tr>` : ''}
     ${descuentoMonto > 0 ? `<tr><td class="lbl">Subtotal c/desc.:</td><td class="val">${fmt(subtotalConDesc)}</td></tr>` : ''}
+    ${abonadoAntes != null && abonadoAntes > 0 ? `<tr><td class="lbl">Abonado anteriormente:</td><td class="val">${fmt(abonadoAntes)}</td></tr>` : ''}
+    <tr class="monto-abono">
+      <td class="lbl">Abono actual:</td>
+      <td class="val">${fmt(abonoActual)}</td>
+    </tr>
     <tr><td class="lbl">Total abonado:</td><td class="val">${fmt(bitacora.totalAbonado)}</td></tr>
     <tr class="saldo-final">
       <td class="lbl">${bitacoraLiquidada ? 'SALDO:' : 'RESTA:'}</td>

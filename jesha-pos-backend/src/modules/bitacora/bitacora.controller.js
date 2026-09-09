@@ -1512,6 +1512,9 @@ const registrarAbono = async (req, res) => {
       return res.status(400).json({ success: false, error: montoResult.error, codigo: 'MONTO_INVALIDO' })
     }
     const monto = montoResult.valor
+    if (monto.lte(0)) {
+      return res.status(400).json({ success: false, error: 'El monto debe ser mayor a $0', codigo: 'MONTO_CERO' })
+    }
 
     const idempotencyKey = req.headers['idempotency-key']
     if (!idempotencyKey || typeof idempotencyKey !== 'string' || idempotencyKey.length > 64 ||

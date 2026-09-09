@@ -321,6 +321,15 @@
         <p id="descuento-limite-aviso" style="display:none;font-size:0.72rem;color:#e8710a;margin:4px 0 0;">Máximo permitido: 10%</p>
       </div>
 
+      <!-- 1b. Monto a abonar (solo cobranza) -->
+      <div id="confirm-cobranza-abonar-wrap" class="modal-confirm-section" style="display:none;margin:12px 0;">
+        <label style="font-size:0.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;display:block;margin-bottom:6px;">
+          Monto a abonar
+        </label>
+        <input type="number" id="confirm-cobranza-abonar" min="0.01" step="0.01" placeholder="0.00"
+          style="width:100%;padding:8px 12px;background:var(--input-bg);border:1px solid var(--panel-border);border-radius:8px;color:var(--text);font-family:'Barlow',sans-serif;font-size:0.9rem;outline:none;" />
+      </div>
+
       <!-- 2. Resumen calculado -->
       <div class="modal-confirm-total-card">
         <span class="modal-confirm-total-label">Total a cobrar</span>
@@ -329,7 +338,7 @@
       </div>
 
       <div class="modal-confirm-resumen">
-        <div class="modal-confirm-row">
+        <div class="modal-confirm-row" id="confirm-row-subtotal">
           <span class="modal-confirm-label">Subtotal</span>
           <span class="modal-confirm-valor" id="confirmacion-subtotal">$0.00</span>
         </div>
@@ -422,7 +431,7 @@
         </div>
 
         <!-- 4. Selector de vendedor -->
-        <div style="margin:0;">
+        <div id="confirm-vendedor-wrap" style="margin:0;">
           <label style="font-size:0.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;display:block;margin-bottom:6px;">
             Vendedor que realizó la venta
           </label>

@@ -145,6 +145,7 @@ let modoCobranza           = false
 let carritoSoloLectura     = false
 let saldoPendienteCobranza = null
 let bitacoraIdCobranza     = null
+let montoAbonarCobranza    = null
 const productoCache        = new Map()
 
 const CONFIRMAR_BTN_HTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Confirmar venta'
@@ -2196,7 +2197,7 @@ async function completarVenta() {
   if (!turnoActivo)            { mostrarToast('No hay turno abierto', 'warning'); return }
 
   if (modoCobranza) {
-    await confirmarCobranza()
+    mostrarModalConfirmacionCobranza()
     return
   }
 
@@ -3205,13 +3206,162 @@ function eliminarIntencionCobranza() {
   sessionStorage.removeItem(key)
 }
 
-async function confirmarCobranza() {
+function mostrarModalConfirmacionCobranza() {
+  if (!saldoPendienteCobranza || parseFloat(saldoPendienteCobranza) <= 0) {
+    mostrarToast('Saldo pendiente no disponible', 'error')
+    return
+  }
+
+  const saldoNum = parseFloat(saldoPendienteCobranza)
+  const modal = document.getElementById('modal-confirmacion')
+  if (!modal) { confirmarCobranza(); return }
+
+  document.getElementById('confirmacion-total').textContent = `$${saldoNum.toFixed(2)}`
+  const metodoLabel = { EFECTIVO:'💵 Efectivo', CREDITO:'💳 T. Crédito', DEBITO:'💳 T. Débito', TRANSFERENCIA:'🔄 Transferencia' }
+  document.getElementById('confirmacion-metodo').textContent = metodoLabel[metodoPagoSeleccionado] || metodoPagoSeleccionado
+
+  const rowCliente = document.getElementById('confirm-row-cliente')
+  if (rowCliente) {
+    if (clienteSeleccionado?.nombre) {
+      document.getElementById('confirmacion-cliente').textContent = clienteSeleccionado.nombre
+      rowCliente.style.display = 'flex'
+    } else { rowCliente.style.display = 'none' }
+  }
+
+  const rowTotal = document.getElementById('confirm-row-subtotal')
+  if (rowTotal) rowTotal.style.display = 'none'
+  const rowDesc = document.getElementById('confirm-row-descuento')
+  if (rowDesc) rowDesc.style.display = 'none'
+  const wrapDesc = document.getElementById('confirm-descuento-wrap')
+  if (wrapDesc) wrapDesc.style.display = 'none'
+  const wrapEmp = document.getElementById('confirm-venta-empleado-wrap')
+  if (wrapEmp) wrapEmp.style.display = 'none'
+  const wrapVend = document.getElementById('confirm-vendedor-wrap')
+  if (wrapVend) wrapVend.style.display = 'none'
+  const wrapTarjeta = document.getElementById('confirm-tarjeta-wrap')
+  if (wrapTarjeta) wrapTarjeta.style.display = 'none'
+  const wrapMixto = document.getElementById('confirm-mixto-wrap')
+  if (wrapMixto) wrapMixto.style.display = 'none'
+
+  const abonarWrap = document.getElementById('confirm-cobranza-abonar-wrap')
+  const abonarInput = document.getElementById('confirm-cobranza-abonar')
+  if (abonarWrap) {
+    abonarWrap.style.display = 'block'
+    if (abonarInput) {
+      abonarInput.value = saldoNum.toFixed(2)
+      abonarInput.max = saldoNum
+      abonarInput.min = '0.01'
+      abonarInput.oninput = () => recalcularCambioCobranza()
+      setTimeout(() => abonarInput.focus(), 100)
+    }
+  }
+
+  const montoWrap = document.getElementById('confirm-monto-efectivo-wrap')
+  if (montoWrap) {
+    if (metodoPagoSeleccionado === 'EFECTIVO') {
+      montoWrap.style.display = 'block'
+      const montoInput = document.getElementById('confirm-monto-recibido')
+      if (montoInput) {
+        montoInput.value = ''
+        montoInput.oninput = () => recalcularCambioCobranza()
+      }
+      const cambioWrap = document.getElementById('confirm-cambio-wrap')
+      if (cambioWrap) cambioWrap.style.display = 'none'
+      const exactoWrap = document.getElementById('confirm-pago-exacto-wrap')
+      if (exactoWrap) exactoWrap.style.display = 'none'
+    } else {
+      montoWrap.style.display = 'none'
+    }
+  }
+
+  const btnConfirmar = document.getElementById('btn-confirmar-venta')
+  if (btnConfirmar) btnConfirmar.textContent = '💰 Cobrar'
+
+  const sub = modal.querySelector('.modal-confirm-sub')
+  if (sub) sub.textContent = 'Modo cobranza — registra el abono'
+
+  modal.style.display = 'flex'
+
+  const btnCancelar = document.getElementById('btn-cancelar-venta')
+  if (btnCancelar) {
+    btnCancelar.onclick = () => {
+      modal.style.display = 'none'
+      if (btnConfirmar) btnConfirmar.textContent = 'Confirmar venta'
+      if (sub) sub.textContent = 'Revisa los datos antes de procesar'
+    }
+  }
+  const btnClose = document.getElementById('modal-confirmacion-close')
+  if (btnClose) {
+    btnClose.onclick = () => {
+      modal.style.display = 'none'
+      if (btnConfirmar) btnConfirmar.textContent = 'Confirmar venta'
+      if (sub) sub.textContent = 'Revisa los datos antes de procesar'
+    }
+  }
+
+  const btnConfirmarOriginal = document.getElementById('btn-confirmar-venta')
+  if (btnConfirmarOriginal) {
+    const handlerCobranza = async () => {
+      btnConfirmarOriginal.removeEventListener('click', handlerCobranza)
+      const abonarVal = parseFloat(abonarInput?.value) || 0
+      if (abonarVal <= 0) { mostrarToast('Ingresa un monto a abonar', 'warning'); return }
+      if (abonarVal > saldoNum + 0.005) { mostrarToast(`El monto ($${abonarVal.toFixed(2)}) excede el saldo ($${saldoNum.toFixed(2)})`, 'warning'); return }
+      if (metodoPagoSeleccionado === 'EFECTIVO') {
+        const efectivoVal = parseFloat(document.getElementById('confirm-monto-recibido')?.value) || 0
+        if (efectivoVal <= 0) { mostrarToast('Ingresa el monto recibido en efectivo', 'warning'); return }
+        if (efectivoVal < abonarVal - 0.01) { mostrarToast(`Efectivo recibido ($${efectivoVal.toFixed(2)}) menor al abono ($${abonarVal.toFixed(2)})`, 'warning'); return }
+      }
+      modal.style.display = 'none'
+      if (btnConfirmar) btnConfirmar.textContent = 'Confirmar venta'
+      if (sub) sub.textContent = 'Revisa los datos antes de procesar'
+      montoAbonarCobranza = abonarVal.toFixed(2)
+      await confirmarCobranza()
+      montoAbonarCobranza = null
+    }
+    btnConfirmarOriginal.addEventListener('click', handlerCobranza)
+  }
+}
+
+function recalcularCambioCobranza() {
+  const abonarInput = document.getElementById('confirm-cobranza-abonar')
+  const abonarVal = parseFloat(abonarInput?.value) || 0
+  const montoInput = document.getElementById('confirm-monto-recibido')
+  const cambioWrap = document.getElementById('confirm-cambio-wrap')
+  const cambioEl = document.getElementById('confirmacion-cambio')
+  const exactoWrap = document.getElementById('confirm-pago-exacto-wrap')
+  const totalEl = document.getElementById('confirmacion-total')
+
+  if (totalEl && abonarVal > 0) totalEl.textContent = `$${abonarVal.toFixed(2)}`
+
+  if (metodoPagoSeleccionado !== 'EFECTIVO' || !montoInput) return
+  const efectivo = parseFloat(montoInput.value) || 0
+  const cambio = parseFloat((efectivo - abonarVal).toFixed(2))
+  const esExacto = efectivo > 0 && Math.abs(cambio) < 0.005 && abonarVal > 0
+
+  if (esExacto) {
+    if (cambioWrap) cambioWrap.style.display = 'none'
+    if (exactoWrap) exactoWrap.style.display = 'flex'
+  } else if (efectivo > 0 && cambio > 0) {
+    if (cambioEl) cambioEl.textContent = `$${cambio.toFixed(2)}`
+    if (cambioWrap) cambioWrap.style.display = 'block'
+    if (exactoWrap) exactoWrap.style.display = 'none'
+  } else {
+    if (cambioWrap) cambioWrap.style.display = 'none'
+    if (exactoWrap) exactoWrap.style.display = 'none'
+  }
+}
+
+async function confirmarCobranza(montoOverride) {
   if (ventaEnProceso) return
   if (!metodoPagoSeleccionado) { mostrarToast('Selecciona el método de pago', 'warning'); return }
   if (!turnoActivo) { mostrarToast('No hay turno abierto', 'warning'); return }
   if (!saldoPendienteCobranza) { mostrarToast('Saldo no disponible', 'error'); return }
 
-  const montoStr = saldoPendienteCobranza
+  const montoStr = montoOverride || saldoPendienteCobranza
+  const montoNum = parseFloat(montoStr)
+  if (!montoNum || montoNum <= 0) { mostrarToast('Monto a abonar inválido', 'warning'); return }
+  const saldoNum = parseFloat(saldoPendienteCobranza)
+  if (montoNum > saldoNum + 0.005) { mostrarToast(`El monto ($${montoNum.toFixed(2)}) excede el saldo ($${saldoNum.toFixed(2)})`, 'warning'); return }
 
   let intent = obtenerIntencionCobranza()
   let idempotencyKey
