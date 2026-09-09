@@ -344,6 +344,9 @@ exports.crear = async (req, res) => {
 // ──────────────────────────────────────────────────────────────────
 exports.listar = async (req, res) => {
   try {
+    if (!ROLES_PERMITIDOS.includes(req.usuario?.rol)) {
+      return res.status(403).json({ error: 'Sin permisos para ver transferencias', codigo: 'SIN_PERMISO_TRANSFERENCIA' })
+    }
     const empresaId = getEmpresaId(req)
     const context = assertTenantRequestContext(req.context)
     const branchMode = context.branch.mode
@@ -429,6 +432,9 @@ exports.listar = async (req, res) => {
 // ──────────────────────────────────────────────────────────────────
 exports.detalle = async (req, res) => {
   try {
+    if (!ROLES_PERMITIDOS.includes(req.usuario?.rol)) {
+      return res.status(403).json({ error: 'Sin permisos para ver transferencias', codigo: 'SIN_PERMISO_TRANSFERENCIA' })
+    }
     const empresaId = getEmpresaId(req)
     const context = assertTenantRequestContext(req.context)
     const branchMode = context.branch.mode

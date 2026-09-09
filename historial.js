@@ -61,17 +61,32 @@ async function cargarCatalogos() {
         })
     }
 
-    const resU = await fetch(`${API_URL}/usuarios`)
-    if (window.handle401 && window.handle401(resU.status)) return
-    if (resU.ok) {
-      const dataU    = await resU.json()
-      const usuarios = Array.isArray(dataU) ? dataU : (dataU.data || [])
-      const sel      = document.getElementById('filtro-usuario')
-      usuarios.filter(u => u.activo).sort((a, b) => a.nombre.localeCompare(b.nombre)).forEach(u => {
-        const opt = document.createElement('option')
-        opt.value = u.id; opt.textContent = u.nombre
-        sel.appendChild(opt)
-      })
+    if (USUARIO.rol === 'SUPERADMIN') {
+      const resU = await fetch(`${API_URL}/usuarios`)
+      if (window.handle401 && window.handle401(resU.status)) return
+      if (resU.ok) {
+        const dataU    = await resU.json()
+        const usuarios = Array.isArray(dataU) ? dataU : (dataU.data || [])
+        const sel      = document.getElementById('filtro-usuario')
+        usuarios.filter(u => u.activo).sort((a, b) => a.nombre.localeCompare(b.nombre)).forEach(u => {
+          const opt = document.createElement('option')
+          opt.value = u.id; opt.textContent = u.nombre
+          sel.appendChild(opt)
+        })
+      }
+    } else if (USUARIO.rol !== 'PLATFORM_ADMIN') {
+      const resV = await fetch(`${API_URL}/usuarios/vendedores`)
+      if (window.handle401 && window.handle401(resV.status)) return
+      if (resV.ok) {
+        const dataV    = await resV.json()
+        const vendedores = Array.isArray(dataV) ? dataV : (dataV.data || [])
+        const sel      = document.getElementById('filtro-usuario')
+        vendedores.filter(u => u.activo).sort((a, b) => a.nombre.localeCompare(b.nombre)).forEach(u => {
+          const opt = document.createElement('option')
+          opt.value = u.id; opt.textContent = u.nombre
+          sel.appendChild(opt)
+        })
+      }
     }
   } catch (e) { console.warn('No se pudieron cargar catálogos:', e.message) }
 }

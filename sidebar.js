@@ -6,7 +6,7 @@
 // ════════════════════════════════════════════════════
 const ROL_BLOQUEADO = {
   ADMIN_SUCURSAL: ['usuarios', 'sucursales', 'configuracion'],
-  EMPLEADO:       ['reportes', 'usuarios', 'corte-caja', 'historial-cortes', 'dashboard', 'facturas', 'sucursales', 'configuracion'],
+  EMPLEADO:       ['reportes', 'usuarios', 'corte-caja', 'historial-cortes', 'dashboard', 'facturas', 'sucursales', 'configuracion', 'transferencias'],
   PRECIOS:        ['dashboard', 'punto-venta', 'cotizaciones', 'corte-caja',
                    'historial-cortes', 'compras', 'historial', 'reportes',
                    'facturas', 'bitacora', 'pedidos', 'clientes', 'usuarios', 'sucursales', 'configuracion'],
@@ -154,7 +154,7 @@ function aplicarBranding() {
 
   if (footerText && empresa.nombreComercial) {
     const delegado = window.jeshaSession?.isDelegated()
-    const subtitle = delegado ? 'Modo soporte de plataforma' : `Versión 2.0.1`
+    const subtitle = delegado ? 'Modo soporte de plataforma' : `Versión 2.0.2`
     footerText.innerHTML = `© 2026 ${empresa.nombreComercial}<br>${subtitle}`
   }
 

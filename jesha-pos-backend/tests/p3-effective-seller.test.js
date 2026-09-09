@@ -493,20 +493,20 @@ describe('P3-EFFECTIVE-SELLER', { concurrency: 1 }, () => {
     const path = require('path')
     const ROOT = path.resolve(__dirname, '..', '..')
 
-    it('backend package.json shows 2.0.1', () => {
+    it('backend package.json shows 2.0.2', () => {
       const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'jesha-pos-backend', 'package.json'), 'utf8'))
-      assert.strictEqual(pkg.version, '2.0.1')
+      assert.strictEqual(pkg.version, '2.0.2')
     })
 
-    it('sidebar.js shows 2.0.1', () => {
+    it('sidebar.js shows 2.0.2', () => {
       const src = fs.readFileSync(path.join(ROOT, 'sidebar.js'), 'utf8')
-      assert.ok(src.includes('Versión 2.0.1'), 'sidebar.js should contain "Versión 2.0.1"')
+      assert.ok(src.includes('Versión 2.0.2'), 'sidebar.js should contain "Versión 2.0.2"')
       assert.ok(!src.includes('Versión 1.0.0'), 'sidebar.js should NOT contain "Versión 1.0.0"')
     })
 
-    it('sidebar.html shows 2.0.1', () => {
+    it('sidebar.html shows 2.0.2', () => {
       const src = fs.readFileSync(path.join(ROOT, 'sidebar.html'), 'utf8')
-      assert.ok(src.includes('Versión 2.0.1'), 'sidebar.html should contain "Versión 2.0.1"')
+      assert.ok(src.includes('Versión 2.0.2'), 'sidebar.html should contain "Versión 2.0.2"')
       assert.ok(!src.includes('Versión 1.0.0'), 'sidebar.html should NOT contain "Versión 1.0.0"')
     })
   })
