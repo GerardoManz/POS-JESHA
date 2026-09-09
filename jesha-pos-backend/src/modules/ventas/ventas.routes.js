@@ -38,7 +38,7 @@ router.get('/folio/:folio', obtenerVentaPorFolio)
 router.patch('/:id/cancelar', cancelarVenta)
 
 // PATCH /ventas/:id/metodo-pago — Actualizar método de pago ← NUEVA RUTA
-router.patch('/:id/metodo-pago', actualizarMetodoPago)
+router.patch('/:id/metodo-pago', requireRole('SUPERADMIN', 'ADMIN_SUCURSAL'), actualizarMetodoPago)
 
 // PATCH /ventas/:id/desbloquear-factura — Desbloquear facturación de crédito liquidado
 router.patch('/:id/desbloquear-factura', desbloquearFactura)

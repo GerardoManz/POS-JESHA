@@ -1485,7 +1485,7 @@ exports.desbloquearFactura = async (req, res) => {
 exports.actualizarMetodoPago = async (req, res) => {
   try {
     const ventaId  = parseInt(req.params.id)
-    const usuario  = req.usuario   // ← consistente con cancelarVenta
+    const usuario  = req.usuario
     const { nuevoMetodo } = req.body
     const empresaId = getEmpresaId(req)
 
@@ -1493,45 +1493,291 @@ exports.actualizarMetodoPago = async (req, res) => {
       return res.status(401).json({ error: 'Usuario no autenticado' })
     }
 
-    // ── Solo SUPERADMIN y ADMIN_SUCURSAL pueden cambiar el método ──
     const rolesPermitidos = ['SUPERADMIN', 'ADMIN_SUCURSAL']
     if (!rolesPermitidos.includes(usuario.rol)) {
       return res.status(403).json({ error: 'Sin permiso para editar el método de pago' })
     }
 
-    // ── Validar método válido ──
-    const metodosValidos = ['EFECTIVO', 'CREDITO', 'DEBITO', 'TRANSFERENCIA']
+    const metodosValidos = ['EFECTIVO', 'CREDITO', 'DEBITO', 'TRANSFERENCIA', 'CREDITO_CLIENTE']
     if (!metodosValidos.includes(nuevoMetodo)) {
       return res.status(400).json({ error: 'Método de pago inválido' })
     }
 
-    // ── Obtener venta ──
-    // P0-BRANCH-ISOLATION: scope de tenant y sucursal (anti cross-tenant/cross-branch)
     const venta = await prisma.venta.findFirst({
       where:   { id: ventaId, ...construirWhereScopeVentas(req) },
       include: { Cliente: true }
     })
+    if (!venta) return res.status(404).json({ error: 'Venta no encontrada' })
 
-    if (!venta) {
-      return res.status(404).json({ error: 'Venta no encontrada' })
+    if (venta.estado === 'CANCELADA') {
+      return res.status(409).json({ error: 'No se puede editar método de una venta cancelada', codigo: 'VENTA_CANCELADA' })
     }
 
-    // ── Bloquear edición de ventas MIXTO ──
+    if (venta.metodoPago === nuevoMetodo) {
+      return res.json({ ok: true, message: 'El método de pago ya es el seleccionado', metodoActual: venta.metodoPago })
+    }
+
+    const facturasBloqueantes = ['PENDIENTE_TIMBRADO', 'FACTURADA', 'TIMBRADA']
+    if (facturasBloqueantes.includes(venta.facturaEstado)) {
+      return res.status(409).json({ error: 'No se puede editar método de una venta facturada/timbrada', codigo: 'VENTA_FACTURADA' })
+    }
+
+    if (venta.turnoId) {
+      const turnoVenta = await prisma.turnoCaja.findUnique({
+        where: { id: venta.turnoId },
+        select: { abierto: true }
+      })
+      if (turnoVenta && !turnoVenta.abierto) {
+        return res.status(409).json({ error: 'No se puede editar método — el turno de esta venta ya fue cerrado', codigo: 'TURNO_CERRADO' })
+      }
+    }
+
     if (venta.metodoPago === 'MIXTO') {
       return res.status(400).json({ error: 'No se puede cambiar el método de pago de una venta con pago mixto. Cancela y crea una nueva.', codigo: 'MIXTO_NO_EDITABLE' })
     }
 
-    // ── POLÍTICA P0.11: Bloquear cambios reales de método post-venta ──
-    if (venta.metodoPago !== nuevoMetodo) {
-      return res.status(409).json({
-        error: 'El cambio de método de pago después de confirmar la venta no está disponible temporalmente.',
-        codigo: 'CAMBIO_METODO_POSTVENTA_NO_DISPONIBLE'
+    const anteriorEsCredito = venta.metodoPago === 'CREDITO_CLIENTE'
+    const nuevoEsCredito     = nuevoMetodo === 'CREDITO_CLIENTE'
+
+    const metodoAnterior = venta.metodoPago
+    const metodoNuevo    = nuevoMetodo
+
+    const actualizarVentaSiVigente = async (tx, data) => {
+      const actualizada = await tx.venta.updateMany({
+        where: { id: ventaId, metodoPago: metodoAnterior },
+        data
       })
+      if (actualizada.count !== 1) {
+        throw Object.assign(new Error('La venta cambió mientras se procesaba la solicitud'), {
+          status: 409,
+          codigo: 'CAMBIO_CONCURRENTE'
+        })
+      }
     }
 
-    return res.json({ message: 'El método de pago ya es el seleccionado', venta })
+    const result = await prisma.$transaction(async (tx) => {
+
+      if (anteriorEsCredito && nuevoEsCredito) {
+        return { skipped: true, reason: 'both-credit' }
+      }
+
+      if (!anteriorEsCredito && !nuevoEsCredito) {
+        const mc = await tx.movimientoCaja.findFirst({
+          where: {
+            empresaId, turnoId: venta.turnoId, referencia: venta.folio,
+            tipo: 'VENTA', metodoPago: venta.metodoPago
+          }
+        })
+        if (!mc) {
+          throw Object.assign(new Error('No se encontró el movimiento de caja de la venta'), {
+            status: 409,
+            codigo: 'MOVIMIENTO_CAJA_NO_ENCONTRADO'
+          })
+        }
+        await tx.movimientoCaja.update({
+          where: { id: mc.id },
+          data: { metodoPago: nuevoMetodo, notas: `Cambio de método: ${venta.metodoPago} → ${nuevoMetodo}` }
+        })
+
+        let facturaEstado = venta.facturaEstado
+        if (nuevoMetodo === 'CREDITO_CLIENTE' || (nuevoMetodo === 'EFECTIVO' && parseFloat(venta.total) > 2000)) {
+          facturaEstado = 'BLOQUEADA'
+        } else if (venta.facturaEstado === 'BLOQUEADA') {
+          facturaEstado = 'DISPONIBLE'
+        }
+
+        await actualizarVentaSiVigente(tx, { metodoPago: nuevoMetodo, facturaEstado })
+
+        return { metodoAnterior: venta.metodoPago, metodoNuevo: nuevoMetodo, mcId: mc?.id || null, facturaEstado }
+      }
+
+      if (!anteriorEsCredito && nuevoEsCredito) {
+        if (!venta.clienteId) {
+          throw Object.assign(new Error('La venta no tiene cliente asociado. No se puede convertir a crédito sin cliente.'), {
+            status: 400,
+            codigo: 'SIN_CLIENTE'
+          })
+        }
+
+        const mc = await tx.movimientoCaja.findFirst({
+          where: {
+            empresaId, turnoId: venta.turnoId, referencia: venta.folio,
+            tipo: 'VENTA', metodoPago: venta.metodoPago
+          }
+        })
+        if (!mc) {
+          throw Object.assign(new Error('No se encontró el movimiento de caja de la venta'), {
+            status: 409,
+            codigo: 'MOVIMIENTO_CAJA_NO_ENCONTRADO'
+          })
+        }
+        await tx.movimientoCaja.delete({ where: { id: mc.id } })
+
+        const clienteInfo = await tx.cliente.findUnique({
+          where: { id: venta.clienteId },
+          select: { nombre: true }
+        })
+
+        const filasCredito = await tx.$executeRaw`
+          UPDATE "Cliente"
+          SET "saldoPendiente"    = "saldoPendiente"    + ${venta.total}::numeric,
+              "totalCreditoUsado" = "totalCreditoUsado" + ${venta.total}::numeric
+          WHERE id = ${venta.clienteId}
+            AND "saldoPendiente" + ${venta.total}::numeric <= "limiteCredito"`
+        if (filasCredito === 0) {
+          throw Object.assign(new Error('Crédito insuficiente'), { status: 400, codigo: 'CREDITO_INSUFICIENTE' })
+        }
+
+        let bitacora = await tx.bitacora.findFirst({
+          where: { clienteId: venta.clienteId, estado: 'ABIERTA', origen: 'VENTA' }
+        })
+        if (!bitacora) {
+          const sucursalId = venta.sucursalId
+          const count = await tx.bitacora.count({ where: { empresaId, sucursalId } })
+          const hoy = new Date().toISOString().slice(0, 10).replace(/-/g, '')
+          const folio = `BIT-${hoy}-${String(count + 1).padStart(5, '0')}`
+          bitacora = await tx.bitacora.create({
+            data: {
+              empresaId, sucursalId, usuarioId: usuario.id,
+              clienteId: venta.clienteId,
+              folio, origen: 'VENTA',
+              titulo: `Crédito — ${clienteInfo?.nombre || 'Cliente'}`,
+              totalMateriales: 0, totalAbonado: 0, descuentoMonto: 0,
+              saldoPendiente: 0, estado: 'ABIERTA',
+              creadaEn: new Date()
+            }
+          })
+        }
+
+        await tx.bitacora.update({
+          where: { id: bitacora.id },
+          data: {
+            totalMateriales: { increment: parseFloat(venta.total) },
+            saldoPendiente:  { increment: parseFloat(venta.total) },
+            actualizadoEn: new Date()
+          }
+        })
+
+        const detallesVenta = await tx.detalleVenta.findMany({
+          where: { ventaId: venta.id },
+          select: { productoId: true, cantidad: true, precioUnitario: true, subtotal: true, descuento: true }
+        })
+        for (const det of detallesVenta) {
+          await tx.detalleBitacora.create({
+            data: {
+              bitacoraId: bitacora.id,
+              productoId: det.productoId,
+              cantidad: det.cantidad, precioUnitario: det.precioUnitario,
+              subtotal: det.subtotal,
+              unidadVentaSnapshot: null, unidadCapturadaSnapshot: null,
+              esGranelSnapshot: null, factorConversionSnapshot: null,
+              modoCapturaSnapshot: null, cantidadCapturadaSnapshot: null,
+              importeCapturadoSnapshot: null,
+              ventaId: venta.id
+            }
+          })
+        }
+
+        await actualizarVentaSiVigente(tx, { metodoPago: 'CREDITO_CLIENTE', facturaEstado: 'BLOQUEADA' })
+
+        return { metodoAnterior: venta.metodoPago, metodoNuevo: 'CREDITO_CLIENTE', mcId: mc?.id || null, bitacoraId: bitacora.id, facturaEstado: 'BLOQUEADA' }
+      }
+
+      if (anteriorEsCredito && !nuevoEsCredito) {
+        const detalleCredito = await tx.detalleBitacora.findFirst({
+          where: { ventaId: venta.id },
+          select: { bitacoraId: true }
+        })
+        if (detalleCredito) {
+          const [bitacoraCredito] = await tx.$queryRaw`
+            SELECT id, "totalAbonado"
+            FROM "Bitacora"
+            WHERE id = ${detalleCredito.bitacoraId}
+            FOR UPDATE`
+          if (bitacoraCredito && parseFloat(bitacoraCredito.totalAbonado) > 0) {
+            throw Object.assign(new Error('No se puede cambiar método — la cuenta de crédito tiene abonos registrados. Usa el módulo de cobranza para conciliar.'), {
+              status: 409,
+              codigo: 'CREDITO_CON_ABONOS'
+            })
+          }
+        }
+
+        const mc = await tx.movimientoCaja.create({
+          data: {
+            empresaId, turnoId: venta.turnoId,
+            tipo: 'VENTA', monto: parseFloat(venta.total),
+            metodoPago: nuevoMetodo, referencia: venta.folio,
+            notas: `Cambio de crédito a ${nuevoMetodo}`
+          }
+        })
+
+        const detallesBitacora = await tx.detalleBitacora.findMany({
+          where: { ventaId: venta.id },
+          select: { id: true, bitacoraId: true }
+        })
+        if (detallesBitacora.length > 0) {
+          const bitacoraId = detallesBitacora[0].bitacoraId
+          const montoARestar = parseFloat(venta.total)
+
+          await tx.detalleBitacora.deleteMany({ where: { ventaId: venta.id } })
+
+          await tx.bitacora.update({
+            where: { id: bitacoraId },
+            data: {
+              totalMateriales: { decrement: montoARestar },
+              saldoPendiente:  { decrement: montoARestar },
+              actualizadoEn: new Date()
+            }
+          })
+        }
+
+        if (venta.clienteId) {
+          await tx.cliente.update({
+            where: { id: venta.clienteId },
+            data: {
+              saldoPendiente:    { decrement: parseFloat(venta.total) },
+              totalCreditoUsado: { decrement: parseFloat(venta.total) }
+            }
+          })
+        }
+
+        let facturaEstado = 'DISPONIBLE'
+        if (nuevoMetodo === 'EFECTIVO' && parseFloat(venta.total) > 2000) {
+          facturaEstado = 'BLOQUEADA'
+        }
+
+        await actualizarVentaSiVigente(tx, { metodoPago: nuevoMetodo, facturaEstado })
+
+        return { metodoAnterior: 'CREDITO_CLIENTE', metodoNuevo: nuevoMetodo, mcId: mc.id, facturaEstado }
+      }
+
+      return { skipped: true, reason: 'unhandled-transition' }
+    })
+
+    await prisma.auditoria.create({
+      data: {
+        empresaId,
+        usuarioId:  usuario.id,
+        sucursalId: venta.sucursalId,
+        accion:     'CAMBIO_METODO_PAGO',
+        modulo:     'VENTAS',
+        referencia: venta.folio,
+        valorAntes: { metodoPago: metodoAnterior },
+        valorDespues: { ventaId, metodoPago: metodoNuevo, ...result }
+      }
+    })
+
+    return res.json({
+      ok: true,
+      ventaId,
+      metodoAnterior: metodoAnterior,
+      metodoNuevo: metodoNuevo,
+      monto: parseFloat(venta.total),
+      ...result
+    })
 
   } catch (err) {
+    if (err.status) return res.status(err.status).json({ error: err.message, codigo: err.codigo })
     console.error('❌ Error en actualizarMetodoPago:', err)
     res.status(500).json({ error: err.message || 'Error al actualizar método de pago' })
   }

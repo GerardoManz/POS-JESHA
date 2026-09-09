@@ -894,17 +894,10 @@ async function confirmarCambioMetodo(ventaId) {
   btnConf.textContent   = '⟳ Guardando...'
 
   try {
-    const res = await fetch(`${API_URL}/ventas/${ventaId}/metodo-pago`, {
+    await apiFetch(`/ventas/${ventaId}/metodo-pago`, {
       method:  'PATCH',
-      headers: {
-        'Content-Type':  'application/json'
-      },
       body: JSON.stringify({ nuevoMetodo })
     })
-    if (window.handle401 && window.handle401(res.status)) return
-
-    const data = await res.json()
-    if (!res.ok) throw new Error(data.error || 'Error al cambiar método de pago')
 
     cerrarModalEditarMetodo()
     document.getElementById('modal-venta').classList.remove('active')
