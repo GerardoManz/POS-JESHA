@@ -3374,7 +3374,7 @@ function ocultarCreditoCliente() {
 }
 
 // ════════════════════════════════════════════════════════════════════
-//  DESCUENTO EMPLEADO — carga lista de empleados activos
+//  DESCUENTO EMPLEADO — carga lista de beneficiarios activos (P0-3)
 // ════════════════════════════════════════════════════════════════════
 
 async function cargarEmpleadosSelect() {
@@ -3382,7 +3382,7 @@ async function cargarEmpleadosSelect() {
   if (!sel) return
   sel.innerHTML = '<option value="">— Sin descuento de empleado —</option>'
   try {
-    const res  = await fetch(`${API_URL}/usuarios?rol=EMPLEADO&activo=true`)
+    const res  = await fetch(`${API_URL}/usuarios/beneficiarios-descuento`)
     const data = await res.json()
     const lista = Array.isArray(data) ? data : (data.data || [])
     lista
@@ -3394,7 +3394,7 @@ async function cargarEmpleadosSelect() {
         sel.appendChild(opt)
       })
   } catch (e) {
-    console.error('❌ Error cargando empleados:', e)
+    console.error('❌ Error cargando beneficiarios descuento:', e)
   }
 }
 

@@ -583,4 +583,26 @@ const listarSucursales = async (req, res) => {
   } catch (err) { res.status(500).json({ error: 'Error al obtener sucursales' }) }
 }
 
-module.exports = { listar, crear, editar, cambiarEstado, resetPassword, establecerPin, verificarPin, listarSucursales, listarVendedores, listarResponsablesBitacora }
+// ── Beneficiarios de descuento de empleado (P0-3) ──────────────
+// Retorna todos los usuarios activos de la empresa excepto PLATFORM_ADMIN.
+// Accesible solo a SUPERADMIN y ADMIN_SUCURSAL (los roles que pueden autorizar descuentos).
+const listarBeneficiariosDescuento = async (req, res) => {
+  try {
+    const empresaId = getEmpresaId(req)
+    const usuarios = await prisma.usuario.findMany({
+      where: {
+        empresaId,
+        activo: true,
+        rol: { not: 'PLATFORM_ADMIN' }
+      },
+      select: { id: true, nombre: true, rol: true },
+      orderBy: { nombre: 'asc' }
+    })
+    res.json(usuarios)
+  } catch (err) {
+    console.error('Error listar beneficiarios descuento:', err)
+    res.status(500).json({ error: 'Error al obtener beneficiarios' })
+  }
+}
+
+module.exports = { listar, crear, editar, cambiarEstado, resetPassword, establecerPin, verificarPin, listarSucursales, listarVendedores, listarResponsablesBitacora, listarBeneficiariosDescuento }

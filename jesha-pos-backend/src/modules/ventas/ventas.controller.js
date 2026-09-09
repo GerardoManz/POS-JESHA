@@ -131,6 +131,23 @@ exports.crearVenta = async (req, res) => {
       return res.status(400).json({ error: 'La venta debe tener al menos 1 producto' })
     }
 
+    // ── P0-3: validar beneficiario de descuento de empleado ──────
+    const rawEmpleadoId = req.body.empleadoId
+    let empleadoIdValidado = null
+    if (rawEmpleadoId !== undefined && rawEmpleadoId !== null && rawEmpleadoId !== '') {
+      const eid = Number(rawEmpleadoId)
+      if (!Number.isInteger(eid) || eid <= 0) {
+        return res.status(400).json({ error: 'Beneficiario de descuento inválido', codigo: 'BENEFICIARIO_INVALIDO' })
+      }
+      const beneficiario = await prisma.usuario.findFirst({
+        where: { id: eid, empresaId, activo: true, rol: { not: 'PLATFORM_ADMIN' } }
+      })
+      if (!beneficiario) {
+        return res.status(400).json({ error: 'Beneficiario de descuento inválido', codigo: 'BENEFICIARIO_INVALIDO' })
+      }
+      empleadoIdValidado = eid
+    }
+
     // P0-BRANCH-ISOLATION: el turno debe pertenecer a la empresa y a la sucursal operativa.
     const turno = await prisma.turnoCaja.findFirst({
       where: { id: turnoId, empresaId, sucursalId, abierto: true }

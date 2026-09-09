@@ -1,5 +1,5 @@
 const router = require('express').Router()
-const { listar, crear, editar, cambiarEstado, resetPassword, establecerPin, verificarPin, listarSucursales, listarVendedores, listarResponsablesBitacora } = require('./usuarios.controller')
+const { listar, crear, editar, cambiarEstado, resetPassword, establecerPin, verificarPin, listarSucursales, listarVendedores, listarResponsablesBitacora, listarBeneficiariosDescuento } = require('./usuarios.controller')
 const { requireRole } = require('../../middlewares/auth.middleware')
 const { requireTenantOrDelegated } = require('../../middlewares/tenant-or-delegated.middleware')
 const { requestContext } = require('../../middlewares/request-context.middleware')
@@ -10,6 +10,7 @@ router.use(requestContext)
 
 router.get('/vendedores', branchOptional, listarVendedores)
 router.get('/responsables-bitacora', tenantGlobal, listarResponsablesBitacora)
+router.get('/beneficiarios-descuento', tenantGlobal, requireRole('SUPERADMIN', 'ADMIN_SUCURSAL'), listarBeneficiariosDescuento)
 
 router.get('/sucursales', tenantGlobal, requireRole('SUPERADMIN'), listarSucursales)
 router.get('/', tenantGlobal, requireRole('SUPERADMIN'), listar)
