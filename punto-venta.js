@@ -428,11 +428,17 @@ async function verificarTurno() {
   }
 }
 
+let abriendoTurno = false
+
 async function abrirTurno() {
+  if (abriendoTurno) return
+  abriendoTurno = true
+
   const monto = parseFloat(montoInicialTurno.value) || 0
   if (monto < 0) {
     turnoError.textContent     = 'El monto no puede ser negativo'
     turnoError.style.display   = 'block'
+    abriendoTurno = false
     return
   }
   btnConfirmarAbrirTurno.disabled    = true
@@ -440,22 +446,15 @@ async function abrirTurno() {
   turnoError.style.display           = 'none'
 
   try {
-    const response = await fetch(`${API_URL}/turnos-caja/abrir`, {
+    const data = await apiFetch('/turnos-caja/abrir', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ montoInicial: monto })
     })
-    const data = await response.json()
-    if (!response.ok) {
-      turnoError.textContent   = data.error || 'Error abriendo turno'
-      turnoError.style.display = 'block'
-      return
-    }
     turnoActivo = data.data
     purgarPausadasDeOtroTurno()
     actualizarBadgePausadas()
     modalAbrirTurno.style.display  = 'none'
-      montoInicialTurno.value = '2000'
+    montoInicialTurno.value = '2000'
     turnoStatus.innerHTML          = '✓ Turno abierto'
     turnoStatus.className          = 'turno-badge turno-ok'
     turnoStatus.style.cursor       = 'default'
@@ -463,10 +462,46 @@ async function abrirTurno() {
     btnCompletarVenta.disabled     = carrito.length === 0
     console.log('✅ Turno abierto:', turnoActivo.id)
   } catch (err) {
-    turnoError.textContent   = 'Error de conexión'
-    turnoError.style.display = 'block'
+    if (err.status === 409) {
+      try {
+        const recheck = await apiFetch('/turnos-caja/activo')
+        if (recheck && recheck.data) {
+          turnoActivo = recheck.data
+          purgarPausadasDeOtroTurno()
+          actualizarBadgePausadas()
+          modalAbrirTurno.style.display = 'none'
+          montoInicialTurno.value = '2000'
+          turnoStatus.innerHTML          = '✓ Turno abierto'
+          turnoStatus.className          = 'turno-badge turno-ok'
+          turnoStatus.style.cursor       = 'default'
+          turnoStatus.onclick            = null
+          btnCompletarVenta.disabled     = carrito.length === 0
+          mostrarToast('Ya existía un turno abierto. Se recuperó correctamente.', 'info')
+          console.log('✅ Turno recuperado (409):', turnoActivo.id)
+          return
+        }
+      } catch (_) {}
+      turnoError.textContent   = err.message || 'Ya hay un turno abierto en esta sucursal'
+      turnoError.style.display = 'block'
+    } else if (err.status === 401) {
+      turnoError.textContent   = 'Sesión expirada. Inicia sesión nuevamente.'
+      turnoError.style.display = 'block'
+    } else if (err.status === 403) {
+      turnoError.textContent   = 'No tienes permisos para abrir turnos.'
+      turnoError.style.display = 'block'
+    } else if (err.status >= 500) {
+      turnoError.textContent   = 'Error del servidor. Intenta de nuevo.'
+      turnoError.style.display = 'block'
+    } else if (!err.status) {
+      turnoError.textContent   = 'No se pudo abrir el turno. Revisa la conexión e inténtalo nuevamente.'
+      turnoError.style.display = 'block'
+    } else {
+      turnoError.textContent   = err.message || 'Error abriendo turno'
+      turnoError.style.display = 'block'
+    }
     console.error('❌ Error abriendo turno:', err)
   } finally {
+    abriendoTurno               = false
     btnConfirmarAbrirTurno.disabled    = false
     btnConfirmarAbrirTurno.textContent = 'Abrir Turno'
   }
@@ -478,9 +513,8 @@ async function abrirTurno() {
 
 async function cargarClientes() {
   try {
-    const response = await fetch(`${API_URL}/clientes?activo=true`)
-    if (!response.ok) throw new Error('Error cargando clientes')
-    clientesLista = await response.json()
+    const data = await apiFetch('/clientes?activo=true')
+    clientesLista = Array.isArray(data) ? data : (data.data || [])
     console.log(`✅ Clientes cargados: ${clientesLista.length}`)
   } catch (err) {
     console.error('❌ Error cargando clientes:', err)
@@ -667,11 +701,7 @@ async function buscarProductos(query, skip = 0) {
 
   searchTimeout = setTimeout(async () => {
     try {
-      const response = await fetch(
-        `${API_URL}/productos?q=${encodeURIComponent(q)}&take=30&skip=${skip}&contexto=pos`
-      )
-      if (!response.ok) throw new Error('Error en búsqueda')
-      const data      = await response.json()
+      const data      = await apiFetch(`/productos?q=${encodeURIComponent(q)}&take=30&skip=${skip}&contexto=pos`)
       const resultados = data.data || []
       if (esNuevaBusqueda) {
         resultadosBusqueda = resultados
@@ -2297,8 +2327,7 @@ function mostrarModalConfirmacion() {
     optPropio.value = USUARIO.id
     optPropio.textContent = `${USUARIO.nombre} (tú)`
     selVendedor.appendChild(optPropio)
-    fetch(`${API_URL}/usuarios/vendedores`)
-      .then(r => r.json())
+    apiFetch('/usuarios/vendedores')
       .then(data => {
         const lista = Array.isArray(data) ? data : (data.data || [])
         lista.filter(u => u.id !== USUARIO.id)
@@ -2495,14 +2524,12 @@ async function verificarPinVendedor(vendedorId) {
   if (btn) { btn.disabled = true; btn.textContent = '⟳ Verificando...' }
 
   try {
-    const res  = await fetch(`${API_URL}/usuarios/${vendedorId}/verificar-pin`, {
+    const data = await apiFetch(`/usuarios/${vendedorId}/verificar-pin`, {
       method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ pin, sucursalId: turnoActivo?.sucursalId || null })
     })
-    const data = await res.json()
 
-    if (res.ok && data.success) {
+    if (data.success) {
       pinVendedorVerificado = true
       sellerAuthorization = data.sellerAuthorization || null
       if (msgEl) { msgEl.textContent = `✓ Verificado — ${data.usuario.nombre}`; msgEl.style.color = '#60d080' }
@@ -2517,7 +2544,7 @@ async function verificarPinVendedor(vendedorId) {
       if (btn) { btn.disabled = false; btn.textContent = 'Verificar' }
     }
   } catch (e) {
-    if (msgEl) { msgEl.textContent = 'Error de conexión'; msgEl.style.color = '#ff6b6b' }
+    if (msgEl) { msgEl.textContent = e.message || 'Error de conexión'; msgEl.style.color = '#ff6b6b' }
     if (btn) { btn.disabled = false; btn.textContent = 'Verificar' }
   }
 }
@@ -2687,9 +2714,7 @@ function iniciarPollingPrintJob(printJobId) {
   const consultar = async () => {
     if (generation !== completionStatusGeneration) return
     try {
-      const response = await fetch(`${API_URL}/impresion/jobs/${printJobId}`)
-      if (!response.ok) return
-      const job = await response.json()
+      const job = await apiFetch(`/impresion/jobs/${printJobId}`)
       if (generation !== completionStatusGeneration) return
       setCompletionStatus(job.estado, job.error ? 'Puedes reintentar sin crear otra venta.' : null)
       if (['ENVIADO_A_IMPRESORA', 'FALLIDO', 'CANCELADO'].includes(job.estado) || ++intentos >= 12) {
@@ -2754,8 +2779,7 @@ function mostrarModalExito(apiResponse) {
   btnReprint.onclick = async () => {
     btnReprint.disabled = true
     try {
-      const response = await fetch(`${API_URL}/impresion/job`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tipo: 'VENTA', ventaId: ventaData.id, accion: 'IMPRIMIR' }) })
-      if (!response.ok) throw new Error('La API rechazó la reimpresión')
+      await apiFetch('/impresion/job', { method: 'POST', body: JSON.stringify({ tipo: 'VENTA', ventaId: ventaData.id, accion: 'IMPRIMIR' }) })
       mostrarToast('Reimpresión enviada', 'success')
     }
     catch (_) { mostrarToast('No se pudo solicitar la reimpresión', 'error') }
@@ -2947,21 +2971,11 @@ async function confirmarVenta() {
 
     setConfirmarVentaState('loading')
 
-    const response = await fetch(`${API_URL}/ventas`, {
+    const venta = await apiFetch('/ventas', {
       method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify(payload)
     })
 
-    if (!response.ok) {
-      const errorData = await response.json()
-      const err = new Error(errorData.error || 'Error procesando venta')
-      err.sinStock = errorData.sinStock || null
-      err.codigo   = errorData.codigo   || null
-      throw err
-    }
-
-    const venta = await response.json()
     console.log('✅ Venta completada:', venta.data.folio)
 
     if (venta.stockAlerts && venta.stockAlerts.length > 0) {
@@ -3033,13 +3047,10 @@ async function confirmarCotizar() {
     }))
     const payload = { clienteId: clienteSeleccionado?.id || null, detalles, notas, venceEn: venceEn || null }
 
-    const response = await fetch(`${API_URL}/cotizaciones`, {
+    const data = await apiFetch('/cotizaciones', {
       method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify(payload)
     })
-    const data = await response.json()
-    if (!response.ok) throw new Error(data.error || 'Error guardando cotización')
 
     cerrarModalCotizar()
     const folio = data.data?.folio || 'COT-...'
@@ -3529,8 +3540,7 @@ function cargarCotizacionDesdeStorage() {
 // ════════════════════════════════════════════════════════════════════
 async function verificarCreditoCliente(clienteId) {
   try {
-    const data = await fetch(`${API_URL}/clientes/${clienteId}`).then(r => r.json())
-
+    const data = await apiFetch(`/clientes/${clienteId}`)
     const cliente = data.data || data
     const btnCredito  = document.getElementById('btn-metodo-credito-cliente')
     const infoCredito = document.getElementById('credito-cliente-info')
@@ -3577,8 +3587,7 @@ async function cargarEmpleadosSelect() {
   if (!sel) return
   sel.innerHTML = '<option value="">— Sin descuento de empleado —</option>'
   try {
-    const res  = await fetch(`${API_URL}/usuarios/beneficiarios-descuento`)
-    const data = await res.json()
+    const data = await apiFetch('/usuarios/beneficiarios-descuento')
     const lista = Array.isArray(data) ? data : (data.data || [])
     lista
       .sort((a, b) => a.nombre.localeCompare(b.nombre))
@@ -3640,9 +3649,8 @@ function configurarEventListeners() {
     if (searchTimeout) clearTimeout(searchTimeout)
 
     try {
-      const r    = await fetch(`${API_URL}/productos?q=${encodeURIComponent(codigo)}&take=5&contexto=pos`)
-      const data = await r.json()
-      const res  = data.data || []
+      const r    = await apiFetch(`/productos?q=${encodeURIComponent(codigo)}&take=5&contexto=pos`)
+      const res  = r.data || []
 
       if (res.length === 1) {
         const idParsed = parseInt(res[0].id, 10)
@@ -3939,9 +3947,7 @@ async function cargarCategoriasParaArticuloRapido(forceReload = false) {
       }
     } catch (_) { /* ignorar */ }
   }
-  const res = await fetch(`${API_URL}/productos/categorias`)
-  if (!res.ok) throw new Error('No se pudieron cargar las categorías')
-  const data = await res.json()
+  const data = await apiFetch('/productos/categorias')
   const lista = Array.isArray(data) ? data : (data.data || [])
   _arCategoriasCache = lista
   try { localStorage.setItem(AR_CAT_KEY, JSON.stringify(lista)) } catch (_) {}
@@ -4189,19 +4195,13 @@ async function abrirCajon() {
   const origText = btnAbrirCajon.innerHTML
   btnAbrirCajon.innerHTML = '<span>⏳ Abriendo...</span>'
   try {
-    const r = await fetch(`${API_URL}/impresion/drawer`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' }
+    await apiFetch('/impresion/drawer', {
+      method: 'POST'
     })
-    if (r.ok) {
-      btnAbrirCajon.innerHTML = '<span>✅ Cajón abierto</span>'
-      setTimeout(() => { btnAbrirCajon.innerHTML = origText; btnAbrirCajon.disabled = false }, 2000)
-    } else {
-      btnAbrirCajon.innerHTML = '<span>❌ Error</span>'
-      setTimeout(() => { btnAbrirCajon.innerHTML = origText; btnAbrirCajon.disabled = false }, 2000)
-    }
+    btnAbrirCajon.innerHTML = '<span>✅ Cajón abierto</span>'
+    setTimeout(() => { btnAbrirCajon.innerHTML = origText; btnAbrirCajon.disabled = false }, 2000)
   } catch (e) {
-    btnAbrirCajon.innerHTML = '<span>❌ Sin conexión</span>'
+    btnAbrirCajon.innerHTML = '<span>❌ Error</span>'
     setTimeout(() => { btnAbrirCajon.innerHTML = origText; btnAbrirCajon.disabled = false }, 2000)
   }
 }
@@ -4313,17 +4313,10 @@ async function enviarArticuloRapido(e) {
   arSubmit.innerHTML   = '⟳ Creando…'
 
   try {
-    const res  = await fetch(`${API_URL}/productos/articulo-rapido`, {
+    const json = await apiFetch('/productos/articulo-rapido', {
       method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify(data)
     })
-    const json = await res.json().catch(() => null)
-    if (!res.ok) {
-      const msg = (json && json.error) || `Error ${res.status} al crear artículo`
-      _arMostrarError(msg)
-      return
-    }
     const prod = (json && json.data) || json
 
     const idParsed = parseInt(prod.id, 10)
@@ -4650,18 +4643,10 @@ async function enviarAjusteRapido() {
   ajusteRapidoConfirmar.style.opacity = '0.6'
 
   try {
-    const response = await fetch(`${API_URL}/inventario/ajuste-rapido`, {
+    const data = await apiFetch('/inventario/ajuste-rapido', {
       method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ productoId, sucursalId, nuevoStock })
     })
-
-    const data = await response.json()
-    if (!response.ok) {
-      ajusteRapidoError.textContent   = data.error || 'Error al ajustar inventario'
-      ajusteRapidoError.style.display = 'block'
-      return
-    }
 
     const cached = productoCache.get(productoId)
     if (cached) {
@@ -4700,8 +4685,8 @@ async function enviarAjusteRapido() {
     }
 
   } catch (err) {
-    console.error('Error de red en ajuste rápido:', err)
-    ajusteRapidoError.textContent   = 'Error de conexión. Intenta de nuevo.'
+    console.error('Error en ajuste rápido:', err)
+    ajusteRapidoError.textContent   = err.message || 'Error de conexión. Intenta de nuevo.'
     ajusteRapidoError.style.display = 'block'
   } finally {
     ajusteRapidoConfirmar.disabled      = false

@@ -703,6 +703,11 @@ window.apiFetch = async function(path, opts = {}) {
     const error = new Error(msg)
     error.status = res.status
     error.code = data?.code || null
+    if (data && typeof data === 'object') {
+      for (const [k, v] of Object.entries(data)) {
+        if (!['error', 'status', 'code'].includes(k)) error[k] = v
+      }
+    }
     throw error
   }
 
