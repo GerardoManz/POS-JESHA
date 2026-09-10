@@ -89,6 +89,12 @@ async function auditarCancelacion(req, factura, ventaIds, detalle) {
   }
 }
 
+// P0-7: Estados válidos del enum EstadoFactura (fuente canónica del schema)
+const ESTADOS_FACTURA_VALIDOS = ['DISPONIBLE', 'FACTURADA', 'VENCIDA', 'CANCELADA', 'BLOQUEADA', 'PENDIENTE_TIMBRADO', 'TIMBRADA']
+
+// P0-7: Timezone offset para fechas operativas — misma convención que previewGlobal/timbrarGlobal
+const TZ_OFFSET = '-06:00'
+
 // GET /facturas — listar con filtros
 exports.listar = async (req, res) => {
   try {
@@ -99,12 +105,28 @@ exports.listar = async (req, res) => {
 
     const where = { ...whereScope }
 
-    if (estado) where.estado = estado
+    // P0-7: validar estado contra enum canónico — 400 controlado, nunca 500
+    if (estado) {
+      if (!ESTADOS_FACTURA_VALIDOS.includes(estado)) {
+        return res.status(400).json({ error: 'Estado de factura inválido', estadosValidos: ESTADOS_FACTURA_VALIDOS })
+      }
+      where.estado = estado
+    }
 
+    // P0-7: fechas con timezone offset consistente (misma convención que previewGlobal)
     if (desde || hasta) {
+      if (desde && isNaN(Date.parse(desde + 'T00:00:00.000' + TZ_OFFSET))) {
+        return res.status(400).json({ error: 'Fecha "desde" inválida' })
+      }
+      if (hasta && isNaN(Date.parse(hasta + 'T23:59:59.999' + TZ_OFFSET))) {
+        return res.status(400).json({ error: 'Fecha "hasta" inválida' })
+      }
+      if (desde && hasta && desde > hasta) {
+        return res.status(400).json({ error: 'La fecha "desde" no puede ser mayor que "hasta"' })
+      }
       where.creadaEn = {}
-      if (desde) where.creadaEn.gte = new Date(desde + 'T00:00:00')
-      if (hasta) where.creadaEn.lte = new Date(hasta + 'T23:59:59')
+      if (desde) where.creadaEn.gte = new Date(desde + 'T00:00:00.000' + TZ_OFFSET)
+      if (hasta) where.creadaEn.lte = new Date(hasta + 'T23:59:59.999' + TZ_OFFSET)
     }
 
     if (q || metodoPago) {
