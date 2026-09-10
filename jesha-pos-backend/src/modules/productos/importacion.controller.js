@@ -14,7 +14,7 @@ const {
 
 const {
     normalizarUnidadVenta,
-    inferirUnidadPorNombre,
+    clasificarProducto,
 } = require('../../helpers/unidades.helper')
 
 // ═══════════════════════════════════════════════════════════════════
@@ -193,26 +193,26 @@ function validarFila(fila, idx) {
 //   8. Conflicto → warning, no importar silenciosamente
 // ═══════════════════════════════════════════════════════════════════
 
-function inferirUnidadVenta(descripcion, esGranel, tipoGranelCSV) {
+function inferirUnidadVenta(descripcion, esGranel, tipoGranelCSV, unidadSat) {
     // Prioridad 1: unidad explícita desde el CSV
     if (tipoGranelCSV) {
         const normalizada = normalizarUnidadVenta(tipoGranelCSV, false)
         if (normalizada) return normalizada
     }
 
-    // Prioridad 2-5: usar helper de inferencia por nombre
+    // Prioridad 2-5: usar clasificador central (única fuente de verdad)
     if (!descripcion) return null
 
-    const inferencia = inferirUnidadPorNombre(descripcion)
+    const resultado = clasificarProducto({
+        nombre: descripcion,
+        esGranel: !!esGranel,
+        unidadSat: unidadSat || null,
+    })
 
     // Granel sin patrón claro → null (no inferir PZA default)
-    if (esGranel && inferencia.regla === 'PZA_PROBABLE') return null
+    if (esGranel && resultado.regla === 'PZA_PROBABLE') return null
 
-    if (inferencia.unidadSugerida) {
-        return inferencia.unidadSugerida
-    }
-
-    return null
+    return resultado.unidadSugerida || null
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -273,7 +273,8 @@ function mapearProducto(fila) {
     } else {
         // Inferir unidad de venta: helper central con prioridad explícita
         const tipoGranelCSV = (fila['TIPO DE GRANEL'] || '').trim()
-        unidadVenta = inferirUnidadVenta(fila['DESCRIPCION'], esGranel, tipoGranelCSV)
+        const unidadSatCSV = (fila['UNIDAD SAT'] || '').trim().toUpperCase() || null
+        unidadVenta = inferirUnidadVenta(fila['DESCRIPCION'], esGranel, tipoGranelCSV, unidadSatCSV)
         unidadCompra = null
         factorConversion = null
         esGranelFinal = esGranel

@@ -16,14 +16,14 @@ describe('P2 — inferirUnidadVenta (controlador importación)', () => {
 
   it('prioridad 1: tipoGranelCSV vacío cae a inferencia', () => {
     const r = inferirUnidadVenta('BOLSA CON PIJAS', false, '')
-    assert.equal(r, 'BOLSA')
+    assert.equal(r, 'PZA')
   })
 
-  it('prioridad 2-3: presentación fija en nombre', () => {
-    assert.equal(inferirUnidadVenta('BOLSA CON PIJAS', false), 'BOLSA')
-    assert.equal(inferirUnidadVenta('CAJA DE TORNILLOS', false), 'CAJA')
-    assert.equal(inferirUnidadVenta('ROLLO DE CINTA', false), 'ROLLO')
-    assert.equal(inferirUnidadVenta('BULTO DE CAL', false), 'BULTO')
+  it('prioridad 2-3: packaging sin metadata → PZA conservador', () => {
+    assert.equal(inferirUnidadVenta('BOLSA CON PIJAS', false), 'PZA')
+    assert.equal(inferirUnidadVenta('CAJA DE TORNILLOS', false), 'PZA')
+    assert.equal(inferirUnidadVenta('LATA DE PINTURA 400 ML', false), 'PZA')
+    assert.equal(inferirUnidadVenta('BOTE AIRE COMPRIMIDO 400 ML', false), 'PZA')
   })
 
   it('prioridad 4: fraccionable en nombre', () => {

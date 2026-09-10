@@ -271,13 +271,24 @@ function obtenerGrupoUnidad(valor) {
 // F. INFERENCIA POR NOMBRE
 // ═══════════════════════════════════════════════════════════════════
 
+// Exclusiones contextuales: cuando el nombre coincide con un exclusionRegex,
+// la presentación fija correspondingKeyword se descarta.
+// Corre ANTES de PATRONES_PRESENTACION_FIJA para evitar falsos positivos.
+const EXCLUSIONES_CONTEXTUALES = [
+  // "CAJA" describe el objeto (toolbox), no empaque → PZA
+  { exclusionRegex: /\bCAJA\b.*\b(HERRAMIENTA|HERRAMIENTAS|PORTAHERRAMIENTA|ORGANIZAD|CONTENED)\b/i, keyword: 'CAJA' },
+  { exclusionRegex: /\bDESARMADOR\b.*\bCAJA\b/i,    keyword: 'CAJA' },
+  { exclusionRegex: /\bGATO\b.*\bBOTELLA\b/i,       keyword: 'BOTELLA' },
+  { exclusionRegex: /\bBOQUILLA\b.*\bLATA\b/i,      keyword: 'LATA' },
+]
+
 const PATRONES_PRESENTACION_FIJA = [
   { regex: /\bBOLSA\b/i,           sugerencia: 'BOLSA',  confianza: 'ALTA' },
   { regex: /\bCAJA\b/i,             sugerencia: 'CAJA',   confianza: 'ALTA' },
   { regex: /\bPAQUETE\b/i,          sugerencia: 'PAQUETE',confianza: 'ALTA' },
   { regex: /\bKIT\b/i,              sugerencia: 'KIT',    confianza: 'ALTA' },
   { regex: /\bSET\b/i,              sugerencia: 'JUEGO',  confianza: 'MEDIA' },
-  { regex: /\bJUEGO DE\b/i,         sugerencia: 'JUEGO',  confianza: 'ALTA' },
+  { regex: /\bJUEGO\b/i,            sugerencia: 'JUEGO',  confianza: 'ALTA' },
   { regex: /\bROLLO\b/i,            sugerencia: 'ROLLO',  confianza: 'ALTA' },
   { regex: /\bBULTO\b/i,            sugerencia: 'BULTO',  confianza: 'ALTA' },
   { regex: /\bSACO\b/i,             sugerencia: 'SACO',   confianza: 'ALTA' },
@@ -333,9 +344,18 @@ function inferirUnidadPorNombre(nombre) {
 
   const nombreUpper = nombre.toUpperCase().trim()
 
-  // 1. Buscar patrón de presentación fija
+  // 0. Detectar exclusiones contextuales (palabras que parecen empaque pero no lo son)
+  const keywordsExcluidas = new Set()
+  for (const ex of EXCLUSIONES_CONTEXTUALES) {
+    if (ex.exclusionRegex.test(nombreUpper)) {
+      keywordsExcluidas.add(ex.keyword)
+    }
+  }
+
+  // 1. Buscar patrón de presentación fija (excluyendo keywords bloqueadas)
   const presentacionesEncontradas = []
   for (const p of PATRONES_PRESENTACION_FIJA) {
+    if (keywordsExcluidas.has(p.sugerencia)) continue
     if (p.regex.test(nombreUpper)) {
       presentacionesEncontradas.push(p)
     }
@@ -414,15 +434,59 @@ function clasificarProducto(producto) {
   const base = inferirUnidadPorNombre(producto.nombre)
   const resultado = { ...base, advertencias: [...base.advertencias] }
 
-  // Si ya tenemos PZA_PROBABLE, verificar consistencia con unidadSat
-  if (base.regla === 'PZA_PROBABLE' && producto.unidadSat) {
-    const sat = String(producto.unidadSat).trim().toUpperCase()
+  const esGranel = producto.esGranel === true
+  const sat = producto.unidadSat ? String(producto.unidadSat).trim().toUpperCase() : null
+  const SAT_A_UNIDAD = { KGM: 'KG', MTR: 'MT', LTR: 'LT' }
+
+  const EMPAQUE_GROUP = new Set(['CAJA', 'BOLSA', 'BULTO', 'SACO', 'BOTELLA', 'LATA', 'PAQUETE', 'TAMBOR', 'BOTE', 'CUBETA'])
+  const SEMANTIC_UNITS = new Set(['JUEGO', 'KIT'])
+  const CONFIRMACION_PRESENTACION = /\b(CON|DE|X|CONTIENE|INCLUYE)\s+\d+/i
+
+  // CONSERVATIVE FALLBACK: packaging word without metadata → PZA
+  // "CAJA DE HERRAMIENTAS" sin sat → PZA (cautela)
+  // "BOLSA CON 100 PIJAS" sin sat → PZA (cautela)
+  // Exception: JUEGO/KIT are semantic units (product IS a set), not packaging.
+  if (resultado.unidadSugerida && EMPAQUE_GROUP.has(resultado.unidadSugerida) && !sat && !esGranel) {
+    if (!SEMANTIC_UNITS.has(resultado.unidadSugerida)) {
+      resultado.unidadSugerida = 'PZA'
+      resultado.confianza = 'BAJA'
+      resultado.regla = 'PZA_CONSERVATIVE_FALLBACK'
+      resultado.advertencias.push(
+        `Texto sugiere ${base.unidadSugerida} pero sin metadata unidades → PZA (conservador)`
+      )
+    }
+  }
+
+  // OVERRIDE: packaging word + H87 + !esGranel → PZA
+  if (resultado.unidadSugerida && EMPAQUE_GROUP.has(resultado.unidadSugerida) && sat === 'H87' && !esGranel) {
+    if (!CONFIRMACION_PRESENTACION.test(producto.nombre.toUpperCase())) {
+      resultado.unidadSugerida = 'PZA'
+      resultado.confianza = 'MEDIA'
+      resultado.regla = 'PZA_SAT_H87_OVERRIDE'
+      resultado.advertencias.push(
+        `Texto sugiere ${base.unidadSugerida} pero unidadSat=H87 y esGranel=false → PZA`
+      )
+    }
+  }
+
+  // Si la inferencia textual es débil (PZA_PROBABLE) y tenemos señales de BD:
+  if (base.regla === 'PZA_PROBABLE' && sat) {
     if (sat === 'H87') {
+      // SAT confirma pieza — boost confianza
       resultado.confianza = 'MEDIA'
       resultado.regla = 'PZA_SAT_H87'
-    } else if (sat === 'KGM' || sat === 'MTR' || sat === 'LTR') {
-      // unidadSat sugiere fraccionable pero nombre no lo confirma → ambigüedad
-      resultado.unidadSugerida = 'PZA'  // conservador
+    } else if (esGranel && SAT_A_UNIDAD[sat]) {
+      // esGranel=true + SAT fraccionable = evidencia fuerte de unidad real
+      const unidadFromSat = SAT_A_UNIDAD[sat]
+      resultado.unidadSugerida = unidadFromSat
+      resultado.confianza = 'MEDIA'
+      resultado.regla = 'GRANEL_SAT_AUTORITATIVO'
+      resultado.advertencias.push(
+        `Texto sugiere PZA pero esGranel=true y unidadSat=${producto.unidadSat} → ${unidadFromSat}`
+      )
+    } else if (SAT_A_UNIDAD[sat]) {
+      // SAT fraccionable pero sin esGranel → ambigüedad, mantener PZA con warning
+      resultado.unidadSugerida = 'PZA'
       resultado.confianza = 'BAJA'
       resultado.regla = 'PZA_PROBABLE_SAT_DIVERGE'
       resultado.advertencias.push(
