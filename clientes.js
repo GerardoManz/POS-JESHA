@@ -428,6 +428,11 @@ if (clienteForm) {
         throw new Error(errData.error || 'Error al guardar cliente')
       }
 
+      const resultado = await response.json()
+      if (resultado.emailDuplicado) {
+        jeshaToast('El cliente se guardó correctamente, pero este correo ya está registrado en otro cliente.', 'warning')
+      }
+
       cargarClientes()
       cerrarModalCliente()
     } catch (error) {

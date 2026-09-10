@@ -155,6 +155,16 @@ const crear = async (req, res) => {
       if (existe) return res.status(409).json({ error: 'El RFC ya está registrado' })
     }
 
+    let emailDuplicado = false
+    const emailNormalizado = (email || '').trim().toLowerCase()
+    if (emailNormalizado) {
+      const existentes = await prisma.cliente.findMany({
+        where: { empresaId, email: { not: null } },
+        select: { email: true }
+      })
+      emailDuplicado = existentes.some(c => (c.email || '').trim().toLowerCase() === emailNormalizado)
+    }
+
     const cliente = await prisma.cliente.create({
       data: {
         empresaId,
@@ -179,7 +189,7 @@ const crear = async (req, res) => {
 
     await registrarAudit(solicitante, 'CREAR_CLIENTE', `Creó cliente ${cliente.nombre} (${tipo})`, req.ip, empresaId)
 
-    res.status(201).json(cliente)
+    res.status(201).json({ ...cliente, emailDuplicado })
   } catch (err) {
     if (err.code === 'P2002') {
       const campo = err.meta?.target?.[0] || 'campo'
@@ -216,6 +226,16 @@ const editar = async (req, res) => {
     if (rfc && rfc !== cliente.rfc) {
       const existe = await prisma.cliente.findUnique({ where: { empresaId_rfc: { empresaId, rfc } } })
       if (existe) return res.status(409).json({ error: 'El RFC ya está registrado' })
+    }
+
+    let emailDuplicado = false
+    const emailNormalizado = (email !== undefined ? email : '').trim().toLowerCase()
+    if (emailNormalizado) {
+      const existentes = await prisma.cliente.findMany({
+        where: { empresaId, id: { not: parseInt(id) }, email: { not: null } },
+        select: { email: true }
+      })
+      emailDuplicado = existentes.some(c => (c.email || '').trim().toLowerCase() === emailNormalizado)
     }
 
     // Validar campos fiscales si el tipo es o será FISCAL
@@ -263,7 +283,7 @@ const editar = async (req, res) => {
 
     await registrarAudit(solicitante, 'EDITAR_CLIENTE', `Editó cliente ${cliente.nombre}`, req.ip, empresaId)
 
-    res.json(clienteActualizado)
+    res.json({ ...clienteActualizado, emailDuplicado })
   } catch (err) {
     if (err.code === 'P2002') {
       const campo = err.meta?.target?.[0] || 'campo'
