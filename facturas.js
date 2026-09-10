@@ -38,7 +38,11 @@ function llenarCatalogosDetalle() {
 // ════════════════════════════════════════════════════════════════════
 //  ESTADO BADGES
 // ════════════════════════════════════════════════════════════════════
-function estadoBadge(estado) {
+function estadoBadge(estado, cancellationDetail) {
+  // P0-6: if backend provides cancellationDetail, use it for badge override
+  if (cancellationDetail?.badge && cancellationDetail?.label) {
+    return `<span class="fact-badge ${cancellationDetail.badge}" title="${escHtml(cancellationDetail.tooltip || '')}">${cancellationDetail.label}</span>`
+  }
   const map = {
     PENDIENTE_TIMBRADO: ['badge-pendiente',  '⏳ Pendiente'],
     TIMBRADA:           ['badge-timbrada',   '✓ Timbrada'],
@@ -46,6 +50,7 @@ function estadoBadge(estado) {
     CANCELADA:          ['badge-cancelada',  '✕ Cancelada'],
     VENCIDA:            ['badge-vencida',    '⚠ Vencida'],
     BLOQUEADA:          ['badge-bloqueada',  '🔒 Bloqueada'],
+    FAILED:             ['badge-failed',     '⚠ Timbrado falló'],
   }
   const [cls, label] = map[estado] || ['badge-pendiente', estado]
   return `<span class="fact-badge ${cls}">${label}</span>`
@@ -184,7 +189,7 @@ window.verDetalle = async function(id) {
     document.getElementById('det-subtotal').textContent = fmt(f.subtotal)
     document.getElementById('det-iva').textContent      = fmt(f.iva)
     document.getElementById('det-total').textContent    = fmt(f.total)
-    document.getElementById('det-estado').innerHTML     = estadoBadge(f.estado)
+    document.getElementById('det-estado').innerHTML = estadoBadge(f.estado, f.cancellationDetail)
     document.getElementById('det-uuid').textContent     = f.folioFiscal || 'Pendiente de timbrado'
     document.getElementById('det-timbrado').textContent = f.timbradaEn ? fmtFecha(f.timbradaEn) : '—'
 
@@ -195,15 +200,20 @@ window.verDetalle = async function(id) {
     const btnPdf         = document.getElementById('det-btn-pdf')
     const btnCandidatos  = document.getElementById('det-btn-candidatos')
     const btnDescartar   = document.getElementById('det-btn-descartar')
+    const btnSyncCancel  = document.getElementById('det-btn-sync-cancel')
     const rolFiscal = ['ADMIN_SUCURSAL','SUPERADMIN'].includes(USUARIO.rol)
     const incierto = esPendiente && f.procesandoTimbrado
 
+    const esCfdiActivo = ['TIMBRADA','FACTURADA','PENDIENTE_TIMBRADO'].includes(f.estado)
+
     btnTimbrar.style.display   = esPendiente && !f.facturapiId ? 'flex' : 'none'
-    btnCancelar.style.display  = ['TIMBRADA','FACTURADA','PENDIENTE_TIMBRADO'].includes(f.estado) ? 'flex' : 'none'
+    btnCancelar.style.display  = esCfdiActivo ? 'flex' : 'none'
     btnXml.style.display       = f.facturapiId ? 'flex' : 'none'
     btnPdf.style.display       = f.facturapiId ? 'flex' : 'none'
     btnCandidatos.style.display = esPendiente && rolFiscal ? 'flex' : 'none'
     btnDescartar.style.display  = incierto && rolFiscal ? 'flex' : 'none'
+    // P0-6: botón de sincronizar visible cuando hay CFDI activo y tiene facturapiId
+    if (btnSyncCancel) btnSyncCancel.style.display = (esCfdiActivo && f.facturapiId) ? 'flex' : 'none'
 
     btnTimbrar.onclick     = () => timbrarManual(f.id)
     btnCancelar.onclick    = () => cancelarFactura(f.id)
@@ -211,6 +221,7 @@ window.verDetalle = async function(id) {
     btnPdf.onclick         = () => descargarFactura(f.id, 'pdf')
     btnCandidatos.onclick  = () => verCandidatos(f.id)
     btnDescartar.onclick   = () => descartarTimbradoIncierto(f.id)
+    if (btnSyncCancel) btnSyncCancel.onclick = () => sincronizarCancelar(f.id)
 
     // Botón enviar email (si existe)
     const btnEmail = document.getElementById('det-btn-email')
@@ -332,20 +343,68 @@ window.timbrarManual = async function(id) {
 // ════════════════════════════════════════════════════════════════════
 async function cancelarFactura(id, confirmacionManual = null) {
   if (!confirmacionManual) {
+    // P0-6: motivo selector before confirm
+    const motivosHtml = `
+      <div style="text-align:left;margin:12px 0">
+        <label style="font-size:0.82rem;color:var(--muted);display:block;margin-bottom:6px">Motivo de cancelación SAT:</label>
+        <select id="cancel-motivo" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--panel-border);background:var(--bg);color:var(--text);font-size:0.85rem">
+          <option value="02" selected>02 — Errores sin relación (recomendado)</option>
+          <option value="01">01 — Errores con relación (requiere UUID sustitución)</option>
+          <option value="03">03 — No se llevó a cabo la operación</option>
+          <option value="04">04 — Factura global (nominativa)</option>
+        </select>
+        <div id="cancel-substitution-row" style="display:none;margin-top:8px">
+          <label style="font-size:0.78rem;color:var(--muted);display:block;margin-bottom:4px">UUID factura de sustitución:</label>
+          <input id="cancel-substitution-uuid" type="text" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" style="width:100%;padding:6px 8px;border-radius:6px;border:1px solid var(--panel-border);background:var(--bg);color:var(--text);font-size:0.82rem;font-family:monospace">
+        </div>
+      </div>
+    `
     const ok = await jeshaConfirm({
       title: 'Cancelar factura',
-      message: '¿Cancelar esta factura ante el SAT? <strong>Esta acción no se puede deshacer.</strong>',
-      confirmText: 'Sí, cancelar', type: 'danger'
+      message: '¿Cancelar esta factura ante el SAT? <strong>Esta acción no se puede deshacer.</strong>' + motivosHtml,
+      confirmText: 'Sí, cancelar', type: 'danger',
+      onShow: () => {
+        const sel = document.getElementById('cancel-motivo')
+        const subRow = document.getElementById('cancel-substitution-row')
+        if (sel && subRow) {
+          sel.addEventListener('change', () => { subRow.style.display = sel.value === '01' ? 'block' : 'none' })
+        }
+      }
     })
     if (!ok) return
+
+    const motivoEl = document.getElementById('cancel-motivo')
+    const uuidEl = document.getElementById('cancel-substitution-uuid')
+    const motivo = motivoEl?.value || '02'
+    const substitutionUUID = uuidEl?.value?.trim() || null
+
+    if (motivo === '01' && !substitutionUUID) {
+      jeshaToast('El motivo 01 requiere un UUID de factura de sustitución.', 'error')
+      return
+    }
+
+    return _ejecutarCancelFactura(id, motivo, substitutionUUID, null)
   }
+
+  return _ejecutarCancelFactura(id, '02', null, confirmacionManual)
+}
+
+async function _ejecutarCancelFactura(id, motivo, substitutionUUID, confirmacionManual) {
+  const btn = document.getElementById('det-btn-cancelar')
   try {
+    if (btn) { btn.disabled = true; btn.textContent = '⟳ Cancelando...' }
+
     const res = await fetch(`${API_URL}/facturas/${id}/cancelar`, {
       method: 'PATCH',
       headers: {
-        ...(confirmacionManual ? { 'Content-Type': 'application/json' } : {})
+        'Content-Type': 'application/json',
+        ...(window.jeshaSession?.getToken() ? { Authorization: `Bearer ${window.jeshaSession.getToken()}` } : {})
       },
-      ...(confirmacionManual ? { body: JSON.stringify({ confirmacionManual }) } : {})
+      body: JSON.stringify({
+        motivo: motivo || '02',
+        ...(substitutionUUID ? { substitutionUUID } : {}),
+        ...(confirmacionManual ? { confirmacionManual } : {})
+      })
     })
     const data = await res.json()
 
@@ -353,16 +412,38 @@ async function cancelarFactura(id, confirmacionManual = null) {
       const texto = window.prompt('El CFDI no se encontró en Facturapi. Verifica en el portal del SAT que no exista o ya esté cancelado, y describe lo que verificaste:')
       if (!texto || !texto.trim()) {
         jeshaToast('Cancelación abortada: se requiere la confirmación manual', 'warning')
+        if (btn) { btn.disabled = false; btn.textContent = '✕ Cancelar factura' }
         return
       }
-      return cancelarFactura(id, texto.trim())
+      return _ejecutarCancelFactura(id, motivo, substitutionUUID, texto.trim())
     }
 
     if (!res.ok) throw new Error(data.error)
 
+    // P0-6: 202 con cancellationStatus → refrescar detalle y listar
     if (res.status === 202 || data.pendiente) {
-      jeshaToast(data.mensaje || 'Cancelación pendiente de confirmación del SAT', 'warning')
-      cargarFacturas()
+      const cs = data.cancellationStatus
+      const detail = data.cancellationDetail
+      const msg = detail?.tooltip || data.mensaje || (cs === 'rejected'
+        ? 'La cancelación fue rechazada por el SAT.'
+        : cs === 'expired'
+        ? 'La solicitud de cancelación expiró.'
+        : cs === 'verifying'
+        ? 'La cancelación está siendo verificada por el SAT.'
+        : 'Cancelación pendiente de aceptación del receptor.')
+      jeshaToast(msg, cs === 'rejected' || cs === 'expired' ? 'error' : 'warning')
+      await cargarFacturas()
+      await verDetalle(id)
+      return
+    }
+
+    // P0-6: handle retryable errors with suggestSync
+    if (data.suggestSync) {
+      const retryMsg = data.retryable
+        ? `${data.error} Puedes reintentar o usar "Actualizar estado".`
+        : data.error
+      jeshaToast(retryMsg, 'error')
+      if (btn) { btn.disabled = false; btn.textContent = '✕ Cancelar factura' }
       return
     }
 
@@ -373,6 +454,55 @@ async function cancelarFactura(id, confirmacionManual = null) {
                data.warning ? 'warning' : 'success')
   } catch (err) {
     jeshaToast('Error: ' + err.message, 'error')
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '✕ Cancelar factura' }
+  }
+}
+
+// P0-6: Sincronizar estado de cancelación desde SAT
+async function sincronizarCancelar(id) {
+  const btn = document.getElementById('det-btn-sync-cancel')
+  try {
+    if (btn) { btn.disabled = true; btn.textContent = '⟳ Sincronizando...' }
+
+    const res = await fetch(`${API_URL}/facturas/${id}/sincronizar-cancelacion`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(window.jeshaSession?.getToken() ? { Authorization: `Bearer ${window.jeshaSession.getToken()}` } : {})
+      }
+    })
+    const data = await res.json()
+
+    if (!res.ok) throw new Error(data.error)
+
+    // P0-6: use normalized response fields
+    const cs = data.cancellationStatus
+    const detail = data.cancellationDetail
+    if (detail?.badge) {
+      // Backend returned cancellationDetail — update badge in-place
+      const badgeEl = document.getElementById('det-estado')
+      if (badgeEl) badgeEl.innerHTML = `<span class="fact-badge ${detail.badge}" title="${escHtml(detail.tooltip || '')}">${detail.label}</span>`
+    }
+
+    if (data.success && (detail?.type === 'terminal' || data.estado === 'canceled')) {
+      jeshaToast('Cancelación confirmada por el SAT. Estado sincronizado.', 'success')
+    } else if (cs === 'rejected') {
+      jeshaToast('La cancelación fue rechazada por el SAT.', 'error')
+    } else if (cs === 'expired') {
+      jeshaToast('La solicitud de cancelación expiró.', 'warning')
+    } else if (cs === 'pending' || cs === 'verifying') {
+      jeshaToast('La cancelación sigue pendiente. Estado actualizado.', 'warning')
+    } else {
+      jeshaToast(data.mensaje || 'Estado sincronizado.', 'success')
+    }
+
+    await cargarFacturas()
+    await verDetalle(id)
+  } catch (err) {
+    jeshaToast('Error sincronizando: ' + err.message, 'error')
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '🔄 Actualizar estado' }
   }
 }
 
@@ -754,15 +884,18 @@ async function buscarVentaExactaParaFactura(folio) {
       return
     }
 
-    // Validaciones
-    if (venta.facturaEstado === 'FACTURADA') {
+    // Validaciones — solo DISPONIBLE permite facturar
+    if (venta.facturaEstado !== 'DISPONIBLE') {
+      const mensajes = {
+        FACTURADA: 'Esta venta ya fue facturada',
+        TIMBRADA: 'Esta venta tiene un CFDI timbrado activo',
+        PENDIENTE_TIMBRADO: 'Esta venta tiene un timbrado en proceso',
+        CANCELADA: 'Esta venta fue cancelada',
+        VENCIDA: 'La ventana de facturación de esta venta venció',
+        BLOQUEADA: 'Venta bloqueada — efectivo mayor a $2,000'
+      }
       resultDiv.className = 'venta-search-result error show'
-      resultDiv.textContent = 'Esta venta ya fue facturada'
-      return
-    }
-    if (venta.facturaEstado === 'BLOQUEADA') {
-      resultDiv.className = 'venta-search-result error show'
-      resultDiv.textContent = 'Venta bloqueada — efectivo mayor a $2,000'
+      resultDiv.textContent = mensajes[venta.facturaEstado] || `No disponible (${venta.facturaEstado})`
       return
     }
 

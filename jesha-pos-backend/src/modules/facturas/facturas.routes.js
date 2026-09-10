@@ -54,8 +54,9 @@ router.post('/:id/reconciliar-timbrado',        branchOptional, requireRole(ROLE
 router.post('/:id/descartar-timbrado-incierto', branchOptional, requireRole(ROLES_FISCAL), resolverCtrl.descartarTimbradoIncierto)
 
 // ── Operaciones fiscales sobre la factura ──
-router.patch('/:id/cancelar',     tenantGlobal, requireRole(ROLES_FISCAL), ctrl.cancelar)
-router.post ('/:id/timbrar',      tenantGlobal, requireRole(ROLES_FISCAL), facCtrl.timbrarManual)
-router.post ('/:id/enviar-email', tenantGlobal, requireRole(ROLES_FISCAL), facCtrl.enviarEmail)
+router.patch('/:id/cancelar',              tenantGlobal, requireRole(ROLES_FISCAL), ctrl.cancelar)
+router.post('/:id/sincronizar-cancelacion', tenantGlobal, requireRole(ROLES_FISCAL), ctrl.sincronizarCancelacion)
+router.post ('/:id/timbrar',               tenantGlobal, requireRole(ROLES_FISCAL), facCtrl.timbrarManual)
+router.post ('/:id/enviar-email',          tenantGlobal, requireRole(ROLES_FISCAL), facCtrl.enviarEmail)
 
 module.exports = router

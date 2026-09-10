@@ -50,6 +50,12 @@
 .badge-bloqueada { background: rgba(122,133,153,0.12); color: var(--muted); }
 .badge-vencida   { background: rgba(122,133,153,0.12); color: var(--muted); }
 .badge-incierto  { background: rgba(217,119,6,0.15); color: var(--warning); }
+/* P0-6: cancellation_status badges */
+.badge-verifying     { background: rgba(99,102,241,0.12); color: var(--info, #6366f1); }
+.badge-pending-cancel{ background: rgba(232,113,10,0.12); color: var(--orange, #e8710a); }
+.badge-rejected      { background: rgba(255,107,107,0.12); color: var(--danger); }
+.badge-expired       { background: rgba(122,133,153,0.12); color: var(--muted); }
+.badge-failed        { background: rgba(255,107,107,0.12); color: var(--danger); }
 
 /* ── BOTÓN TIMBRAR ── */
 .btn-timbrar { color: var(--orange, #e8710a) !important; }

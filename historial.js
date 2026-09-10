@@ -280,10 +280,13 @@ function renderAccionesModal(v) {
   const esSuperAdmin  = ['SUPERADMIN', 'ADMIN_SUCURSAL'].includes(USUARIO.rol)
   const puedeCancelarRol = ['SUPERADMIN', 'ADMIN_SUCURSAL', 'EMPLEADO'].includes(USUARIO.rol)
   const puedeDevolver = v.estado === 'COMPLETADA' || v.estado === 'DEVOLUCION'
-  const puedeCancelar = v.estado === 'COMPLETADA' && puedeCancelarRol
+  // P0-6: no permitir cancelar venta si tiene CFDI activo
+  const cfdiActivo = ['FACTURADA', 'TIMBRADA', 'PENDIENTE_TIMBRADO'].includes(v.facturaEstado)
+  const puedeCancelar = v.estado === 'COMPLETADA' && puedeCancelarRol && !cfdiActivo
 
   // Editar método: solo SUPERADMIN/ADMIN, venta no cancelada, factura no emitida
-  const facturasBloqueantes = ['FACTURADA', 'TIMBRADA']
+  // P0-6: incluir todos los estados de CFDI activo (pendiente timbrado, timbrada, facturada)
+  const facturasBloqueantes = ['FACTURADA', 'TIMBRADA', 'PENDIENTE_TIMBRADO']
   const puedeEditarMetodo   = esSuperAdmin
     && v.estado !== 'CANCELADA'
     && !facturasBloqueantes.includes(v.facturaEstado)
@@ -443,7 +446,9 @@ window.abrirModalDevolucion = async function(ventaId) {
 
     const horasTranscurridas = (Date.now() - new Date(devVentaData.fecha).getTime()) / 36e5
     document.getElementById('dev-aviso-tiempo').style.display = horasTranscurridas > 72 ? 'inline-block' : 'none'
-    document.getElementById('dev-aviso-factura').style.display = devVentaData.facturaEstado === 'FACTURADA' ? 'block' : 'none'
+    // P0-6: aviso de nota de crédito para cualquier CFDI activo
+    const cfdiActivoDevolucion = ['FACTURADA', 'TIMBRADA', 'PENDIENTE_TIMBRADO'].includes(devVentaData.facturaEstado)
+    document.getElementById('dev-aviso-factura').style.display = cfdiActivoDevolucion ? 'block' : 'none'
 
     renderTablaDevolucion()
 
@@ -607,7 +612,8 @@ async function confirmarDevolucion() {
       jeshaToast(msgDevolucion, 'success', 6000)
     }
 
-    if (devVentaData.facturaEstado === 'FACTURADA') {
+    // P0-6: recordatorio de nota de crédito para cualquier CFDI activo
+    if (['FACTURADA', 'TIMBRADA', 'PENDIENTE_TIMBRADO'].includes(devVentaData.facturaEstado)) {
       setTimeout(() => jeshaToast('Recuerda emitir la nota de crédito CFDI con tu contador', 'info', 7000), 600)
     }
 

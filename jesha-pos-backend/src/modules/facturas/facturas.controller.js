@@ -19,6 +19,7 @@ const { getFacturapiForEmpresa, verificarFacturacionEmpresa, FiscalError, modoAc
 const { trackFacturapi } = require('../../lib/debug')
 const { buildFacturaScope, buildVentaScopeFacturas } = require('./factura-scope.helper')
 const { buildGlobalInvoicePayload, METODOS_GLOBALES, PERIODICIDAD_FACTURAPI } = require('../facturacion/facturacion.controller')
+const { mapFacturaState, mapFpError, validateMotivo, buildCancellationResponse } = require('./factura-cancelacion.mapper')
 
 // Helper: ventas asociadas a una factura.
 // FUENTE DE VERDAD = FacturaVenta. Fallback legacy a FacturaCfdi.ventaId
@@ -229,6 +230,15 @@ exports.cancelar = async (req, res) => {
     const id = parseInt(req.params.id)
     const { motivo: motivoCancelacion = '02', confirmacionManual } = req.body || {}
 
+    const motivoInfo = validateMotivo(motivoCancelacion)
+    if (!motivoInfo) {
+      return res.status(400).json({ error: 'Motivo de cancelación inválido. Usa 01, 02, 03 o 04.', codigo: 'MOTIVO_INVALIDO' })
+    }
+
+    // P0-6: motivo 01 requiere UUID de sustitución (solo para envío a Facturapi)
+    const { substitutionUUID } = req.body || {}
+    // Deferimos la validación: si no hay facturapiId, el UUID no es necesario (cancelación local)
+
     const factura = await prisma.facturaCfdi.findFirst({ where: { id, ...invoiceScope } })
     if (!factura) return res.status(404).json({ error: 'Factura no encontrada' })
     if (factura.estado === 'CANCELADA') return res.status(400).json({ error: 'Ya está cancelada' })
@@ -254,6 +264,14 @@ exports.cancelar = async (req, res) => {
     }
 
     // ── Caso B: CON facturapiId → consultar estado REAL en Facturapi ──
+    // P0-6: motivo 01 requiere UUID de sustitución (solo cuando hay CFDI en Facturapi)
+    if (motivoInfo.requiresSubstitution && !substitutionUUID) {
+      return res.status(400).json({
+        error: 'El motivo 01 (errores con relación) requiere un UUID de factura de sustitución.',
+        codigo: 'SUBSTITUTION_UUID_REQUIRED'
+      })
+    }
+
     // ── FAIL-CLOSED (P1): cliente de la Organization PROPIA de la empresa ──
     let fp
     try {
@@ -264,20 +282,19 @@ exports.cancelar = async (req, res) => {
       throw err
     }
 
+    // P0-6: usar updateStatus() en vez de retrieve() para forzar consulta SAT actualizada
     let invoiceRemoto
     try {
-      invoiceRemoto = await trackFacturapi('invoices.retrieve', { facturaId: id }, () => fp.invoices.retrieve(factura.facturapiId))
+      invoiceRemoto = await trackFacturapi('invoices.updateStatus', { facturaId: id }, () => fp.invoices.updateStatus(factura.facturapiId))
     } catch (fpErr) {
       const noEncontrado = fpErr?.status === 404 || /not\s*found|no\s*(se\s*)?encontr/i.test(fpErr?.message || '')
       if (!noEncontrado) {
-        // Error real (auth/red/5xx) → NO tocar BD.
-        console.error(`❌ retrieve() falló (factura ${id}):`, fpErr.message)
-        return res.status(502).json({ error: 'No se pudo consultar el CFDI en Facturapi: ' + fpErr.message })
+        const fpCode = fpErr?.code || fpErr?.error?.code
+        const mapped = mapFpError(fpCode, 'No se pudo consultar el CFDI en Facturapi: ' + fpErr.message)
+        console.error(`❌ updateStatus() falló (factura ${id}):`, fpErr.message)
+        return res.status(502).json({ error: mapped.message, codigo: fpCode || 'FP_ERROR', retryable: mapped.retryable, suggestSync: mapped.suggestSync })
       }
 
-      // ── "Invoice not found" ──
-      // En LIVE el facturapiId puede pertenecer a otra cuenta/entorno y el CFDI estar
-      // VIVO en el SAT. NO auto-cancelar sin confirmación humana explícita.
       if (modoActivo() === 'live' && !confirmacionManual) {
         return res.status(409).json({
           error: 'El CFDI no se encontró en la cuenta de Facturapi activa. En modo live no se cancela automáticamente. Verifica en el portal del SAT que el CFDI no exista o ya esté cancelado, y reenvía la solicitud con "confirmacionManual" (texto describiendo lo que verificaste).',
@@ -285,7 +302,6 @@ exports.cancelar = async (req, res) => {
         })
       }
 
-      // Test (limpieza) o live con confirmación explícita → cancelar local.
       const actualizada = await marcarCanceladaYLiberar(id, invoiceScope, ventaScope, ventaIds)
       await auditarCancelacion(req, factura, ventaIds, {
         tipo: 'LOCAL_CFDI_NO_HALLADO', motivo: motivoCancelacion,
@@ -299,48 +315,164 @@ exports.cancelar = async (req, res) => {
     }
 
     const statusRemoto = invoiceRemoto?.status
+    const cancelStatusRemoto = invoiceRemoto?.cancellation_status
+
+    // P0-6: use centralized mapper for state detection
+    const mappedState = mapFacturaState(invoiceRemoto)
 
     // B1: ya cancelada en el SAT → solo sincronizar el estado local.
-    if (statusRemoto === 'canceled') {
+    if (mappedState.isCanceled) {
       const actualizada = await marcarCanceladaYLiberar(id, invoiceScope, ventaScope, ventaIds)
-      await auditarCancelacion(req, factura, ventaIds, { tipo: 'SINCRONIZAR_YA_CANCELADA', motivo: motivoCancelacion, statusRemoto })
+      await auditarCancelacion(req, factura, ventaIds, { tipo: 'SINCRONIZAR_YA_CANCELADA', motivo: motivoCancelacion, statusRemoto, cancelStatusRemoto })
       console.log(`✅ Factura ${id}: ya estaba cancelada en el SAT — estado local sincronizado por ${req.usuario?.nombre}`)
-      return res.json({
-        success: true, data: actualizada,
+      return res.json(buildCancellationResponse({
+        success: true, mappedState, data: actualizada,
         mensaje: 'El CFDI ya estaba cancelado en el SAT; se sincronizó el estado local.'
-      })
+      }))
+    }
+
+    // P0-6: accepted transitorio — cancellation_status=accepted con status=valid
+    // SAT aceptó pero status aún no flippeó a 'canceled'. Marcar como CANCELADA.
+    if (mappedState.isAcceptedTransitorio) {
+      const actualizada = await marcarCanceladaYLiberar(id, invoiceScope, ventaScope, ventaIds)
+      await auditarCancelacion(req, factura, ventaIds, { tipo: 'CANCELACION_ACEPTADA_TRANSITORIO', motivo: motivoCancelacion, statusRemoto, cancelStatusRemoto })
+      console.log(`✅ Factura ${id}: cancelación aceptada (transitorio) — estado local sincronizado por ${req.usuario?.nombre}`)
+      return res.json(buildCancellationResponse({
+        success: true, mappedState, data: actualizada,
+        mensaje: 'La cancelación fue aceptada por el SAT. Estado local sincronizado.'
+      }))
+    }
+
+    // P0-6: si ya hay cancelación pendiente/verificando, NO reenviar — devolver estado actual
+    if (mappedState.type === 'in_progress') {
+      await auditarCancelacion(req, factura, ventaIds, { tipo: 'CANCELACION_YA_EN_CURSO', motivo: motivoCancelacion, statusRemoto, cancelStatusRemoto })
+      console.warn(`⏳ Factura ${id}: cancelación ya en curso (cancellation_status=${cancelStatusRemoto}) — no se reenvía`)
+      return res.status(202).json(buildCancellationResponse({
+        success: true, mappedState,
+        mensaje: mappedState.cancellationStatus === 'pending'
+          ? 'La cancelación está pendiente de aceptación del receptor. El estado local NO se cambió. Usa "Actualizar estado" para sincronizar cuando el SAT confirme.'
+          : 'La cancelación está siendo verificada por el SAT. El estado local NO se cambió. Usa "Actualizar estado" para sincronizar cuando el SAT confirme.'
+      }))
+    }
+
+    // P0-6: si fue rechazada o expirada, informar claramente (permitir reintentar)
+    if (mappedState.type === 'terminal_error') {
+      await auditarCancelacion(req, factura, ventaIds, { tipo: cancelStatusRemoto === 'rejected' ? 'CANCELACION_RECHAZADA' : 'CANCELACION_EXPIRADA', motivo: motivoCancelacion, statusRemoto, cancelStatusRemoto })
+      const msg = cancelStatusRemoto === 'rejected'
+        ? 'La solicitud de cancelación fue rechazada por el SAT o el receptor. Revisa el motivo y considera una nueva solicitud.'
+        : 'La solicitud de cancelación expiró sin respuesta del receptor. Puedes intentar una nueva solicitud.'
+      console.warn(`🚫 Factura ${id}: cancelación ${cancelStatusRemoto} — ${msg}`)
+      return res.status(409).json(buildCancellationResponse({
+        success: false, mappedState,
+        error: msg, mensaje: msg
+      }))
     }
 
     // B2: viva en el SAT → cancelar en el SAT.
     let resultadoCancel
     try {
-      resultadoCancel = await trackFacturapi('invoices.cancel', { facturaId: id }, () => fp.invoices.cancel(factura.facturapiId, { motive: motivoCancelacion }))
+      resultadoCancel = await trackFacturapi('invoices.cancel', { facturaId: id }, () => fp.invoices.cancel(factura.facturapiId, { motive: motivoCancelacion, ...(motivoInfo.requiresSubstitution && substitutionUUID ? { substitution_uuid: substitutionUUID } : {}) }))
     } catch (fpErr) {
+      const fpCode = fpErr?.code || fpErr?.error?.code
+      const mapped = mapFpError(fpCode, 'No se pudo cancelar el CFDI en el SAT: ' + fpErr.message)
       console.error(`❌ cancel() falló (factura ${id}):`, fpErr.message)
-      return res.status(502).json({ error: 'No se pudo cancelar el CFDI en el SAT: ' + fpErr.message })
+      return res.status(502).json({ error: mapped.message, codigo: fpCode || 'FP_ERROR', retryable: mapped.retryable, suggestSync: mapped.suggestSync })
     }
+
+    const cancelResultStatus = resultadoCancel?.status
+    const cancelResultCancellationStatus = resultadoCancel?.cancellation_status
+    const cancelMappedState = mapFacturaState(resultadoCancel)
 
     // INVARIANTE FISCAL: solo marcar CANCELADA local si el SAT confirma status='canceled'.
-    // Facturapi puede devolver status='valid' con cancelación PENDIENTE de aceptación
-    // del receptor; en ese caso NO se desincroniza el estado local ni se libera la venta.
-    if (resultadoCancel?.status !== 'canceled') {
-      await auditarCancelacion(req, factura, ventaIds, { tipo: 'CANCELACION_PENDIENTE_SAT', motivo: motivoCancelacion, statusRemoto: resultadoCancel?.status })
-      console.warn(`⏳ Factura ${id}: cancelación enviada al SAT, pendiente de confirmación (status=${resultadoCancel?.status})`)
-      return res.status(202).json({
-        success: true, pendiente: true,
-        mensaje: 'La cancelación se envió al SAT pero quedó pendiente de confirmación (posible aceptación del receptor). El estado local NO se cambió. Vuelve a cancelar más tarde para sincronizar cuando el SAT confirme.'
-      })
+    if (cancelMappedState.isCanceled || cancelMappedState.isAcceptedTransitorio) {
+      const actualizada = await marcarCanceladaYLiberar(id, invoiceScope, ventaScope, ventaIds)
+      await auditarCancelacion(req, factura, ventaIds, { tipo: 'CANCELAR_SAT_LOCAL', motivo: motivoCancelacion, statusRemoto: cancelResultStatus, cancelStatusRemoto: cancelResultCancellationStatus })
+      console.log(`✅ Factura ${id} cancelada (SAT + local) — ${ventaIds.length} venta(s) liberada(s) por ${req.usuario?.nombre}`)
+      return res.json(buildCancellationResponse({ success: true, mappedState: cancelMappedState, data: actualizada }))
     }
 
-    // Cancelación confirmada → marcar local + liberar.
-    const actualizada = await marcarCanceladaYLiberar(id, invoiceScope, ventaScope, ventaIds)
-    await auditarCancelacion(req, factura, ventaIds, { tipo: 'CANCELAR_SAT_LOCAL', motivo: motivoCancelacion, statusRemoto: resultadoCancel?.status })
-    console.log(`✅ Factura ${id} cancelada (SAT + local) — ${ventaIds.length} venta(s) liberada(s) por ${req.usuario?.nombre}`)
-    res.json({ success: true, data: actualizada })
+    // P0-6: respuesta no terminal → devolver cancellation_status explícito
+    await auditarCancelacion(req, factura, ventaIds, { tipo: 'CANCELACION_PENDIENTE_SAT', motivo: motivoCancelacion, statusRemoto: cancelResultStatus, cancelStatusRemoto: cancelResultCancellationStatus })
+    console.warn(`⏳ Factura ${id}: cancelación enviada al SAT, pendiente de confirmación (status=${cancelResultStatus}, cancellation_status=${cancelResultCancellationStatus})`)
+    return res.status(202).json(buildCancellationResponse({
+      success: true, mappedState: cancelMappedState,
+      mensaje: 'La cancelación se envió al SAT pero quedó pendiente de confirmación. El estado local NO se cambió. Usa "Actualizar estado" para sincronizar.'
+    }))
 
   } catch (err) {
     console.error('❌ Error cancelando factura:', err)
     res.status(err.expose ? (err.status || 500) : 500).json({ error: 'No se pudo cancelar la factura: ' + err.message })
+  }
+}
+
+// P0-6: POST /facturas/:id/sincronizar-cancelacion — sincroniza estado de cancelación desde SAT
+// Usa updateStatus() para forzar consulta actualizada. Idempotente.
+exports.sincronizarCancelacion = async (req, res) => {
+  try {
+    const invoiceScope = buildFacturaScope(req)
+    const ventaScope = buildVentaScopeFacturas(req)
+    const id = parseInt(req.params.id)
+
+    const factura = await prisma.facturaCfdi.findFirst({ where: { id, ...invoiceScope } })
+    if (!factura) return res.status(404).json({ error: 'Factura no encontrada' })
+    if (factura.estado === 'CANCELADA') return res.status(400).json({ error: 'Ya está cancelada', estado: 'CANCELADA' })
+    if (!factura.facturapiId) return res.status(400).json({ error: 'Factura sin CFDI asociado (pendiente de timbrado)' })
+
+    if (factura.procesandoTimbrado) {
+      return res.status(409).json({
+        error: 'Hay un timbrado en proceso o con resultado desconocido. Reconcilia el timbrado primero.',
+        codigo: 'TIMBRADO_INCIERTO'
+      })
+    }
+
+    let fp
+    try {
+      await verificarFacturacionEmpresa(factura.empresaId)
+      fp = await getFacturapiForEmpresa(factura.empresaId)
+    } catch (err) {
+      if (err instanceof FiscalError) return res.status(err.status).json({ error: err.message, codigo: err.code })
+      throw err
+    }
+
+    let invoiceRemoto
+    try {
+      invoiceRemoto = await trackFacturapi('invoices.updateStatus', { facturaId: id }, () => fp.invoices.updateStatus(factura.facturapiId))
+    } catch (fpErr) {
+      const fpCode = fpErr?.code || fpErr?.error?.code
+      const mapped = mapFpError(fpCode, 'No se pudo sincronizar el estado del CFDI: ' + fpErr.message)
+      console.error(`❌ updateStatus() falló en sync (factura ${id}):`, fpErr.message)
+      return res.status(502).json({ error: mapped.message, codigo: fpCode || 'FP_ERROR', retryable: mapped.retryable, suggestSync: mapped.suggestSync })
+    }
+
+    // P0-6: use centralized mapper
+    const mappedState = mapFacturaState(invoiceRemoto)
+    const statusRemoto = invoiceRemoto?.status
+    const cancelStatusRemoto = invoiceRemoto?.cancellation_status
+
+    // Si el SAT ya confirmó cancelación (o accepted transitorio) → marcar local y liberar
+    if (mappedState.isCanceled || mappedState.isAcceptedTransitorio) {
+      const ventaIds = await obtenerVentaIdsDeFactura(factura.id, factura.ventaId)
+      const actualizada = await marcarCanceladaYLiberar(id, invoiceScope, ventaScope, ventaIds)
+      await auditarCancelacion(req, factura, ventaIds, {
+        tipo: 'SYNC_CANCELACION_ACEPTADA', motivo: 'sincronizar-cancelacion',
+        statusRemoto, cancelStatusRemoto
+      })
+      console.log(`✅ Factura ${id}: sincronización confirmó cancelación SAT — ${ventaIds.length} venta(s) liberada(s)`)
+      return res.json(buildCancellationResponse({
+        success: true, mappedState, data: actualizada,
+        mensaje: 'El CFDI fue cancelado en el SAT. Estado local sincronizado.'
+      }))
+    }
+
+    // Cualquier otro estado → reportar con campos normalizados
+    return res.json(buildCancellationResponse({
+      success: true, mappedState,
+      mensaje: mappedState.tooltip || 'El CFDI sigue activo. No hay cancelación en proceso.'
+    }))
+
+  } catch (err) {
+    console.error('❌ Error sincronizando cancelación:', err)
+    res.status(err.expose ? (err.status || 500) : 500).json({ error: 'No se pudo sincronizar: ' + err.message })
   }
 }
 

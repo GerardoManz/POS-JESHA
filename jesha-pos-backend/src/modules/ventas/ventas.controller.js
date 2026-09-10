@@ -1197,8 +1197,15 @@ exports.cancelarVenta = async (req, res) => {
     }
 
     // ── POLÍTICA P0.9: Bloquear cancelación si hay CFDI activo ──
+    // P0-6: incluir FacturaVenta para facturas multi-venta (global/conjunta)
     const cfdiActivo = await prisma.facturaCfdi.findFirst({
-      where: { ventaId: venta.id, estado: { not: 'CANCELADA' } },
+      where: {
+        estado: { not: 'CANCELADA' },
+        OR: [
+          { ventaId: venta.id },
+          { FacturaVenta: { some: { ventaId: venta.id } } }
+        ]
+      },
       select: { id: true, folioFiscal: true }
     })
     if (cfdiActivo) {
@@ -1443,8 +1450,15 @@ exports.desbloquearFactura = async (req, res) => {
     }
 
     // Verificar CFDI activo
+    // P0-6: incluir FacturaVenta para facturas multi-venta (global/conjunta)
     const cfdiActivo = await prisma.facturaCfdi.findFirst({
-      where: { ventaId, estado: { not: 'CANCELADA' } },
+      where: {
+        estado: { not: 'CANCELADA' },
+        OR: [
+          { ventaId },
+          { FacturaVenta: { some: { ventaId } } }
+        ]
+      },
       select: { id: true, folioFiscal: true }
     })
     if (cfdiActivo) {
