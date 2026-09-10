@@ -421,6 +421,21 @@ async function verificarTurno() {
       btnCompletarVenta.disabled = true
     }
   } catch (err) {
+    if (err.status === 404) {
+      turnoActivo = null
+      turnoStatus.innerHTML  = '⚠️ Sin turno — Abrir'
+      turnoStatus.className  = 'turno-badge turno-error'
+      turnoStatus.style.cursor = 'pointer'
+      turnoStatus.onclick = () => {
+        const empNombre = window.jeshaSession?.getEmpresaNombre() || ''
+        const sucNombre = USUARIO?.Sucursal?.nombre || ''
+        const el = document.getElementById('turno-modal-empresa')
+        if (el) el.textContent = [empNombre, sucNombre].filter(Boolean).join(' — ') || 'POS'
+        modalAbrirTurno.style.display = 'flex'
+      }
+      btnCompletarVenta.disabled = true
+      return null
+    }
     console.error('❌ Error verificando turno:', err)
     turnoStatus.innerHTML = '❌ Error de conexión'
     turnoStatus.className = 'turno-badge turno-error'
