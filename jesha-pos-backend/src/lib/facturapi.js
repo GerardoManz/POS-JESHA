@@ -33,7 +33,7 @@
 'use strict'
 
 const prisma = require('./prisma')
-const { descifrarSecreto } = require('./fiscal-secrets')
+const { cifrarSecreto, descifrarSecreto } = require('./fiscal-secrets')
 
 let _facturapi = null
 let _logged = false
@@ -67,8 +67,11 @@ function esProduccion() {
 }
 
 // Modo activo — EXCLUSIVAMENTE por FACTURAPI_MODE.
-// Si falta o es inválido: default 'test' (fail-safe, NUNCA live implícito).
+// En producción (NODE_ENV=production o RENDER=true): SIEMPRE 'live'.
+// Fuera de producción: FACTURAPI_MODE ('test'|'live'); default 'test'.
+// Regla: producción NUNCA puede caer silenciosamente a test.
 function modoActivo() {
+  if (esProduccion()) return 'live'
   const m = (process.env.FACTURAPI_MODE || 'test').trim().toLowerCase()
   return m === 'live' ? 'live' : 'test'
 }
@@ -167,11 +170,11 @@ async function verificarFacturacionEmpresa(empresaId, { modo } = {}) {
   const m = modo || modoActivo()
   const enc = m === 'live' ? config.facturapiLiveKeyEnc : config.facturapiTestKeyEnc
   if (!enc) {
-    throw new FiscalError(
-      409,
-      'FACTURAPI_EMPRESA_NO_CONFIGURADO',
-      `La empresa no tiene key de Facturapi para el modo ${m}.`
-    )
+    const code = m === 'live' ? 'FACTURAPI_LIVE_KEY_MISSING' : 'FACTURAPI_TEST_KEY_MISSING'
+    const msg = m === 'live'
+      ? 'La empresa no tiene credencial de producción (live key). Crea la live key en Configuración Fiscal antes de facturar.'
+      : `La empresa no tiene key de Facturapi para el modo ${m}.`
+    throw new FiscalError(409, code, msg)
   }
   return { config, modo: m }
 }
@@ -212,12 +215,68 @@ function getFacturapiUser() {
   return _buildClient(userKey, { rol: 'user' })
 }
 
+// Guard post-create: verifica que la respuesta de Facturapi sea consistente
+// con el modo activo. En producción, si la factura resulta ser de test,
+// RECHAZA el timbrado (nunca marcar TIMBRADA con un CFDI sin validez fiscal).
+function assertLivemodeConsistente(invoice, { facturaId } = {}) {
+  const modo = modoActivo()
+  if (invoice == null || typeof invoice !== 'object') return
+  const livemode = invoice.livemode
+  if (typeof livemode !== 'boolean') return
+
+  if (modo === 'live' && livemode === false) {
+    console.error(`🔴 FACTURAPI_TEST_MODE_BLOCKED: factura ${facturaId || '?'}, livemode=${livemode}, modo=${modo}`)
+    throw new FiscalError(
+      422,
+      'FACTURAPI_TEST_MODE_BLOCKED',
+      'Facturapi respondió en modo de pruebas (test). La factura NO tiene validez fiscal. Timbrado bloqueado.'
+    )
+  }
+
+  if (modo === 'test' && livemode === true) {
+    console.warn(`⚠️  Facturapi live invoice created in test mode: factura ${facturaId || '?'}`)
+  }
+}
+
+// Persiste la live key desde la variable de entorno FACTURAPI_KEY en
+// ConfiguracionFiscal de la empresa. Usar solo cuando:
+//   1. La empresa ya tiene facturapiOrganizationId
+//   2. facturapiLiveKeyEnc es NULL
+//   3. FACTURAPI_KEY existe en el entorno y es una sk_live_*
+// Retorna { persistida: true } o lanza error.
+async function persistirLiveKeyDeEntorno(empresaId) {
+  const liveKeyEnv = process.env.FACTURAPI_KEY
+  if (!liveKeyEnv || typeof liveKeyEnv !== 'string' || !liveKeyEnv.trim()) {
+    throw new FiscalError(409, 'FACTURAPI_LIVE_KEY_ENV_MISSING', 'FACTURAPI_KEY no está configurada en el entorno.')
+  }
+  if (!liveKeyEnv.startsWith('sk_live_')) {
+    throw new FiscalError(409, 'FACTURAPI_LIVE_KEY_INVALID', 'FACTURAPI_KEY no parece ser una live key (debe empezar con sk_live_).')
+  }
+  const config = await prisma.configuracionFiscal.findUnique({ where: { empresaId } })
+  if (!config || !config.facturapiOrganizationId) {
+    throw new FiscalError(409, 'FISCAL_CONFIG_NOT_READY', 'La empresa no tiene Organization Facturapi configurada.')
+  }
+  if (config.facturapiLiveKeyEnc) {
+    return { persistida: false, razon: 'already_has_live_key' }
+  }
+  const encrypted = cifrarSecreto(liveKeyEnv.trim())
+  await prisma.configuracionFiscal.update({
+    where: { empresaId },
+    data: { facturapiLiveKeyEnc: encrypted }
+  })
+  resetFacturapiCache()
+  console.log(`✅ Live key persistida para empresa ${empresaId}`)
+  return { persistida: true }
+}
+
 module.exports = {
   FiscalError,
   detectarModo,
   modoActivo,
   esProduccion,
   assertFacturapiSeguro,
+  assertLivemodeConsistente,
+  persistirLiveKeyDeEntorno,
   getFacturapi,
   getFacturapiForEmpresa,
   verificarFacturacionEmpresa,

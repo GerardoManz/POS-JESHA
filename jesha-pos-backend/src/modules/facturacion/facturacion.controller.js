@@ -17,7 +17,7 @@
 const prisma = require('../../lib/prisma')
 const getEmpresaId = require('../../helpers/getEmpresaId')
 const resolverDatosEmisor = require('../../helpers/resolverDatosEmisor')
-const { getFacturapiForEmpresa, verificarFacturacionEmpresa, FiscalError } = require('../../lib/facturapi')
+const { getFacturapiForEmpresa, verificarFacturacionEmpresa, FiscalError, assertLivemodeConsistente } = require('../../lib/facturapi')
 const { trackFacturapi, isEnabled } = require('../../lib/debug')
 const { buildFacturaScope } = require('../facturas/factura-scope.helper')
 
@@ -680,6 +680,9 @@ exports.solicitarFactura = async (req, res) => {
       }))
       selladoOk = true
 
+      // ── P0: Guard livemode — FACTURAPI_TEST_MODE_BLOCKED ──
+      assertLivemodeConsistente(invoice, { facturaId: factura.id })
+
       // ── 3) Éxito → TIMBRADA + venta FACTURADA ──
       await prisma.$transaction([
         prisma.facturaCfdi.update({
@@ -901,6 +904,9 @@ exports.timbrarManual = async (req, res) => {
         idempotency_key: f.idempotencyKey
       }))
       selladoOk = true
+
+      // ── P0: Guard livemode — FACTURAPI_TEST_MODE_BLOCKED ──
+      assertLivemodeConsistente(invoice, { facturaId: id })
 
       // ── Éxito ──
       const [actualizada] = await prisma.$transaction([

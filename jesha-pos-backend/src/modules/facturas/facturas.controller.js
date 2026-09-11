@@ -15,7 +15,7 @@ const prisma = require('../../lib/prisma')
 const resolverDatosEmisor = require('../../helpers/resolverDatosEmisor')
 const getEmpresaId = require('../../helpers/getEmpresaId')
 const resolverSucursalId = require('../sucursal/sucursal.helper')
-const { getFacturapiForEmpresa, verificarFacturacionEmpresa, FiscalError, modoActivo } = require('../../lib/facturapi')
+const { getFacturapiForEmpresa, verificarFacturacionEmpresa, FiscalError, modoActivo, assertLivemodeConsistente } = require('../../lib/facturapi')
 const { trackFacturapi } = require('../../lib/debug')
 const { buildFacturaScope, buildVentaScopeFacturas } = require('./factura-scope.helper')
 const { buildGlobalInvoicePayload, METODOS_GLOBALES, PERIODICIDAD_FACTURAPI } = require('../facturacion/facturacion.controller')
@@ -728,6 +728,10 @@ exports.timbrarGlobal = async (req, res) => {
       try {
         invoice = await fp.invoices.create({ ...payload, idempotency_key: `jesha-global-${factura.id}` })
         selladoOk = true
+
+        // ── P0: Guard livemode — FACTURAPI_TEST_MODE_BLOCKED ──
+        assertLivemodeConsistente(invoice, { facturaId: factura.id })
+
         await prisma.$transaction([
           prisma.facturaCfdi.update({
             where: { id: factura.id, procesandoTimbrado: true },

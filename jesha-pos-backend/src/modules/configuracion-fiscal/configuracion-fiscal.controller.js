@@ -456,7 +456,25 @@ function crearConfiguracionFiscalController(dependencies = {}) {
     }
   }
 
-  return { obtener, actualizar, iniciarOrganization, sincronizarStatus, crearLiveKey, subirCsd, reconcile }
+  async function persistirLiveKey(req, res) {
+    try {
+      const empresaId = getEmpresaId(req)
+      const { persistirLiveKeyDeEntorno } = require('../../lib/facturapi')
+      const resultado = await persistirLiveKeyDeEntorno(empresaId)
+      await auditar(db, req, empresaId, 'FISCAL_LIVE_KEY_PERSIST', resultado)
+      const empresa = await cargarEmpresa(empresaId)
+      return res.json({
+        configuracion: sanitizarConfiguracion(empresa, empresa.ConfiguracionFiscal),
+        ...(resultado.persistida
+          ? { mensaje: 'Live key persistida exitosamente desde FACTURAPI_KEY.' }
+          : { mensaje: 'La empresa ya tiene una live key configurada.' })
+      })
+    } catch (error) {
+      return responderError(res, error, 'No se pudo persistir la live key')
+    }
+  }
+
+  return { obtener, actualizar, iniciarOrganization, sincronizarStatus, crearLiveKey, subirCsd, reconcile, persistirLiveKey }
 }
 
 const controller = crearConfiguracionFiscalController()
