@@ -13,6 +13,7 @@ if (!window.jeshaSession?.isValid()) {
 }
 
 let paginaActual = 1
+let comprasRequestVersion = 0
 let ocActual     = null
 let itemsEdicion = []
 let proveedores  = []
@@ -134,6 +135,7 @@ function initUnidadesCompraRapida() {
 //  LISTAR
 // ════════════════════════════════════════════════════════════════════
 async function cargarCompras() {
+  const requestVersion = ++comprasRequestVersion
   console.log('[DEBUG] cargarCompras: INICIO')
   const tbody  = document.getElementById('comp-tbody')
   const pagDiv = document.getElementById('pagination')
@@ -142,11 +144,13 @@ async function cargarCompras() {
   tbody.innerHTML = `<tr><td colspan="8" class="loading-cell"><div class="spinner"></div><p>Cargando...</p></td></tr>`
 
   const buscar     = document.getElementById('search-input')?.value.trim() || ''
+  const producto   = document.getElementById('search-producto')?.value.trim() || ''
   const estado     = document.getElementById('filtro-estado')?.value || ''
   const pagada     = document.getElementById('filtro-pago')?.value || ''
   const proveedorId = document.getElementById('filtro-proveedor')?.value || ''
   const params = new URLSearchParams({ page: paginaActual, limit: LIMIT })
   if (buscar)        params.set('buscar', buscar)
+  if (producto)      params.set('producto', producto)
   if (estado)        params.set('estado', estado)
   if (pagada !== '') params.set('pagada', pagada)
   if (proveedorId)   params.set('proveedorId', proveedorId)
@@ -155,6 +159,7 @@ async function cargarCompras() {
     const url   = `/compras?${params}`
     console.log('[DEBUG] cargarCompras: GET', url)
     const data   = await apiFetch(url)
+    if (requestVersion !== comprasRequestVersion) return
     console.log('[DEBUG] cargarCompras: respuesta OK, total=', data.total, 'items=', data.data?.length)
     const lista  = data.data || []
     const total  = data.total || 0
@@ -191,6 +196,7 @@ async function cargarCompras() {
       onNavigate: (pag) => { paginaActual = pag; cargarCompras() }
     })
   } catch (err) {
+    if (requestVersion !== comprasRequestVersion) return
     console.error('[DEBUG] cargarCompras catch:', err.message)
     tbody.innerHTML = `<tr><td colspan="8" class="loading-cell"><p style="color:#f44336">Error: ${err.message}</p></td></tr>`
   }
@@ -1788,6 +1794,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   cargarCompras()
 
   document.getElementById('search-input')?.addEventListener('input', () => {
+    clearTimeout(debounceSearch); debounceSearch = setTimeout(() => { paginaActual=1; cargarCompras() }, 400)
+  })
+  document.getElementById('search-producto')?.addEventListener('input', () => {
     clearTimeout(debounceSearch); debounceSearch = setTimeout(() => { paginaActual=1; cargarCompras() }, 400)
   })
   ;['filtro-estado','filtro-pago','filtro-proveedor'].forEach(id => {

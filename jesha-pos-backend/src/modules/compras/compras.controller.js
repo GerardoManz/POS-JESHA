@@ -50,7 +50,7 @@ const OC_SELECT = {
 // ── GET /compras ──
 const listar = async (req, res) => {
   try {
-    const { estado, proveedorId, pagada, buscar, page = 1, limit = 25 } = req.query
+    const { estado, proveedorId, pagada, buscar, producto, page = 1, limit = 25 } = req.query
     const { sucursalId, rol } = req.usuario
     const where = construirWhereScopeTenant(req)
     const pageInt  = Math.max(1, parseInt(page) || 1)
@@ -66,6 +66,21 @@ const listar = async (req, res) => {
         { Proveedor: { nombreOficial: { contains: buscar, mode: 'insensitive' } } },
         { Proveedor: { alias:         { contains: buscar, mode: 'insensitive' } } }
       ]
+    }
+    const productoTrimmed = (producto || '').trim()
+    if (productoTrimmed) {
+      where.DetalleOrdenCompra = {
+        some: {
+          Producto: {
+            empresaId: where.empresaId,
+            OR: [
+              { nombre:        { contains: productoTrimmed, mode: 'insensitive' } },
+              { codigoInterno: { contains: productoTrimmed, mode: 'insensitive' } },
+              { codigoBarras:  { contains: productoTrimmed, mode: 'insensitive' } }
+            ]
+          }
+        }
+      }
     }
 
     const skip = (pageInt - 1) * limitInt
