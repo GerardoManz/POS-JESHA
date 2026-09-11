@@ -85,7 +85,10 @@ const listar = async (req, res) => {
     const clientes = await prisma.cliente.findMany({
       where,
       select: CLIENTE_SELECT,
-      orderBy: { creadoEn: 'desc' }
+      orderBy: [
+        { nombre: 'asc' },
+        { id: 'asc' }
+      ]
     })
 
     res.json(clientes)
