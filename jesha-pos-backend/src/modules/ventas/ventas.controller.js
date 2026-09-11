@@ -896,7 +896,7 @@ exports.crearVenta = async (req, res) => {
  */
 exports.obtenerVentas = async (req, res) => {
   try {
-    const { skip = 0, take = 20, search, metodoPago, desde, hasta, turnoId, clienteId, usuarioId } = req.query
+    const { skip = 0, take = 20, search, metodoPago, desde, hasta, turnoId, clienteId, usuarioId, producto } = req.query
     const where = construirWhereScopeVentas(req)
 
     if (turnoId)   where.turnoId   = parseInt(turnoId)
@@ -908,12 +908,6 @@ exports.obtenerVentas = async (req, res) => {
       where.clienteId = parseInt(clienteId)
     }
 
-    if (search) {
-      where.OR = [
-        { folio:   { contains: search, mode: 'insensitive' } },
-        { Cliente: { nombre: { contains: search, mode: 'insensitive' } } }
-      ]
-    }
     if (metodoPago) where.metodoPago = metodoPago
 
     if (desde || hasta) {
@@ -924,6 +918,41 @@ exports.obtenerVentas = async (req, res) => {
         hastaDate.setHours(23, 59, 59, 999)
         where.creadaEn.lte = hastaDate
       }
+    }
+
+    const conditions = []
+
+    if (search) {
+      conditions.push({
+        OR: [
+          { folio:   { contains: search, mode: 'insensitive' } },
+          { Cliente: { nombre: { contains: search, mode: 'insensitive' } } }
+        ]
+      })
+    }
+
+    if (producto) {
+      const term = producto.trim()
+      if (term) {
+        const productoFilter = {
+          empresaId: where.empresaId,
+          OR: [
+            { nombre:      { contains: term, mode: 'insensitive' } },
+            { codigoInterno: { contains: term, mode: 'insensitive' } },
+            { codigoBarras:  { contains: term, mode: 'insensitive' } }
+          ]
+        }
+        conditions.push({
+          OR: [
+            { DetalleVenta:    { some: { Producto: productoFilter } } },
+            { DetalleBitacora: { some: { Producto: productoFilter } } }
+          ]
+        })
+      }
+    }
+
+    if (conditions.length > 0) {
+      where.AND = conditions
     }
 
     const [ventas, total] = await Promise.all([

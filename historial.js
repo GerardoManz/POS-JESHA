@@ -15,6 +15,8 @@ const LIMIT   = 25
 // ── ESTADO ──
 let paginaActual        = 1
 let debounceSearch
+let debounceProducto
+let requestVersion     = 0
 let ventaActual         = null
 let devVentaData        = null
 let devResumenPrevio    = {}
@@ -100,10 +102,12 @@ async function cargarVentas() {
   tbody.innerHTML = `<tr><td colspan="10" class="loading-cell"><div class="spinner"></div><p>Cargando...</p></td></tr>`
 
   const params = construirParams()
+  const myVersion = ++requestVersion
   try {
     const res   = await fetch(`${API_URL}/ventas?${params}`)
     if (window.handle401 && window.handle401(res.status)) return
     if (!res.ok) throw new Error('Error cargando ventas')
+    if (myVersion !== requestVersion) return
     const data  = await res.json()
     const ventas = data.data || []
     const total  = data.total || 0
@@ -158,13 +162,15 @@ async function cargarVentas() {
 function construirParams() {
   const skip    = (paginaActual - 1) * LIMIT
   const search  = document.getElementById('search-input')?.value.trim()
+  const producto = document.getElementById('filtro-producto')?.value.trim()
   const desde   = document.getElementById('filtro-desde')?.value
   const hasta   = document.getElementById('filtro-hasta')?.value
   const metodo  = document.getElementById('filtro-metodo')?.value
   const cliente = document.getElementById('filtro-cliente')?.value
   const usuario = document.getElementById('filtro-usuario')?.value
   const p       = new URLSearchParams({ skip, take: LIMIT })
-  if (search)  p.set('search', search)
+  if (search)   p.set('search', search)
+  if (producto) p.set('producto', producto)
   if (desde)   p.set('desde', desde)
   if (hasta)   p.set('hasta', hasta)
   if (metodo)  p.set('metodoPago', metodo)
@@ -643,7 +649,8 @@ function cerrarModalDevolucion() {
 //  LIMPIAR FILTROS
 // ════════════════════════════════════════════════════════════════════
 function limpiarFiltros() {
-  document.getElementById('search-input').value   = ''
+  document.getElementById('search-input').value    = ''
+  document.getElementById('filtro-producto').value = ''
   document.getElementById('filtro-desde').value   = ''
   document.getElementById('filtro-hasta').value   = ''
   document.getElementById('filtro-metodo').value  = ''
@@ -937,6 +944,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('search-input')?.addEventListener('input', () => {
     clearTimeout(debounceSearch)
     debounceSearch = setTimeout(() => { paginaActual = 1; cargarVentas() }, 400)
+  })
+
+  document.getElementById('filtro-producto')?.addEventListener('input', () => {
+    clearTimeout(debounceProducto)
+    debounceProducto = setTimeout(() => { paginaActual = 1; cargarVentas() }, 400)
   })
 
   ;['filtro-desde','filtro-hasta','filtro-metodo','filtro-cliente','filtro-usuario'].forEach(id => {
