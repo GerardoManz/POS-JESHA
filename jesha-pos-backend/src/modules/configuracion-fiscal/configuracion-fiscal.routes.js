@@ -34,5 +34,6 @@ router.post('/apikeys/live', controller.crearLiveKey)
 router.post('/csd', uploadCsd, controller.subirCsd)
 router.post('/sincronizar-status', controller.sincronizarStatus)
 router.post('/reconcile', controller.reconcile)
+router.post('/persist-live-key', controller.persistirLiveKey)
 
 module.exports = router
