@@ -17,6 +17,7 @@
   <link rel="stylesheet" href="dashboard.css" />
   <link rel="stylesheet" href="view-transitions.css" />
   <link rel="stylesheet" href="clientes.css" />
+  <link rel="stylesheet" href="pagination.css" />
 </head>
 <body data-page="clientes">
 <div class="app-shell">
@@ -77,6 +78,15 @@
             </tr>
           </tbody>
         </table>
+      </div>
+
+      <!-- ── PAGINACIÓN (patrón compartido de Inventario) ── -->
+      <div id="paginacion-bar" class="paginacion-bar" style="display:none;">
+        <button id="btn-pag-anterior" class="btn-pag" type="button" disabled aria-label="Página anterior">← Anterior</button>
+        <div id="pag-numeros" class="pag-numeros" role="navigation" aria-label="Páginas"></div>
+        <span id="pag-info-label" class="pag-info pag-info-clickable" role="button" tabindex="0">Página 1 de 1</span>
+        <input type="number" id="pag-info-input" class="pag-input" min="1" style="display:none;" aria-label="Ir a página">
+        <button id="btn-pag-siguiente" class="btn-pag" type="button" disabled aria-label="Página siguiente">Siguiente →</button>
       </div>
     </section>
   </main>
@@ -257,6 +267,7 @@
   <script src="session.js"></script>
 <script src="sidebar.js"></script>
   <script src="catalogos-sat.js"></script>
+<script src="pagination.js"></script>
 
 <!-- Luego: clientes.js (lógica de la página) -->
 <script src="clientes.js"></script>

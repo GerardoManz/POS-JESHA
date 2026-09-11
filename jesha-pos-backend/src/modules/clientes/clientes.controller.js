@@ -48,7 +48,7 @@ async function registrarAudit(solicitante, accion, referencia, ip, empresaId) {
 
 const listar = async (req, res) => {
   try {
-    const { tipo, activo, buscar } = req.query
+    const { tipo, activo, buscar, page, limit = 50 } = req.query
     const empresaId = getEmpresaId(req)
     const where = { empresaId }
 
@@ -82,16 +82,37 @@ const listar = async (req, res) => {
       ]
     }
 
-    const clientes = await prisma.cliente.findMany({
-      where,
-      select: CLIENTE_SELECT,
-      orderBy: [
-        { nombre: 'asc' },
-        { id: 'asc' }
-      ]
-    })
+    const orderBy = [
+      { nombre: 'asc' },
+      { id: 'asc' }
+    ]
 
-    res.json(clientes)
+    // Compatibilidad: solo `page` activa la respuesta paginada. Los catálogos
+    // existentes siguen recibiendo el array completo aunque envíen `limit`.
+    if (page === undefined) {
+      const clientes = await prisma.cliente.findMany({ where, select: CLIENTE_SELECT, orderBy })
+      return res.json(clientes)
+    }
+
+    const take = Math.min(parseInt(limit) || 50, 200)
+    const pagina = Math.max(parseInt(page) || 1, 1)
+    const skip = (pagina - 1) * take
+    const [total, clientes] = await Promise.all([
+      prisma.cliente.count({ where }),
+      prisma.cliente.findMany({ where, select: CLIENTE_SELECT, orderBy, skip, take })
+    ])
+
+    res.json({
+      success: true,
+      data: clientes,
+      paginacion: {
+        total,
+        skip,
+        take,
+        pagina,
+        totalPaginas: Math.ceil(total / take)
+      }
+    })
   } catch (err) {
     console.error(err)
     res.status(500).json({ error: 'Error al obtener clientes' })

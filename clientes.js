@@ -74,6 +74,10 @@ if (fechaActual) {
 // ── VARIABLES GLOBALES ──
 let clienteActual = null
 let clientesLista = []
+let paginaActual = 1
+const CLIENTES_POR_PAGINA = 50
+let totalPaginas = 1
+let totalClientes = 0
 
 // ── HELPER: Limpiar teléfono para WhatsApp ──
 function limpiarTelefono(telefono) {
@@ -102,6 +106,8 @@ async function cargarClientes() {
     `
 
     const params = new URLSearchParams()
+    params.set('page', paginaActual)
+    params.set('limit', CLIENTES_POR_PAGINA)
     if (searchInput && searchInput.value) {
       params.append('buscar', searchInput.value)
     }
@@ -115,9 +121,16 @@ async function cargarClientes() {
       throw new Error(`Error ${response.status}: ${response.statusText}`)
     }
 
-    clientesLista = await response.json()
-    console.log('✅ Clientes cargados:', clientesLista.length)
+    const resultado = await response.json()
+    clientesLista = resultado.data || resultado
+    if (resultado.paginacion) {
+      totalClientes = resultado.paginacion.total
+      totalPaginas = resultado.paginacion.totalPaginas
+      paginaActual = resultado.paginacion.pagina
+    }
+    console.log(`✅ Clientes cargados: ${clientesLista.length} de ${totalClientes} (pág ${paginaActual}/${totalPaginas})`)
     renderizarTabla()
+    renderizarPaginacion()
 
   } catch (error) {
     console.error('❌ Error al cargar clientes:', error)
@@ -130,7 +143,36 @@ async function cargarClientes() {
         </tr>
       `
     }
+    ocultarPaginacion()
   }
+}
+
+function navegarPagina(pagina) {
+  if (pagina < 1 || pagina > totalPaginas || pagina === paginaActual) return
+  paginaActual = pagina
+  cargarClientes()
+  window.scrollTo({ top: 0, behavior: 'smooth' })
+}
+
+function renderizarPaginacion() {
+  jeshaRenderPaginacion({
+    currentPage: paginaActual,
+    totalPages: totalPaginas,
+    totalRegistros: totalClientes,
+    etiquetaRegistro: 'clientes',
+    container: 'paginacion-bar',
+    prevButton: 'btn-pag-anterior',
+    nextButton: 'btn-pag-siguiente',
+    numbersContainer: 'pag-numeros',
+    label: 'pag-info-label',
+    input: 'pag-info-input',
+    onNavigate: navegarPagina
+  })
+}
+
+function ocultarPaginacion() {
+  const bar = document.getElementById('paginacion-bar')
+  if (bar) bar.style.display = 'none'
 }
 
 function renderizarTabla() {
@@ -464,9 +506,15 @@ if (historialCloseBtn) {
 if (searchInput) {
   searchInput.addEventListener('input', () => {
     clearTimeout(window.searchTimeout)
-    window.searchTimeout = setTimeout(cargarClientes, 300)
+    window.searchTimeout = setTimeout(() => {
+      paginaActual = 1
+      cargarClientes()
+    }, 300)
   })
 }
+
+document.getElementById('btn-pag-anterior')?.addEventListener('click', () => navegarPagina(paginaActual - 1))
+document.getElementById('btn-pag-siguiente')?.addEventListener('click', () => navegarPagina(paginaActual + 1))
 
 document.querySelectorAll('.tab-button').forEach(btn => {
   btn.addEventListener('click', (e) => {
