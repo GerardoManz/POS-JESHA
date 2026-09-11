@@ -96,7 +96,7 @@ const BITACORA_SELECT = {
       factorConversionSnapshot: true, modoCapturaSnapshot: true,
       cantidadCapturadaSnapshot: true, importeCapturadoSnapshot: true,
       Venta:            { select: { id: true, folio: true, creadaEn: true } },
-      Producto:         { select: { id: true, nombre: true, codigoInterno: true, unidadVenta: true } },
+      Producto:         { select: { id: true, nombre: true, codigoInterno: true, codigoBarras: true, unidadVenta: true } },
       Responsable:      { select: { id: true, nombre: true } },
       RecibeTrabajador: { select: { id: true, nombre: true, apodo: true } }
     }

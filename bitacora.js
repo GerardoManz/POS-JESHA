@@ -16,6 +16,8 @@ let borrador             = []   // productos en borrador local (no persistidos) 
 let borradorSeq          = 0    // id temporal incremental para identificar filas del borrador
 let descuentoGuardando   = false
 let paginaActual       = 1
+let filtroMateriales     = ''    // término de búsqueda local dentro de la bitácora abierta
+let debounceMateriales   = null
 const LIMIT = 25
 
 const usuario  = window.jeshaSession?.getUsuario() || {}
@@ -261,6 +263,9 @@ async function abrirDetalle(id) {
     const res = await apiFetch(`/bitacoras/${id}`, { method: 'GET' })
     bitacoraActual = res.data
     borrador = []   // limpiar borrador al abrir otra bitácora
+    filtroMateriales = ''
+    const inputFiltro = document.getElementById('search-materiales')
+    if (inputFiltro) inputFiltro.value = ''
     renderDetalle()
     if (bitacoraActual.origen === 'MANUAL' && bitacoraActual.estado === 'ABIERTA') {
       await inicializarTraza()
@@ -280,6 +285,7 @@ async function cerrarDetalle() {
   document.getElementById('modal-detalle').classList.remove('active')
   bitacoraActual        = null
   productoSeleccionado  = null
+  filtroMateriales      = ''
   document.getElementById('buscador-prod-panel').style.display = 'none'
   document.getElementById('form-cantidad-prod').style.display  = 'none'
 }
@@ -544,6 +550,62 @@ async function aplicarDescuentoGlobal() {
   }
 }
 
+// ── Buscador interno de materiales (filtrado local, NO recalcula totales) ──
+function normalizarFiltroMateriales(valor) {
+  return String(valor ?? '').trim().toLowerCase()
+}
+
+function textoBuscableLinea(d) {
+  const nombre        = d.Producto?.nombre        || ''
+  const codigoInterno = d.Producto?.codigoInterno || ''
+  const codigoBarras  = d.Producto?.codigoBarras  || ''
+  return normalizarFiltroMateriales(`${nombre} ${codigoInterno} ${codigoBarras}`)
+}
+
+// Pura: decide qué líneas (por id) coinciden con el término. No muta datos ni totales.
+function filtrarDetallesBitacora(detalles, termino) {
+  const lista = Array.isArray(detalles) ? detalles : []
+  const term = normalizarFiltroMateriales(termino)
+  if (!term) return { term, idsVisibles: lista.map(d => d.id) }
+  const idsVisibles = lista
+    .filter(d => textoBuscableLinea(d).includes(term))
+    .map(d => d.id)
+  return { term, idsVisibles }
+}
+
+function aplicarFiltroMaterialesLocal() {
+  const tbody = document.getElementById('det-items-tbody')
+  if (!tbody) return
+  const detalles = bitacoraActual?.DetalleBitacora || []
+  const { term, idsVisibles } = filtrarDetallesBitacora(detalles, filtroMateriales)
+
+  tbody.querySelectorAll('.filtro-materiales-vacio').forEach(el => el.remove())
+
+  const visiblesSet = new Set(idsVisibles.map(String))
+  const filas = tbody.querySelectorAll('tr[data-detid]')
+  let visibles = 0
+
+  filas.forEach(tr => {
+    const coincide = !term || visiblesSet.has(tr.dataset.detid)
+    tr.style.display = coincide ? '' : 'none'
+    if (coincide) visibles++
+  })
+
+  tbody.querySelectorAll('tr[data-retiro-header]').forEach(header => {
+    const rid = header.dataset.retiroHeader
+    const algunVisible = Array.from(tbody.querySelectorAll(`tr[data-detid][data-retiro="${rid}"]`))
+      .some(tr => tr.style.display !== 'none')
+    header.style.display = algunVisible ? '' : 'none'
+  })
+
+  if (term && visibles === 0 && detalles.length > 0) {
+    const tr = document.createElement('tr')
+    tr.className = 'filtro-materiales-vacio'
+    tr.innerHTML = `<td colspan="10" class="loading-cell"><p>No se encontraron productos</p></td>`
+    tbody.appendChild(tr)
+  }
+}
+
 function renderDetalleItems(detalles) {
   const tbody = document.getElementById('det-items-tbody')
   const b = bitacoraActual
@@ -586,7 +648,7 @@ function renderDetalleItems(detalles) {
     const itemsCount = items.length
 
     // Cabecera del retiro
-    html += `<tr style="background:rgba(74,144,226,0.08);border-top:2px solid rgba(74,144,226,0.3);">
+    html += `<tr data-retiro-header="${retiroId}" style="background:rgba(74,144,226,0.08);border-top:2px solid rgba(74,144,226,0.3);">
       <td colspan="10" style="padding:8px 14px;">
         <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
           <div style="display:flex;align-items:center;gap:10px;">
@@ -643,6 +705,7 @@ function renderDetalleItems(detalles) {
     })
   })
 
+  aplicarFiltroMaterialesLocal()
   actualizarBarraBorrador()
 }
 
@@ -680,7 +743,7 @@ function filaProductoGuardadoHTML(d, editable) {
     ? `<td class="celda-editable" data-detid="${d.id}" data-campo="recibeTrabajadorId" data-original="${d.recibeTrabajadorId || ''}" title="Click para cambiar quién recibe">${recibeTxt} <span class="edit-icon">✎</span></td>`
     : `<td>${recibeTxt}</td>`
 
-  return `<tr style="${filaStyle}">
+  return `<tr data-detid="${d.id}" data-retiro="${d.retiroBitacoraId || ''}" style="${filaStyle}">
     <td>${nombre}${sufijoNombre}</td>
     <td>${unidad}</td>
     ${celdaCantidad}
@@ -1688,6 +1751,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   // ── Agregar producto ──
   document.getElementById('btn-agregar-prod').addEventListener('click', abrirBuscadorProducto)
   document.getElementById('search-prod-det').addEventListener('input', e => buscarProductosDet(e.target.value))
+  document.getElementById('search-materiales')?.addEventListener('input', e => {
+    const valor = e.target.value
+    clearTimeout(debounceMateriales)
+    debounceMateriales = setTimeout(() => {
+      filtroMateriales = valor
+      aplicarFiltroMaterialesLocal()
+    }, 400)
+  })
   document.getElementById('btn-confirmar-prod').addEventListener('click', confirmarAgregarProducto)
   document.getElementById('btn-guardar-borrador').addEventListener('click', guardarBorrador)
   document.getElementById('btn-cancelar-prod').addEventListener('click',  () => {
