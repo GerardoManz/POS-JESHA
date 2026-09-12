@@ -7,6 +7,7 @@
 const prisma = require('../../lib/prisma')
 const { FACTOR_IVA } = require('../../utils/constantes')
 const getEmpresaId = require('../../helpers/getEmpresaId')
+const { registrarHistorialEconomico } = require('../../helpers/historial-precio-producto')
 
 async function actualizarPrecios(req, res) {
   try {
@@ -76,7 +77,20 @@ async function actualizarPrecios(req, res) {
     if (precioMayoreo !== undefined) data.precioMayoreo = parseFloat(precioMayoreo)
     if (nuevoMargen !== undefined)   data.margen        = nuevoMargen
 
-    // Paso 6: actualizar producto — scoped por empresa
+    // Paso 6: construir estado ANTES para historial económico
+    const antes = {
+      precioVenta:     producto.precioVenta,
+      precioBase:      producto.precioBase,
+      precioMayoreo:   producto.precioMayoreo,
+      margen:          producto.margen,
+      costo:           producto.costo,
+      costoPromedio:   producto.costoPromedio,
+      costoSinIvaProveedor: null,
+      factorConversion: null,
+      precioCosto:     null
+    }
+
+    // Paso 7: actualizar producto + auditoría + historial — todo en UNA transacción
     const resultadoUpdate = await prisma.$transaction(async (tx) => {
       const actualizado = await tx.producto.updateMany({
         where: { id: parseInt(id), empresaId },
@@ -92,11 +106,84 @@ async function actualizarPrecios(req, res) {
         select: {
           id: true, nombre: true,
           precioBase: true, precioVenta: true, precioMayoreo: true,
-          margen: true, costo: true
+          margen: true, costo: true, costoPromedio: true
         }
       })
 
-      return { notFound: false, producto: productoActualizado }
+      // Estado DESPUÉS para historial económico
+      const despues = {
+        precioVenta:     productoActualizado.precioVenta,
+        precioBase:      productoActualizado.precioBase,
+        precioMayoreo:   productoActualizado.precioMayoreo,
+        margen:          productoActualizado.margen,
+        costo:           productoActualizado.costo,
+        costoPromedio:   productoActualizado.costoPromedio,
+        costoSinIvaProveedor: null,
+        factorConversion: null,
+        precioCosto:     null
+      }
+
+      // Auditoría de cambios (movida dentro de la transacción)
+      let auditoriaId = null
+      const cambios = []
+      if (nuevoPrecioBase !== undefined && parseFloat(producto.precioBase) !== parseFloat(productoActualizado.precioBase)) {
+        cambios.push(`precioBase: ${producto.precioBase} → ${productoActualizado.precioBase}`)
+      }
+      if (nuevoPrecioVenta !== undefined && parseFloat(producto.precioVenta) !== parseFloat(productoActualizado.precioVenta)) {
+        cambios.push(`precioVenta: ${producto.precioVenta} → ${productoActualizado.precioVenta}`)
+      }
+      if (precioMayoreo !== undefined && parseFloat(producto.precioMayoreo) !== parseFloat(productoActualizado.precioMayoreo)) {
+        cambios.push(`precioMayoreo: ${producto.precioMayoreo} → ${productoActualizado.precioMayoreo}`)
+      }
+      if (nuevoMargen !== undefined && parseFloat(producto.margen) !== parseFloat(productoActualizado.margen)) {
+        cambios.push(`margen: ${producto.margen} → ${productoActualizado.margen}`)
+      }
+
+      if (cambios.length > 0) {
+        try {
+          const auditoriaData = {
+            accion: 'ACTUALIZAR_PRECIOS',
+            modulo: 'precios',
+            referencia: `Producto #${producto.id} — ${producto.nombre}`,
+            valorAntes: {
+              precioBase: producto.precioBase ? producto.precioBase.toString() : null,
+              precioVenta: producto.precioVenta ? producto.precioVenta.toString() : null,
+              precioMayoreo: producto.precioMayoreo ? producto.precioMayoreo.toString() : null,
+              margen: producto.margen ? producto.margen.toString() : null
+            },
+            valorDespues: {
+              precioBase: productoActualizado.precioBase ? productoActualizado.precioBase.toString() : null,
+              precioVenta: productoActualizado.precioVenta ? productoActualizado.precioVenta.toString() : null,
+              precioMayoreo: productoActualizado.precioMayoreo ? productoActualizado.precioMayoreo.toString() : null,
+              margen: productoActualizado.margen ? productoActualizado.margen.toString() : null
+            },
+            ip: req.ip
+          }
+          if (solicitante.sucursalId) auditoriaData.sucursalId = solicitante.sucursalId
+          if (solicitante.id)         auditoriaData.usuarioId  = solicitante.id
+          const auditoria = await tx.auditoria.create({ data: auditoriaData })
+          auditoriaId = auditoria.id
+        } catch (e) { console.error('Audit error:', e.message) }
+      }
+
+      // Historial económico (HPP + HPPD) dentro de la misma transacción
+      try {
+        await registrarHistorialEconomico(tx, {
+          empresaId,
+          productoId: parseInt(id),
+          auditoriaId,
+          usuarioId:  solicitante.id || null,
+          sucursalId: solicitante.sucursalId || null,
+          origen:     'EDICION_PRECIOS',
+          accion:     'ACTUALIZAR_PRECIOS',
+          referencia: `PRODUCTO:${producto.id}`,
+          contexto:   { productoId: parseInt(id), modo: margen !== undefined ? 'margen' : 'precio' },
+          antes,
+          despues
+        })
+      } catch (e) { console.error('Historial económico error:', e.message) }
+
+      return { notFound: false, producto: productoActualizado, cambios }
     })
 
     if (resultadoUpdate.notFound) {
@@ -105,52 +192,9 @@ async function actualizarPrecios(req, res) {
 
     const actualizado = resultadoUpdate.producto
 
-    // Paso 7: auditoría de cambios
-    // El update se hace en $transaction con updateMany scoped por empresa
-    // (count !== 1 → 404), garantizando que nunca se toca un producto de otra empresa.
-    const cambios = []
-    if (nuevoPrecioBase !== undefined && parseFloat(producto.precioBase) !== parseFloat(actualizado.precioBase)) {
-      cambios.push(`precioBase: ${producto.precioBase} → ${actualizado.precioBase}`)
-    }
-    if (nuevoPrecioVenta !== undefined && parseFloat(producto.precioVenta) !== parseFloat(actualizado.precioVenta)) {
-      cambios.push(`precioVenta: ${producto.precioVenta} → ${actualizado.precioVenta}`)
-    }
-    if (precioMayoreo !== undefined && parseFloat(producto.precioMayoreo) !== parseFloat(actualizado.precioMayoreo)) {
-      cambios.push(`precioMayoreo: ${producto.precioMayoreo} → ${actualizado.precioMayoreo}`)
-    }
-    if (nuevoMargen !== undefined && parseFloat(producto.margen) !== parseFloat(actualizado.margen)) {
-      cambios.push(`margen: ${producto.margen} → ${actualizado.margen}`)
-    }
-
-    if (cambios.length > 0) {
-      try {
-        const auditoriaData = {
-          accion: 'ACTUALIZAR_PRECIOS',
-          modulo: 'precios',
-          referencia: `Producto #${producto.id} — ${producto.nombre}`,
-          valorAntes: {
-            precioBase: producto.precioBase ? producto.precioBase.toString() : null,
-            precioVenta: producto.precioVenta ? producto.precioVenta.toString() : null,
-            precioMayoreo: producto.precioMayoreo ? producto.precioMayoreo.toString() : null,
-            margen: producto.margen ? producto.margen.toString() : null
-          },
-          valorDespues: {
-            precioBase: actualizado.precioBase ? actualizado.precioBase.toString() : null,
-            precioVenta: actualizado.precioVenta ? actualizado.precioVenta.toString() : null,
-            precioMayoreo: actualizado.precioMayoreo ? actualizado.precioMayoreo.toString() : null,
-            margen: actualizado.margen ? actualizado.margen.toString() : null
-          },
-          ip: req.ip
-        }
-        if (solicitante.sucursalId) auditoriaData.sucursalId = solicitante.sucursalId
-        if (solicitante.id)         auditoriaData.usuarioId  = solicitante.id
-        await prisma.auditoria.create({ data: auditoriaData })
-      } catch (e) { console.error('Audit error:', e.message) }
-    }
-
-    res.json({ success: true, producto: actualizado, cambios })
+    res.json({ success: true, producto: actualizado, cambios: resultadoUpdate.cambios })
   } catch (err) {
-    console.error('Error al actualizar precios:', err)
+    console.error('Error al actualizar precios:', err.message)
     res.status(500).json({ error: 'Error al actualizar precios' })
   }
 }

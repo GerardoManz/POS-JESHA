@@ -12,6 +12,7 @@ const getEmpresaId = require('../../helpers/getEmpresaId')
 const { eliminarImagenProducto } = require('../../lib/cloudinary')
 const satMatcher = require('./sat.matcher')
 const { verificarStockPostOperacion } = require('../../helpers/verificarStock')
+const { registrarHistorialEconomico } = require('../../helpers/historial-precio-producto')
 const {
     normalizarCodigoBarras,
     normalizarCodigoInterno,
@@ -1100,37 +1101,103 @@ async function editar(req, res) {
             }
         }
 
-        const producto = await prisma.producto.update({
-            where: { id: parseInt(id) },
-            data,
-            include: {
-                Categoria: { include: { Departamento: true } },
-                InventarioSucursal: includeInventario(req)
-            }
-        })
-
-        if (proveedorId && proveedorId !== '' && proveedorId !== 'null') {
-            const proveedorEditar = await prisma.proveedor.findFirst({
-                where: { id: parseInt(proveedorId), empresaId },
-                select: { id: true }
-            })
-            if (!proveedorEditar) {
-                return res.status(400).json({ success: false, error: 'El proveedor no existe o no pertenece a esta empresa', campo: 'proveedorId' })
-            }
-            const ppProveedorId = parseInt(proveedorId)
-            const ppProductoId  = parseInt(id)
-            await prisma.proveedorProducto.upsert({
-                where:  { proveedorId_productoId: { proveedorId: ppProveedorId, productoId: ppProductoId } },
-                update: { precioCosto: costo ? parseFloat(costo) : 0, activo: true, actualizadoEn: new Date() },
-                create: { proveedorId: ppProveedorId, productoId: ppProductoId, precioCosto: costo ? parseFloat(costo) : 0, activo: true }
-            })
+        // ── Estado ANTES para historial económico ──
+        const antes = {
+            precioVenta:     existente.precioVenta,
+            precioBase:      existente.precioBase,
+            precioMayoreo:   existente.precioMayoreo,
+            margen:          existente.margen,
+            costo:           existente.costo,
+            costoPromedio:   existente.costoPromedio,
+            costoSinIvaProveedor: existente.costoSinIvaProveedor,
+            factorConversion: existente.factorConversion,
+            precioCosto:     null
         }
+
+        // Obtener precioCosto del ProveedorProducto si existe
+        const ppExistente = await prisma.proveedorProducto.findFirst({
+            where: { productoId: parseInt(id) },
+            select: { precioCosto: true }
+        })
+        if (ppExistente) {
+            antes.precioCosto = ppExistente.precioCosto
+        }
+
+        // ── Update + historial — todo en UNA transacción ──
+        const resultadoTx = await prisma.$transaction(async (tx) => {
+            const producto = await tx.producto.update({
+                where: { id: parseInt(id) },
+                data,
+                include: {
+                    Categoria: { include: { Departamento: true } },
+                    InventarioSucursal: includeInventario(req)
+                }
+            })
+
+            // Update/upsert ProveedorProducto si se proporcionó proveedorId
+            if (proveedorId && proveedorId !== '' && proveedorId !== 'null') {
+                const proveedorEditar = await tx.proveedor.findFirst({
+                    where: { id: parseInt(proveedorId), empresaId },
+                    select: { id: true }
+                })
+                if (!proveedorEditar) {
+                    throw Object.assign(new Error('El proveedor no existe o no pertenece a esta empresa'), { statusCode: 400, campo: 'proveedorId' })
+                }
+                const ppProveedorId = parseInt(proveedorId)
+                const ppProductoId  = parseInt(id)
+                await tx.proveedorProducto.upsert({
+                    where:  { proveedorId_productoId: { proveedorId: ppProveedorId, productoId: ppProductoId } },
+                    update: { precioCosto: costo ? parseFloat(costo) : 0, activo: true, actualizadoEn: new Date() },
+                    create: { proveedorId: ppProveedorId, productoId: ppProductoId, precioCosto: costo ? parseFloat(costo) : 0, activo: true }
+                })
+            }
+
+            // Estado DESPUÉS para historial económico
+            const despues = {
+                precioVenta:     producto.precioVenta,
+                precioBase:      producto.precioBase,
+                precioMayoreo:   producto.precioMayoreo,
+                margen:          producto.margen,
+                costo:           producto.costo,
+                costoPromedio:   producto.costoPromedio,
+                costoSinIvaProveedor: producto.costoSinIvaProveedor,
+                factorConversion: producto.factorConversion,
+                precioCosto:     null
+            }
+
+            // Obtener precioCosto actual después del update
+            const ppDespues = await tx.proveedorProducto.findFirst({
+                where: { productoId: parseInt(id) },
+                select: { precioCosto: true }
+            })
+            if (ppDespues) {
+                despues.precioCosto = ppDespues.precioCosto
+            }
+
+            // Historial económico (HPP + HPPD)
+            try {
+                await registrarHistorialEconomico(tx, {
+                    empresaId,
+                    productoId: parseInt(id),
+                    usuarioId:  req.usuario?.id || null,
+                    sucursalId: sucursalOperativa(req),
+                    origen:     'EDICION_PRODUCTO',
+                    accion:     'EDITAR_PRODUCTO',
+                    referencia: `PRODUCTO:${parseInt(id)}`,
+                    contexto:   { productoId: parseInt(id), origenUI: 'PRODUCTOS' },
+                    antes,
+                    despues
+                })
+            } catch (e) { console.error('Historial económico error:', e.message) }
+
+            return producto
+        })
 
         res.json({
             success: true,
             data: {
-                ...producto,
-                inventario: producto.InventarioSucursal?.length > 0 ? producto.InventarioSucursal[0] : null
+                ...resultadoTx,
+                inventario: resultadoTx.InventarioSucursal?.length > 0 ? resultadoTx.InventarioSucursal[0] : null
             }
         })
     } catch (error) {
