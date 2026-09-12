@@ -92,6 +92,9 @@ router.post('/articulo-rapido',   productosRapidoController.crearArticuloRapido)
 // GET /productos/sugerir — Autocomplete (ANTES de /:id para que no capture "sugerir" como :id)
 router.get('/sugerir', branchOptional, productosController.sugerirNombres)
 
+// GET /productos/exportar/excel — Exportación XLSX de todos los productos filtrados (ANTES de /:id)
+router.get('/exportar/excel', branchOptional, requireRole('SUPERADMIN', 'ADMIN_SUCURSAL'), productosController.exportarExcel)
+
 // GET /productos/:id — Obtener producto individual (incluye existencias por sucursal)
 router.get('/:id', branchOptional, productosController.obtener)
 

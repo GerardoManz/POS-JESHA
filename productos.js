@@ -153,6 +153,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Inicializar plantilla de corrección
   initPlantillaCorreccion()
 
+  // Inicializar exportación Excel
+  initExportarProductos()
+
   // Inicializar modal de precios (rol PRECIOS)
   initModalPrecios()
 
@@ -174,7 +177,7 @@ function aplicarPermisosProductos() {
   if (ES_ADMIN) return
 
   // Ocultar botones de administración
-  const idsAdmin = ['btn-nuevo-producto', 'btn-subir-inventario', 'btn-subir-solo-nuevos', 'btn-descargar-plantilla', 'btn-subir-plantilla']
+  const idsAdmin = ['btn-nuevo-producto', 'btn-subir-inventario', 'btn-subir-solo-nuevos', 'btn-descargar-plantilla', 'btn-subir-plantilla', 'btn-exportar-productos']
   idsAdmin.forEach(id => {
     const el = document.getElementById(id)
     if (el) el.style.display = 'none'
@@ -3183,6 +3186,76 @@ function initPlantillaCorreccion() {
       btnSubir.disabled = false
       btnSubir.innerHTML = textoOriginal
       inputFile.value = ''
+    }
+  })
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// EXPORTAR EXCEL — Todos los productos filtrados (sin paginación)
+// ═══════════════════════════════════════════════════════════════════
+
+function initExportarProductos() {
+  const btn = document.getElementById('btn-exportar-productos')
+  if (!btn) return
+
+  btn.addEventListener('click', async () => {
+    const token = window.jeshaSession?.getEffectiveToken()
+    const api = window.__JESHA_API_URL__ || 'http://localhost:3000'
+
+    // Recoger filtros actuales (misma lógica que cargarProductos)
+    const params = new URLSearchParams()
+    const buscar = document.getElementById('search-input')?.value?.trim()
+    if (buscar) params.set('buscar', buscar)
+
+    const depto = document.getElementById('filtro-departamento')?.value
+    if (depto) params.set('departamentoId', depto)
+
+    const cat = document.getElementById('filtro-categoria')?.value
+    if (cat) params.set('categoriaId', cat)
+
+    const stock = document.getElementById('filtro-stock')?.value
+    if (stock) params.set('stock', stock)
+
+    const tipo = document.getElementById('filtro-tipo')?.value
+    if (tipo) params.set('tipo', tipo)
+
+    const activo = document.getElementById('filtro-activo')?.value
+    if (activo) params.set('activo', activo)
+
+    const proveedor = document.getElementById('filtro-proveedor')?.value
+    if (proveedor) params.set('proveedorId', proveedor)
+
+    const qs = params.toString()
+    const url = `${api}/productos/exportar/excel${qs ? '?' + qs : ''}`
+
+    try {
+      btn.disabled = true
+      btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Exportando...`
+
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+
+      if (!res.ok) {
+        const errBody = await res.text().catch(() => '')
+        throw new Error(errBody || `HTTP ${res.status}`)
+      }
+
+      const blob = await res.blob()
+      const blobUrl = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = blobUrl
+      a.download = `productos-${new Date().toISOString().slice(0, 10)}.xlsx`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(blobUrl)
+      jeshaToast('✅ Excel exportado correctamente', 'success')
+    } catch (err) {
+      jeshaToast('❌ Error al exportar: ' + err.message, 'error')
+    } finally {
+      btn.disabled = false
+      btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Exportar Excel`
     }
   })
 }

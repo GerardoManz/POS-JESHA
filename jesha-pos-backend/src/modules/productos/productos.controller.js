@@ -127,6 +127,162 @@ async function listarCategorias(req, res) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// HELPERS COMPARTIDOS — listar + exportarExcel
+// Extracción mecánica de la lógica de filtros, post-filtro, ranking
+// y serialización. El comportamiento de listar es idéntico antes/después.
+// ═══════════════════════════════════════════════════════════════════
+
+function construirContextoProductos(req) {
+    const {
+        buscar, q, categoriaId, departamentoId, proveedorId,
+        contexto,
+        stock,
+        enStock,
+        tipo,
+        activo
+    } = req.query
+
+    const terminoBusqueda = buscar || q
+    const incluirFrecuenciaTickets = String(contexto || '').toLowerCase() === 'pos'
+    const terminoRanking = String(terminoBusqueda || '').trim().replace(/^["']+|["']+$/g, '').trim().toLowerCase()
+
+    const empresaId = getEmpresaId(req)
+    const sucursalIdInventario = sucursalOperativa(req)
+
+    const where = { empresaId }
+    if (activo === 'all') {
+        // no filtra — retorna todos
+    } else if (activo !== undefined) {
+        where.activo = activo === 'true'
+    } else {
+        where.activo = true  // default: solo activos
+    }
+
+    // ── Filtro por proveedor ──
+    if (proveedorId) {
+        where.ProveedorProducto = { some: { proveedorId: parseInt(proveedorId), activo: true } }
+    }
+
+    // ── Filtro por departamento ──
+    if (departamentoId) {
+        where.Categoria = { Departamento: { id: parseInt(departamentoId) } }
+    }
+
+    // ── Filtro por categoría ──
+    if (categoriaId) {
+        where.categoriaId = parseInt(categoriaId)
+    }
+
+    // ── Filtro por stock ──
+    const stockFiltro = stock || (enStock === 'true' ? 'con' : '')
+    const filtroStockCon = sucursalIdInventario
+        ? { some: { sucursalId: sucursalIdInventario, stockActual: { gt: 0 } } }
+        : { some: { stockActual: { gt: 0 } } }
+    const filtroStockSin = sucursalIdInventario
+        ? { none: { sucursalId: sucursalIdInventario, stockActual: { gt: 0 } } }
+        : { none: { stockActual: { gt: 0 } } }
+    if (stockFiltro === 'con') {
+        where.InventarioSucursal = filtroStockCon
+    } else if (stockFiltro === 'sin') {
+        where.InventarioSucursal = filtroStockSin
+    } else if (stockFiltro === 'sin_imagen') {
+        where.imagenUrl = null
+    }
+    // 'bajo' se maneja post-query porque requiere comparar dos columnas
+    // (stockActual <= stockMinimoAlerta) que Prisma no soporta en where
+
+    // ── Filtro por tipo de producto ──
+    if (tipo && ['PRODUCTO', 'SERVICIO'].includes(tipo)) {
+        where.tipo = tipo
+    }
+
+    return {
+        where,
+        empresaId,
+        sucursalIdInventario,
+        terminoBusqueda,
+        terminoRanking,
+        incluirFrecuenciaTickets,
+        stockFiltro,
+        filtroStockCon,
+        filtroStockSin,
+        activo
+    }
+}
+
+function aplicarPostFiltroYOrden(productos, ctx, frecuenciaTickets) {
+    const { stockFiltro, sucursalIdInventario, terminoRanking, incluirFrecuenciaTickets } = ctx
+    const requiereRanking = incluirFrecuenciaTickets || !!ctx.terminoBusqueda
+
+    let resultado = [...productos]
+
+    // ── Post-filtro para "bajo stock" ──
+    if (stockFiltro === 'bajo') {
+        resultado = resultado.filter(p => {
+            const invs = p.InventarioSucursal || []
+            return invs.some(inv => {
+                const sa = parseFloat(inv.stockActual)
+                const sm = parseFloat(inv.stockMinimoAlerta)
+                return sa > 0 && sa <= sm
+            })
+        })
+    }
+
+    // ── Ranking por relevancia (solo con búsqueda) ──
+    if (requiereRanking) {
+        const normalizar = valor => String(valor || '').toLowerCase()
+        const escaparRegex = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        const scoreProducto = prod => {
+            const nombre = normalizar(prod.nombre)
+            const codigoInterno = normalizar(prod.codigoInterno)
+            const codigoBarras = normalizar(prod.codigoBarras)
+            const stockActual = parseFloat(prod.InventarioSucursal?.[0]?.stockActual || 0)
+            const frecuencia = frecuenciaTickets.get(prod.id) || 0
+
+            let score = 0
+            if (terminoRanking) {
+                if (codigoInterno === terminoRanking || codigoBarras === terminoRanking) score += 1000000
+                if (codigoInterno.includes(terminoRanking) || codigoBarras.includes(terminoRanking)) score += 500000
+                if (nombre.startsWith(terminoRanking)) score += 200000
+                if (nombre.includes(terminoRanking)) score += 100000
+                // Palabra exacta (ej: "PVC" en "TUBO PVC 3/4" ≠ "CPVC")
+                const re = new RegExp('\\b' + escaparRegex(terminoRanking) + '\\b', 'i')
+                if (re.test(prod.nombre)) score += 50000
+            }
+            if (stockActual > 0) score += 10000
+            score += frecuencia * 100
+            return score
+        }
+
+        resultado = resultado.sort((a, b) => {
+            const porScore = scoreProducto(b) - scoreProducto(a)
+            if (porScore !== 0) return porScore
+            return String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es', { sensitivity: 'base' })
+        })
+    }
+
+    return resultado
+}
+
+function serializarProducto(prod, ctx) {
+    const { sucursalIdInventario, incluirFrecuenciaTickets, empresaId } = ctx
+    const invs = prod.InventarioSucursal || []
+    const stock = sucursalIdInventario
+        ? (invs.length > 0 ? parseFloat(invs[0].stockActual) : 0)
+        : invs.reduce((suma, inv) => suma + parseFloat(inv.stockActual || 0), 0)
+    return {
+        ...prod,
+        stock,
+        inventario: invs.length > 0 ? {
+            ...invs[0],
+            stockActual:       parseFloat(invs[0].stockActual),
+            stockMinimoAlerta: parseFloat(invs[0].stockMinimoAlerta),
+            stockMaximo:       invs[0].stockMaximo ? parseFloat(invs[0].stockMaximo) : null
+        } : null
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // LISTAR TODOS — CON PAGINACIÓN REAL Y FILTROS EN BACKEND
 // Params: page, limit, buscar, categoriaId, departamentoId,
 //         stock (con|sin|bajo), proveedorId
@@ -136,80 +292,33 @@ async function listar(req, res) {
     try {
         console.log('🔍 Iniciando query de productos...')
 
-        const {
-            buscar, q, categoriaId, departamentoId, proveedorId,
-            contexto,
-            stock,          // 'con' | 'sin' | 'bajo' — reemplaza el antiguo enStock
-            enStock,        // compatibilidad hacia atrás con POS
-            page = 1,
-            limit = 50,
-            // Compatibilidad con skip/take directo (ej: POS u otros módulos)
-            skip, take,
-            tipo,           // 'PRODUCTO' | 'SERVICIO' — filtra por tipo de producto
-            activo          // 'true' | 'false' | 'all' — default: 'true' (solo activos)
-        } = req.query
+        const ctx = construirContextoProductos(req)
 
         // Calcular skip/take desde page/limit O desde skip/take directo
         let takeNum, skipNum
-        if (skip !== undefined || take !== undefined) {
-            // Modo legacy — quien manda skip/take directo
-            skipNum = parseInt(skip) || 0
-            takeNum = parseInt(take) || 50
+        if (req.query.skip !== undefined || req.query.take !== undefined) {
+            skipNum = parseInt(req.query.skip) || 0
+            takeNum = parseInt(req.query.take) || 50
         } else {
-            // Modo paginación — page/limit
-            takeNum = Math.min(parseInt(limit) || 50, 200) // tope de 200 por seguridad
-            const pageNum = Math.max(parseInt(page) || 1, 1)
+            takeNum = Math.min(parseInt(req.query.limit) || 50, 200)
+            const pageNum = Math.max(parseInt(req.query.page) || 1, 1)
             skipNum = (pageNum - 1) * takeNum
         }
 
-        const terminoBusqueda = buscar || q
-        const incluirFrecuenciaTickets = String(contexto || '').toLowerCase() === 'pos'
-        const terminoRanking = String(terminoBusqueda || '').trim().replace(/^["']+|["']+$/g, '').trim().toLowerCase()
-
-        const empresaId = getEmpresaId(req)
-        const sucursalIdInventario = sucursalOperativa(req)
-
-        const where = { empresaId }
-        if (activo === 'all') {
-            // no filtra — retorna todos
-        } else if (activo !== undefined) {
-            where.activo = activo === 'true'
-        } else {
-            where.activo = true  // default: solo activos
-        }
-
-        // ── Filtro por proveedor ──
-        if (proveedorId) {
-            where.ProveedorProducto = { some: { proveedorId: parseInt(proveedorId), activo: true } }
-        }
-
-        // ── Filtro por departamento (NUEVO — antes se hacía en frontend) ──
-        if (departamentoId) {
-            where.Categoria = { Departamento: { id: parseInt(departamentoId) } }
-        }
-
-        // ── Filtro por categoría ──
-        if (categoriaId) {
-            where.categoriaId = parseInt(categoriaId)
-        }
-
-        // ── Filtro por búsqueda ──
-        if (terminoBusqueda) {
-            const termLimpio = terminoBusqueda.trim().replace(/^["']+|["']+$/g, '').trim()
+        // ── Filtro por búsqueda (async, modifica where inline) ──
+        if (ctx.terminoBusqueda) {
+            const termLimpio = ctx.terminoBusqueda.trim().replace(/^["']+|["']+$/g, '').trim()
             const esCodigoNumerico = /^\d+$/.test(termLimpio)
             const sinCeros = termLimpio.replace(/^0+/, '')
             const palabras = termLimpio.split(/\s+/).filter(Boolean)
 
             if (!esCodigoNumerico) {
-                // Híbrido: full-text PostgreSQL (precisión: PVC ≠ CPVC) +
-                // ILIKE por palabra individual (cobertura: "concreto" en "p/concreto")
                 let ids = []
 
-                // 1) Full-text search PostgreSQL — word boundary, orden independiente
                 try {
                     const rawResult = await prisma.$queryRaw`
                         SELECT p.id FROM "Producto" p
-                        WHERE p."empresaId" = ${empresaId}
+                        WHERE p."empresaId" = ${ctx.empresaId}
                           AND (
                             to_tsvector('simple', p.nombre) @@ plainto_tsquery('simple', ${termLimpio})
                             OR p."codigoInterno" ILIKE ${'%' + termLimpio + '%'}
@@ -221,10 +330,9 @@ async function listar(req, res) {
                     console.error('⚠️ Full-text search error:', rawErr.message)
                 }
 
-                // 2) ILIKE por palabra — para que "clavo concreto" encuentre "clavo p/concreto"
                 try {
                     const ilikeWhere = {
-                        empresaId,
+                        empresaId: ctx.empresaId,
                         AND: palabras.map(p => ({
                             OR: [
                                 { nombre:        { contains: p, mode: 'insensitive' } },
@@ -244,12 +352,11 @@ async function listar(req, res) {
                 }
 
                 if (ids.length > 0) {
-                    where.id = { in: ids }
+                    ctx.where.id = { in: ids }
                 } else {
                     return res.json({ success: true, data: [], paginacion: { total: 0, totalPaginas: 0, pagina: 1 } })
                 }
             } else {
-                // Numérico (escaneo de código) → lógica original
                 const condiciones = [
                     { nombre:        { contains: termLimpio, mode: 'insensitive' } },
                     { codigoInterno: { contains: termLimpio, mode: 'insensitive' } },
@@ -270,82 +377,56 @@ async function listar(req, res) {
                     )
                 }
 
-                where.OR = condiciones
+                ctx.where.OR = condiciones
             }
         }
 
-        // ── Filtro por stock (NUEVO — antes se hacía en frontend) ──
-        // Soporta el nuevo param `stock` (con|sin|bajo) y el legacy `enStock`
-        // FIXED/SELECTED → sucursal operativa. NONE → consolida la Empresa.
-        const stockFiltro = stock || (enStock === 'true' ? 'con' : '')
-        const filtroStockCon = sucursalIdInventario
-            ? { some: { sucursalId: sucursalIdInventario, stockActual: { gt: 0 } } }
-            : { some: { stockActual: { gt: 0 } } }
-        const filtroStockSin = sucursalIdInventario
-            ? { none: { sucursalId: sucursalIdInventario, stockActual: { gt: 0 } } }
-            : { none: { stockActual: { gt: 0 } } }
-        if (stockFiltro === 'con') {
-            where.InventarioSucursal = filtroStockCon
-        } else if (stockFiltro === 'sin') {
-            where.InventarioSucursal = filtroStockSin
-        } else if (stockFiltro === 'sin_imagen') {
-            where.imagenUrl = null
-        }
-        // 'bajo' se maneja post-query porque requiere comparar dos columnas
-        // (stockActual <= stockMinimoAlerta) que Prisma no soporta en where
-
-        // ── Filtro por tipo de producto ──
-        if (tipo && ['PRODUCTO', 'SERVICIO'].includes(tipo)) {
-            where.tipo = tipo
-        }
-
         // ── Query de datos y conteo en paralelo ──
-        const whereGlobal = { ...where }
-        if (activo === 'all') {
+        const whereGlobal = { ...ctx.where }
+        if (ctx.activo === 'all') {
             // no filtra
-        } else if (activo !== undefined) {
-            whereGlobal.activo = activo === 'true'
+        } else if (ctx.activo !== undefined) {
+            whereGlobal.activo = ctx.activo === 'true'
         } else {
             whereGlobal.activo = true
         }
-        const requiereRanking = incluirFrecuenciaTickets || !!terminoBusqueda
-        const takeConsulta = requiereRanking && stockFiltro !== 'bajo'
+        const requiereRanking = ctx.incluirFrecuenciaTickets || !!ctx.terminoBusqueda
+        const takeConsulta = requiereRanking && ctx.stockFiltro !== 'bajo'
             ? Math.max(skipNum + takeNum, 150)
-            : (stockFiltro === 'bajo' ? 9999 : takeNum)
+            : (ctx.stockFiltro === 'bajo' ? 9999 : takeNum)
         const skipConsulta = requiereRanking ? 0 : skipNum
 
         const queries = [
             prisma.producto.findMany({
-                where,
+                where: ctx.where,
                 include: {
                     Categoria: { include: { Departamento: true } },
-                    InventarioSucursal: sucursalIdInventario ? { where: { sucursalId: sucursalIdInventario } } : {},
+                    InventarioSucursal: ctx.sucursalIdInventario ? { where: { sucursalId: ctx.sucursalIdInventario } } : {},
                     ProveedorProducto: { include: { Proveedor: true } }
                 },
                 orderBy: { nombre: 'asc' },
                 skip: skipConsulta,
-                take: takeConsulta  // bajo stock y ranking POS necesitan filtrar/ordenar post-query
+                take: takeConsulta
             }),
-            prisma.producto.count({ where: stockFiltro === 'bajo' ? { ...where } : where }),
-            // Conteos globales para las estadísticas del header
-            prisma.producto.count({ where: { ...whereGlobal, InventarioSucursal: filtroStockCon } }),
-            prisma.producto.count({ where: { ...whereGlobal, InventarioSucursal: filtroStockSin } }),
+            prisma.producto.count({ where: ctx.stockFiltro === 'bajo' ? { ...ctx.where } : ctx.where }),
+            prisma.producto.count({ where: { ...whereGlobal, InventarioSucursal: ctx.filtroStockCon } }),
+            prisma.producto.count({ where: { ...whereGlobal, InventarioSucursal: ctx.filtroStockSin } }),
             prisma.$queryRaw`
                 SELECT COUNT(DISTINCT p.id)::int AS count
                 FROM "InventarioSucursal" i
                 JOIN "Producto" p ON p.id = i."productoId"
-                WHERE p."empresaId" = ${empresaId}
+                WHERE p."empresaId" = ${ctx.empresaId}
                   AND i."stockActual" > 0
                   AND i."stockActual" <= i."stockMinimoAlerta"
                   AND p.activo = true
-                  ${sucursalIdInventario ? Prisma.sql`AND i."sucursalId" = ${sucursalIdInventario}` : Prisma.empty}
+                  ${ctx.sucursalIdInventario ? Prisma.sql`AND i."sucursalId" = ${ctx.sucursalIdInventario}` : Prisma.empty}
             `.then(r => r[0].count)
         ]
 
         let [productos, total, conStock, sinStock, bajoStock] = await Promise.all(queries)
 
-        // ── Post-filtro para "bajo stock" (requiere comparar columnas) ──
-        if (stockFiltro === 'bajo') {
+        // ── Post-filtro bajo stock (inline, con paginación) ──
+        if (ctx.stockFiltro === 'bajo') {
             productos = productos.filter(p => {
                 const invs = p.InventarioSucursal || []
                 return invs.some(inv => {
@@ -355,12 +436,12 @@ async function listar(req, res) {
                 })
             })
             total = productos.length
-            // Aplicar paginación manual sobre el resultado filtrado, salvo ranking.
             if (!requiereRanking) productos = productos.slice(skipNum, skipNum + takeNum)
         }
 
+        // ── Frecuencia de tickets (POS) ──
         const frecuenciaTickets = new Map()
-        if (incluirFrecuenciaTickets && productos.length > 0) {
+        if (ctx.incluirFrecuenciaTickets && productos.length > 0) {
             const productoIds = [...new Set(productos.map(p => parseInt(p.id)).filter(Boolean))]
             const desdeFrecuencia = new Date(Date.now() - (90 * 24 * 60 * 60 * 1000))
 
@@ -374,8 +455,8 @@ async function listar(req, res) {
                     WHERE dv."productoId" IN (${Prisma.join(productoIds)})
                       AND v."creadaEn" >= ${desdeFrecuencia}
                       AND v."estado" <> 'CANCELADA'
-                      AND v."empresaId" = ${empresaId}
-                      ${sucursalIdInventario ? Prisma.sql`AND v."sucursalId" = ${sucursalIdInventario}` : Prisma.empty}
+                      AND v."empresaId" = ${ctx.empresaId}
+                      ${ctx.sucursalIdInventario ? Prisma.sql`AND v."sucursalId" = ${ctx.sucursalIdInventario}` : Prisma.empty}
                     GROUP BY dv."productoId"
                 `
 
@@ -385,57 +466,13 @@ async function listar(req, res) {
             }
         }
 
+        // ── Ranking y orden ──
         if (requiereRanking) {
-            const normalizar = valor => String(valor || '').toLowerCase()
-            const escaparRegex = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-            const scoreProducto = prod => {
-                const nombre = normalizar(prod.nombre)
-                const codigoInterno = normalizar(prod.codigoInterno)
-                const codigoBarras = normalizar(prod.codigoBarras)
-                const stockActual = parseFloat(prod.InventarioSucursal?.[0]?.stockActual || 0)
-                const frecuencia = frecuenciaTickets.get(prod.id) || 0
-
-                let score = 0
-                if (terminoRanking) {
-                    if (codigoInterno === terminoRanking || codigoBarras === terminoRanking) score += 1000000
-                    if (codigoInterno.includes(terminoRanking) || codigoBarras.includes(terminoRanking)) score += 500000
-                    if (nombre.startsWith(terminoRanking)) score += 200000
-                    if (nombre.includes(terminoRanking)) score += 100000
-                    // Palabra exacta (ej: "PVC" en "TUBO PVC 3/4" ≠ "CPVC")
-                    const re = new RegExp('\\b' + escaparRegex(terminoRanking) + '\\b', 'i')
-                    if (re.test(prod.nombre)) score += 50000
-                }
-                if (stockActual > 0) score += 10000
-                score += frecuencia * 100
-                return score
-            }
-
-            productos = productos
-                .sort((a, b) => {
-                    const porScore = scoreProducto(b) - scoreProducto(a)
-                    if (porScore !== 0) return porScore
-                    return String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es', { sensitivity: 'base' })
-                })
-                .slice(skipNum, skipNum + takeNum)
+            productos = aplicarPostFiltroYOrden(productos, ctx, frecuenciaTickets)
+            productos = productos.slice(skipNum, skipNum + takeNum)
         }
 
-        const data = productos.map(prod => {
-            const invs = prod.InventarioSucursal || []
-            const stock = sucursalIdInventario
-                ? (invs.length > 0 ? parseFloat(invs[0].stockActual) : 0)
-                : invs.reduce((suma, inv) => suma + parseFloat(inv.stockActual || 0), 0)
-            return {
-                ...prod,
-                ...(incluirFrecuenciaTickets ? { vecesEnTickets: frecuenciaTickets.get(prod.id) || 0 } : {}),
-                stock,
-                inventario: invs.length > 0 ? {
-                    ...invs[0],
-                    stockActual:       parseFloat(invs[0].stockActual),
-                    stockMinimoAlerta: parseFloat(invs[0].stockMinimoAlerta),
-                    stockMaximo:       invs[0].stockMaximo ? parseFloat(invs[0].stockMaximo) : null
-                } : null
-            }
-        })
+        const data = productos.map(prod => serializarProducto(prod, { ...ctx, incluirFrecuenciaTickets: ctx.incluirFrecuenciaTickets }))
 
         const paginaActual = Math.floor(skipNum / takeNum) + 1
 
@@ -458,6 +495,161 @@ async function listar(req, res) {
         })
     } catch (error) {
         console.error('❌ Error listando productos:', error.message)
+        res.status(500).json({ success: false, error: error.message })
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// EXPORTAR EXCEL — Todos los productos filtrados (sin paginación)
+// Usa los mismos helpers que listar para garantizar paridad.
+// ═══════════════════════════════════════════════════════════════════
+
+async function exportarExcel(req, res) {
+    try {
+        const ExcelJS = require('exceljs')
+        const { construirWorkbookProductos } = require('./productos.export.helper')
+
+        const ctx = construirContextoProductos(req)
+
+        // ── Filtro por búsqueda (async, modifica where inline) — misma lógica que listar ──
+        if (ctx.terminoBusqueda) {
+            const termLimpio = ctx.terminoBusqueda.trim().replace(/^["']+|["']+$/g, '').trim()
+            const esCodigoNumerico = /^\d+$/.test(termLimpio)
+            const sinCeros = termLimpio.replace(/^0+/, '')
+            const palabras = termLimpio.split(/\s+/).filter(Boolean)
+
+            if (!esCodigoNumerico) {
+                let ids = []
+
+                try {
+                    const rawResult = await prisma.$queryRaw`
+                        SELECT p.id FROM "Producto" p
+                        WHERE p."empresaId" = ${ctx.empresaId}
+                          AND (
+                            to_tsvector('simple', p.nombre) @@ plainto_tsquery('simple', ${termLimpio})
+                            OR p."codigoInterno" ILIKE ${'%' + termLimpio + '%'}
+                            OR p."codigoBarras" ILIKE ${'%' + termLimpio + '%'}
+                          )
+                    `
+                    ids = rawResult.map(r => Number(r.id))
+                } catch (rawErr) {
+                    console.error('⚠️ Full-text search error:', rawErr.message)
+                }
+
+                try {
+                    const ilikeWhere = {
+                        empresaId: ctx.empresaId,
+                        AND: palabras.map(p => ({
+                            OR: [
+                                { nombre:        { contains: p, mode: 'insensitive' } },
+                                { codigoInterno: { contains: p, mode: 'insensitive' } },
+                                { codigoBarras:  { contains: p, mode: 'insensitive' } }
+                            ]
+                        }))
+                    }
+                    const ilikeResults = await prisma.producto.findMany({
+                        where: ilikeWhere,
+                        select: { id: true }
+                    })
+                    const ilikeIds = ilikeResults.map(r => r.id)
+                    ids = [...new Set([...ids, ...ilikeIds])]
+                } catch (ilikeErr) {
+                    console.error('⚠️ ILIKE search error:', ilikeErr.message)
+                }
+
+                if (ids.length > 0) {
+                    ctx.where.id = { in: ids }
+                } else {
+                    // Sin resultados — devolver XLSX vacío con solo header
+                    const workbook = new ExcelJS.Workbook()
+                    const ws = workbook.addWorksheet('Productos')
+                    const headers = ['Código', 'Código de barras', 'Nombre', 'Departamento', 'Categoría', 'Tipo', 'Unidad venta', 'Unidad compra', 'Factor', 'Precio venta', 'Costo', 'Stock', 'Stock mínimo', 'Activo']
+                    ws.addRow(headers)
+                    const headerRow = ws.getRow(1)
+                    headerRow.eachCell((cell) => {
+                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F3A66' } }
+                        cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
+                        cell.alignment = { vertical: 'middle' }
+                    })
+                    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+                    const fecha = new Date().toISOString().slice(0, 10)
+                    res.setHeader('Content-Disposition', `attachment; filename="productos-${fecha}.xlsx"`)
+                    await workbook.xlsx.write(res)
+                    res.end()
+                    return
+                }
+            } else {
+                const condiciones = [
+                    { nombre:        { contains: termLimpio, mode: 'insensitive' } },
+                    { codigoInterno: { contains: termLimpio, mode: 'insensitive' } },
+                    { codigoBarras:  { contains: termLimpio, mode: 'insensitive' } }
+                ]
+
+                if (sinCeros !== termLimpio && sinCeros.length > 0) {
+                    condiciones.push(
+                        { codigoInterno: { contains: sinCeros, mode: 'insensitive' } },
+                        { codigoBarras:  { contains: sinCeros, mode: 'insensitive' } }
+                    )
+                }
+
+                if (sinCeros.length > 0) {
+                    condiciones.push(
+                        { codigoInterno: { endsWith: sinCeros, mode: 'insensitive' } },
+                        { codigoBarras:  { endsWith: sinCeros, mode: 'insensitive' } }
+                    )
+                }
+
+                ctx.where.OR = condiciones
+            }
+        }
+
+        // ── Query completa (sin skip/take) ──
+        const requiereRanking = ctx.incluirFrecuenciaTickets || !!ctx.terminoBusqueda
+        const takeExport = requiereRanking && ctx.stockFiltro !== 'bajo'
+            ? 100000  // suficiente para ranking sin paginación
+            : (ctx.stockFiltro === 'bajo' ? 9999 : 100000)
+
+        let productos = await prisma.producto.findMany({
+            where: ctx.where,
+            include: {
+                Categoria: { include: { Departamento: true } },
+                InventarioSucursal: ctx.sucursalIdInventario ? { where: { sucursalId: ctx.sucursalIdInventario } } : {},
+                ProveedorProducto: { include: { Proveedor: true } }
+            },
+            orderBy: { nombre: 'asc' },
+            take: takeExport
+        })
+
+        // ── Post-filtro bajo stock (misma lógica que listar) ──
+        if (ctx.stockFiltro === 'bajo') {
+            productos = productos.filter(p => {
+                const invs = p.InventarioSucursal || []
+                return invs.some(inv => {
+                    const sa = parseFloat(inv.stockActual)
+                    const sm = parseFloat(inv.stockMinimoAlerta)
+                    return sa > 0 && sa <= sm
+                })
+            })
+        }
+
+        // ── Ranking (misma lógica que listar) ──
+        if (requiereRanking) {
+            productos = aplicarPostFiltroYOrden(productos, ctx, new Map())
+        }
+
+        // ── Serializar ──
+        const data = productos.map(prod => serializarProducto(prod, ctx))
+
+        // ── Generar XLSX ──
+        const workbook = construirWorkbookProductos(data, { sucursalIdInventario: ctx.sucursalIdInventario })
+
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        const fecha = new Date().toISOString().slice(0, 10)
+        res.setHeader('Content-Disposition', `attachment; filename="productos-${fecha}.xlsx"`)
+        await workbook.xlsx.write(res)
+        res.end()
+    } catch (error) {
+        console.error('❌ Error exportando productos:', error.message)
         res.status(500).json({ success: false, error: error.message })
     }
 }
@@ -1588,5 +1780,6 @@ module.exports = {
     editarDatosBasicos,
     sugerirNombres,
     duplicarProducto,
-    construirDataEdicion
+    construirDataEdicion,
+    exportarExcel
 }
