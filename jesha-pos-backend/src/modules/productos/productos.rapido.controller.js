@@ -35,6 +35,7 @@ const { Prisma } = require('@prisma/client')
 const prisma = require('../../lib/prisma')
 const getEmpresaId = require('../../helpers/getEmpresaId')
 const satMatcher = require('./sat.matcher')
+const { registrarHistorialEconomico } = require('../../helpers/historial-precio-producto')
 const {
     normalizarCodigoBarras,
     validarCodigoBarrasDuplicado,
@@ -294,6 +295,25 @@ exports.crearArticuloRapido = async (req, res) => {
           }
         })
       }
+
+      await registrarHistorialEconomico(tx, {
+        empresaId,
+        productoId: producto.id,
+        usuarioId,
+        sucursalId: sucursalIdNum,
+        origen: 'CREACION_PRODUCTO_RAPIDO',
+        accion: 'CREAR_PRODUCTO_RAPIDO',
+        referencia: `PRODUCTO:${producto.id}`,
+        antes: {},
+        despues: {
+          precioVenta: producto.precioVenta,
+          precioBase: producto.precioBase,
+          costo: producto.costo,
+          costoPromedio: producto.costoPromedio,
+          margen: producto.margen,
+          factorConversion: producto.factorConversion
+        }
+      })
 
       return { producto, inventario: inv }
     })

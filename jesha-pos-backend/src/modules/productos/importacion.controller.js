@@ -7,6 +7,7 @@ const prisma = require('../../lib/prisma')
 const getEmpresaId = require('../../helpers/getEmpresaId')
 const resolverSucursalId = require('../sucursal/sucursal.helper')
 const satMatcher = require('./sat.matcher')
+const { registrarHistorialEconomico } = require('../../helpers/historial-precio-producto')
 const {
     normalizarCodigoBarras,
     parsearErrorPrismaProducto
@@ -593,53 +594,78 @@ exports.importarCSV = async (req, res) => {
 
                         dataSinAux.codigoBarras = normalizarCodigoBarras(dataSinAux.codigoBarras)
 
-                        await prisma.producto.update({
-                            where: { empresaId_codigoInterno: { empresaId, codigoInterno: dataSinAux.codigoInterno } },
-                            data: {
-                                nombre:       dataSinAux.nombre,
-                                codigoBarras: dataSinAux.codigoBarras,
-                                descripcion:  dataSinAux.descripcion,
-                                precioBase:   dataSinAux.precioBase,
-                                precioVenta:  dataSinAux.precioVenta,
-                                costo:        dataSinAux.costo,
-                                claveSat:     dataSinAux.claveSat,
-                                unidadSat:    dataSinAux.unidadSat,
-                                esGranel:     dataSinAux.esGranel,
-                                unidadVenta:  dataSinAux.unidadVenta,
-                                imagenUrl:    dataSinAux.imagenUrl,
-                                categoriaId,
-                            }
-                        })
-                        // Actualizar inventario si tiene stock en el CSV (solo con sucursal operativa)
-                        if (sucursalId !== null && (_stockInicial > 0 || _stockMinimo > 0)) {
-                            await prisma.inventarioSucursal.upsert({
-                                where: { productoId_sucursalId: { productoId: existente.id, sucursalId } },
-                                update: {
-                                    stockActual:       _stockInicial,
-                                    stockMinimoAlerta: _stockMinimo,
-                                    ..._stockMaximo && { stockMaximo: _stockMaximo }
-                                },
-                                create: {
-                                    productoId:        existente.id,
-                                    sucursalId,
-                                    stockActual:       _stockInicial,
-                                    stockMinimoAlerta: _stockMinimo,
-                                    ..._stockMaximo && { stockMaximo: _stockMaximo }
+                        await prisma.$transaction(async (tx) => {
+                            const antes = await tx.producto.findUnique({
+                                where: { id: existente.id },
+                                select: { precioVenta: true, precioBase: true, costo: true, costoPromedio: true, margen: true, costoSinIvaProveedor: true, factorConversion: true }
+                            })
+
+                            await tx.producto.update({
+                                where: { empresaId_codigoInterno: { empresaId, codigoInterno: dataSinAux.codigoInterno } },
+                                data: {
+                                    nombre:       dataSinAux.nombre,
+                                    codigoBarras: dataSinAux.codigoBarras,
+                                    descripcion:  dataSinAux.descripcion,
+                                    precioBase:   dataSinAux.precioBase,
+                                    precioVenta:  dataSinAux.precioVenta,
+                                    costo:        dataSinAux.costo,
+                                    claveSat:     dataSinAux.claveSat,
+                                    unidadSat:    dataSinAux.unidadSat,
+                                    esGranel:     dataSinAux.esGranel,
+                                    unidadVenta:  dataSinAux.unidadVenta,
+                                    imagenUrl:    dataSinAux.imagenUrl,
+                                    categoriaId,
                                 }
                             })
-                        }
-                        // Vincular proveedor si viene en el CSV
-                        if (_proveedorNombre) {
-                            const proveedorId = cacheProveedores.get(_proveedorNombre)
-                            if (proveedorId) {
-                                await prisma.proveedorProducto.upsert({
-                                    where:  { proveedorId_productoId: { proveedorId, productoId: existente.id } },
-                                    update: { precioCosto: dataSinAux.costo || 0, activo: true },
-                                    create: { proveedorId, productoId: existente.id, precioCosto: dataSinAux.costo || 0, activo: true }
+
+                            const despues = await tx.producto.findUnique({
+                                where: { id: existente.id },
+                                select: { precioVenta: true, precioBase: true, costo: true, costoPromedio: true, margen: true, costoSinIvaProveedor: true, factorConversion: true }
+                            })
+
+                            await registrarHistorialEconomico(tx, {
+                                empresaId,
+                                productoId: existente.id,
+                                usuarioId: req.usuario?.id ? parseInt(req.usuario.id) : null,
+                                sucursalId,
+                                origen: 'IMPORTACION',
+                                accion: 'IMPORTAR_ACTUALIZACION_PRODUCTO',
+                                referencia: `PRODUCTO:${existente.id}`,
+                                contexto: { fila: numFila },
+                                antes: antes || {},
+                                despues: despues || {}
+                            })
+
+                            if (sucursalId !== null && (_stockInicial > 0 || _stockMinimo > 0)) {
+                                await tx.inventarioSucursal.upsert({
+                                    where: { productoId_sucursalId: { productoId: existente.id, sucursalId } },
+                                    update: {
+                                        stockActual:       _stockInicial,
+                                        stockMinimoAlerta: _stockMinimo,
+                                        ..._stockMaximo && { stockMaximo: _stockMaximo }
+                                    },
+                                    create: {
+                                        productoId:        existente.id,
+                                        sucursalId,
+                                        stockActual:       _stockInicial,
+                                        stockMinimoAlerta: _stockMinimo,
+                                        ..._stockMaximo && { stockMaximo: _stockMaximo }
+                                    }
                                 })
-                                vinculaciones++
                             }
-                        }
+
+                            if (_proveedorNombre) {
+                                const proveedorId = cacheProveedores.get(_proveedorNombre)
+                                if (proveedorId) {
+                                    await tx.proveedorProducto.upsert({
+                                        where:  { proveedorId_productoId: { proveedorId, productoId: existente.id } },
+                                        update: { precioCosto: dataSinAux.costo || 0, activo: true },
+                                        create: { proveedorId, productoId: existente.id, precioCosto: dataSinAux.costo || 0, activo: true }
+                                    })
+                                    vinculaciones++
+                                }
+                            }
+                        })
                         actualizados++
                     } else {
                         // Extraer campos auxiliares antes de insertar
@@ -649,58 +675,83 @@ exports.importarCSV = async (req, res) => {
 
                         let productoCreado
                         try {
-                            productoCreado = await prisma.producto.create({
-                                data: { empresaId, ...dataSinAux, categoriaId }
-                            })
-                        } catch (createErr) {
-                            const barcodeOriginal = dataSinAux.codigoBarras
-                            // Segundo intento sin codigoBarras (por si es duplicado por race condition)
-                            try {
-                                productoCreado = await prisma.producto.create({
-                                    data: { empresaId, ...dataSinAux, codigoBarras: null, categoriaId }
+                            await prisma.$transaction(async (tx) => {
+                                try {
+                                    productoCreado = await tx.producto.create({
+                                        data: { empresaId, ...dataSinAux, categoriaId }
+                                    })
+                                } catch (createErr) {
+                                    const barcodeOriginal = dataSinAux.codigoBarras
+                                    try {
+                                        productoCreado = await tx.producto.create({
+                                            data: { empresaId, ...dataSinAux, codigoBarras: null, categoriaId }
+                                        })
+                                        if (barcodeOriginal) {
+                                            advertenciasInsert.push({
+                                                fila: numFila,
+                                                clave: dataSinAux.codigoInterno,
+                                                advertencia: `El código de barras "${barcodeOriginal}" ya existía. Producto creado sin código de barras.`
+                                            })
+                                        }
+                                    } catch (createErr2) {
+                                        const parsed = parsearErrorPrismaProducto(createErr2)
+                                        throw new Error(parsed ? parsed.error : `No se pudo crear el producto en la fila ${numFila}`)
+                                    }
+                                }
+
+                                await registrarHistorialEconomico(tx, {
+                                    empresaId,
+                                    productoId: productoCreado.id,
+                                    usuarioId: req.usuario?.id ? parseInt(req.usuario.id) : null,
+                                    sucursalId,
+                                    origen: 'IMPORTACION',
+                                    accion: 'IMPORTAR_CREACION_PRODUCTO',
+                                    referencia: `PRODUCTO:${productoCreado.id}`,
+                                    contexto: { fila: numFila },
+                                    antes: {},
+                                    despues: {
+                                        precioVenta: productoCreado.precioVenta,
+                                        precioBase: productoCreado.precioBase,
+                                        costo: productoCreado.costo,
+                                        costoPromedio: productoCreado.costoPromedio,
+                                        margen: productoCreado.margen,
+                                        costoSinIvaProveedor: productoCreado.costoSinIvaProveedor,
+                                        factorConversion: productoCreado.factorConversion
+                                    }
                                 })
-                                if (barcodeOriginal) {
-                                    advertenciasInsert.push({
-                                        fila: numFila,
-                                        clave: dataSinAux.codigoInterno,
-                                        advertencia: `El código de barras "${barcodeOriginal}" ya existía. Producto creado sin código de barras.`
+
+                                if (sucursalId !== null) {
+                                    await tx.inventarioSucursal.upsert({
+                                        where: { productoId_sucursalId: { productoId: productoCreado.id, sucursalId } },
+                                        update: {
+                                            stockActual:       _stockInicial,
+                                            stockMinimoAlerta: _stockMinimo,
+                                            ..._stockMaximo && { stockMaximo: _stockMaximo }
+                                        },
+                                        create: {
+                                            productoId:        productoCreado.id,
+                                            sucursalId,
+                                            stockActual:       _stockInicial,
+                                            stockMinimoAlerta: _stockMinimo,
+                                            ..._stockMaximo && { stockMaximo: _stockMaximo }
+                                        }
                                     })
                                 }
-                            } catch (createErr2) {
-                                const parsed = parsearErrorPrismaProducto(createErr2)
-                                throw new Error(parsed ? parsed.error : `No se pudo crear el producto en la fila ${numFila}`)
-                            }
-                        }
 
-                        // Crear o actualizar inventario con stock del CSV (solo con sucursal operativa)
-                        if (sucursalId !== null) {
-                            await prisma.inventarioSucursal.upsert({
-                                where: { productoId_sucursalId: { productoId: productoCreado.id, sucursalId } },
-                                update: {
-                                    stockActual:       _stockInicial,
-                                    stockMinimoAlerta: _stockMinimo,
-                                    ..._stockMaximo && { stockMaximo: _stockMaximo }
-                                },
-                                create: {
-                                    productoId:        productoCreado.id,
-                                    sucursalId,
-                                    stockActual:       _stockInicial,
-                                    stockMinimoAlerta: _stockMinimo,
-                                    ..._stockMaximo && { stockMaximo: _stockMaximo }
+                                if (_proveedorNombre) {
+                                    const proveedorId = cacheProveedores.get(_proveedorNombre)
+                                    if (proveedorId) {
+                                        await tx.proveedorProducto.upsert({
+                                            where:  { proveedorId_productoId: { proveedorId, productoId: productoCreado.id } },
+                                            update: { precioCosto: dataSinAux.costo || 0, activo: true },
+                                            create: { proveedorId, productoId: productoCreado.id, precioCosto: dataSinAux.costo || 0, activo: true }
+                                        })
+                                        vinculaciones++
+                                    }
                                 }
                             })
-                        }
-                        // Vincular proveedor si viene en el CSV
-                        if (_proveedorNombre) {
-                            const proveedorId = cacheProveedores.get(_proveedorNombre)
-                            if (proveedorId) {
-                                await prisma.proveedorProducto.upsert({
-                                    where:  { proveedorId_productoId: { proveedorId, productoId: productoCreado.id } },
-                                    update: { precioCosto: dataSinAux.costo || 0, activo: true },
-                                    create: { proveedorId, productoId: productoCreado.id, precioCosto: dataSinAux.costo || 0, activo: true }
-                                })
-                                vinculaciones++
-                            }
+                        } catch (txErr) {
+                            throw txErr
                         }
                         creados++
                     }
@@ -906,59 +957,83 @@ exports.importarSoloNuevos = async (req, res) => {
 
                     let productoCreado
                     try {
-                        productoCreado = await prisma.producto.create({
-                            data: { empresaId, ...dataSinAux, categoriaId }
-                        })
-                    } catch (createErr) {
-                        const barcodeOriginal = dataSinAux.codigoBarras
-                        // Segundo intento sin codigoBarras (por si es duplicado por race condition)
-                        try {
-                            productoCreado = await prisma.producto.create({
-                                data: { empresaId, ...dataSinAux, codigoBarras: null, categoriaId }
+                        await prisma.$transaction(async (tx) => {
+                            try {
+                                productoCreado = await tx.producto.create({
+                                    data: { empresaId, ...dataSinAux, categoriaId }
+                                })
+                            } catch (createErr) {
+                                const barcodeOriginal = dataSinAux.codigoBarras
+                                try {
+                                    productoCreado = await tx.producto.create({
+                                        data: { empresaId, ...dataSinAux, codigoBarras: null, categoriaId }
+                                    })
+                                    if (barcodeOriginal) {
+                                        advertenciasInsert.push({
+                                            fila: numFila,
+                                            clave: dataSinAux.codigoInterno,
+                                            advertencia: `El código de barras "${barcodeOriginal}" ya existía. Producto creado sin código de barras.`
+                                        })
+                                    }
+                                } catch (createErr2) {
+                                    const parsed = parsearErrorPrismaProducto(createErr2)
+                                    throw new Error(parsed ? parsed.error : `No se pudo crear el producto en la fila ${numFila}`)
+                                }
+                            }
+
+                            await registrarHistorialEconomico(tx, {
+                                empresaId,
+                                productoId: productoCreado.id,
+                                usuarioId: req.usuario?.id ? parseInt(req.usuario.id) : null,
+                                sucursalId,
+                                origen: 'IMPORTACION',
+                                accion: 'IMPORTAR_CREACION_PRODUCTO',
+                                referencia: `PRODUCTO:${productoCreado.id}`,
+                                contexto: { fila: numFila },
+                                antes: {},
+                                despues: {
+                                    precioVenta: productoCreado.precioVenta,
+                                    precioBase: productoCreado.precioBase,
+                                    costo: productoCreado.costo,
+                                    costoPromedio: productoCreado.costoPromedio,
+                                    margen: productoCreado.margen,
+                                    costoSinIvaProveedor: productoCreado.costoSinIvaProveedor,
+                                    factorConversion: productoCreado.factorConversion
+                                }
                             })
-                            if (barcodeOriginal) {
-                                advertenciasInsert.push({
-                                    fila: numFila,
-                                    clave: dataSinAux.codigoInterno,
-                                    advertencia: `El código de barras "${barcodeOriginal}" ya existía. Producto creado sin código de barras.`
+
+                            if (sucursalId !== null) {
+                                await tx.inventarioSucursal.upsert({
+                                    where: { productoId_sucursalId: { productoId: productoCreado.id, sucursalId } },
+                                    update: {
+                                        stockActual:       _stockInicial,
+                                        stockMinimoAlerta: _stockMinimo,
+                                        ..._stockMaximo && { stockMaximo: _stockMaximo }
+                                    },
+                                    create: {
+                                        productoId:        productoCreado.id,
+                                        sucursalId,
+                                        stockActual:       _stockInicial,
+                                        stockMinimoAlerta: _stockMinimo,
+                                        ..._stockMaximo && { stockMaximo: _stockMaximo }
+                                    }
                                 })
                             }
-                        } catch (createErr2) {
-                            const parsed = parsearErrorPrismaProducto(createErr2)
-                            throw new Error(parsed ? parsed.error : `No se pudo crear el producto en la fila ${numFila}`)
-                        }
-                    }
 
-                    // Crear inventario con stock del CSV (solo con sucursal operativa)
-                    if (sucursalId !== null) {
-                        await prisma.inventarioSucursal.upsert({
-                            where: { productoId_sucursalId: { productoId: productoCreado.id, sucursalId } },
-                            update: {
-                                stockActual:       _stockInicial,
-                                stockMinimoAlerta: _stockMinimo,
-                                ..._stockMaximo && { stockMaximo: _stockMaximo }
-                            },
-                            create: {
-                                productoId:        productoCreado.id,
-                                sucursalId,
-                                stockActual:       _stockInicial,
-                                stockMinimoAlerta: _stockMinimo,
-                                ..._stockMaximo && { stockMaximo: _stockMaximo }
+                            if (_proveedorNombre) {
+                                const proveedorId = cacheProveedores.get(_proveedorNombre)
+                                if (proveedorId) {
+                                    await tx.proveedorProducto.upsert({
+                                        where:  { proveedorId_productoId: { proveedorId, productoId: productoCreado.id } },
+                                        update: { precioCosto: dataSinAux.costo || 0, activo: true },
+                                        create: { proveedorId, productoId: productoCreado.id, precioCosto: dataSinAux.costo || 0, activo: true }
+                                    })
+                                    vinculaciones++
+                                }
                             }
                         })
-                    }
-
-                    // Vincular proveedor si viene en el CSV
-                    if (_proveedorNombre) {
-                        const proveedorId = cacheProveedores.get(_proveedorNombre)
-                        if (proveedorId) {
-                            await prisma.proveedorProducto.upsert({
-                                where:  { proveedorId_productoId: { proveedorId, productoId: productoCreado.id } },
-                                update: { precioCosto: dataSinAux.costo || 0, activo: true },
-                                create: { proveedorId, productoId: productoCreado.id, precioCosto: dataSinAux.costo || 0, activo: true }
-                            })
-                            vinculaciones++
-                        }
+                    } catch (txErr) {
+                        throw txErr
                     }
 
                     creados++

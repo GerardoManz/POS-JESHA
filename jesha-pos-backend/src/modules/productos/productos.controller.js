@@ -796,34 +796,58 @@ async function crear(req, res) {
             ? parseFloat(Math.min(((precioVtaNum / costoUnitVta - 1) * 100), 999.99).toFixed(2))
             : null
 
-        const producto = await prisma.producto.create({
-            data: {
+        const producto = await prisma.$transaction(async (tx) => {
+            const prod = await tx.producto.create({
+                data: {
+                    empresaId,
+                    nombre,
+                    codigoInterno,
+                    codigoBarras:        codigoBarras     || null,
+                    descripcion:         descripcion      || null,
+                    costo:               costoUnitVta,
+                    costoPromedio:       esServicio ? null : costoUnitVta,
+                    margen:              margenProd,
+                    precioBase:          parseFloat(precioBase),
+                    precioVenta:         precioVenta ? parseFloat(precioVenta) : null,
+                    categoriaId:         parseInt(categoriaId),
+                    unidadCompra:        esServicio ? null : (unidadCompra || null),
+                    unidadVenta:         unidadVenta      || null,
+                    factorConversion:    esServicio ? null : (factorConversion ? parseFloat(factorConversion) : null),
+                    claveSat:            claveSat         || null,
+                    unidadSat:           unidadSat        || null,
+                    tipoFacturaProv:     tipoFacturaProv  || 'NETO',
+                    costoSinIvaProveedor: costoSinIvaProveedor ? parseFloat(costoSinIvaProveedor) : null,
+                    esGranel:            esServicio ? false : (esGranel === true || esGranel === 'true'),
+                    tipo:                tipoFinal,
+                    activo: true
+                },
+                include: {
+                    Categoria: { include: { Departamento: true } },
+                    InventarioSucursal: { take: 1 }
+                }
+            })
+
+            await registrarHistorialEconomico(tx, {
                 empresaId,
-                nombre,
-                codigoInterno,
-                codigoBarras:        codigoBarras     || null,
-                descripcion:         descripcion      || null,
-                costo:               costoUnitVta,
-                costoPromedio:       esServicio ? null : costoUnitVta,
-                margen:              margenProd,
-                precioBase:          parseFloat(precioBase),
-                precioVenta:         precioVenta ? parseFloat(precioVenta) : null,
-                categoriaId:         parseInt(categoriaId),
-                unidadCompra:        esServicio ? null : (unidadCompra || null),
-                unidadVenta:         unidadVenta      || null,
-                factorConversion:    esServicio ? null : (factorConversion ? parseFloat(factorConversion) : null),
-                claveSat:            claveSat         || null,
-                unidadSat:           unidadSat        || null,
-                tipoFacturaProv:     tipoFacturaProv  || 'NETO',
-                costoSinIvaProveedor: costoSinIvaProveedor ? parseFloat(costoSinIvaProveedor) : null,
-                esGranel:            esServicio ? false : (esGranel === true || esGranel === 'true'),
-                tipo:                tipoFinal,
-                activo: true
-            },
-            include: {
-                Categoria: { include: { Departamento: true } },
-                InventarioSucursal: { take: 1 }
-            }
+                productoId: prod.id,
+                usuarioId: req.usuario?.id ? parseInt(req.usuario.id) : null,
+                sucursalId: null,
+                origen: 'CREACION_PRODUCTO',
+                accion: 'CREAR_PRODUCTO',
+                referencia: `PRODUCTO:${prod.id}`,
+                antes: {},
+                despues: {
+                    precioVenta: prod.precioVenta,
+                    precioBase: prod.precioBase,
+                    costo: prod.costo,
+                    costoPromedio: prod.costoPromedio,
+                    margen: prod.margen,
+                    costoSinIvaProveedor: prod.costoSinIvaProveedor,
+                    factorConversion: prod.factorConversion
+                }
+            })
+
+            return prod
         })
 
         // Guardar relación con proveedor si se proporcionó
@@ -1804,13 +1828,35 @@ const duplicarProducto = async (req, res) => {
                 }
             })
 
-            await tx.auditoria.create({
+            const auditoria = await tx.auditoria.create({
                 data: {
                     accion: 'DUPLICAR_PRODUCTO',
                     modulo: 'PRODUCTOS',
                     referencia: `Original: ${original.codigoInterno} → Nuevo: ${codigoInternoLimpio}`,
                     usuarioId: req.usuario?.id ? parseInt(req.usuario.id) : null,
                     sucursalId: sucursalOperativa(req)
+                }
+            })
+
+            await registrarHistorialEconomico(tx, {
+                empresaId,
+                productoId: nuevo.id,
+                auditoriaId: auditoria.id,
+                usuarioId: req.usuario?.id ? parseInt(req.usuario.id) : null,
+                sucursalId: null,
+                origen: 'DUPLICACION_PRODUCTO',
+                accion: 'DUPLICAR_PRODUCTO',
+                referencia: `PRODUCTO:${nuevo.id}`,
+                contexto: { productoOrigenId: original.id },
+                antes: {},
+                despues: {
+                    precioVenta: nuevo.precioVenta,
+                    precioBase: nuevo.precioBase,
+                    costo: nuevo.costo,
+                    costoPromedio: nuevo.costoPromedio,
+                    margen: nuevo.margen,
+                    costoSinIvaProveedor: nuevo.costoSinIvaProveedor,
+                    factorConversion: nuevo.factorConversion
                 }
             })
 
