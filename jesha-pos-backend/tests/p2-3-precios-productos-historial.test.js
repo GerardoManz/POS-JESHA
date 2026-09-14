@@ -36,11 +36,27 @@ before(async () => {
   if (!empresa) throw new Error('No empresa "jesha"')
   empresaId = empresa.id
 
-  // Pick a product with valid SAT values
-  const producto = await prisma.producto.findFirst({
-    where: { empresaId, activo: true, claveSat: { not: null }, unidadSat: { not: null } }
+  const categoria = await prisma.categoria.findFirst({ where: { empresaId } })
+  if (!categoria) throw new Error('No categoria for test fixture')
+
+  const producto = await prisma.producto.create({
+    data: {
+      empresaId,
+      categoriaId: categoria.id,
+      codigoInterno: `P23-PRECIOS-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      nombre: 'P2-3 prices and product fixture',
+      tipo: 'PRODUCTO',
+      costo: 80,
+      costoPromedio: 80,
+      precioBase: 172.41,
+      precioVenta: 200,
+      margen: 150,
+      unidadCompra: 'PZA',
+      unidadVenta: 'PZA',
+      claveSat: '43232300',
+      unidadSat: 'H87'
+    }
   })
-  if (!producto) throw new Error('No active producto with valid SAT')
   productoId = producto.id
 
   const usuario = await prisma.usuario.findFirst({ where: { empresaId, activo: true } })
@@ -59,13 +75,14 @@ before(async () => {
 })
 
 after(async () => {
-  // Cleanup test HPP records
   await prisma.historialPrecioProductoDetalle.deleteMany({
-    where: { Historial: { productoId, origen: { startsWith: 'EDICION_' } } }
+    where: { Historial: { productoId } }
   })
   await prisma.historialPrecioProducto.deleteMany({
-    where: { productoId, origen: { startsWith: 'EDICION_' } }
+    where: { productoId }
   })
+  await prisma.proveedorProducto.deleteMany({ where: { productoId } })
+  await prisma.producto.deleteMany({ where: { id: productoId } })
   await prisma.$disconnect()
 })
 
