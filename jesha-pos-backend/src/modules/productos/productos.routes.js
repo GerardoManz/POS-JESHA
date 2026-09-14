@@ -13,6 +13,7 @@ const { tenantGlobal, branchOptional } = require('../../middlewares/scope.middle
 
 const productosController   = require('./productos.controller')
 const productosRapidoController = require('./productos.rapido.controller')
+const historialProductoController = require('./historial-producto.controller')
 const importacionController = require('./importacion.controller')
 const satController         = require('./productos.sat.controller')
 const { subirImagenProducto } = require('../../lib/cloudinary')
@@ -94,6 +95,9 @@ router.get('/sugerir', branchOptional, productosController.sugerirNombres)
 
 // GET /productos/exportar/excel — Exportación XLSX de todos los productos filtrados (ANTES de /:id)
 router.get('/exportar/excel', branchOptional, requireRole('SUPERADMIN', 'ADMIN_SUCURSAL'), productosController.exportarExcel)
+
+// GET /productos/:id/historial-economico — historial oficial del catálogo, tenant-global
+router.get('/:id/historial-economico', tenantGlobal, requireRole('SUPERADMIN', 'ADMIN_SUCURSAL', 'PRECIOS'), historialProductoController.obtenerHistorialEconomico)
 
 // GET /productos/:id — Obtener producto individual (incluye existencias por sucursal)
 router.get('/:id', branchOptional, productosController.obtener)
