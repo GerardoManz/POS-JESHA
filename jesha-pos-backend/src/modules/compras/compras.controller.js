@@ -9,6 +9,7 @@ const resolverSucursalId = require('../sucursal/sucursal.helper')
 const construirWhereScopeTenant = require('../../helpers/construirWhereScopeTenant')
 const { FACTOR_IVA } = require('../../utils/constantes')
 const { verificarStockPostOperacion } = require('../../helpers/verificarStock')
+const { registrarHistorialEconomico } = require('../../helpers/historial-precio-producto')
 
 async function generarFolio() {
   const d   = new Date()
@@ -359,10 +360,13 @@ const recibir = async (req, res) => {
         const subtotalNuevo = parseFloat((precioCostoCaja * cantNueva).toFixed(2))
         totalRecibidoNuevo += subtotalNuevo
 
-        // Foto del producto ANTES (auditoría + base del costo promedio)
+        // Foto del producto ANTES (auditoría + base del costo promedio + historial económico)
         const prodAntes = await tx.producto.findUnique({
           where: { id: detalle.productoId },
-          select: { costo: true, precioVenta: true, costoPromedio: true }
+          select: {
+            costo: true, costoPromedio: true, precioVenta: true, precioBase: true,
+            precioMayoreo: true, margen: true, costoSinIvaProveedor: true, factorConversion: true
+          }
         })
         const costoAnterior       = prodAntes?.costo != null ? parseFloat(prodAntes.costo) : null
         const precioVentaAnterior = prodAntes?.precioVenta != null ? parseFloat(prodAntes.precioVenta) : null
@@ -435,6 +439,49 @@ const recibir = async (req, res) => {
             ...(unidadSatRecibido !== undefined ? { unidadSat: unidadSatRecibido } : {})
           }
         })
+
+        // ── Historial económico de producto (P2-3 Fase 1B) ──
+        // Refetch para obtener estado real post-update (maneja condicionales correctamente)
+        const prodDespues = await tx.producto.findUnique({
+          where: { id: detalle.productoId },
+          select: {
+            costo: true, costoPromedio: true, precioVenta: true, precioBase: true,
+            precioMayoreo: true, margen: true, costoSinIvaProveedor: true, factorConversion: true
+          }
+        })
+
+        await registrarHistorialEconomico(tx, {
+          empresaId,
+          productoId:    detalle.productoId,
+          origen:        'COMPRA',
+          accion:        'RECEPCION_COMPRA',
+          referencia:    `OC:${oc.id}`,
+          ordenCompraId: oc.id,
+          proveedorId:   oc.proveedorId,
+          usuarioId,
+          sucursalId:    oc.sucursalId,
+          antes: {
+            costo:              prodAntes?.costo,
+            costoPromedio:      prodAntes?.costoPromedio,
+            precioVenta:        prodAntes?.precioVenta,
+            precioBase:         prodAntes?.precioBase,
+            precioMayoreo:      prodAntes?.precioMayoreo,
+            margen:             prodAntes?.margen,
+            costoSinIvaProveedor: prodAntes?.costoSinIvaProveedor,
+            factorConversion:   prodAntes?.factorConversion
+          },
+          despues: {
+            costo:              prodDespues?.costo,
+            costoPromedio:      prodDespues?.costoPromedio,
+            precioVenta:        prodDespues?.precioVenta,
+            precioBase:         prodDespues?.precioBase,
+            precioMayoreo:      prodDespues?.precioMayoreo,
+            margen:             prodDespues?.margen,
+            costoSinIvaProveedor: prodDespues?.costoSinIvaProveedor,
+            factorConversion:   prodDespues?.factorConversion
+          }
+        })
+        // ── Fin historial económico ──
 
         // ProveedorProducto NO tiene empresaId
         await tx.proveedorProducto.upsert({
