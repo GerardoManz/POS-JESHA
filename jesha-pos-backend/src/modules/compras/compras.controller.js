@@ -311,7 +311,7 @@ const recibir = async (req, res) => {
           select: {
             id: true, productoId: true, cantidadPedida: true, cantidadRecibida: true, precioCosto: true,
             factorConversionSnapshot: true, unidadCompraSnapshot: true, unidadVentaSnapshot: true,
-            Producto: { select: { factorConversion: true, unidadVenta: true, claveSat: true, unidadSat: true } }
+            Producto: { select: { empresaId: true, factorConversion: true, unidadVenta: true, claveSat: true, unidadSat: true } }
           }
         }
       }
@@ -319,6 +319,12 @@ const recibir = async (req, res) => {
     if (!oc)                         return res.status(404).json({ success: false, error: 'Orden no encontrada' })
     if (oc.estado === 'CANCELADO')   return res.status(400).json({ success: false, error: 'Orden cancelada' })
     if (oc.estado === 'RECIBIDO')    return res.status(400).json({ success: false, error: 'Orden ya recibida completamente' })
+
+    // ── Validación cross-company: proveedor pertenece a la empresa ──
+    const proveedor = await prisma.proveedor.findUnique({ where: { id: oc.proveedorId }, select: { empresaId: true } })
+    if (!proveedor || proveedor.empresaId !== empresaId) {
+      return res.status(400).json({ success: false, error: 'Proveedor no pertenece a esta empresa' })
+    }
 
     let totalRecibidoNuevo = 0
 
@@ -329,6 +335,11 @@ const recibir = async (req, res) => {
 
         const cantNueva = parseFloat(item.cantidadRecibida) || 0   // en cajas (unidad de COMPRA)
         if (cantNueva <= 0) continue
+
+        // ── Validación cross-company: producto pertenece a la empresa ──
+        if (detalle.Producto && detalle.Producto.empresaId !== empresaId) {
+          throw new Error(`Producto ${detalle.productoId} no pertenece a esta empresa`)
+        }
 
         // SAT fields (opcional en recepción)
         const claveSatRecibido  = item.claveSat ? String(item.claveSat).trim() || null : undefined

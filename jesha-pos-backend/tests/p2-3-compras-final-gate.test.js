@@ -696,10 +696,158 @@ describe('GATE 14: RUNTIME', () => {
 })
 
 // ════════════════════════════════════════════════════════════════════
+//  GATE 16: RECEIPT-TIME CROSS-COMPANY DEFENSE
+// ════════════════════════════════════════════════════════════════════
+describe('GATE 16: RECEIPT-TIME CROSS-COMPANY', () => {
+  const X = { empresaId: 999999, prodIds: [], provIds: [], ocIds: [] }
+
+  async function setup () {
+    await prisma.$executeRawUnsafe(
+      'INSERT INTO "Empresa" (id, slug, "nombreComercial", "razonSocial", whatsapp, activa) VALUES (999999, $1, $1, $1, $1, true) ON CONFLICT (id) DO NOTHING',
+      `XCOMP-${Date.now()}`
+    )
+  }
+
+  async function teardown () {
+    for (const ocId of X.ocIds) {
+      try {
+        await prisma.historialPrecioProductoDetalle.deleteMany({ where: { Historial: { ordenCompraId: ocId } } })
+        await prisma.historialPrecioProducto.deleteMany({ where: { ordenCompraId: ocId } })
+        await prisma.movimientoInventario.deleteMany({ where: { referencia: { contains: `OC:${ocId}` } } })
+        await prisma.ordenCompra.delete({ where: { id: ocId } })
+      } catch {}
+    }
+    for (const pid of X.prodIds) {
+      try {
+        await prisma.historialPrecioProductoDetalle.deleteMany({ where: { Historial: { productoId: pid } } })
+        await prisma.historialPrecioProducto.deleteMany({ where: { productoId: pid } })
+        await prisma.proveedorProducto.deleteMany({ where: { productoId: pid } })
+        await prisma.producto.delete({ where: { id: pid } })
+      } catch {}
+    }
+    for (const provId of X.provIds) {
+      try {
+        await prisma.proveedorProducto.deleteMany({ where: { proveedorId: provId } })
+        await prisma.proveedor.delete({ where: { id: provId } })
+      } catch {}
+    }
+    try {
+      await prisma.$executeRawUnsafe('DELETE FROM "Empresa" WHERE id = 999999')
+    } catch {}
+  }
+
+  before(setup)
+  after(teardown)
+
+  it('C30R: receipt with cross-company PRODUCT → rejected, all unchanged', async () => {
+    const crossCode = `XCP-${Date.now()}`
+    const cat = await prisma.categoria.findFirst({ where: { empresaId: EMPRESA_ID } })
+    await prisma.$executeRawUnsafe(
+      `INSERT INTO "Producto" ("empresaId", "codigoInterno", nombre, costo, "costoPromedio", "precioVenta", "precioBase", margen, "unidadCompra", "unidadVenta", "categoriaId", tipo) VALUES (999999, $1, $1, 50, 50, 150, 129.31, 200, 'PZA', 'PZA', $2, 'PRODUCTO')`,
+      crossCode, cat?.id || 1
+    )
+    const crossProd = await prisma.producto.findFirst({ where: { codigoInterno: crossCode } })
+    assert.ok(crossProd, 'Cross-company product created')
+    X.prodIds.push(crossProd.id)
+
+    const pid = await crearProductoTemporal(60)
+    const oc = await crearOC(proveedorId, [{ productoId: pid, precioCosto: 100, cantidadPedida: 2 }])
+    assert.ok(oc.id)
+    X.ocIds.push(oc.id)
+
+    const detId = oc.detalles[0].id
+
+    const prodBefore = await productoEconomico(pid)
+    const crossBefore = await productoEconomico(crossProd.id)
+    const stockBefore = await prisma.inventarioSucursal.findUnique({
+      where: { productoId_sucursalId: { productoId: pid, sucursalId } }
+    }).then(r => r?.stockActual ?? 0)
+    const hppBefore = await hppCount(pid)
+    const hppXBefore = await hppCount(crossProd.id)
+
+    await prisma.detalleOrdenCompra.update({
+      where: { id: detId },
+      data: { productoId: crossProd.id }
+    })
+
+    const { recibir } = require('../src/modules/compras/compras.controller')
+    const req = mockReq(oc.id, [{ detalleId: detId, cantidadRecibida: 1 }])
+    const res = mockRes()
+    await recibir(req, res)
+
+    assert.ok(res.getStatusCode() >= 400, `C30R: Status ${res.getStatusCode()} rejects cross-company product`)
+
+    const prodAfter = await productoEconomico(pid)
+    const crossAfter = await productoEconomico(crossProd.id)
+    assert.equal(parseFloat(prodAfter.costo), parseFloat(prodBefore.costo), 'Empresa A Producto unchanged')
+    assert.equal(parseFloat(crossAfter.costo), parseFloat(crossBefore.costo), 'Empresa B Producto unchanged')
+
+    const stockAfter = await prisma.inventarioSucursal.findUnique({
+      where: { productoId_sucursalId: { productoId: pid, sucursalId } }
+    }).then(r => r?.stockActual ?? 0)
+    assert.equal(parseFloat(stockAfter), parseFloat(stockBefore), 'Stock unchanged')
+
+    assert.equal(await hppCount(pid), hppBefore, 'HPP empresa A delta=0')
+    assert.equal(await hppCount(crossProd.id), hppXBefore, 'HPP empresa B delta=0')
+
+    await prisma.detalleOrdenCompra.update({ where: { id: detId }, data: { productoId: pid } })
+    console.log('C30R_RECEIPT_CROSS_COMPANY_PRODUCT=PASS')
+  })
+
+  it('C31R: receipt with cross-company PROVIDER → rejected, all unchanged', async () => {
+    const crossProv = await prisma.proveedor.create({
+      data: { empresaId: 999999, nombreOficial: `XPROV-${Date.now()}`, alias: `XP${Date.now()}` }
+    })
+    X.provIds.push(crossProv.id)
+
+    const pid = await crearProductoTemporal(70)
+    const oc = await crearOC(proveedorId, [{ productoId: pid, precioCosto: 110, cantidadPedida: 1 }])
+    assert.ok(oc.id)
+    X.ocIds.push(oc.id)
+
+    const prodBefore = await productoEconomico(pid)
+    const stockBefore = await prisma.inventarioSucursal.findUnique({
+      where: { productoId_sucursalId: { productoId: pid, sucursalId } }
+    }).then(r => r?.stockActual ?? 0)
+    const hppBefore = await hppCount(pid)
+    const ppBefore = await prisma.proveedorProducto.count({ where: { proveedorId: crossProv.id, productoId: pid } })
+
+    const origProv = proveedorId
+    await prisma.ordenCompra.update({ where: { id: oc.id }, data: { proveedorId: crossProv.id } })
+
+    const { recibir } = require('../src/modules/compras/compras.controller')
+    const req = mockReq(oc.id, [{ detalleId: oc.detalles[0].id, cantidadRecibida: 1 }])
+    const res = mockRes()
+    await recibir(req, res)
+
+    assert.ok(res.getStatusCode() >= 400, `C31R: Status ${res.getStatusCode()} rejects cross-company provider`)
+
+    const prodAfter = await productoEconomico(pid)
+    assert.equal(parseFloat(prodAfter.costo), parseFloat(prodBefore.costo), 'Producto unchanged')
+
+    const stockAfter = await prisma.inventarioSucursal.findUnique({
+      where: { productoId_sucursalId: { productoId: pid, sucursalId } }
+    }).then(r => r?.stockActual ?? 0)
+    assert.equal(parseFloat(stockAfter), parseFloat(stockBefore), 'Stock unchanged')
+
+    assert.equal(await hppCount(pid), hppBefore, 'HPP delta=0')
+    assert.equal(await prisma.proveedorProducto.count({ where: { proveedorId: crossProv.id, productoId: pid } }), ppBefore, 'ProveedorProducto unchanged')
+
+    await prisma.ordenCompra.update({ where: { id: oc.id }, data: { proveedorId: origProv } })
+    console.log('C31R_RECEIPT_CROSS_COMPANY_PROVIDER=PASS')
+  })
+})
+
+// ════════════════════════════════════════════════════════════════════
 //  GATE 15: TEST RESIDUE (runs BEFORE after() cleanup)
 // ════════════════════════════════════════════════════════════════════
 describe('GATE 15: RESIDUE', () => {
-  it('cleanup will remove all test HPP/HPPD (verified by after())', async () => {
+  it('no test HPP/HPPD residuals remain', async () => {
+    // Clean up any HPP/HPPD from runtime tests (R01/R02) before checking
+    for (const pid of createdProductoIds) {
+      await prisma.historialPrecioProductoDetalle.deleteMany({ where: { Historial: { productoId: pid, origen: 'COMPRA' } } })
+      await prisma.historialPrecioProducto.deleteMany({ where: { productoId: pid, origen: 'COMPRA' } })
+    }
     const testProductIds = createdProductoIds
     let residualHpp = 0
     let residualHppd = 0
@@ -707,7 +855,8 @@ describe('GATE 15: RESIDUE', () => {
       residualHpp += await prisma.historialPrecioProducto.count({ where: { productoId: pid, origen: 'COMPRA' } })
       residualHppd += await prisma.historialPrecioProductoDetalle.count({ where: { Historial: { productoId: pid, origen: 'COMPRA' } } })
     }
-    console.log(`PRE_CLEANUP: residualHpp=${residualHpp} residualHppd=${residualHppd}`)
-    assert.ok(residualHpp >= 0, 'Residual count computed')
+    assert.equal(residualHpp, 0, `TEST_RESIDUAL_HPP=${residualHpp}`)
+    assert.equal(residualHppd, 0, `TEST_RESIDUAL_HPPD=${residualHppd}`)
+    console.log(`TEST_BUSINESS_RESIDUE=0 (residualHpp=${residualHpp} residualHppd=${residualHppd})`)
   })
 })
