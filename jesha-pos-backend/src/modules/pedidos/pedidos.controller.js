@@ -132,11 +132,11 @@ const obtener = async (req, res) => {
 }
 
 // ── Construir filas de detalle (reutilizable) ──
-async function construirDetalles(detalles) {
-  const ids = detalles.map(d => parseInt(d.productoId)).filter(Boolean)
+async function construirDetalles(detalles, empresaId) {
+  const ids = [...new Set(detalles.map(d => parseInt(d.productoId)).filter(Boolean))]
 
   const productos = await prisma.producto.findMany({
-    where:  { id: { in: ids }, activo: true },
+    where:  { id: { in: ids }, empresaId, activo: true },
     select: { id: true, precioBase: true, esGranel: true }
   })
 
@@ -185,7 +185,17 @@ const crear = async (req, res) => {
     // clienteId es opcional en el schema — permitirlo como null
     const clienteIdFinal = clienteId ? parseInt(clienteId) : null
 
-    const rows = await construirDetalles(detalles)
+    // P1-04: Validate cliente belongs to same empresa
+    if (clienteIdFinal) {
+      const cliente = await prisma.cliente.findFirst({ where: { id: clienteIdFinal, empresaId } })
+      if (!cliente) return res.status(404).json({ success: false, error: 'Cliente no encontrado' })
+    }
+
+    // P1-04: Validate sucursal belongs to same empresa
+    const sucursalRecord = await prisma.sucursal.findFirst({ where: { id: sucursalFinalId, empresaId } })
+    if (!sucursalRecord) return res.status(404).json({ success: false, error: 'Sucursal no encontrada' })
+
+    const rows = await construirDetalles(detalles, empresaId)
     const totalEstimado = parseFloat(rows.reduce((s, r) => s + r.subtotal, 0).toFixed(2))
     const folio = await generarFolio()
 
@@ -233,8 +243,9 @@ const editar = async (req, res) => {
       })
     }
 
-    const existente = await prisma.pedido.findUnique({
-      where: { id: parseInt(id) },
+    // P1-05: Resolve by id + empresaId (not findUnique by id alone)
+    const existente = await prisma.pedido.findFirst({
+      where: { id: parseInt(id), empresaId },
       select: { id: true, folio: true, estado: true }
     })
 
@@ -260,9 +271,19 @@ const editar = async (req, res) => {
     if (clienteId !== undefined) updateData.clienteId = clienteId ? parseInt(clienteId) : null
     if (notas     !== undefined) updateData.notas     = notas
 
+    // P1-05: Validate FK ownership for editable fields
+    if (updateData.clienteId) {
+      const cliente = await prisma.cliente.findFirst({ where: { id: updateData.clienteId, empresaId } })
+      if (!cliente) return res.status(404).json({ success: false, error: 'Cliente no encontrado' })
+    }
+    {
+      const sucursalRecord = await prisma.sucursal.findFirst({ where: { id: sucursalFinalId, empresaId } })
+      if (!sucursalRecord) return res.status(404).json({ success: false, error: 'Sucursal no encontrada' })
+    }
+
     if (detalles && detalles.length > 0) {
       // FIX: usa construirDetalles con filtro activo: true
-      const rows = await construirDetalles(detalles)
+      const rows = await construirDetalles(detalles, empresaId)
 
       updateData.totalEstimado = parseFloat(
         rows.reduce((s, r) => s + r.subtotal, 0).toFixed(2)
@@ -315,8 +336,9 @@ const cambiarEstado = async (req, res) => {
     const { id: usuarioId, sucursalId } = req.usuario
     const empresaId = getEmpresaId(req)
 
-    const existente = await prisma.pedido.findUnique({
-      where: { id: parseInt(id) },
+    // P1-06: Resolve by id + empresaId (not findUnique by id alone)
+    const existente = await prisma.pedido.findFirst({
+      where: { id: parseInt(id), empresaId },
       select: { id: true, folio: true, estado: true, sucursalId: true }
     })
 

@@ -127,12 +127,18 @@ async function crear({ sucursalId, usuarioId, clienteId, empresaId, tipo = 'PROD
   clienteId = clienteId ? parseInt(clienteId) : null
   if (isNaN(clienteId)) clienteId = null
 
+  // P1-01: Validate cliente belongs to same empresa
+  if (clienteId) {
+    const cliente = await prisma.cliente.findFirst({ where: { id: clienteId, empresaId } })
+    if (!cliente) throw new Error('Cliente no encontrado')
+  }
+
   let rows = []
 
   if (tipo === 'PRODUCTOS') {
-    const ids = detalles.map(d => parseInt(d.productoId)).filter(Boolean)
+    const ids = [...new Set(detalles.map(d => parseInt(d.productoId)).filter(Boolean))]
     const productos = await prisma.producto.findMany({
-      where: { id: { in: ids }, activo: true },
+      where: { id: { in: ids }, empresaId, activo: true },
       select: { id: true, nombre: true, precioBase: true, unidadVenta: true }
     })
     if (productos.length !== ids.length) {
@@ -178,11 +184,18 @@ async function editar(id, { clienteId, notas, venceEn, detalles, tipo, usuarioId
   clienteId = clienteId ? parseInt(clienteId) : null
   if (isNaN(clienteId)) clienteId = null
 
-  const existente = await prisma.cotizacion.findUnique({
-    where: { id: parseInt(id) }, select: { id: true, folio: true, estado: true, tipo: true, descuento: true }
+  // P1-03: Resolve cotización by id + empresaId (not findUnique by id alone)
+  const existente = await prisma.cotizacion.findFirst({
+    where: { id: parseInt(id), empresaId }, select: { id: true, folio: true, estado: true, tipo: true, descuento: true }
   })
   if (!existente) throw new Error('Cotización no encontrada')
   if (existente.estado !== 'PENDIENTE') throw new Error(`No se puede editar en estado ${existente.estado}`)
+
+  // P1-01: Validate new cliente belongs to same empresa (if changing)
+  if (clienteId) {
+    const cliente = await prisma.cliente.findFirst({ where: { id: clienteId, empresaId } })
+    if (!cliente) throw new Error('Cliente no encontrado')
+  }
 
   const tipoFinal  = tipo || existente.tipo
   const updateData = {}
@@ -194,11 +207,15 @@ async function editar(id, { clienteId, notas, venceEn, detalles, tipo, usuarioId
   if (detalles && detalles.length > 0) {
     let rows = []
     if (tipoFinal === 'PRODUCTOS') {
-      const ids = detalles.map(d => parseInt(d.productoId)).filter(Boolean)
+      const ids = [...new Set(detalles.map(d => parseInt(d.productoId)).filter(Boolean))]
       const productos = await prisma.producto.findMany({
-        where: { id: { in: ids }, activo: true },
+        where: { id: { in: ids }, empresaId, activo: true },
         select: { id: true, nombre: true, precioBase: true, unidadVenta: true }
       })
+      if (productos.length !== ids.length) {
+        const enc = productos.map(p => p.id)
+        throw new Error(`Productos no encontrados: ${ids.filter(i => !enc.includes(i)).join(', ')}`)
+      }
       const mapa = Object.fromEntries(productos.map(p => [p.id, p]))
       rows = detalles.map(d => {
         const pid  = parseInt(d.productoId)

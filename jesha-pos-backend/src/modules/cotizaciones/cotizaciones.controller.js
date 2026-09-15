@@ -154,7 +154,7 @@ const editar = async (req, res) => {
   } catch (err) {
     console.error('❌ Error editando cotización:', err.message)
     const status = err.message.includes('no encontrada') ? 404
-      : err.message.includes('No se puede editar') || err.message.includes('fechaManual') ? 400
+      : err.message.includes('No se puede editar') || err.message.includes('fechaManual') || err.message.includes('Cliente no encontrado') ? 400
       : 500
     res.status(status).json({ success: false, error: err.message })
   }
