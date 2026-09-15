@@ -37,6 +37,7 @@ const ROL_ACTUAL = USUARIO.rol
 const ES_ADMIN = ['SUPERADMIN', 'ADMIN_SUCURSAL'].includes(ROL_ACTUAL)
 const ES_PRECIOS = ROL_ACTUAL === 'PRECIOS'
 const ES_EMPLEADO = ROL_ACTUAL === 'EMPLEADO'
+const PUEDE_VER_HISTORIAL = ['SUPERADMIN', 'ADMIN_SUCURSAL', 'PRECIOS'].includes(ROL_ACTUAL)
 
 let productosLista     = []
 let departamentosLista = []
@@ -76,6 +77,15 @@ let autosuggestDropdown
 let productosGrid, productosListaWrap, btnVistaGrid, btnVistaLista
 const VIEW_MODE_KEY = USUARIO.empresaId ? `jesha_productos_view_mode:${USUARIO.empresaId}` : 'jesha_productos_view_mode'
 let vistaActual = localStorage.getItem(VIEW_MODE_KEY) || 'grid'
+
+// Drawer de historial económico
+let historialOverlay, historialDrawer, historialProductoActivo, historialElementoApertura
+let historialAperturaVersion = 0
+let historialOverflowAnterior = ''
+let historialCierreTimer = null
+let historialAperturaFrame = null
+const historialAbortControllers = new Map()
+const historialTabsEstado = crearEstadoTabsHistorial()
 
 // Selects del modal (separados del toolbar)
 let modalDeptoSelect, modalCatSelect, modalProveedorSelect
@@ -123,6 +133,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   productosListaWrap = document.getElementById('productos-lista-wrap')
   btnVistaGrid       = document.getElementById('btn-vista-grid')
   btnVistaLista      = document.getElementById('btn-vista-lista')
+  initHistorialProducto()
 
   // Tipo de factura
   radioFacturaA  = document.getElementById('radio-factura-a')
@@ -187,6 +198,492 @@ function aplicarPermisosProductos() {
   if (ES_PRECIOS) {
     document.body.classList.add('rol-precios')
   }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// HISTORIAL ECONÓMICO — drawer con fuentes separadas y lazy loading
+// ═══════════════════════════════════════════════════════════════════
+
+const HISTORIAL_CAMPOS_MONEDA = new Set([
+  'precioVenta', 'precioBase', 'precioMayoreo', 'costo', 'costoPromedio',
+  'costoSinIvaProveedor', 'precioCosto'
+])
+
+const HISTORIAL_ETIQUETAS_CAMPO = {
+  precioVenta: 'Precio de venta',
+  precioBase: 'Precio base',
+  precioMayoreo: 'Precio mayoreo',
+  costo: 'Costo',
+  costoPromedio: 'Costo promedio',
+  margen: 'Margen',
+  costoSinIvaProveedor: 'Costo sin IVA',
+  factorConversion: 'Factor de conversión',
+  precioCosto: 'Precio de costo'
+}
+
+const HISTORIAL_ORIGENES = {
+  EDICION_PRECIOS: 'Edición de precios',
+  EDICION_PRODUCTO: 'Edición de producto',
+  COMPRA: 'Compra / recepción',
+  CREACION_PRODUCTO: 'Creación de producto',
+  DUPLICACION_PRODUCTO: 'Producto duplicado',
+  CREACION_PRODUCTO_RAPIDO: 'Producto rápido',
+  IMPORTACION: 'Importación'
+}
+
+function crearEstadoTabsHistorial() {
+  return {
+    catalogo: { pages: new Map(), requestId: 0, loading: false },
+    compras: { pages: new Map(), requestId: 0, loading: false },
+    ventas: { pages: new Map(), requestId: 0, loading: false }
+  }
+}
+
+function resetEstadoTabsHistorial() {
+  Object.values(historialTabsEstado).forEach(state => {
+    state.pages.clear()
+    state.requestId += 1
+    state.loading = false
+  })
+}
+
+function formatoFechaHistorial(valor, soloFecha = false) {
+  if (!valor) return '—'
+  const fecha = new Date(valor)
+  if (Number.isNaN(fecha.getTime())) return '—'
+  return new Intl.DateTimeFormat('es-MX', soloFecha
+    ? { day: 'numeric', month: 'short', year: 'numeric' }
+    : { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }
+  ).format(fecha)
+}
+
+function formatoValorHistorial(campo, valor) {
+  if (valor === null || valor === undefined || valor === '') return '—'
+  const numero = Number(valor)
+  if (!Number.isFinite(numero)) return String(valor)
+  if (HISTORIAL_CAMPOS_MONEDA.has(campo)) return `$${numero.toFixed(2)}`
+  if (campo === 'margen') return `${numero.toFixed(2)}%`
+  if (campo === 'factorConversion') return numero.toFixed(4).replace(/\.?0+$/, '')
+  return numero.toString()
+}
+
+function etiquetaDesconocida(valor) {
+  if (!valor) return 'Sin especificar'
+  return String(valor).replace(/_/g, ' ').toLocaleLowerCase('es-MX').replace(/^./, letra => letra.toLocaleUpperCase('es-MX'))
+}
+
+function elemento(tag, clase, texto) {
+  const node = document.createElement(tag)
+  if (clase) node.className = clase
+  if (texto !== undefined) node.textContent = texto
+  return node
+}
+
+function limpiarNodo(node) {
+  if (node) node.replaceChildren()
+}
+
+function renderLoadingHistorial(tab) {
+  const panel = document.getElementById(`historial-panel-${tab}`)
+  if (!panel) return
+  limpiarNodo(panel)
+  const estado = elemento('div', 'historial-estado historial-loading')
+  const spinner = elemento('div', 'jesha-spinner')
+  spinner.setAttribute('aria-hidden', 'true')
+  estado.append(spinner, elemento('p', '', 'Cargando historial...'))
+  estado.setAttribute('role', 'status')
+  panel.appendChild(estado)
+}
+
+function mensajeErrorHistorial(error) {
+  const esPermiso = error?.status === 403 || /acceso|permiso|denegad|forbidden/i.test(String(error?.message || ''))
+  if (esPermiso) return 'No tienes permisos para consultar este historial.'
+  if (error?.status === 404) return 'Producto no encontrado.'
+  return 'No fue posible cargar el historial.'
+}
+
+function renderErrorHistorial(tab, error) {
+  const panel = document.getElementById(`historial-panel-${tab}`)
+  if (!panel) return
+  limpiarNodo(panel)
+  const estado = elemento('div', 'historial-estado historial-error')
+  estado.setAttribute('role', 'alert')
+  estado.append(
+    elemento('strong', '', 'No se pudo cargar'),
+    elemento('p', '', mensajeErrorHistorial(error))
+  )
+  panel.appendChild(estado)
+}
+
+function renderVacioHistorial(panel, mensaje) {
+  const estado = elemento('div', 'historial-estado historial-empty')
+  estado.append(
+    elemento('span', 'historial-empty-icon', '∅'),
+    elemento('p', '', mensaje)
+  )
+  panel.appendChild(estado)
+}
+
+function renderPaginacionHistorial(panel, tab, paginacion) {
+  const page = Number(paginacion?.page) || 1
+  const totalPages = Number(paginacion?.totalPages) || 0
+  if (totalPages <= 1) return
+
+  const nav = elemento('nav', 'historial-paginacion')
+  nav.setAttribute('aria-label', `Paginación de ${tab}`)
+  const anterior = elemento('button', 'btn-pag', '← Anterior')
+  anterior.type = 'button'
+  anterior.disabled = page <= 1
+  anterior.dataset.historialPage = String(page - 1)
+  anterior.dataset.historialPageTab = tab
+  const info = elemento('span', 'pag-info', `Página ${page} de ${totalPages}`)
+  const siguiente = elemento('button', 'btn-pag', 'Siguiente →')
+  siguiente.type = 'button'
+  siguiente.disabled = page >= totalPages
+  siguiente.dataset.historialPage = String(page + 1)
+  siguiente.dataset.historialPageTab = tab
+  nav.append(anterior, info, siguiente)
+  panel.appendChild(nav)
+}
+
+function renderActualHistorial(actual) {
+  const container = document.getElementById('historial-producto-actual')
+  if (!container) return
+  limpiarNodo(container)
+  const campos = [
+    ['precioVenta', 'Precio venta'],
+    ['costo', 'Costo'],
+    ['costoPromedio', 'Costo promedio'],
+    ['margen', 'Margen'],
+    ['precioMayoreo', 'Mayoreo']
+  ]
+  campos.forEach(([campo, etiqueta]) => {
+    const item = elemento('div', 'historial-actual-item')
+    item.append(
+      elemento('span', '', etiqueta),
+      elemento('strong', '', formatoValorHistorial(campo, actual?.[campo]))
+    )
+    container.appendChild(item)
+  })
+}
+
+function renderMetaEvento(evento) {
+  const meta = elemento('div', 'historial-evento-meta')
+  const partes = []
+  if (evento?.usuario?.nombre) partes.push(evento.usuario.nombre)
+  if (evento?.sucursal?.nombre) partes.push(evento.sucursal.nombre)
+  if (evento?.referencia) partes.push(evento.referencia)
+  meta.textContent = partes.join(' · ') || 'Sin referencia adicional'
+  return meta
+}
+
+function renderCatalogoHistorial(payload) {
+  const panel = document.getElementById('historial-panel-catalogo')
+  if (!panel) return
+  limpiarNodo(panel)
+
+  if (payload?.meta?.primerEventoRegistradoEn) {
+    panel.appendChild(elemento('p', 'historial-desde', `Historial registrado desde ${formatoFechaHistorial(payload.meta.primerEventoRegistradoEn, true)}`))
+  }
+
+  const eventos = Array.isArray(payload?.historial) ? payload.historial : []
+  if (!eventos.length) {
+    renderVacioHistorial(panel, 'Aún no hay cambios económicos registrados para este producto.')
+    renderPaginacionHistorial(panel, 'catalogo', payload?.paginacion)
+    return
+  }
+
+  const lista = elemento('div', 'historial-eventos')
+  eventos.forEach(evento => {
+    const article = elemento('article', 'historial-evento')
+    const cabecera = elemento('header', 'historial-evento-header')
+    const origen = HISTORIAL_ORIGENES[evento?.origen] || etiquetaDesconocida(evento?.origen)
+    const tituloWrap = elemento('div')
+    tituloWrap.append(
+      elemento('time', 'historial-fecha', formatoFechaHistorial(evento?.ocurridoEn)),
+      elemento('h3', '', origen)
+    )
+    cabecera.append(tituloWrap, elemento('span', 'historial-accion', etiquetaDesconocida(evento?.accion)))
+    article.append(cabecera, renderMetaEvento(evento))
+
+    const detalles = elemento('div', 'historial-detalles')
+    const filas = Array.isArray(evento?.detalles) ? evento.detalles : []
+    filas.forEach(detalle => {
+      const fila = elemento('div', 'historial-detalle')
+      fila.append(
+        elemento('span', 'historial-detalle-campo', HISTORIAL_ETIQUETAS_CAMPO[detalle?.campo] || etiquetaDesconocida(detalle?.campo)),
+        elemento('span', 'historial-detalle-anterior', formatoValorHistorial(detalle?.campo, detalle?.valorAnterior)),
+        elemento('span', 'historial-detalle-flecha', '→'),
+        elemento('strong', 'historial-detalle-nuevo', formatoValorHistorial(detalle?.campo, detalle?.valorNuevo))
+      )
+      detalles.appendChild(fila)
+    })
+    if (!filas.length) detalles.appendChild(elemento('p', 'historial-sin-detalles', 'Evento sin cambios detallados.'))
+    article.appendChild(detalles)
+    lista.appendChild(article)
+  })
+  panel.appendChild(lista)
+  renderPaginacionHistorial(panel, 'catalogo', payload?.paginacion)
+}
+
+function renderResumenObservado(panel, resumen, tipo) {
+  const wrap = elemento('section', 'historial-resumen')
+  wrap.setAttribute('aria-label', `Resumen de ${tipo}`)
+  const precioCampo = tipo === 'compras' ? 'costo' : 'precioVenta'
+  const datos = [
+    [tipo === 'compras' ? 'Última compra' : 'Última venta', formatoFechaHistorial(resumen?.ultima)],
+    ['Mínimo', formatoValorHistorial(precioCampo, resumen?.min)],
+    ['Máximo', formatoValorHistorial(precioCampo, resumen?.max)],
+    ['Promedio ponderado', formatoValorHistorial(precioCampo, resumen?.promedio)]
+  ]
+  datos.forEach(([label, value]) => {
+    const item = elemento('div', 'historial-resumen-item')
+    item.append(elemento('span', '', label), elemento('strong', '', value))
+    wrap.appendChild(item)
+  })
+  panel.appendChild(wrap)
+}
+
+function renderObservadoHistorial(tipo, payload) {
+  const panel = document.getElementById(`historial-panel-${tipo}`)
+  if (!panel) return
+  limpiarNodo(panel)
+
+  const esCompras = tipo === 'compras'
+  panel.appendChild(elemento('p', 'historial-aviso', esCompras
+    ? 'Estos valores representan costos observados de recepción, no cambios de catálogo.'
+    : 'Estos valores representan precios realmente registrados en ventas, no el precio configurado del producto.'))
+  renderResumenObservado(panel, payload?.resumen, tipo)
+
+  const rows = Array.isArray(payload?.[tipo]) ? payload[tipo] : []
+  if (!rows.length) {
+    renderVacioHistorial(panel, esCompras
+      ? 'Aún no hay compras observadas para este producto.'
+      : 'Aún no hay ventas observadas para este producto.')
+    renderPaginacionHistorial(panel, tipo, payload?.paginacion)
+    return
+  }
+
+  const lista = elemento('div', 'historial-observaciones')
+  rows.forEach(row => {
+    const article = elemento('article', 'historial-observacion')
+    const top = elemento('div', 'historial-observacion-top')
+    top.append(
+      elemento('time', 'historial-fecha', formatoFechaHistorial(row?.fecha)),
+      elemento('strong', 'historial-observacion-precio', formatoValorHistorial(esCompras ? 'costo' : 'precioVenta', esCompras ? row?.costoUnitario : row?.precioUnitario))
+    )
+    const titulo = elemento('span', 'historial-observacion-label', esCompras ? 'Costo observado de compra' : 'Precio observado de venta')
+    const grid = elemento('dl', 'historial-observacion-grid')
+    const datos = esCompras
+      ? [
+          ['Cantidad recibida', `${fmtStock(row?.cantidad)}${row?.unidadVenta ? ` ${row.unidadVenta}` : ''}`],
+          ['Proveedor', row?.proveedor?.alias || row?.proveedor?.nombreOficial || '—'],
+          ['Sucursal', row?.sucursal?.nombre || '—'],
+          ['Referencia / OC', row?.referencia || '—']
+        ]
+      : [
+          ['Cantidad', fmtStock(row?.cantidad)],
+          ['Sucursal', row?.sucursal?.nombre || '—'],
+          ['Usuario', row?.usuario?.nombre || '—'],
+          ['Referencia', row?.referencia || '—']
+        ]
+    datos.forEach(([label, value]) => {
+      grid.append(elemento('dt', '', label), elemento('dd', '', value))
+    })
+    article.append(top, titulo, grid)
+    lista.appendChild(article)
+  })
+  panel.appendChild(lista)
+  renderPaginacionHistorial(panel, tipo, payload?.paginacion)
+}
+
+function actualizarIdentidadHistorial(producto) {
+  const titulo = document.getElementById('historial-producto-titulo')
+  const codigo = document.getElementById('historial-producto-codigo')
+  const barras = document.getElementById('historial-producto-barras')
+  if (titulo) titulo.textContent = producto?.nombre || 'Producto sin nombre'
+  if (codigo) codigo.textContent = producto?.codigoInterno || '—'
+  if (barras) barras.textContent = producto?.codigoBarras || '—'
+}
+
+function endpointTabHistorial(tab, productoId, page) {
+  const endpoint = tab === 'catalogo' ? 'historial-economico' : `historial-${tab}`
+  return `/productos/${productoId}/${endpoint}?page=${page}&limit=20`
+}
+
+async function cargarTabHistorial(tab, page = 1) {
+  const state = historialTabsEstado[tab]
+  const productoId = historialProductoActivo?.id
+  if (!state || !productoId || state.loading) return
+  if (state.pages.has(page)) {
+    const cached = state.pages.get(page)
+    if (tab === 'catalogo') renderCatalogoHistorial(cached)
+    else renderObservadoHistorial(tab, cached)
+    return
+  }
+
+  state.loading = true
+  const requestId = ++state.requestId
+  const openingVersion = historialAperturaVersion
+  const previousController = historialAbortControllers.get(tab)
+  if (previousController) previousController.abort()
+  const controller = new AbortController()
+  historialAbortControllers.set(tab, controller)
+  renderLoadingHistorial(tab)
+
+  try {
+    const payload = await apiFetch(endpointTabHistorial(tab, productoId, page), { signal: controller.signal })
+    if (openingVersion !== historialAperturaVersion || requestId !== state.requestId || historialProductoActivo?.id !== productoId) return
+    state.pages.set(page, payload || {})
+    if (payload?.producto) actualizarIdentidadHistorial(payload.producto)
+    if (tab === 'catalogo') {
+      renderActualHistorial(payload?.actual)
+      renderCatalogoHistorial(payload)
+    } else {
+      renderObservadoHistorial(tab, payload)
+    }
+  } catch (error) {
+    if (error?.name !== 'AbortError' && openingVersion === historialAperturaVersion && requestId === state.requestId) {
+      if (tab === 'catalogo') renderActualHistorial(null)
+      renderErrorHistorial(tab, error)
+    }
+  } finally {
+    if (requestId === state.requestId) state.loading = false
+    if (historialAbortControllers.get(tab) === controller) historialAbortControllers.delete(tab)
+  }
+}
+
+function seleccionarTabHistorial(tab, enfocar = false) {
+  if (!historialTabsEstado[tab]) return
+  document.querySelectorAll('[data-historial-tab]').forEach(button => {
+    const active = button.dataset.historialTab === tab
+    button.classList.toggle('active', active)
+    button.setAttribute('aria-selected', String(active))
+    button.tabIndex = active ? 0 : -1
+    if (active && enfocar) button.focus()
+  })
+  document.querySelectorAll('.historial-tab-panel').forEach(panel => {
+    panel.hidden = panel.id !== `historial-panel-${tab}`
+  })
+  cargarTabHistorial(tab)
+}
+
+function abrirHistorialProducto(productoId, opener) {
+  if (!PUEDE_VER_HISTORIAL || !historialOverlay) return
+  const producto = productosLista.find(item => Number(item.id) === Number(productoId))
+  if (!producto) return
+
+  if (historialCierreTimer) clearTimeout(historialCierreTimer)
+  historialAbortControllers.forEach(controller => controller.abort())
+  historialAbortControllers.clear()
+  resetEstadoTabsHistorial()
+  historialAperturaVersion += 1
+  historialProductoActivo = {
+    id: Number(producto.id),
+    nombre: producto.nombre,
+    codigoInterno: producto.codigoInterno,
+    codigoBarras: producto.codigoBarras
+  }
+  historialElementoApertura = opener || document.activeElement
+  historialOverflowAnterior = document.body.style.overflow
+  document.body.style.overflow = 'hidden'
+  actualizarIdentidadHistorial(historialProductoActivo)
+  const actual = document.getElementById('historial-producto-actual')
+  if (actual) {
+    limpiarNodo(actual)
+    actual.appendChild(elemento('div', 'historial-actual-loading', 'Cargando valores actuales...'))
+  }
+  historialOverlay.hidden = false
+  historialOverlay.setAttribute('aria-hidden', 'false')
+  historialAperturaFrame = requestAnimationFrame(() => {
+    historialAperturaFrame = null
+    if (historialProductoActivo) historialOverlay.classList.add('active')
+  })
+  seleccionarTabHistorial('catalogo')
+  document.getElementById('historial-producto-cerrar')?.focus()
+}
+
+function cerrarHistorialProducto() {
+  if (!historialOverlay || historialOverlay.hidden) return
+  historialAperturaVersion += 1
+  if (historialAperturaFrame !== null) {
+    cancelAnimationFrame(historialAperturaFrame)
+    historialAperturaFrame = null
+  }
+  historialAbortControllers.forEach(controller => controller.abort())
+  historialAbortControllers.clear()
+  historialProductoActivo = null
+  historialOverlay.classList.remove('active')
+  historialOverlay.setAttribute('aria-hidden', 'true')
+  document.body.style.overflow = historialOverflowAnterior
+  const restaurarFoco = historialElementoApertura
+  historialElementoApertura = null
+  historialCierreTimer = setTimeout(() => {
+    if (!historialOverlay.classList.contains('active')) historialOverlay.hidden = true
+  }, 220)
+  if (restaurarFoco?.isConnected) restaurarFoco.focus()
+}
+
+function manejarTecladoHistorial(event) {
+  if (!historialOverlay || historialOverlay.hidden || !historialOverlay.classList.contains('active')) return
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    cerrarHistorialProducto()
+    return
+  }
+  if (event.key !== 'Tab') return
+  const focusables = [...historialDrawer.querySelectorAll('button:not([disabled]), [href], input:not([disabled]), [tabindex]:not([tabindex="-1"])')]
+    .filter(el => !el.closest('[hidden]'))
+  if (!focusables.length) return
+  const first = focusables[0]
+  const last = focusables[focusables.length - 1]
+  if (!historialDrawer.contains(document.activeElement) || !focusables.includes(document.activeElement)) {
+    event.preventDefault()
+    ;(event.shiftKey ? last : first).focus()
+    return
+  }
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault()
+    last.focus()
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault()
+    first.focus()
+  }
+}
+
+function initHistorialProducto() {
+  historialOverlay = document.getElementById('historial-producto-overlay')
+  historialDrawer = document.getElementById('historial-producto-drawer')
+  if (!historialOverlay || !historialDrawer) return
+
+  document.getElementById('historial-producto-cerrar')?.addEventListener('click', cerrarHistorialProducto)
+  historialOverlay.addEventListener('click', event => {
+    if (event.target === historialOverlay) cerrarHistorialProducto()
+  })
+  historialOverlay.addEventListener('click', event => {
+    const button = event.target.closest('[data-historial-tab]')
+    if (button) seleccionarTabHistorial(button.dataset.historialTab)
+    const pageButton = event.target.closest('[data-historial-page]')
+    if (pageButton && !pageButton.disabled) {
+      const tab = pageButton.dataset.historialPageTab
+      cargarTabHistorial(tab, Number(pageButton.dataset.historialPage))
+      const panel = document.getElementById(`historial-panel-${tab}`)
+      if (panel) {
+        panel.tabIndex = -1
+        panel.focus({ preventScroll: true })
+      }
+    }
+  })
+  historialOverlay.addEventListener('keydown', event => {
+    const tab = event.target.closest('[data-historial-tab]')
+    if (!tab || !['ArrowLeft', 'ArrowRight'].includes(event.key)) return
+    event.preventDefault()
+    const tabs = [...historialOverlay.querySelectorAll('[data-historial-tab]')]
+    const direction = event.key === 'ArrowRight' ? 1 : -1
+    const next = tabs[(tabs.indexOf(tab) + direction + tabs.length) % tabs.length]
+    seleccionarTabHistorial(next.dataset.historialTab, true)
+  })
+  document.addEventListener('keydown', manejarTecladoHistorial)
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -700,8 +1197,13 @@ function limpiarFiltros() {
 
 // Acciones por fila según rol
 function accionesFila(p) {
+  const historial = PUEDE_VER_HISTORIAL ? `<button class="btn-historial-producto" data-id="${p.id}" type="button" aria-label="Ver historial económico de ${escaparHtml(p.nombre || 'producto')}" title="Ver historial económico">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 5-6"/></svg>
+      Historial
+    </button>` : ''
   if (ES_ADMIN) {
     return `
+      ${historial}
       <button class="btn-icon btn-editar-producto" data-id="${p.id}" title="Editar">✏️</button>
       <button class="btn-kardex" data-id="${p.id}" title="Kardex — historial de movimientos">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
@@ -719,7 +1221,7 @@ function accionesFila(p) {
       <button class="btn-icon btn-duplicar-producto" data-id="${p.id}" title="Duplicar producto">📋</button>`
   }
   if (ES_PRECIOS) {
-    return `<button class="btn-icon btn-editar-precio" data-id="${p.id}" title="Editar precio">💲</button>`
+    return `${historial}<button class="btn-icon btn-editar-precio" data-id="${p.id}" title="Editar precio">💲</button>`
   }
   if (ES_EMPLEADO) {
     return `<button class="btn-icon btn-editar-basico" data-id="${p.id}" title="Editar datos básicos">✏️</button>`
@@ -2538,6 +3040,13 @@ function configurarEventos() {
     const imgZoom = e.target.closest('.producto-card-image[data-zoom-id]')
     if (imgZoom) {
       abrirZoomImagen(parseInt(imgZoom.dataset.zoomId))
+      return
+    }
+
+    const btnHistorial = e.target.closest('.btn-historial-producto')
+    if (btnHistorial) {
+      const id = parseInt(btnHistorial.dataset.id)
+      if (id) abrirHistorialProducto(id, btnHistorial)
       return
     }
 

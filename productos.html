@@ -777,6 +777,39 @@
   </div>
 </div>
 
+<!-- ══ DRAWER HISTORIAL ECONÓMICO DEL PRODUCTO ══ -->
+<div id="historial-producto-overlay" class="historial-drawer-overlay" hidden aria-hidden="true">
+  <aside id="historial-producto-drawer" class="historial-drawer" role="dialog" aria-modal="true" aria-labelledby="historial-producto-titulo">
+    <header class="historial-drawer-header">
+      <div class="historial-producto-identidad">
+        <span class="historial-eyebrow">Trazabilidad económica</span>
+        <h2 id="historial-producto-titulo">Historial del producto</h2>
+        <div class="historial-producto-codigos">
+          <span>Código: <strong id="historial-producto-codigo">—</strong></span>
+          <span>Barras: <strong id="historial-producto-barras">—</strong></span>
+        </div>
+      </div>
+      <button id="historial-producto-cerrar" class="historial-drawer-close" type="button" aria-label="Cerrar historial del producto">&times;</button>
+    </header>
+
+    <section id="historial-producto-actual" class="historial-actual" aria-label="Valores económicos actuales">
+      <div class="historial-actual-loading">Cargando valores actuales...</div>
+    </section>
+
+    <div class="historial-tabs" role="tablist" aria-label="Tipos de historial">
+      <button id="historial-tab-catalogo" class="historial-tab active" type="button" role="tab" aria-selected="true" aria-controls="historial-panel-catalogo" data-historial-tab="catalogo">Cambios de catálogo</button>
+      <button id="historial-tab-compras" class="historial-tab" type="button" role="tab" aria-selected="false" aria-controls="historial-panel-compras" tabindex="-1" data-historial-tab="compras">Compras</button>
+      <button id="historial-tab-ventas" class="historial-tab" type="button" role="tab" aria-selected="false" aria-controls="historial-panel-ventas" tabindex="-1" data-historial-tab="ventas">Ventas</button>
+    </div>
+
+    <div class="historial-drawer-body">
+      <section id="historial-panel-catalogo" class="historial-tab-panel" role="tabpanel" aria-labelledby="historial-tab-catalogo"></section>
+      <section id="historial-panel-compras" class="historial-tab-panel" role="tabpanel" aria-labelledby="historial-tab-compras" hidden></section>
+      <section id="historial-panel-ventas" class="historial-tab-panel" role="tabpanel" aria-labelledby="historial-tab-ventas" hidden></section>
+    </div>
+  </aside>
+</div>
+
 <!-- ===== SCRIPTS ===== -->
 <script src="config.js"></script>
 <script src="sonidos.js"></script>
