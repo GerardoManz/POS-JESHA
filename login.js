@@ -39,44 +39,120 @@ function mensajeLoginSeguro(error, fallback = 'No fue posible completar el acces
 }
 
 const loginBrandName = document.getElementById('login-brand-name')
+const loginBrandLogo = document.getElementById('login-brand-logo')
+const BRANDING_DEFAULTS = Object.freeze({
+  colorPrimario: '#1e3a5f',
+  colorSecundario: '#3b82f6',
+  colorAcento: '#10b981'
+})
+const COLOR_RE = /^#[0-9a-f]{6}$/i
+const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 let brandingDebounce = null
+let brandingRequestId = 0
+let brandingAbortController = null
+
+function slugValido(slug) {
+  return typeof slug === 'string' && slug.length >= 1 && slug.length <= 80 && SLUG_RE.test(slug)
+}
+
+function colorSeguro(value, fallback) {
+  return typeof value === 'string' && COLOR_RE.test(value.trim()) ? value.trim() : fallback
+}
+
+function logoUrlSegura(value) {
+  if (typeof value !== 'string' || !value.trim()) return null
+  try {
+    const url = new URL(value.trim(), window.location.origin)
+    return url.protocol === 'https:' || url.protocol === 'http:' ? url.href : null
+  } catch {
+    return null
+  }
+}
+
+function aplicarBrandingNeutral() {
+  loginBrandLogo.onload = null
+  loginBrandLogo.onerror = null
+  loginBrandName.textContent = 'POS'
+  loginBrandName.className = 'brand-name-neutral'
+  loginBrandLogo.hidden = true
+  loginBrandLogo.removeAttribute('src')
+  loginBrandLogo.alt = ''
+  document.documentElement.style.setProperty('--brand-primary', BRANDING_DEFAULTS.colorPrimario)
+  document.documentElement.style.setProperty('--brand-secondary', BRANDING_DEFAULTS.colorSecundario)
+  document.documentElement.style.setProperty('--brand-accent', BRANDING_DEFAULTS.colorAcento)
+}
+
+function aplicarBranding(branding, requestId) {
+  const data = branding && typeof branding === 'object' ? branding : {}
+  const nombre = typeof data.nombreComercial === 'string' ? data.nombreComercial.trim() : ''
+  const logoUrl = logoUrlSegura(data.logoUrl)
+
+  loginBrandName.textContent = nombre || 'POS'
+  loginBrandName.className = nombre ? 'brand-name-tenant' : 'brand-name-neutral'
+  document.documentElement.style.setProperty('--brand-primary', colorSeguro(data.colorPrimario, BRANDING_DEFAULTS.colorPrimario))
+  document.documentElement.style.setProperty('--brand-secondary', colorSeguro(data.colorSecundario, BRANDING_DEFAULTS.colorSecundario))
+  document.documentElement.style.setProperty('--brand-accent', colorSeguro(data.colorAcento, BRANDING_DEFAULTS.colorAcento))
+
+  loginBrandLogo.hidden = true
+  loginBrandLogo.removeAttribute('src')
+  loginBrandLogo.alt = ''
+  if (!logoUrl) return
+
+  loginBrandLogo.onload = () => {
+    if (requestId === brandingRequestId) loginBrandLogo.hidden = false
+  }
+  loginBrandLogo.onerror = () => {
+    if (requestId === brandingRequestId) aplicarBrandingNeutral()
+  }
+  loginBrandLogo.alt = nombre ? `Logo de ${nombre}` : ''
+  loginBrandLogo.src = logoUrl
+}
+
+function cancelarBranding() {
+  brandingRequestId += 1
+  if (brandingAbortController) brandingAbortController.abort()
+  brandingAbortController = null
+  aplicarBrandingNeutral()
+}
 
 async function fetchBranding(slug) {
+  if (!slugValido(slug)) {
+    cancelarBranding()
+    return
+  }
+
+  const requestId = ++brandingRequestId
+  if (brandingAbortController) brandingAbortController.abort()
+  brandingAbortController = new AbortController()
+
   try {
-    const res = await fetch(`${API_URL}/branding?slug=${encodeURIComponent(slug)}`)
-    const data = await res.json()
-    if (data.branding) {
-      if (data.branding.nombreComercial) {
-        loginBrandName.textContent = data.branding.nombreComercial
-        loginBrandName.className = 'brand-name-tenant'
-      } else {
-        loginBrandName.textContent = 'POS'
-        loginBrandName.className = 'brand-name-neutral'
-      }
-      if (data.branding.colorPrimario) {
-        document.documentElement.style.setProperty('--brand-primary', data.branding.colorPrimario)
-      }
-    }
-  } catch {}
+    const res = await fetch(`${API_URL}/branding?slug=${encodeURIComponent(slug)}`, { signal: brandingAbortController.signal })
+    const data = await res.json().catch(() => null)
+    if (requestId !== brandingRequestId) return
+    aplicarBranding(data?.branding, requestId)
+  } catch (error) {
+    if (error?.name !== 'AbortError' && requestId === brandingRequestId) aplicarBrandingNeutral()
+  } finally {
+    if (requestId === brandingRequestId) brandingAbortController = null
+  }
 }
 
 empresaSlugInput.addEventListener('input', () => {
   clearTimeout(brandingDebounce)
+  cancelarBranding()
   const slug = empresaSlugInput.value.trim().toLowerCase()
-  if (slug.length >= 2) {
+  if (slugValido(slug)) {
     brandingDebounce = setTimeout(() => fetchBranding(slug), 300)
-  } else {
-    loginBrandName.textContent = 'POS'
-    loginBrandName.className = 'brand-name-neutral'
-    document.documentElement.style.removeProperty('--brand-primary')
   }
 })
 
 const lastEmpresaSlug = localStorage.getItem(LAST_EMPRESA_KEY)
-if (lastEmpresaSlug) {
+if (slugValido(lastEmpresaSlug)) {
   empresaSlugInput.value = lastEmpresaSlug
   recordarCheck.checked = true
   fetchBranding(lastEmpresaSlug).catch(() => {})
+} else if (lastEmpresaSlug) {
+  localStorage.removeItem(LAST_EMPRESA_KEY)
 }
 
 btnTogglePass.addEventListener('click', () => {

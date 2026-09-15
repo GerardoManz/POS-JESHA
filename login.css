@@ -53,13 +53,30 @@ body {
 
 .logo-wrap {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   justify-content: center;
+  gap: 12px;
   margin-bottom: 32px;
 }
 
 .logo-wrap img {
   max-width: 200px;
   height: auto;
+}
+
+.login-brand-logo {
+  display: block;
+  width: auto;
+  max-width: 200px;
+  max-height: 72px;
+  object-fit: contain;
+  margin-right: 14px;
+  border-radius: 8px;
+}
+
+.login-brand-logo[hidden] {
+  display: none;
 }
 
 .brand-name-neutral {
@@ -168,7 +185,7 @@ h1 {
 }
 
 .field:focus-within {
-  border-color: var(--border-focus);
+  border-color: var(--brand-secondary, var(--border-focus));
   background: var(--field-hover);
 }
 
@@ -220,7 +237,7 @@ h1 {
 .remember-wrap input[type="checkbox"] {
   width: 16px;
   height: 16px;
-  accent-color: var(--accent);
+  accent-color: var(--brand-accent, var(--accent));
   cursor: pointer;
 }
 
@@ -233,7 +250,7 @@ h1 {
 .btn-login {
   width: 100%;
   padding: 14px;
-  background: var(--accent);
+  background: var(--brand-accent, var(--accent));
   color: #0a0b0e;
   border: none;
   border-radius: 8px;
@@ -247,8 +264,8 @@ h1 {
 }
 
 .btn-login:hover {
-  background: #5eead4;
-  box-shadow: 0 0 20px rgba(45, 212, 191, 0.25);
+  filter: brightness(1.12);
+  box-shadow: 0 0 20px var(--brand-accent, var(--accent));
 }
 
 .btn-login:active {
