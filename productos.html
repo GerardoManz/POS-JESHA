@@ -94,11 +94,17 @@
       </div>
 
       <!-- BÚSQUEDA -->
-      <div class="search-group">
+      <div class="search-group productos-search-group">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
         </svg>
         <input type="text" id="search-input" placeholder="Buscar productos..." class="search-input" autocomplete="off" />
+        <button type="button" id="btn-voz-productos" class="btn-voz-productos" aria-label="Buscar por voz" title="Buscar por voz" hidden>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v3"/><path d="M8 22h8"/>
+          </svg>
+        </button>
         <div id="autosuggest-dropdown" class="autosuggest-dropdown" style="display:none;"></div>
       </div>
 

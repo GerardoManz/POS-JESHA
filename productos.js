@@ -69,6 +69,10 @@ let filtroStock, filtroTipo, filtroActivo, filtroProveedor
 let formulario, inputImagen
 let imagenPreviewContainer, imagenPreview, btnCambiarPreview
 let btnLimpiarFiltros
+let btnVozProductos, reconocimientoVozProductos
+let vozActiva = false
+let vozSesion = 0
+let vozCambioManual = false
 
 // Autosuggest
 let autosuggestDropdown
@@ -1119,6 +1123,85 @@ async function crearNuevaCategoria() {
 function aplicarFiltros() {
   paginaActual = 1
   cargarProductos()
+}
+
+function configurarBusquedaVoz() {
+  btnVozProductos = document.getElementById('btn-voz-productos')
+  if (!btnVozProductos || !searchInput) return
+
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+  if (!SpeechRecognition) {
+    btnVozProductos.hidden = true
+    return
+  }
+
+  reconocimientoVozProductos = new SpeechRecognition()
+  reconocimientoVozProductos.lang = 'es-MX'
+  reconocimientoVozProductos.continuous = false
+  reconocimientoVozProductos.interimResults = false
+
+  const actualizarEstadoVoz = (activo) => {
+    vozActiva = activo
+    btnVozProductos.classList.toggle('is-listening', activo)
+    btnVozProductos.setAttribute('aria-label', activo ? 'Escuchando búsqueda' : 'Buscar por voz')
+    btnVozProductos.setAttribute('title', activo ? 'Escuchando búsqueda' : 'Buscar por voz')
+  }
+
+  reconocimientoVozProductos.onstart = () => actualizarEstadoVoz(true)
+  reconocimientoVozProductos.onresult = (event) => {
+    const transcript = Array.from(event.results || [])
+      .filter(result => result.isFinal !== false)
+      .map(result => result[0]?.transcript || '')
+      .join(' ')
+      .trim()
+
+    if (!transcript || vozCambioManual || vozSesion === 0) return
+    searchInput.value = transcript
+    const inputEvent = new Event('input', { bubbles: true })
+    inputEvent.__jeshaVoiceInput = true
+    searchInput.dispatchEvent(inputEvent)
+  }
+  reconocimientoVozProductos.onerror = (event) => {
+    const mensajes = {
+      'not-allowed': 'No fue posible acceder al micrófono. Puedes continuar escribiendo tu búsqueda.',
+      'service-not-allowed': 'No fue posible acceder al micrófono. Puedes continuar escribiendo tu búsqueda.',
+      'audio-capture': 'No se encontró un micrófono disponible. Puedes continuar escribiendo tu búsqueda.',
+      network: 'No fue posible completar la búsqueda por voz. Puedes continuar escribiendo tu búsqueda.'
+    }
+    if (event.error === 'no-speech') {
+      if (window.jeshaToast) window.jeshaToast('No se detectó voz.', 'info')
+      return
+    }
+    if (event.error !== 'aborted' && window.jeshaToast) {
+      window.jeshaToast(mensajes[event.error] || 'No fue posible completar la búsqueda por voz.', 'warning')
+    }
+  }
+  reconocimientoVozProductos.onend = () => actualizarEstadoVoz(false)
+
+  searchInput.addEventListener('input', (event) => {
+    if (vozActiva && !event.__jeshaVoiceInput) vozCambioManual = true
+  })
+
+  btnVozProductos.hidden = false
+  btnVozProductos.addEventListener('click', () => {
+    if (vozActiva) {
+      reconocimientoVozProductos.abort()
+      return
+    }
+
+    vozSesion += 1
+    vozCambioManual = false
+    try {
+      reconocimientoVozProductos.start()
+    } catch (error) {
+      actualizarEstadoVoz(false)
+      if (window.jeshaToast) window.jeshaToast('No fue posible iniciar la búsqueda por voz.', 'warning')
+    }
+  })
+
+  window.addEventListener('beforeunload', () => {
+    if (vozActiva) reconocimientoVozProductos.abort()
+  }, { once: true })
 }
 
 // ── Autosuggest ──
@@ -2856,6 +2939,7 @@ function configurarEventos() {
         autosuggestDropdown.style.display = ''
       }
     })
+    configurarBusquedaVoz()
   }
   if (filtroStock)       filtroStock.addEventListener('change', aplicarFiltros)
   if (filtroTipo)        filtroTipo.addEventListener('change', aplicarFiltros)
