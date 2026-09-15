@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Transferencias de Inventario</title>
+  <script src="config.js"></script>
+  <script src="theme.js"></script>
+  <link rel="stylesheet" href="dashboard.css">
+  <link rel="stylesheet" href="transferencias.css">
+  <script>
+    if (!localStorage.getItem('jesha_token') && !localStorage.getItem('jesha_delegated_token')) {
+      window.location.replace('login.html')
+    }
+  </script>
+</head>
+<body data-page="transferencias">
+  <div id="app" class="app-shell">
+    <div id="sidebar-container"></div>
+    <main class="content transferencias-page">
+      <header class="content-header">
+        <h2>Transferencias de Inventario</h2>
+        <p id="fecha-actual"></p>
+      </header>
+
+      <section class="toolbar">
+        <div class="toolbar-filters">
+          <div class="filter-group">
+            <label for="filter-desde">Desde</label>
+            <input type="date" id="filter-desde" class="filter-select">
+          </div>
+          <div class="filter-group">
+            <label for="filter-hasta">Hasta</label>
+            <input type="date" id="filter-hasta" class="filter-select">
+          </div>
+          <button id="btn-aplicar-filtros" class="btn-secondary" type="button">Filtrar</button>
+          <button id="btn-limpiar-filtros" class="btn-filter-reset" type="button">Limpiar</button>
+        </div>
+        <div class="toolbar-actions">
+          <button id="btn-nueva" class="btn-primary" type="button" hidden>
+            <span aria-hidden="true">+</span> Nueva transferencia
+          </button>
+        </div>
+      </section>
+
+      <!-- Table -->
+      <section class="panel transferencias-panel">
+        <div class="table-wrapper">
+          <table class="transferencias-table">
+          <thead>
+            <tr>
+              <th>Folio</th>
+              <th>Fecha</th>
+              <th>Origen</th>
+              <th>Destino</th>
+              <th>Productos</th>
+              <th>Unidades</th>
+              <th>Usuario</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="tbody-transferencias">
+            <tr class="loading-row"><td colspan="8"><div class="spinner"></div></td></tr>
+          </tbody>
+          </table>
+        </div>
+
+
+      <!-- Pagination -->
+      <div id="pagination" class="pagination" style="display:none"></div>
+
+      <!-- Resumen -->
+      <div id="resumen" class="resumen" style="display:none"></div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Modal Nueva Transferencia -->
+  <div id="modal-nueva" class="modal">
+    <div class="modal-content modal-lg">
+      <div class="modal-header">
+        <h3>Nueva transferencia</h3>
+        <button class="modal-close" id="btn-cerrar-modal-nueva" type="button" aria-label="Cerrar">&times;</button>
+      </div>
+      <div class="modal-body">
+        <!-- Branch required notice -->
+        <div id="modal-branch-notice" class="branch-notice" style="display:none">
+          <p>Selecciona una sucursal de trabajo para crear transferencias.</p>
+          <button class="btn-primary" id="btn-seleccionar-sucursal" type="button">Seleccionar sucursal</button>
+        </div>
+
+        <div id="modal-form" class="transfer-form" style="display:none">
+          <div class="form-row transfer-route-grid">
+            <div class="form-group">
+              <label>Origen</label>
+              <div class="origin-context">
+                <span id="modal-origen"></span>
+                <small>Sucursal de salida</small>
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="modal-destino">Sucursal destino *</label>
+              <select id="modal-destino" class="form-control">
+                <option value="">Seleccionar destino...</option>
+              </select>
+            </div>
+          </div>
+
+          <section class="form-section product-section" aria-labelledby="productos-section-title">
+            <div class="form-section-header">
+              <div>
+                <h4 id="productos-section-title">Productos</h4>
+                <p>Selecciona los artículos y la cantidad que se moverá.</p>
+              </div>
+              <button class="btn-secondary btn-sm" id="btn-agregar-item" type="button">
+                <span aria-hidden="true">+</span> Agregar producto
+              </button>
+            </div>
+            <div id="modal-items"></div>
+          </section>
+
+          <div class="form-group notes-group">
+            <label for="modal-notas">Notas</label>
+            <textarea id="modal-notas" class="form-control" rows="3" maxlength="500" placeholder="Opcional..."></textarea>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer" id="modal-footer" style="display:none">
+        <button class="btn-secondary" id="btn-cancelar-modal-nueva" type="button">Cancelar</button>
+        <button class="btn-primary" id="btn-transferir" type="button" disabled>Transferir</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Confirmación -->
+  <div id="modal-confirmar" class="modal">
+    <div class="modal-content modal-sm">
+      <div class="modal-header">
+        <h3>Confirmar transferencia</h3>
+        <button class="modal-close" id="btn-cerrar-confirmacion" type="button" aria-label="Cerrar">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="confirm-detail">
+          <div class="confirm-row"><span>Origen:</span><strong id="confirm-origen"></strong></div>
+          <div class="confirm-row"><span>Destino:</span><strong id="confirm-destino"></strong></div>
+          <div class="confirm-row"><span>Productos:</span><strong id="confirm-productos"></strong></div>
+          <div class="confirm-row"><span>Unidades:</span><strong id="confirm-unidades"></strong></div>
+        </div>
+        <p class="confirm-warning">Esta operación moverá existencias entre ambas sucursales.</p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="btn-cancelar-confirmacion" type="button">Cancelar</button>
+        <button class="btn-primary" id="btn-confirmar-transferir" type="button">Transferir</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Detalle -->
+  <div id="modal-detalle" class="modal">
+    <div class="modal-content modal-lg">
+      <div class="modal-header">
+        <h3 id="detalle-title">Transferencia</h3>
+        <button class="modal-close" id="btn-cerrar-detalle" type="button" aria-label="Cerrar">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="detalle-meta" id="detalle-meta"></div>
+        <div class="table-wrapper">
+          <table class="transferencias-table">
+            <thead>
+              <tr>
+                <th>Producto</th>
+                <th>Cantidad</th>
+                <th>Stock origen</th>
+                <th>Stock destino</th>
+              </tr>
+            </thead>
+            <tbody id="detalle-items"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="btn-cerrar-detalle-footer" type="button">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="session.js"></script>
+  <script src="sidebar.js"></script>
+  <script src="gsap.min.js"></script>
+  <script src="transferencias.js"></script>
+</body>
+</html>

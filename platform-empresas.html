@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Administración de plataforma - Empresas</title>
+  <link rel="stylesheet" href="platform.css" />
+</head>
+<body class="platform-app-body" data-page="empresas">
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="Navegación de la consola">
+      <div id="platform-sidebar-container">
+        <div class="platform-sidebar-inner">
+          <button class="sidebar-toggle" id="platform-sidebar-toggle" type="button" aria-label="Colapsar menú">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="chevron"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+          <div class="brand">
+            <div class="platform-brand-mark" aria-hidden="true">P</div>
+            <div class="brand-text"><h1>Plataforma</h1><p>Administración</p></div>
+            <button class="theme-toggle" id="platform-theme-toggle" type="button" aria-label="Cambiar a modo claro"></button>
+          </div>
+          <nav class="menu">
+            <span class="menu-section-label">Administración</span>
+            <a href="platform-empresas.html" class="menu-item active" data-page="empresas">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 9h1"/><path d="M14 9h1"/><path d="M9 13h1"/><path d="M14 13h1"/><path d="M9 17h1"/><path d="M14 17h1"/></svg>
+              <span class="menu-text">Empresas</span>
+            </a>
+            <span class="menu-item menu-item-disabled">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              <span class="menu-text">Auditoría</span>
+            </span>
+          </nav>
+        </div>
+      </div>
+      <div class="sidebar-footer">
+        <button class="logout" id="platform-logout" type="button">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+          <span class="logout-text">Cerrar sesión</span>
+        </button>
+        <small>© 2026<br>Consola de plataforma</small>
+      </div>
+    </aside>
+
+    <main class="content">
+      <div class="jesha-global-topbar">
+        <span class="topbar-empresa">Administración de plataforma</span>
+        <span id="platform-actor" class="platform-actor">PLATFORM_ADMIN</span>
+      </div>
+      <section class="platform-page-header">
+      <div>
+        <p class="platform-eyebrow">Empresas</p>
+        <h1>Empresas</h1>
+        <p>Administra las empresas registradas en el sistema.</p>
+      </div>
+      <button id="btn-nueva-empresa" class="platform-btn platform-btn-primary" type="button">+ Nueva empresa</button>
+    </section>
+
+    <div id="platform-page-message" class="platform-alert" hidden role="status"></div>
+
+    <section class="platform-management-panel" aria-label="Gestión de empresas">
+      <div class="platform-toolbar" aria-label="Filtros de empresas">
+        <div class="platform-search-wrap">
+          <span aria-hidden="true">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+            </svg>
+          </span>
+          <input id="empresa-buscar" type="search" placeholder="Buscar por nombre, slug, razón social o RFC..." autocomplete="off" />
+        </div>
+        <select id="empresa-estado" aria-label="Filtrar por estado">
+          <option value="todas">Todas</option>
+          <option value="activas">Activas</option>
+          <option value="inactivas">Inactivas</option>
+        </select>
+      </div>
+
+      <section class="platform-table-card" aria-live="polite">
+        <div class="platform-table-scroll">
+          <table class="platform-table">
+            <thead>
+              <tr>
+                <th>Empresa</th>
+                <th>Razón social</th>
+                <th>Contacto</th>
+                <th>Sucursales</th>
+                <th>Usuarios</th>
+                <th>Estado</th>
+                <th class="platform-align-right">Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="empresas-tbody">
+              <tr><td colspan="7" class="platform-empty">Cargando empresas...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <nav id="empresas-pagination" class="platform-pagination" hidden aria-label="Paginación">
+        <span id="empresas-pagination-info"></span>
+        <div>
+          <button id="btn-prev" class="platform-btn platform-btn-ghost" type="button">← Anterior</button>
+          <button id="btn-next" class="platform-btn platform-btn-ghost" type="button">Siguiente →</button>
+        </div>
+      </nav>
+    </section>
+    </main>
+  </div>
+
+  <div id="empresa-modal" class="platform-modal-overlay" aria-hidden="true">
+    <section class="platform-modal platform-modal-company" role="dialog" aria-modal="true" aria-labelledby="empresa-modal-title">
+      <div class="platform-modal-header">
+        <div>
+          <p id="empresa-modal-eyebrow" class="platform-eyebrow">Empresa</p>
+          <h2 id="empresa-modal-title">Nueva empresa</h2>
+        </div>
+        <button id="empresa-modal-close" class="platform-icon-btn" type="button" aria-label="Cerrar">✕</button>
+      </div>
+
+      <div id="empresa-modal-message" class="platform-alert platform-alert-error" hidden role="alert"></div>
+
+      <form id="empresa-form" novalidate>
+        <section class="platform-form-section" aria-labelledby="empresa-principales-title">
+          <div class="platform-form-section-heading">
+            <h3 id="empresa-principales-title">Datos principales</h3>
+            <span>Los cuatro campos son obligatorios.</span>
+          </div>
+          <div class="platform-form-grid">
+          <div class="platform-field platform-field-full">
+            <label for="empresa-nombreComercial">Nombre comercial *</label>
+            <input id="empresa-nombreComercial" maxlength="150" required data-initial-focus />
+          </div>
+          <div class="platform-field platform-field-full">
+            <label for="empresa-slug">Identificador *</label>
+            <input id="empresa-slug" maxlength="80" placeholder="empresa-ejemplo" autocapitalize="none" required />
+            <small>Se usará como identificador único de la empresa.</small>
+          </div>
+          <div class="platform-field">
+            <label for="empresa-razonSocial">Razón social *</label>
+            <input id="empresa-razonSocial" maxlength="200" required />
+          </div>
+          <div class="platform-field">
+            <label for="empresa-whatsapp">WhatsApp *</label>
+            <input id="empresa-whatsapp" maxlength="30" placeholder="9611234567" required />
+          </div>
+          </div>
+        </section>
+
+        <details id="empresa-additional" class="platform-optional-fields">
+          <summary>Información adicional</summary>
+          <div class="platform-form-grid">
+          <div class="platform-field platform-field-full">
+            <label for="empresa-rfc">RFC</label>
+            <input id="empresa-rfc" maxlength="20" autocapitalize="characters" />
+          </div>
+          <div class="platform-field platform-field-full">
+            <label for="empresa-notas">Notas</label>
+            <textarea id="empresa-notas" maxlength="1000" rows="3"></textarea>
+          </div>
+          </div>
+        </details>
+
+        <section id="empresa-onboarding" class="platform-onboarding" hidden aria-label="Onboarding">
+          <h3>Estado de configuración</h3>
+          <ol id="empresa-onboarding-steps" class="platform-onboarding-steps"></ol>
+        </section>
+
+        <div id="empresa-detail-meta" class="platform-detail-meta" hidden></div>
+        <section id="empresa-superadmin-box" class="platform-detail-superadmin" hidden aria-label="Configuración inicial"></section>
+
+        <div class="platform-modal-actions">
+          <button id="empresa-modal-cancel" class="platform-btn platform-btn-ghost" type="button">Cancelar</button>
+          <button id="empresa-form-submit" class="platform-btn platform-btn-primary" type="submit">Crear empresa</button>
+        </div>
+      </form>
+    </section>
+  </div>
+
+  <div id="superadmin-modal" class="platform-modal-overlay" aria-hidden="true">
+    <section class="platform-modal platform-modal-small" role="dialog" aria-modal="true" aria-labelledby="superadmin-modal-title">
+      <div class="platform-modal-header">
+        <div>
+          <p id="superadmin-modal-eyebrow" class="platform-eyebrow">Administrador de empresa</p>
+          <h2 id="superadmin-modal-title">Crear administrador</h2>
+        </div>
+        <button id="superadmin-modal-close" class="platform-icon-btn" type="button" aria-label="Cerrar">✕</button>
+      </div>
+
+      <div id="superadmin-modal-message" class="platform-alert platform-alert-error" hidden role="alert"></div>
+
+      <form id="superadmin-form" novalidate>
+        <div class="platform-form-grid">
+          <div class="platform-field platform-field-full">
+            <label for="superadmin-nombre">Nombre *</label>
+            <input id="superadmin-nombre" maxlength="150" autocomplete="off" required data-initial-focus />
+          </div>
+          <div class="platform-field platform-field-full">
+            <label for="superadmin-username">Usuario *</label>
+            <input id="superadmin-username" maxlength="100" autocapitalize="none" autocomplete="off" required />
+          </div>
+          <div class="platform-field">
+            <label for="superadmin-password">Contraseña *</label>
+            <input id="superadmin-password" type="password" maxlength="512" autocomplete="new-password" required />
+          </div>
+          <div class="platform-field">
+            <label for="superadmin-confirmar">Confirmar contraseña *</label>
+            <input id="superadmin-confirmar" type="password" maxlength="512" autocomplete="new-password" required />
+          </div>
+        </div>
+
+        <div class="platform-modal-actions">
+          <button id="superadmin-modal-cancel" class="platform-btn platform-btn-ghost" type="button">Cancelar</button>
+          <button id="superadmin-form-submit" class="platform-btn platform-btn-primary" type="submit">Crear administrador</button>
+        </div>
+      </form>
+    </section>
+  </div>
+
+  <div id="recover-modal" class="platform-modal-overlay" aria-hidden="true">
+    <section class="platform-modal platform-modal-small" role="dialog" aria-modal="true" aria-labelledby="recover-modal-title">
+      <div class="platform-modal-header">
+        <div>
+          <p id="recover-modal-eyebrow" class="platform-eyebrow">Administrador de empresa</p>
+          <h2 id="recover-modal-title">Recuperar acceso del administrador</h2>
+        </div>
+        <button id="recover-modal-close" class="platform-icon-btn" type="button" aria-label="Cerrar">✕</button>
+      </div>
+
+      <div id="recover-modal-message" class="platform-alert platform-alert-error" hidden role="alert"></div>
+
+      <p class="platform-confirm-copy">Esto restablecerá la contraseña del administrador de la empresa y reactivará su cuenta si estaba inactiva.</p>
+
+      <form id="recover-form" novalidate>
+        <div class="platform-form-grid">
+          <div class="platform-field">
+            <label for="recover-password">Nueva contraseña *</label>
+            <input id="recover-password" type="password" maxlength="512" autocomplete="new-password" required data-initial-focus />
+          </div>
+          <div class="platform-field">
+            <label for="recover-confirmar">Confirmar contraseña *</label>
+            <input id="recover-confirmar" type="password" maxlength="512" autocomplete="new-password" required />
+          </div>
+        </div>
+
+        <div class="platform-modal-actions">
+          <button id="recover-modal-cancel" class="platform-btn platform-btn-ghost" type="button">Cancelar</button>
+          <button id="recover-form-submit" class="platform-btn platform-btn-primary" type="submit">Recuperar acceso</button>
+        </div>
+      </form>
+    </section>
+  </div>
+
+  <div id="confirm-modal" class="platform-modal-overlay" aria-hidden="true">
+    <section class="platform-modal platform-modal-small" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+      <div class="platform-modal-header">
+        <div>
+          <p class="platform-eyebrow">Confirmación</p>
+          <h2 id="confirm-title">Cambiar estado</h2>
+        </div>
+        <button id="confirm-close" class="platform-icon-btn" type="button" aria-label="Cerrar">✕</button>
+      </div>
+      <div id="confirm-copy" class="platform-confirm-copy"></div>
+      <div class="platform-modal-actions">
+        <button id="confirm-cancel" class="platform-btn platform-btn-ghost" type="button">Cancelar</button>
+        <button id="confirm-accept" class="platform-btn platform-btn-danger" type="button" data-initial-focus>Confirmar</button>
+      </div>
+    </section>
+  </div>
+
+  <script src="config.js"></script>
+  <script src="platform-session.js"></script>
+  <script src="platform-sidebar.js"></script>
+  <script src="platform-empresas.js"></script>
+</body>
+</html>

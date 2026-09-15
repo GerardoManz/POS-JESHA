@@ -27,7 +27,7 @@ ROOT_ASSETS=(
   favicon-48x48.png favicon-64x64.png favicon-128x128.png favicon-192x192.png
   favicon-256x256.png favicon-512x512.png
 
-  gsap.min.js motion.js
+  gsap.min.js
 )
 
 rm -rf dist

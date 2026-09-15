@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <script>
+    if (!localStorage.getItem('jesha_token') && !localStorage.getItem('jesha_delegated_token')) {
+      window.location.replace('login.html')
+    }
+  </script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>JESHA POS - Configuración</title>
+  <link rel="icon" type="image/x-icon" href="favicon.ico" />
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png" />
+  <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png" />
+  <script src="theme.js"></script>
+  <link rel="stylesheet" href="dashboard.css" />
+  <link rel="stylesheet" href="configuracion.css" />
+</head>
+<body data-page="configuracion">
+  <div class="app-shell">
+    <div id="sidebar-container"></div>
+    <main class="content">
+      <div class="page-container">
+        <div class="page-header">
+          <div>
+            <h1 class="page-title">Configuración</h1>
+            <p class="page-sub">Administra los datos de tu empresa y su facturación.</p>
+          </div>
+        </div>
+
+        <section class="config-section" id="section-empresa">
+          <div class="config-section-header">
+            <h2 class="config-section-title">Datos de la Empresa</h2>
+            <span class="config-badge" id="badge-empresa">Cargando...</span>
+          </div>
+          <form id="form-empresa" class="config-form" novalidate>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="emp-nombre">Nombre comercial</label>
+                <input id="emp-nombre" type="text" readonly class="input-readonly" />
+              </div>
+              <div class="form-group">
+                <label for="emp-slug">Identificador</label>
+                <input id="emp-slug" type="text" readonly class="input-readonly" />
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group form-group--wide">
+                <label for="emp-razonSocial">Razón social *</label>
+                <input id="emp-razonSocial" type="text" maxlength="200" placeholder="Razón social fiscal" required />
+              </div>
+              <div class="form-group">
+                <label for="emp-rfc">RFC *</label>
+                <input id="emp-rfc" type="text" maxlength="13" placeholder="Ej. EKTG850101ABC" required />
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="emp-whatsapp">WhatsApp</label>
+                <input id="emp-whatsapp" type="text" readonly class="input-readonly" />
+              </div>
+            </div>
+            <div class="form-acciones">
+              <button type="submit" class="btn-primary" id="btn-guardar-empresa">Guardar datos</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="config-section" id="section-branding">
+          <div class="config-section-header">
+            <h2 class="config-section-title">Identidad Visual</h2>
+            <span class="config-badge" id="badge-branding">Cargando...</span>
+          </div>
+
+          <div class="branding-grid">
+            <div class="branding-left">
+              <div class="branding-logo-area">
+                <div class="branding-logo-preview" id="branding-logo-preview">
+                  <span id="branding-logo-initials" class="branding-initials">FIJ</span>
+                  <img id="branding-logo-img" class="branding-logo-img" hidden />
+                </div>
+                <div class="branding-logo-actions">
+                  <label class="btn-secundario btn-sm" for="branding-logo-input">Cambiar logo</label>
+                  <input id="branding-logo-input" type="file" accept="image/png,image/jpeg,image/webp" hidden />
+                  <button type="button" class="btn-ghost btn-sm" id="btn-quitar-logo" hidden>Quitar logo</button>
+                </div>
+                <p class="branding-hint">PNG, JPG o WEBP. Max 2 MB.</p>
+              </div>
+
+              <div class="branding-colors">
+                <div class="branding-color-field">
+                  <label for="branding-color-primario">Color principal</label>
+                  <div class="color-input-wrap">
+                    <input id="branding-color-primario" type="color" value="#1e3a5f" />
+                    <input id="branding-color-primario-hex" type="text" maxlength="7" placeholder="#1e3a5f" class="color-hex-input" />
+                  </div>
+                </div>
+                <div class="branding-color-field">
+                  <label for="branding-color-secundario">Color secundario</label>
+                  <div class="color-input-wrap">
+                    <input id="branding-color-secundario" type="color" value="#3b82f6" />
+                    <input id="branding-color-secundario-hex" type="text" maxlength="7" placeholder="#3b82f6" class="color-hex-input" />
+                  </div>
+                </div>
+                <div class="branding-color-field">
+                  <label for="branding-color-acento">Color de acento</label>
+                  <div class="color-input-wrap">
+                    <input id="branding-color-acento" type="color" value="#10b981" />
+                    <input id="branding-color-acento-hex" type="text" maxlength="7" placeholder="#10b981" class="color-hex-input" />
+                  </div>
+                </div>
+              </div>
+
+              <div class="form-acciones branding-actions">
+                <button type="button" class="btn-secundario" id="btn-restaurar-branding">Restaurar predeterminado</button>
+                <button type="button" class="btn-primary" id="btn-guardar-branding">Guardar identidad visual</button>
+              </div>
+            </div>
+
+            <div class="branding-right">
+              <h3 class="config-subtitle">Vista previa</h3>
+              <div class="branding-preview-shell" id="branding-preview-shell">
+                <div class="branding-preview-sidebar">
+                  <div class="branding-preview-brand">
+                    <span class="branding-preview-brand-name" id="preview-brand-name">FIJ</span>
+                  </div>
+                  <div class="branding-preview-menu">
+                    <div class="branding-preview-item active">Dashboard</div>
+                    <div class="branding-preview-item">Punto de venta</div>
+                    <div class="branding-preview-item">Productos</div>
+                  </div>
+                </div>
+                <div class="branding-preview-content">
+                  <div class="branding-preview-topbar">
+                    <span id="preview-topbar-name">Empresa</span>
+                  </div>
+                  <div class="branding-preview-card">
+                    <div class="branding-preview-btn" id="preview-btn-primary">Boton principal</div>
+                    <div class="branding-preview-badge" id="preview-badge">Badge</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="config-section" id="section-fiscal">
+          <div class="config-section-header">
+            <h2 class="config-section-title">Facturación y Fiscal</h2>
+            <span class="config-badge" id="badge-fiscal">Cargando...</span>
+          </div>
+
+          <div id="fiscal-empty" class="fiscal-state" hidden>
+            <div class="fiscal-state-icon">&#9675;</div>
+            <div class="fiscal-state-text">
+              <strong id="fiscal-empty-title">No configurada</strong>
+              <p id="fiscal-empty-message">Configura los datos fiscales para habilitar la emisión de CFDI.</p>
+            </div>
+          </div>
+
+          <div id="fiscal-steps" class="fiscal-steps" hidden>
+            <div class="fiscal-step" data-step="datos">
+              <div class="fiscal-step-marker"><span class="fiscal-step-num">1</span><span class="fiscal-step-check">&#10003;</span></div>
+              <div class="fiscal-step-line"></div>
+              <div class="fiscal-step-body">
+                <strong>Datos fiscales</strong>
+                <p>RFC, razon social, regimen, CP</p>
+              </div>
+            </div>
+            <div class="fiscal-step" data-step="facturapi">
+              <div class="fiscal-step-marker"><span class="fiscal-step-num">2</span><span class="fiscal-step-check">&#10003;</span></div>
+              <div class="fiscal-step-line"></div>
+              <div class="fiscal-step-body">
+                <strong>Facturapi</strong>
+                <p>Organizacion y conexion</p>
+              </div>
+            </div>
+            <div class="fiscal-step" data-step="csd">
+              <div class="fiscal-step-marker"><span class="fiscal-step-num">3</span><span class="fiscal-step-check">&#10003;</span></div>
+              <div class="fiscal-step-body">
+                <strong>CSD</strong>
+                <p>Certificado de Sello Digital</p>
+              </div>
+            </div>
+          </div>
+
+          <div id="fiscal-form-wrap" class="fiscal-form-wrap" hidden>
+            <h3 class="config-subtitle">Datos fiscales</h3>
+            <form id="form-fiscal" class="config-form" novalidate>
+              <div class="form-row">
+                <div class="form-group form-group--wide">
+                  <label for="fisc-razonSocial">Razón social fiscal *</label>
+                  <input id="fisc-razonSocial" type="text" maxlength="200" required />
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="fisc-rfc">RFC *</label>
+                  <input id="fisc-rfc" type="text" maxlength="13" required />
+                </div>
+                <div class="form-group">
+                  <label for="fisc-regimen">Régimen fiscal *</label>
+                  <select id="fisc-regimen" required><option value="">Seleccionar régimen</option></select>
+                </div>
+                <div class="form-group">
+                  <label for="fisc-cp">Código postal fiscal *</label>
+                  <input id="fisc-cp" type="text" inputmode="numeric" maxlength="5" required />
+                </div>
+              </div>
+              <div class="form-acciones">
+                <button type="submit" class="btn-primary" id="btn-guardar-fiscal">Guardar datos fiscales</button>
+              </div>
+            </form>
+          </div>
+
+          <div id="fiscal-configuring" class="fiscal-state" hidden>
+            <div class="fiscal-state-icon">&#9680;</div>
+            <div class="fiscal-state-text">
+              <strong>Configuración pendiente</strong>
+              <p>Completa los pasos pendientes para habilitar la facturación.</p>
+            </div>
+          </div>
+
+          <div id="fiscal-csd-wrap" class="fiscal-form-wrap" hidden>
+            <h3 class="config-subtitle">Certificado de Sello Digital (CSD)</h3>
+            <form id="form-csd" class="config-form" novalidate>
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="csd-cer">Archivo .cer</label>
+                  <div class="file-input-wrap">
+                    <input id="csd-cer" type="file" accept=".cer" />
+                    <span class="file-input-label" id="csd-cer-label">Seleccionar archivo</span>
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label for="csd-key">Archivo .key</label>
+                  <div class="file-input-wrap">
+                    <input id="csd-key" type="file" accept=".key" />
+                    <span class="file-input-label" id="csd-key-label">Seleccionar archivo</span>
+                  </div>
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group form-group--wide">
+                  <label for="csd-password">Contraseña de la llave privada</label>
+                  <input id="csd-password" type="password" autocomplete="off" />
+                </div>
+              </div>
+              <div class="form-acciones">
+                <button type="submit" class="btn-primary" id="btn-cargar-csd">Cargar CSD</button>
+              </div>
+            </form>
+          </div>
+
+          <div id="fiscal-csd-info" class="fiscal-meta" hidden>
+            <h3 class="config-subtitle">Certificado de Sello Digital</h3>
+            <div class="fiscal-meta-row"><span class="fiscal-meta-label">Estado</span><span class="fiscal-meta-value" id="csd-estado">-</span></div>
+            <div class="fiscal-meta-row" id="csd-serial-row" hidden><span class="fiscal-meta-label">Serie</span><span class="fiscal-meta-value mono" id="csd-serial">-</span></div>
+            <div class="fiscal-meta-row" id="csd-expira-row" hidden><span class="fiscal-meta-label">Vigencia</span><span class="fiscal-meta-value" id="csd-expira">-</span></div>
+          </div>
+
+          <div id="fiscal-pending" class="fiscal-pending" hidden>
+            <h3 class="config-subtitle">Pendiente</h3>
+            <ul id="fiscal-pending-list" class="fiscal-pending-list"></ul>
+          </div>
+
+          <div id="fiscal-actions" class="fiscal-actions" hidden>
+            <button type="button" class="btn-secundario" id="btn-sync-status">Actualizar estado</button>
+            <button type="button" class="btn-primary" id="btn-enable-live" hidden>Habilitar facturación</button>
+          </div>
+
+          <div id="fiscal-ready" class="fiscal-state fiscal-state--ready" hidden>
+            <div class="fiscal-state-icon">&#9679;</div>
+            <div class="fiscal-state-text"><strong>Lista para facturar</strong><p>Esta empresa está lista para emitir CFDI.</p></div>
+          </div>
+
+          <div id="fiscal-summary" class="fiscal-summary" hidden>
+            <div class="fiscal-summary-item"><span class="fiscal-summary-dot" id="dot-datos"></span><span>Datos fiscales</span><span class="fiscal-summary-status" id="status-datos">-</span></div>
+            <div class="fiscal-summary-item"><span class="fiscal-summary-dot" id="dot-facturapi"></span><span>Facturapi</span><span class="fiscal-summary-status" id="status-facturapi">-</span></div>
+            <div class="fiscal-summary-item"><span class="fiscal-summary-dot" id="dot-csd"></span><span>CSD</span><span class="fiscal-summary-status" id="status-csd">-</span></div>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <script src="config.js"></script>
+  <script src="catalogos-sat.js"></script>
+  <script src="fiscal-state.js"></script>
+  <script src="session.js"></script>
+  <script src="sidebar.js"></script>
+  <script src="configuracion.js"></script>
+</body>
+</html>

@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <script>
+    if (!localStorage.getItem('jesha_token') && !localStorage.getItem('jesha_delegated_token')) {
+      window.location.replace('login.html')
+    }
+  </script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>POS - Kardex</title>
+  <link rel="icon" type="image/x-icon" href="favicon.ico"/>
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png"/>
+  <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png"/>
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png"/>
+  <script src="theme.js"></script>
+  <link rel="stylesheet" href="dashboard.css" />
+  <link rel="stylesheet" href="kardex.css" />
+</head>
+<body data-page="kardex">
+<div class="app-shell">
+  <div id="sidebar-container"></div>
+  <main class="content">
+    <header class="content-header">
+      <div class="kardex-header-row">
+        <div>
+          <h2>Kardex de Inventario</h2>
+          <p id="kardex-subtitle" class="kardex-subtitle"></p>
+        </div>
+        <a href="productos.html" class="kardex-back-link">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+          Volver a Productos
+        </a>
+      </div>
+    </header>
+
+    <section class="kardex-producto-info" id="kardex-producto-info">
+      <div class="kardex-info-loading"><div class="spinner"></div></div>
+    </section>
+
+    <section class="kardex-filtros" id="kardex-filtros" hidden>
+      <div class="kardex-filtros-row">
+        <div class="kardex-filter-group">
+          <label for="kardex-sucursal-filter" id="kardex-sucursal-label">Sucursal</label>
+          <select id="kardex-sucursal-filter" hidden>
+            <option value="">Todas</option>
+          </select>
+        </div>
+        <div class="kardex-filter-group">
+          <label for="kardex-desde">Desde</label>
+          <input type="date" id="kardex-desde" />
+        </div>
+        <div class="kardex-filter-group">
+          <label for="kardex-hasta">Hasta</label>
+          <input type="date" id="kardex-hasta" />
+        </div>
+        <div class="kardex-filter-group">
+          <label for="kardex-tipo">Tipo de movimiento</label>
+          <select id="kardex-tipo">
+            <option value="">Todos</option>
+            <option value="ENTRADA_COMPRA">Entrada por compra</option>
+            <option value="SALIDA_VENTA">Salida por venta</option>
+            <option value="AJUSTE_POSITIVO">Ajuste positivo</option>
+            <option value="AJUSTE_NEGATIVO">Ajuste negativo</option>
+            <option value="DEVOLUCION_ENTRADA">Devolucion entrada</option>
+            <option value="DEVOLUCION_SALIDA">Devolucion salida</option>
+            <option value="SALIDA_BITACORA">Salida bitacora</option>
+            <option value="CANCELACION_VENTA">Cancelacion venta</option>
+            <option value="REINTEGRO_BITACORA">Reintegro bitacora</option>
+          </select>
+        </div>
+        <button class="kardex-btn-filtrar" id="kardex-btn-filtrar">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+          Filtrar
+        </button>
+        <button class="kardex-btn-limpiar" id="kardex-btn-limpiar">Limpiar</button>
+      </div>
+    </section>
+
+    <section class="kardex-table-wrap" id="kardex-table-wrap" hidden>
+      <div class="kardex-resumen" id="kardex-resumen"></div>
+      <div class="kardex-table-container">
+        <table class="kardex-table">
+          <thead>
+            <tr id="kardex-thead-tr">
+              <th>Fecha</th>
+              <th class="kardex-th-sucursal" hidden>Sucursal</th>
+              <th>Tipo</th>
+              <th>Cantidad</th>
+              <th>Stock antes</th>
+              <th>Stock despues</th>
+              <th>Referencia</th>
+              <th>Notas</th>
+              <th>Usuario</th>
+            </tr>
+          </thead>
+          <tbody id="kardex-tbody"></tbody>
+        </table>
+      </div>
+      <div class="kardex-pagination" id="kardex-pagination"></div>
+    </section>
+
+    <div class="kardex-empty" id="kardex-empty" hidden>
+      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:.35">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+        <polyline points="14 2 14 8 20 8"/>
+        <line x1="16" y1="13" x2="8" y2="13"/>
+        <line x1="16" y1="17" x2="8" y2="17"/>
+      </svg>
+      <p id="kardex-empty-text">No hay movimientos para este producto</p>
+    </div>
+
+  </main>
+</div>
+
+<script src="config.js"></script>
+<script src="session.js"></script>
+<script src="sidebar.js"></script>
+<script src="kardex.js"></script>
+</body>
+</html>

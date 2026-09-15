@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Administración de plataforma - Acceso</title>
+  <link rel="stylesheet" href="platform.css" />
+</head>
+<body class="platform-login-body">
+  <main class="platform-login-shell">
+    <section class="platform-login-card" aria-labelledby="login-title">
+      <div class="platform-login-brand-panel">
+        <div class="platform-login-brand-copy">
+          <div class="platform-brand-mark platform-brand-mark-large" aria-hidden="true">P</div>
+          <p class="platform-eyebrow">Administración de plataforma</p>
+          <h1 id="login-title">Administración de plataforma</h1>
+          <p class="platform-login-copy">Gestiona empresas y su habilitación desde un entorno separado del POS.</p>
+        </div>
+        <div class="platform-login-context">
+          <strong>Acceso de plataforma</strong>
+          Esta sesión es independiente de las cuentas operativas de cada empresa.
+        </div>
+      </div>
+
+      <div class="platform-login-form-panel">
+        <p class="platform-eyebrow">Acceso seguro</p>
+        <h2>Iniciar sesión</h2>
+        <p class="platform-login-form-copy">Ingresa con tu cuenta de administración PLATFORM.</p>
+
+        <form id="platform-login-form" novalidate>
+          <div class="platform-field">
+            <label for="platform-username">Usuario</label>
+            <input id="platform-username" name="username" type="text" maxlength="100" autocomplete="username" required />
+          </div>
+          <div class="platform-field">
+            <label for="platform-password">Contraseña</label>
+            <input id="platform-password" name="password" type="password" maxlength="512" autocomplete="current-password" required />
+          </div>
+          <div id="platform-login-error" class="platform-alert platform-alert-error" hidden role="alert"></div>
+          <button id="platform-login-submit" class="platform-btn platform-btn-primary platform-btn-block" type="submit">Ingresar</button>
+        </form>
+
+        <p class="platform-login-note">Esta consola es independiente de las cuentas operativas de cada empresa.</p>
+      </div>
+    </section>
+  </main>
+
+  <script src="config.js"></script>
+  <script src="platform-session.js"></script>
+  <script src="platform-login.js"></script>
+</body>
+</html>
