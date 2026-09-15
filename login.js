@@ -30,6 +30,14 @@ let pendingToken = null
 let pendingUsuario = null
 let pendingEmpresaSlug = null
 
+function mensajeLoginSeguro(error, fallback = 'No fue posible completar el acceso. Intenta nuevamente.') {
+  const status = error?.status
+  if (status === 400) return 'Revisa los datos de acceso.'
+  if (status === 401 || status === 403) return 'Usuario o contraseña incorrectos.'
+  if (status >= 500) return 'No fue posible iniciar sesión. Intenta nuevamente.'
+  return fallback
+}
+
 const loginBrandName = document.getElementById('login-brand-name')
 let brandingDebounce = null
 
@@ -99,8 +107,9 @@ async function validarContextYSesion(token, usuario, empresaSlug, selectedSucurs
 
   const res = await fetch(`${apiBase}/auth/context`, { headers })
   if (!res.ok) {
-    const body = await res.json().catch(() => null)
-    throw new Error(body?.error || 'Contexto de sucursal no válido')
+    const error = new Error('No fue posible validar la sucursal seleccionada.')
+    error.status = res.status
+    throw error
   }
 
   const context = await res.json()
@@ -108,7 +117,7 @@ async function validarContextYSesion(token, usuario, empresaSlug, selectedSucurs
   if (typeof window.jeshaSession?.validarContexto === 'function') {
     window.jeshaSession.validarContexto(context, usuario, selectedSucursalId)
   } else {
-    throw new Error('Sesión tenant inválida')
+    throw new Error('No fue posible validar la sesión.')
   }
 
   window.jeshaSession.start({ token, usuario, empresaSlug })
@@ -128,7 +137,7 @@ async function completarParaFijo() {
   try {
     await validarContextYSesion(pendingToken, pendingUsuario, pendingEmpresaSlug, null)
   } catch (err) {
-    errorBox.textContent = err.message
+    errorBox.textContent = mensajeLoginSeguro(err, 'No fue posible validar tu acceso. Intenta nuevamente.')
     pendingToken = null
     pendingUsuario = null
     pendingEmpresaSlug = null
@@ -181,7 +190,7 @@ async function mostrarSelectorSucursal() {
     })
   } catch (err) {
     console.error('Error cargando sucursales:', err)
-    sucursalError.textContent = err.message || 'Error al cargar sucursales'
+    sucursalError.textContent = mensajeLoginSeguro(err, 'No fue posible cargar las sucursales. Intenta nuevamente.')
     pendingToken = null
     pendingUsuario = null
     pendingEmpresaSlug = null
@@ -201,7 +210,7 @@ btnContinuar.addEventListener('click', async () => {
   try {
     await validarContextYSesion(pendingToken, pendingUsuario, pendingEmpresaSlug, Number(val))
   } catch (err) {
-    sucursalError.textContent = err.message
+    sucursalError.textContent = mensajeLoginSeguro(err, 'No fue posible validar la sucursal seleccionada.')
     btnContinuar.disabled = false
     btnContinuar.textContent = 'Continuar'
   }
@@ -228,7 +237,11 @@ form.addEventListener('submit', async (event) => {
     const data = await response.json().catch(() => null)
 
     if (!response.ok) {
-      errorBox.textContent = data?.error || 'Credenciales inválidas'
+      errorBox.textContent = response.status === 400
+        ? 'Revisa los datos de acceso.'
+        : response.status === 401
+          ? 'Usuario o contraseña incorrectos.'
+          : 'No fue posible iniciar sesión. Intenta nuevamente.'
       btnLogin.disabled = false
       btnLogin.textContent = 'Ingresar'
       return
@@ -249,9 +262,7 @@ form.addEventListener('submit', async (event) => {
     }
   } catch (err) {
     console.error('Error de login tenant:', err)
-    errorBox.textContent = err?.message === 'Sesión tenant inválida'
-      ? 'La cuenta no pertenece al acceso empresarial del POS'
-      : 'No se pudo conectar con el servidor'
+    errorBox.textContent = mensajeLoginSeguro(err, 'No se pudo conectar con el servidor.')
     btnLogin.disabled = false
     btnLogin.textContent = 'Ingresar'
   }

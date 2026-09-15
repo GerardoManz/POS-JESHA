@@ -315,7 +315,8 @@ function mensajeError(err) {
   if (status === 401) return 'Tu sesión expiró. Vuelve a iniciar sesión.'
   if (status === 400 && data.message) return data.message
   if (status >= 500) return 'No se pudo completar la operación. Intenta nuevamente.'
-  return (err.message && err.message !== 'Error del servidor') ? err.message : 'No se pudo completar la operación. Intenta nuevamente.'
+  if (status === 400) return 'Revisa los datos de la sucursal e intenta nuevamente.'
+  return 'No se pudo completar la operación. Intenta nuevamente.'
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -416,4 +417,4 @@ function bindEventos() {
 bindEventos()
 window.SucursalesUI = { cargarSucursales, render, renderTabla, renderOnboarding, renderPaginacion, abrirModal, cerrarModal, guardarSucursal, activarSucursal, desactivarSucursal, activarYUsar, manejarClickAccion, abrirModalDesactivar, cerrarModalDesactivar, confirmarDesactivar, mensajeError, estado, getNuevaId: () => nuevaCreadaId }
 if (new URLSearchParams(window.location.search).get('nueva') === '1') abrirModal(null)
-cargarSucursales().catch(err => notificar((err && err.message) || 'Error al cargar sucursales', 'error'))
+cargarSucursales().catch(err => notificar(mensajeError(err), 'error'))

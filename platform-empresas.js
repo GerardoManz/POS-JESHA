@@ -90,6 +90,15 @@ if (typeof module !== 'undefined' && module.exports) {
     box.hidden = true
   }
 
+  function mensajeErrorPlataforma(err, fallback = 'No fue posible completar la acción. Intenta nuevamente.') {
+    if (!err) return fallback
+    if (err.status === 400) return 'Revisa los datos e intenta nuevamente.'
+    if (err.status === 404) return 'La empresa ya no está disponible.'
+    if (err.status === 409) return 'La operación entra en conflicto con el estado actual de la empresa.'
+    if (err.status === 401 || err.status === 403) return 'No tienes permisos para realizar esta acción.'
+    return fallback
+  }
+
   function showModalMessage(message) {
     const box = el('empresa-modal-message')
     box.textContent = message
@@ -400,7 +409,7 @@ if (typeof module !== 'undefined' && module.exports) {
       el('empresa-form-submit').textContent = 'Guardar cambios'
       openOverlay('empresa-modal')
     } catch (err) {
-      if (err.status !== 401 && err.status !== 403) showPageMessage(err.message, 'error')
+      if (err.status !== 401 && err.status !== 403) showPageMessage(mensajeErrorPlataforma(err, 'No fue posible cargar la empresa.'), 'error')
     }
   }
 
@@ -479,7 +488,7 @@ if (typeof module !== 'undefined' && module.exports) {
       if (err.status !== 401 && err.status !== 403) {
         if (err.code === 'EMPRESA_SUPERADMIN_USERNAME_DUPLICADO') showSuperadminMessage('Ese nombre de usuario ya existe en esta empresa.')
         else if (err.code === 'EMPRESA_YA_TIENE_SUPERADMIN') showSuperadminMessage('La empresa ya tiene un administrador configurado.')
-        else showSuperadminMessage(err.message)
+        else showSuperadminMessage(mensajeErrorPlataforma(err, 'No fue posible configurar el administrador.'))
       }
     } finally {
       state.savingSuperadmin = false
@@ -550,7 +559,7 @@ if (typeof module !== 'undefined' && module.exports) {
       if (err.status !== 401 && err.status !== 403) {
         if (err.code === 'EMPRESA_SUPERADMIN_NO_ENCONTRADO') showRecoverMessage('La empresa no tiene un administrador configurado para recuperar.')
         else if (err.code === 'EMPRESA_SUPERADMIN_AMBIGUO') showRecoverMessage('La empresa tiene más de un administrador configurado. Contacta a soporte.')
-        else showRecoverMessage(err.message)
+        else showRecoverMessage(mensajeErrorPlataforma(err, 'No fue posible recuperar el acceso.'))
       }
     } finally {
       state.savingRecover = false
@@ -605,7 +614,7 @@ if (typeof module !== 'undefined' && module.exports) {
       if (err.status !== 401 && err.status !== 403) {
         if (err.code === 'EMPRESA_SLUG_DUPLICADO') showModalMessage('Ese slug ya está siendo utilizado por otra empresa.')
         else if (Array.isArray(err.data?.errores) && err.data.errores.length) showModalMessage(err.data.errores.map((item) => item.mensaje).join(' · '))
-        else showModalMessage(err.message)
+        else showModalMessage(mensajeErrorPlataforma(err, 'No fue posible guardar la empresa.'))
       }
     } finally {
       state.savingEmpresa = false
@@ -661,7 +670,7 @@ if (typeof module !== 'undefined' && module.exports) {
         if (err.code === 'EMPRESA_SIN_SUPERADMIN') {
           showPageMessage('La empresa necesita un administrador activo antes de activarse. Créalo desde "Ver / editar".', 'warning')
         } else {
-          showPageMessage(err.message, 'error')
+          showPageMessage(mensajeErrorPlataforma(err, 'No fue posible actualizar el estado de la empresa.'), 'error')
         }
       }
     } finally {
@@ -716,7 +725,7 @@ if (typeof module !== 'undefined' && module.exports) {
     } catch (err) {
       closeConfirm()
       if (err.status !== 401 && err.status !== 403) {
-        showPageMessage(err.message || 'No fue posible entrar a la empresa.', 'error')
+        showPageMessage(mensajeErrorPlataforma(err, 'No fue posible entrar a la empresa.'), 'error')
       }
     } finally {
       accept.disabled = false
