@@ -321,8 +321,8 @@ const recibir = async (req, res) => {
     if (oc.estado === 'RECIBIDO')    return res.status(400).json({ success: false, error: 'Orden ya recibida completamente' })
 
     // ── Validación cross-company: proveedor pertenece a la empresa ──
-    const proveedor = await prisma.proveedor.findUnique({ where: { id: oc.proveedorId }, select: { empresaId: true } })
-    if (!proveedor || proveedor.empresaId !== empresaId) {
+    const proveedor = await prisma.proveedor.findFirst({ where: { id: oc.proveedorId, empresaId }, select: { id: true } })
+    if (!proveedor) {
       return res.status(400).json({ success: false, error: 'Proveedor no pertenece a esta empresa' })
     }
 

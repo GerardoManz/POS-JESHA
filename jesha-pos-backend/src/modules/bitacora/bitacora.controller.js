@@ -294,9 +294,9 @@ const editar = async (req, res) => {
         // clienteId vacío o inválido → quitar cliente
         clienteNuevoId = null
       } else {
-        const cliente = await prisma.cliente.findUnique({ where: { id: cid }, select: { id: true, empresaId: true, activo: true } })
-        if (!cliente || cliente.empresaId !== empresaId || !cliente.activo) {
-          return res.status(400).json({ success: false, error: 'Cliente no encontrado, de otra empresa o inactivo', codigo: 'CLIENTE_INVALIDO' })
+        const cliente = await prisma.cliente.findFirst({ where: { id: cid, empresaId, activo: true }, select: { id: true } })
+        if (!cliente) {
+          return res.status(400).json({ success: false, error: 'Cliente no encontrado', codigo: 'CLIENTE_INVALIDO' })
         }
         clienteNuevoId = cid
       }
@@ -363,14 +363,14 @@ const aplicarDescuento = async (req, res) => {
       return res.status(403).json({ success: false, error: 'Sin permiso para aplicar descuentos', codigo: 'SIN_PERMISO_DESCUENTO' })
     }
 
-    const bitacora = await prisma.bitacora.findUnique({
-      where: { id: parseInt(id) },
+    const bitacora = await prisma.bitacora.findFirst({
+      where: { id: parseInt(id), empresaId },
       select: {
         id: true, empresaId: true, folio: true, estado: true, totalMateriales: true,
         totalAbonado: true, saldoPendiente: true, clienteId: true, descuentoMonto: true
       }
     })
-    if (!bitacora || bitacora.empresaId !== empresaId) {
+    if (!bitacora) {
       return res.status(404).json({ success: false, error: 'Bitácora no encontrada' })
     }
     if (!['ABIERTA', 'PAUSADA'].includes(bitacora.estado)) {
@@ -465,8 +465,8 @@ const cambiarEstado = async (req, res) => {
       })
     }
 
-    const existente = await prisma.bitacora.findUnique({
-      where: { id: parseInt(id) },
+    const existente = await prisma.bitacora.findFirst({
+      where: { id: parseInt(id), empresaId },
       select: {
         id: true, folio: true, estado: true, saldoPendiente: true,
         descuentoTipo: true, descuentoValor: true, descuentoMonto: true,
@@ -507,7 +507,7 @@ const cambiarEstado = async (req, res) => {
       })
 
       await audit(usuarioId, sucursalId, 'CERRAR_BITACORA_INTERNA', `${existente.folio} - saldo:$${parseFloat(existente.saldoPendiente).toFixed(2)} - ${motivo}`, empresaId)
-      const b = await prisma.bitacora.findUnique({ where: { id: parseInt(id) }, select: BITACORA_SELECT })
+      const b = await prisma.bitacora.findFirst({ where: { id: parseInt(id), empresaId }, select: BITACORA_SELECT })
       return res.json({ success: true, data: b, mensaje: 'Bitácora cerrada manualmente' })
     }
 
@@ -596,7 +596,7 @@ const cambiarEstado = async (req, res) => {
       })
 
       await audit(usuarioId, sucursalId, 'CANCELAR_BITACORA', `${existente.folio} - ${motivo}`, empresaId)
-      const b = await prisma.bitacora.findUnique({ where: { id: parseInt(id) }, select: BITACORA_SELECT })
+      const b = await prisma.bitacora.findFirst({ where: { id: parseInt(id), empresaId }, select: BITACORA_SELECT })
       return res.json({ success: true, data: b, mensaje: 'Bitácora cancelada. Stock reintegrado.' })
     }
 
@@ -667,7 +667,7 @@ const cambiarEstado = async (req, res) => {
 
       await audit(usuarioId, sucursalId, 'REABRIR_BITACORA',
         `${existente.folio} - estado previo:${existente.estado} - ${motivo}`, empresaId)
-      const b = await prisma.bitacora.findUnique({ where: { id: parseInt(id) }, select: BITACORA_SELECT })
+      const b = await prisma.bitacora.findFirst({ where: { id: parseInt(id), empresaId }, select: BITACORA_SELECT })
       return res.json({ success: true, data: b, mensaje: 'Bitácora reabierta. El saldo del cliente fue restaurado.' })
     }
   } catch (err) {
@@ -794,11 +794,11 @@ const agregarProducto = async (req, res) => {
     }
 
     // ── Producto + inventario ──
-    const producto = await prisma.producto.findUnique({
-      where: { id: parseInt(productoId) },
+    const producto = await prisma.producto.findFirst({
+      where: { id: parseInt(productoId), empresaId, activo: true },
       select: { id: true, nombre: true, codigoInterno: true, precioVenta: true, activo: true, unidadVenta: true, esGranel: true }
     })
-    if (!producto || !producto.activo)      return res.status(404).json({ success: false, error: 'Producto no encontrado o inactivo' })
+    if (!producto)                    return res.status(404).json({ success: false, error: 'Producto no encontrado' })
 
     const inv = await prisma.inventarioSucursal.findUnique({
       where: { productoId_sucursalId: { productoId: producto.id, sucursalId } },
@@ -1191,14 +1191,11 @@ const editarDetalle = async (req, res) => {
       return res.status(400).json({ success: false, error: 'Debes enviar cantidad, precioUnitario o recibeTrabajadorId' })
     }
 
-    const bitacora = await prisma.bitacora.findUnique({
-      where: { id: parseInt(id) },
+    const bitacora = await prisma.bitacora.findFirst({
+      where: { id: parseInt(id), empresaId },
       select: { id: true, empresaId: true, folio: true, estado: true, origen: true, totalMateriales: true, saldoPendiente: true, totalAbonado: true, descuentoMonto: true, clienteId: true }
     })
     if (!bitacora) return res.status(404).json({ success: false, error: 'Bitácora no encontrada' })
-    if (bitacora.empresaId !== empresaId) {
-      return res.status(404).json({ success: false, error: 'Bitácora no encontrada' })
-    }
     if (bitacora.origen !== 'MANUAL')  return res.status(403).json({ success: false, error: 'Solo se pueden editar detalles de bitácoras MANUAL', codigo: 'ORIGEN_INCORRECTO' })
     if (bitacora.estado !== 'ABIERTA') return res.status(400).json({ success: false, error: `No se pueden editar detalles en estado ${bitacora.estado}` })
 
@@ -1373,14 +1370,11 @@ const quitarProducto = async (req, res) => {
     }
     const empresaId = getEmpresaId(req)
 
-    const bitacora = await prisma.bitacora.findUnique({
-      where: { id: parseInt(id) },
+    const bitacora = await prisma.bitacora.findFirst({
+      where: { id: parseInt(id), empresaId },
       select: { id: true, empresaId: true, folio: true, estado: true, origen: true, totalMateriales: true, saldoPendiente: true, totalAbonado: true, descuentoMonto: true, clienteId: true }
     })
     if (!bitacora)                     return res.status(404).json({ success: false, error: 'Bitácora no encontrada' })
-    if (bitacora.empresaId !== empresaId) {
-      return res.status(404).json({ success: false, error: 'Bitácora no encontrada' })
-    }
     if (bitacora.origen !== 'MANUAL')  return res.status(403).json({ success: false, error: 'Solo se pueden quitar productos de bitácoras MANUAL', codigo: 'ORIGEN_INCORRECTO' })
     if (bitacora.estado !== 'ABIERTA') return res.status(400).json({ success: false, error: `No se pueden quitar productos en estado ${bitacora.estado}` })
 

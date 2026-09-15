@@ -159,13 +159,10 @@ exports.crearArticuloRapido = async (req, res) => {
       return res.status(403).json({ success: false, error: 'sucursalId inválida para tu empresa' })
     }
 
-    // Validar categoría
-    const categoria = await prisma.categoria.findUnique({ where: { id: categoriaIdNum } })
+    // Validar categoría — scoped by empresaId or global
+    const categoria = await prisma.categoria.findFirst({ where: { id: categoriaIdNum, OR: [{ empresaId }, { empresaId: null }] } })
     if (!categoria) {
       return res.status(400).json({ success: false, error: 'categoriaId no existe' })
-    }
-    if (categoria.empresaId !== null && categoria.empresaId !== empresaId) {
-      return res.status(403).json({ success: false, error: 'La categoría no pertenece a tu empresa' })
     }
 
     // ── Resolución de codigoInterno ───────────────────────────────

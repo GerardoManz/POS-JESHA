@@ -1425,10 +1425,19 @@ async function crearCategoria(req, res) {
             return res.status(400).json({ success: false, error: 'Nombre y departamentoId requeridos' })
         }
 
+        // P2-01: Validate departamento belongs to same empresa or is global
+        const deptoId = parseInt(departamentoId)
+        const departamento = await prisma.departamento.findFirst({
+            where: { id: deptoId, OR: [{ empresaId }, { empresaId: null, esGlobal: true }] }
+        })
+        if (!departamento) {
+            return res.status(404).json({ success: false, error: 'Departamento no encontrado' })
+        }
+
         const existente = await prisma.categoria.findFirst({
             where: {
                 empresaId,
-                departamentoId: parseInt(departamentoId),
+                departamentoId: deptoId,
                 nombre: { equals: nombre.trim(), mode: 'insensitive' }
             }
         })
@@ -1440,7 +1449,7 @@ async function crearCategoria(req, res) {
             data: {
                 empresaId,
                 nombre: nombre.trim(),
-                departamentoId: parseInt(departamentoId)
+                departamentoId: deptoId
             }
         })
         console.log(`✅ Categoría creada: ${cat.nombre}`)
@@ -1517,38 +1526,42 @@ async function ajustarInventario(req, res) {
       updateData.stockMinimoAlerta = parseFloat(parseFloat(stockMinimoAlerta).toFixed(3))
     }
 
-    const inventario = await prisma.inventarioSucursal.upsert({
-      where: { productoId_sucursalId: { productoId: parseInt(id), sucursalId } },
-      update: updateData,
-      create: {
-        productoId:        parseInt(id),
-        sucursalId,
-        stockActual:       parseFloat(parseFloat(stockActual ?? 0).toFixed(3)),
-        stockMinimoAlerta: parseFloat(parseFloat(stockMinimoAlerta ?? 5).toFixed(3)),
+    // ── P2-05: Atomic inventory + movement in single transaction ──
+    const inventario = await prisma.$transaction(async (tx) => {
+      const inv = await tx.inventarioSucursal.upsert({
+        where: { productoId_sucursalId: { productoId: parseInt(id), sucursalId } },
+        update: updateData,
+        create: {
+          productoId:        parseInt(id),
+          sucursalId,
+          stockActual:       parseFloat(parseFloat(stockActual ?? 0).toFixed(3)),
+          stockMinimoAlerta: parseFloat(parseFloat(stockMinimoAlerta ?? 5).toFixed(3)),
+        }
+      })
+
+      // ── Registrar en MovimientoInventario si cambió el stock ──
+      if (stockActual !== undefined) {
+        const stockNuevo = parseFloat(parseFloat(stockActual).toFixed(3))
+        const diferencia = parseFloat((stockNuevo - stockAnterior).toFixed(3))
+
+        if (diferencia !== 0) {
+          await tx.movimientoInventario.create({
+            data: {
+              empresaId,
+              productoId:   parseInt(id),
+              sucursalId,
+              usuarioId:    usuario.id,
+              tipo:         diferencia > 0 ? 'AJUSTE_POSITIVO' : 'AJUSTE_NEGATIVO',
+              cantidad:     Math.abs(diferencia),
+              stockAntes:   stockAnterior,
+              stockDespues: stockNuevo,
+              notas:        motivo || 'Ajuste manual de inventario',
+            }
+          })
+        }
       }
+      return inv
     })
-
-    // ── Registrar en MovimientoInventario si cambió el stock ──
-    if (stockActual !== undefined) {
-      const stockNuevo = parseFloat(parseFloat(stockActual).toFixed(3))
-      const diferencia = parseFloat((stockNuevo - stockAnterior).toFixed(3))
-
-      if (diferencia !== 0) {
-        await prisma.movimientoInventario.create({
-          data: {
-            empresaId,
-            productoId:   parseInt(id),
-            sucursalId,
-            usuarioId:    usuario.id,
-            tipo:         diferencia > 0 ? 'AJUSTE_POSITIVO' : 'AJUSTE_NEGATIVO',
-            cantidad:     Math.abs(diferencia),
-            stockAntes:   stockAnterior,
-            stockDespues: stockNuevo,
-            notas:        motivo || 'Ajuste manual de inventario',
-          }
-        })
-      }
-    }
 
     console.log(`✅ Inventario ajustado: producto ${id} | stock ${stockAnterior}→${stockActual ?? stockAnterior} | min ${minAnterior}→${stockMinimoAlerta ?? minAnterior} | por ${usuario.nombre}`)
 

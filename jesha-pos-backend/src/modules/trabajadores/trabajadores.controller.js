@@ -94,8 +94,8 @@ const editar = async (req, res) => {
     const { id } = req.params
     const { nombre, apodo, telefono, notas } = req.body
 
-    const existente = await prisma.trabajador.findUnique({ where: { id: parseInt(id) } })
-    if (!existente || existente.empresaId !== empresaId) return res.status(404).json({ error: 'Trabajador no encontrado' })
+    const existente = await prisma.trabajador.findFirst({ where: { id: parseInt(id), empresaId } })
+    if (!existente) return res.status(404).json({ error: 'Trabajador no encontrado' })
 
     const nombreTrim = nombre?.trim()
     const data = {}
@@ -139,8 +139,8 @@ const cambiarEstado = async (req, res) => {
     const { id } = req.params
     const { activo } = req.body
 
-    const existente = await prisma.trabajador.findUnique({ where: { id: parseInt(id) } })
-    if (!existente || existente.empresaId !== empresaId) return res.status(404).json({ error: 'Trabajador no encontrado' })
+    const existente = await prisma.trabajador.findFirst({ where: { id: parseInt(id), empresaId } })
+    if (!existente) return res.status(404).json({ error: 'Trabajador no encontrado' })
 
     const trabajador = await prisma.trabajador.update({
       where: { id: parseInt(id) },

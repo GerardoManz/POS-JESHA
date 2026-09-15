@@ -110,7 +110,11 @@ const editar = async (req, res) => {
     if (email !== undefined) data.email = email || null
     if (activo !== undefined) data.activo = activo
 
-    const proveedor = await prisma.proveedor.update({ where: { id: parseInt(req.params.id) }, data })
+    // P2-04: write scoped by empresaId via updateMany + refetch
+    const proveedorId = parseInt(req.params.id)
+    const { count } = await prisma.proveedor.updateMany({ where: { id: proveedorId, empresaId }, data })
+    if (count === 0) return res.status(404).json({ success: false, error: 'Proveedor no encontrado' })
+    const proveedor = await prisma.proveedor.findFirst({ where: { id: proveedorId, empresaId } })
     await audit(req.usuario.id, req.context?.branch?.sucursalId ?? null, 'EDITAR_PROVEEDOR', proveedor.nombreOficial)
     res.json({ success: true, data: proveedor })
   } catch (err) {
@@ -124,13 +128,13 @@ const editar = async (req, res) => {
 const toggleActivo = async (req, res) => {
   try {
     const empresaId = getEmpresaId(req)
-    const proveedor = await prisma.proveedor.findFirst({ where: { id: parseInt(req.params.id), empresaId } })
+    const proveedorId = parseInt(req.params.id)
+    const proveedor = await prisma.proveedor.findFirst({ where: { id: proveedorId, empresaId } })
     if (!proveedor) return res.status(404).json({ success: false, error: 'Proveedor no encontrado' })
 
-    const updated = await prisma.proveedor.update({
-      where: { id: parseInt(req.params.id) },
-      data: { activo: !proveedor.activo }
-    })
+    const { count } = await prisma.proveedor.updateMany({ where: { id: proveedorId, empresaId }, data: { activo: !proveedor.activo } })
+    if (count === 0) return res.status(404).json({ success: false, error: 'Proveedor no encontrado' })
+    const updated = await prisma.proveedor.findFirst({ where: { id: proveedorId, empresaId } })
     const accion = updated.activo ? 'ACTIVAR_PROVEEDOR' : 'DESACTIVAR_PROVEEDOR'
     await audit(req.usuario.id, req.context?.branch?.sucursalId ?? null, accion, updated.nombreOficial)
     res.json({ success: true, data: updated })
