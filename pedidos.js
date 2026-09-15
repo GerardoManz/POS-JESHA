@@ -87,7 +87,7 @@ async function cargarPedidos() {
       onNavigate: (pag) => { paginaActual = pag; cargarPedidos() }
     })
   } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="8" class="loading-cell"><p style="color:#f44336">Error: ${err.message}</p></td></tr>`
+    tbody.innerHTML = '<tr><td colspan="8" class="loading-cell"><p style="color:#f44336">No fue posible cargar los pedidos. Intenta nuevamente.</p></td></tr>'
   }
 }
 
@@ -152,7 +152,7 @@ window.verPedido = async function(id) {
     }
 
     document.getElementById('modal-ver').classList.add('active')
-  } catch (err) { jeshaToast('Error: ' + err.message, 'error') }
+  } catch (err) { jeshaToast(window.jeshaMensajeSeguro(err.message, 'No fue posible guardar el pedido.'), 'error') }
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -171,7 +171,7 @@ window.cambiarEstado = async function(id, estado) {
     await apiFetch(`/pedidos/${id}/estado`, { method:'PATCH', body: JSON.stringify({ estado }) })
     document.getElementById('modal-ver').classList.remove('active')
     cargarPedidos()
-  } catch (err) { jeshaToast('Error: ' + err.message, 'error') }
+  } catch (err) { jeshaToast(window.jeshaMensajeSeguro(err.message, 'No fue posible actualizar el pedido.'), 'error') }
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -207,7 +207,7 @@ window.cargarEnPos = async function(id) {
     payload.sucursalId = window.jeshaSession?.getSelectedSucursalId?.() ?? usuarioSesion.sucursalId ?? null
     localStorage.setItem('pos_cotizacion', JSON.stringify(payload))
     window.location.href = 'punto-venta.html'
-  } catch (err) { jeshaToast('Error: ' + err.message, 'error') }
+  } catch (err) { jeshaToast(window.jeshaMensajeSeguro(err.message, 'No fue posible cambiar el estado del pedido.'), 'error') }
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -267,7 +267,7 @@ window.abrirEdicion = async function(id) {
 
     renderItems()
     document.getElementById('modal-pedido').classList.add('active')
-  } catch (err) { jeshaToast('Error: ' + err.message, 'error') }
+  } catch (err) { jeshaToast(window.jeshaMensajeSeguro(err.message, 'No fue posible cancelar el pedido.'), 'error') }
 }
 
 // ── Render tabla de ítems ──
@@ -337,7 +337,7 @@ async function buscarProductos(q) {
         <span class="prod-precio">${fmt(p.precioVenta || p.precioBase)}</span>
       </div>
     `).join('')
-  } catch (err) { lista.innerHTML = `<p class="muted-hint" style="color:#f44336">Error: ${err.message}</p>` }
+  } catch (err) { lista.innerHTML = '<p class="muted-hint" style="color:#f44336">No fue posible cargar los productos del pedido.</p>' }
 }
 window._addProd = id => { const p = window._prodCache?.[id]; if (p) agregarProducto(p) }
 
@@ -481,7 +481,7 @@ async function guardarPedido() {
     paginaActual = 1
     cargarPedidos()
   } catch (err) {
-    mostrarError('ped-error', err.message)
+    mostrarError('ped-error', window.jeshaMensajeSeguro(err.message, 'No fue posible guardar el pedido.'))
   } finally {
     btn.disabled = false; btn.textContent = 'Guardar Pedido'
   }

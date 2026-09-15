@@ -172,7 +172,7 @@ const listar = async (req, res) => {
     res.json({ success: true, data: bitacoras, total, page: pageInt, limit: limitInt })
   } catch (err) {
     console.error('❌ listar bitacoras:', err)
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: 'No fue posible cargar las bitácoras. Intenta nuevamente.' })
   }
 }
 
@@ -190,7 +190,7 @@ const obtener = async (req, res) => {
     res.json({ success: true, data: b })
   } catch (err) {
     console.error('❌ obtener bitacora:', err)
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: 'No fue posible cargar la bitácora. Intenta nuevamente.' })
   }
 }
 
@@ -249,7 +249,7 @@ const crear = async (req, res) => {
     res.status(201).json({ success: true, data: bitacora })
   } catch (err) {
     console.error('❌ crear bitacora:', err)
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: 'No fue posible crear la bitácora. Intenta nuevamente.' })
   }
 }
 
@@ -345,7 +345,7 @@ const editar = async (req, res) => {
     res.json({ success: true, data: b, mensaje: cambioCliente ? 'Cliente actualizado correctamente' : undefined })
   } catch (err) {
     console.error('❌ editar bitacora:', err)
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: 'No fue posible actualizar la bitácora. Intenta nuevamente.' })
   }
 }
 
@@ -440,7 +440,7 @@ const aplicarDescuento = async (req, res) => {
     res.json({ success: true, data: bitacoraActualizada, mensaje: descuento.descuentoMonto > 0 ? 'Descuento aplicado correctamente' : 'Descuento removido correctamente' })
   } catch (err) {
     console.error('❌ aplicar descuento bitacora:', err)
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: 'No fue posible aplicar el descuento a la bitácora. Intenta nuevamente.' })
   }
 }
 
@@ -672,7 +672,7 @@ const cambiarEstado = async (req, res) => {
     }
   } catch (err) {
     console.error('❌ cambiar estado bitacora:', err)
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: 'No fue posible cambiar el estado de la bitácora. Intenta nuevamente.' })
   }
 }
 
@@ -711,7 +711,7 @@ const eliminar = async (req, res) => {
     res.json({ success: true, mensaje: `Bitácora ${existente.folio} eliminada permanentemente` })
   } catch (err) {
     console.error('❌ eliminar bitacora:', err)
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: 'No fue posible eliminar la bitácora. Intenta nuevamente.' })
   }
 }
 
@@ -907,7 +907,7 @@ const agregarProducto = async (req, res) => {
     })
   } catch (err) {
     console.error('❌ agregar producto bitacora:', err)
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: 'No fue posible agregar el producto a la bitácora. Intenta nuevamente.' })
   }
 }
 
@@ -1166,7 +1166,7 @@ const agregarProductosBatch = async (req, res) => {
     })
   } catch (err) {
     console.error('❌ agregar productos batch bitacora:', err)
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: 'No fue posible agregar los productos a la bitácora. Intenta nuevamente.' })
   }
 }
 
@@ -1351,7 +1351,7 @@ const editarDetalle = async (req, res) => {
     })
   } catch (err) {
     console.error('❌ editar detalle bitacora:', err)
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: 'No fue posible editar el detalle de la bitácora. Intenta nuevamente.' })
   }
 }
 
@@ -1459,7 +1459,7 @@ const quitarProducto = async (req, res) => {
     res.json({ success: true, data: bitacoraActualizada, mensaje: 'Producto eliminado y stock reintegrado' })
   } catch (err) {
     console.error('❌ quitar producto bitacora:', err)
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: 'No fue posible eliminar el detalle de la bitácora. Intenta nuevamente.' })
   }
 }
 
@@ -1717,7 +1717,7 @@ const registrarAbono = async (req, res) => {
 
   } catch (err) {
     console.error('❌ abono bitacora:', err)
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: 'No fue posible registrar el abono de la bitácora. Intenta nuevamente.' })
   }
 }
 
@@ -1804,7 +1804,7 @@ const contextoCobranza = async (req, res) => {
     })
   } catch (err) {
     console.error('❌ contexto-cobranza:', err)
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: 'No fue posible actualizar la bitácora. Intenta nuevamente.' })
   }
 }
 

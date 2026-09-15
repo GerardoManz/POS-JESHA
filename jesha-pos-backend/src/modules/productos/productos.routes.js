@@ -142,7 +142,10 @@ router.post('/:id/imagen', tenantGlobal, requireRole('SUPERADMIN', 'ADMIN_SUCURS
     } catch (err) {
         console.error('❌ Error subiendo imagen:', err)
         const status = err.statusCode || 400
-        res.status(status).json({ error: err.message })
+        const mensaje = err.statusCode === 400 && /requerida|no existe|no pertenece|inválid/i.test(err.message || '')
+            ? err.message
+            : 'No fue posible subir la imagen del producto. Intenta nuevamente.'
+        res.status(status).json({ error: mensaje })
     }
 })
 

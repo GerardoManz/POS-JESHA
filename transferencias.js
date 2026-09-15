@@ -422,7 +422,7 @@
       }
     } catch (err) {
       console.error(err)
-      showToast(err.message || 'Error al crear transferencia', 'error')
+      showToast(window.jeshaMensajeSeguro(err.message, 'No fue posible crear la transferencia.'), 'error')
     } finally {
       btn.disabled = false
       btn.textContent = 'Transferir'

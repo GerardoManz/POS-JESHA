@@ -112,7 +112,7 @@ const listar = async (req, res) => {
     res.json({ success: true, data: pedidos, total, page: pageInt, limit: limitInt })
   } catch (err) {
     console.error('❌ listar pedidos:', err)
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: 'No fue posible cargar los pedidos. Intenta nuevamente.' })
   }
 }
 
@@ -127,7 +127,7 @@ const obtener = async (req, res) => {
     if (!pedido) return res.status(404).json({ success: false, error: 'Pedido no encontrado' })
     res.json({ success: true, data: pedido })
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: 'No fue posible cargar el pedido. Intenta nuevamente.' })
   }
 }
 
@@ -223,7 +223,7 @@ const crear = async (req, res) => {
   } catch (err) {
     console.error('❌ crear pedido:', err)
     const status = err.status || 500
-    res.status(status).json({ success: false, error: err.message })
+    res.status(status).json({ success: false, error: status < 500 ? err.message : 'No fue posible crear el pedido. Intenta nuevamente.' })
   }
 }
 
@@ -324,7 +324,7 @@ DetallePedido: { create: rows }
   } catch (err) {
     console.error('❌ editar pedido:', err)
     const status = err.status || 500
-    res.status(status).json({ success: false, error: err.message })
+    res.status(status).json({ success: false, error: status < 500 ? err.message : 'No fue posible editar el pedido. Intenta nuevamente.' })
   }
 }
 
@@ -382,7 +382,7 @@ const cambiarEstado = async (req, res) => {
     res.json({ success: true, data: pedido })
 
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: 'No fue posible cambiar el estado del pedido. Intenta nuevamente.' })
   }
 }
 

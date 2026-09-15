@@ -103,7 +103,7 @@ async function listarDepartamentos(req, res) {
         res.json({ success: true, data: departamentos })
     } catch (error) {
         console.error('❌ Error listando departamentos:', error.message)
-        res.status(500).json({ success: false, error: error.message })
+        res.status(500).json({ success: false, error: 'No fue posible cargar los departamentos. Intenta nuevamente.' })
     }
 }
 
@@ -123,7 +123,7 @@ async function listarCategorias(req, res) {
         res.json({ success: true, data: categorias })
     } catch (error) {
         console.error('❌ Error listando categorías:', error.message)
-        res.status(500).json({ success: false, error: error.message })
+        res.status(500).json({ success: false, error: 'No fue posible cargar las categorías. Intenta nuevamente.' })
     }
 }
 
@@ -496,7 +496,7 @@ async function listar(req, res) {
         })
     } catch (error) {
         console.error('❌ Error listando productos:', error.message)
-        res.status(500).json({ success: false, error: error.message })
+        res.status(500).json({ success: false, error: 'No fue posible cargar los productos. Intenta nuevamente.' })
     }
 }
 
@@ -651,7 +651,7 @@ async function exportarExcel(req, res) {
         res.end()
     } catch (error) {
         console.error('❌ Error exportando productos:', error.message)
-        res.status(500).json({ success: false, error: error.message })
+        res.status(500).json({ success: false, error: 'No fue posible exportar los productos. Intenta nuevamente.' })
     }
 }
 
@@ -689,7 +689,7 @@ async function obtener(req, res) {
         })
     } catch (error) {
         console.error('❌ Error obteniendo producto:', error.message)
-        res.status(500).json({ success: false, error: error.message })
+        res.status(500).json({ success: false, error: 'No fue posible cargar el producto. Intenta nuevamente.' })
     }
 }
 
@@ -1350,7 +1350,7 @@ async function eliminarImagen(req, res) {
         })
     } catch (error) {
         console.error('❌ Error eliminando imagen:', error.message)
-        res.status(500).json({ success: false, error: error.message })
+        res.status(500).json({ success: false, error: 'No fue posible guardar el producto. Intenta nuevamente.' })
     }
 }
 
@@ -1379,7 +1379,7 @@ async function categoriasPorDepartamento(req, res) {
         res.json({ success: true, data: categorias })
     } catch (error) {
         console.error('❌ Error categorías por depto:', error.message)
-        res.status(500).json({ success: false, error: error.message })
+        res.status(500).json({ success: false, error: 'No fue posible actualizar el producto. Intenta nuevamente.' })
     }
 }
 
@@ -1587,7 +1587,7 @@ async function ajustarInventario(req, res) {
     })
   } catch (err) {
     console.error('❌ Error ajustando inventario:', err)
-    res.status(500).json({ error: 'Error interno', detalle: err.message })
+    res.status(500).json({ error: 'No fue posible actualizar el inventario del producto. Intenta nuevamente.' })
   }
 }
 
@@ -1760,7 +1760,7 @@ const sugerirNombres = async (req, res) => {
         }))
         res.json({ success: true, data })
     } catch (err) {
-        res.status(500).json({ success: false, error: err.message })
+        res.status(500).json({ success: false, error: 'No fue posible actualizar el producto. Intenta nuevamente.' })
     }
 }
 
@@ -1881,7 +1881,7 @@ const duplicarProducto = async (req, res) => {
         if (err.code === 'P2002') {
             return res.status(409).json({ success: false, error: 'El código interno ya existe en esta empresa (conflicto concurrente)', campo: 'codigoInterno' })
         }
-        res.status(500).json({ success: false, error: err.message })
+        res.status(500).json({ success: false, error: 'No fue posible eliminar el producto. Intenta nuevamente.' })
     }
 }
 

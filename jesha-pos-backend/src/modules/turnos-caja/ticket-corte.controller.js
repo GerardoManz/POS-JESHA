@@ -84,7 +84,7 @@ const generarTicketCorte = async (req, res) => {
     res.send(html)
   } catch (err) {
     console.error('❌ Error generando ticket de corte:', err)
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: 'No fue posible generar el ticket de corte. Intenta nuevamente.' })
   }
 }
 

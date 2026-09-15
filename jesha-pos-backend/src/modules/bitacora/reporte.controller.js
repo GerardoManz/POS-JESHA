@@ -117,7 +117,7 @@ const generarReporte = async (req, res) => {
     res.send(html)
   } catch (err) {
     console.error('❌ Error reporte bitacora:', err)
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: 'No fue posible generar el reporte de la bitácora. Intenta nuevamente.' })
   }
 }
 

@@ -12,6 +12,15 @@ const ROL_BLOQUEADO = {
                    'facturas', 'bitacora', 'pedidos', 'clientes', 'usuarios', 'sucursales', 'configuracion'],
 }
 
+// Conserva mensajes de negocio del backend, pero evita filtrar detalles técnicos impredecibles.
+window.jeshaMensajeSeguro = function (valor, fallback) {
+  const mensaje = typeof valor === 'string' ? valor.trim() : ''
+  if (!mensaje || /P2002|ECONNRESET|JWT malformed|TypeError:|Prisma|PostgreSQL|relation .* does not exist|[A-Z]:\\.*\\/i.test(mensaje)) {
+    return fallback
+  }
+  return mensaje
+}
+
 // Páginas donde el rol es redirigido a su página principal en vez del dashboard
 const REDIRECCION_ROL = {
   EMPLEADO: 'punto-venta.html',

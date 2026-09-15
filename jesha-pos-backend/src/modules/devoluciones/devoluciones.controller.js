@@ -326,7 +326,7 @@ let montoReembolso = 0
 
   } catch (err) {
     console.error('❌ Error en crearDevolucion:', err)
-    res.status(500).json({ error: 'Error al procesar devolución: ' + err.message })
+    res.status(500).json({ error: 'No fue posible procesar la devolución. Intenta nuevamente.' })
   }
 }
 
@@ -367,7 +367,7 @@ exports.listar = async (req, res) => {
     })
   } catch (err) {
     console.error('❌ Error en listarDevoluciones:', err)
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: 'No fue posible cargar las devoluciones. Intenta nuevamente.' })
   }
 }
 
@@ -399,6 +399,6 @@ exports.porVenta = async (req, res) => {
     res.json({ success: true, data: devoluciones, resumenDevuelto: resumenProductos })
   } catch (err) {
     console.error('❌ Error en porVenta:', err)
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: 'No fue posible cargar el detalle de la devolución. Intenta nuevamente.' })
   }
 }

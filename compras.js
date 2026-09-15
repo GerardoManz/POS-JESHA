@@ -198,7 +198,7 @@ async function cargarCompras() {
   } catch (err) {
     if (requestVersion !== comprasRequestVersion) return
     console.error('[DEBUG] cargarCompras catch:', err.message)
-    tbody.innerHTML = `<tr><td colspan="8" class="loading-cell"><p style="color:#f44336">Error: ${err.message}</p></td></tr>`
+    tbody.innerHTML = '<tr><td colspan="8" class="loading-cell"><p style="color:#f44336">No fue posible cargar las compras. Intenta nuevamente.</p></td></tr>'
   }
   console.log('[DEBUG] cargarCompras: FIN')
 }
@@ -215,7 +215,7 @@ window.abrirDetalle = async function(id) {
     _spDetalleActivo = null
     renderDetalle()
     document.getElementById('modal-detalle').classList.add('active')
-  } catch (err) { jeshaToast('Error: ' + err.message, 'error') }
+  } catch (err) { jeshaToast(window.jeshaMensajeSeguro(err.message, 'No fue posible abrir la orden de compra.'), 'error') }
 }
 
 function renderDetalle() {
@@ -539,7 +539,7 @@ window.confirmarRecepcion = async function() {
       mostrarBannerStockAlertas(data.stockAlerts)
     }
   } catch (err) {
-    jeshaToast('Error: ' + err.message, 'error')
+    jeshaToast(window.jeshaMensajeSeguro(err.message, 'No fue posible registrar la recepción.'), 'error')
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = '✓ Confirmar recepción' }
   }
@@ -561,7 +561,7 @@ window.cancelarCompra = async function(id) {
     ocActual = data.data
     renderDetalle()
     await cargarCompras()
-  } catch (err) { jeshaToast('Error: ' + err.message, 'error') }
+  } catch (err) { jeshaToast(window.jeshaMensajeSeguro(err.message, 'No fue posible actualizar la orden de compra.'), 'error') }
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -589,7 +589,7 @@ async function registrarAbono() {
     await cargarCompras()
     jeshaToast('Pago registrado', 'success')
   } catch (err) {
-    const msg = err.message || 'Error al registrar abono'
+    const msg = window.jeshaMensajeSeguro(err.message, 'No fue posible registrar el abono.')
     jeshaToast(msg, msg.includes('excede') ? 'warning' : 'error')
   }
   finally { btn.disabled = false; btn.textContent = '+ Registrar pago' }
@@ -641,7 +641,7 @@ window.abrirEdicion = async function(id) {
     }))
     renderItemsEdicion()
     document.getElementById('modal-crear').classList.add('active')
-  } catch (err) { jeshaToast('Error: ' + err.message, 'error') }
+  } catch (err) { jeshaToast(window.jeshaMensajeSeguro(err.message, 'No fue posible cancelar la orden de compra.'), 'error') }
 }
 
 function renderItemsEdicion() {
@@ -777,7 +777,7 @@ async function guardarCompra() {
     console.log('[DEBUG] guardarCompra: cargarCompras() completado')
   } catch (err) {
     console.error('[DEBUG] guardarCompra catch:', err.message)
-    mostrarError('crear-error', err.message)
+    mostrarError('crear-error', window.jeshaMensajeSeguro(err.message, 'No fue posible guardar la orden de compra.'))
   }
   finally { btn.disabled = false; btn.textContent = 'Guardar Compra' }
 }
@@ -916,7 +916,7 @@ async function guardarProveedor() {
       sel.appendChild(opt)
     }
     document.getElementById('modal-prov').classList.remove('active')
-  } catch (err) { mostrarError('prov-error', err.message) }
+  } catch (err) { mostrarError('prov-error', window.jeshaMensajeSeguro(err.message, 'No fue posible cargar el proveedor.')) }
   finally { btn.disabled = false; btn.textContent = 'Crear Proveedor' }
 }
 
@@ -1685,7 +1685,7 @@ function initSugerirSatRapido() {
       pintarSugerencia(data)
     } catch (err) {
       console.error('Sugerir SAT:', err)
-      mostrarEstado('error', err.message)
+      mostrarEstado('error', window.jeshaMensajeSeguro(err.message, 'No fue posible cargar el historial de compras.'))
     } finally {
       btn.disabled = false
     }
@@ -1778,7 +1778,7 @@ async function guardarProdRapido() {
     agregarProductoEdicion(prod)
     document.getElementById('modal-prod-rapido').classList.remove('active')
     jeshaToast(`Producto "${nombre}" creado y agregado`, 'success')
-  } catch (err) { mostrarError('pr-error', err.message) }
+  } catch (err) { mostrarError('pr-error', window.jeshaMensajeSeguro(err.message, 'No fue posible guardar el producto del proveedor.')) }
   finally { btn.disabled = false; btn.textContent = 'Crear y Agregar' }
 }
 

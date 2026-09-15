@@ -92,7 +92,7 @@ const listar = async (req, res) => {
     res.json({ success: true, data: ordenes, total, page: pageInt, limit: limitInt })
   } catch (err) {
     console.error('❌ listar compras:', err)
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: 'No fue posible cargar las compras. Intenta nuevamente.' })
   }
 }
 
@@ -103,7 +103,7 @@ const obtener = async (req, res) => {
     const oc = await prisma.ordenCompra.findFirst({ where: { id: parseInt(req.params.id), empresaId }, select: OC_SELECT })
     if (!oc) return res.status(404).json({ success: false, error: 'Orden no encontrada' })
     res.json({ success: true, data: oc })
-  } catch (err) { res.status(500).json({ success: false, error: err.message }) }
+  } catch (err) { res.status(500).json({ success: false, error: 'No fue posible cargar el detalle de la orden. Intenta nuevamente.' }) }
 }
 
 // ── POST /compras ──
@@ -197,7 +197,7 @@ const crear = async (req, res) => {
     res.status(201).json({ success: true, data: oc })
   } catch (err) {
     console.error('❌ crear compra:', err)
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: 'No fue posible crear la orden de compra. Intenta nuevamente.' })
   }
 }
 
@@ -287,7 +287,7 @@ const editar = async (req, res) => {
     res.json({ success: true, data: oc })
   } catch (err) {
     console.error('❌ editar compra:', err)
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: 'No fue posible editar la orden de compra. Intenta nuevamente.' })
   }
 }
 
@@ -569,7 +569,7 @@ const recibir = async (req, res) => {
     res.json({ success: true, data: ocActualizada, stockAlerts })
   } catch (err) {
     console.error('❌ recibir compra:', err)
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: 'No fue posible registrar la recepción. Intenta nuevamente.' })
   }
 }
 
@@ -623,7 +623,7 @@ const registrarAbono = async (req, res) => {
     res.json({ success: true, data: ocActualizada })
   } catch (err) {
     console.error('❌ abono compra:', err)
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: 'No fue posible registrar el abono. Intenta nuevamente.' })
   }
 }
 
@@ -646,7 +646,7 @@ const cancelar = async (req, res) => {
     const ocActualizada = await prisma.ordenCompra.update({ where: { id: parseInt(id) }, data: { estado: 'CANCELADO' }, select: OC_SELECT })
     await audit(usuarioId, sucursalId, 'CANCELAR_COMPRA', oc.folio)
     res.json({ success: true, data: ocActualizada })
-  } catch (err) { res.status(500).json({ success: false, error: err.message }) }
+  } catch (err) { res.status(500).json({ success: false, error: 'No fue posible cancelar la orden de compra. Intenta nuevamente.' }) }
 }
 
 // ── GET /compras/proveedores ──
@@ -663,7 +663,7 @@ const listarProveedores = async (req, res) => {
     }
     const proveedores = await prisma.proveedor.findMany({ where, orderBy: { nombreOficial: 'asc' }, take: 50 })
     res.json({ success: true, data: proveedores })
-  } catch (err) { res.status(500).json({ success: false, error: err.message }) }
+  } catch (err) { res.status(500).json({ success: false, error: 'No fue posible cargar los proveedores. Intenta nuevamente.' }) }
 }
 
 // ── POST /compras/proveedores ──
@@ -679,7 +679,7 @@ const crearProveedor = async (req, res) => {
     res.status(201).json({ success: true, data: proveedor })
   } catch (err) {
     if (err.code === 'P2002') return res.status(409).json({ success: false, error: 'Ya existe un proveedor con ese nombre o alias' })
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: 'No fue posible crear el proveedor. Intenta nuevamente.' })
   }
 }
 

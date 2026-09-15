@@ -37,7 +37,7 @@ const listar = async (req, res) => {
     res.json({ success: true, ...resultado })
   } catch (err) {
     console.error('❌ Error listando cotizaciones:', err.message)
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: 'No fue posible cargar las cotizaciones. Intenta nuevamente.' })
   }
 }
 
@@ -57,7 +57,7 @@ const obtener = async (req, res) => {
     res.json({ success: true, data: cotizacion })
   } catch (err) {
     console.error('❌ Error obteniendo cotización:', err.message)
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: 'No fue posible cargar el detalle de la cotización. Intenta nuevamente.' })
   }
 }
 
@@ -122,7 +122,7 @@ const crear = async (req, res) => {
   } catch (err) {
     console.error('❌ Error creando cotización:', err.message)
     const status = err.message.includes('no encontrado') || err.message.includes('fechaManual') ? 400 : 500
-    res.status(status).json({ success: false, error: err.message })
+    res.status(status).json({ success: false, error: status < 500 ? err.message : 'No fue posible crear la cotización. Intenta nuevamente.' })
   }
 }
 
@@ -156,7 +156,7 @@ const editar = async (req, res) => {
     const status = err.message.includes('no encontrada') ? 404
       : err.message.includes('No se puede editar') || err.message.includes('fechaManual') || err.message.includes('Cliente no encontrado') ? 400
       : 500
-    res.status(status).json({ success: false, error: err.message })
+    res.status(status).json({ success: false, error: status < 500 ? err.message : 'No fue posible editar la cotización. Intenta nuevamente.' })
   }
 }
 
@@ -185,7 +185,7 @@ const cambiarEstado = async (req, res) => {
     const status = err.message.includes('no encontrada') ? 404
       : err.message.includes('inválido') || err.message.includes('Transición') || err.message.includes('acceso') ? 400
       : 500
-    res.status(status).json({ success: false, error: err.message })
+    res.status(status).json({ success: false, error: status < 500 ? err.message : 'No fue posible cambiar el estado de la cotización. Intenta nuevamente.' })
   }
 }
 

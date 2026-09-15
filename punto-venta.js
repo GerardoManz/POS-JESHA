@@ -496,7 +496,7 @@ async function abrirTurno() {
           return
         }
       } catch (_) {}
-      turnoError.textContent   = err.message || 'Ya hay un turno abierto en esta sucursal'
+      turnoError.textContent   = window.jeshaMensajeSeguro(err.message, 'Ya hay un turno abierto en esta sucursal')
       turnoError.style.display = 'block'
     } else if (err.status === 401) {
       turnoError.textContent   = 'Sesión expirada. Inicia sesión nuevamente.'
@@ -511,7 +511,7 @@ async function abrirTurno() {
       turnoError.textContent   = 'No se pudo abrir el turno. Revisa la conexión e inténtalo nuevamente.'
       turnoError.style.display = 'block'
     } else {
-      turnoError.textContent   = err.message || 'Error abriendo turno'
+      turnoError.textContent   = window.jeshaMensajeSeguro(err.message, 'No fue posible abrir el turno.')
       turnoError.style.display = 'block'
     }
     console.error('❌ Error abriendo turno:', err)
@@ -2907,7 +2907,7 @@ async function confirmarVenta() {
     } catch (err) {
       ventaEnProceso = false
       setConfirmarVentaState('idle')
-      mostrarToast(err.message, 'error')
+      mostrarToast(window.jeshaMensajeSeguro(err.message, 'No fue posible preparar la venta.'), 'error')
       return
     }
 
@@ -3018,7 +3018,7 @@ async function confirmarVenta() {
       ).join('<br>')
       mostrarToastDetalle('Stock insuficiente', lineas)
     } else {
-      mostrarToast(err.message, 'error')
+      mostrarToast(window.jeshaMensajeSeguro(err.message, 'No fue posible completar la venta.'), 'error')
     }
 
     ventaEnProceso              = false
@@ -3084,8 +3084,9 @@ async function confirmarCotizar() {
 
   } catch (err) {
     console.error('❌ Error creando cotización:', err)
-    if (errorDiv) { errorDiv.textContent = err.message; errorDiv.style.display = 'block' }
-    else mostrarToast(err.message, 'error')
+    const mensaje = window.jeshaMensajeSeguro(err.message, 'No fue posible guardar la cotización.')
+    if (errorDiv) { errorDiv.textContent = mensaje; errorDiv.style.display = 'block' }
+    else mostrarToast(mensaje, 'error')
   } finally {
     btnGuardar.disabled = false
     btnGuardar.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg> Guardar Cotización`
@@ -4151,7 +4152,7 @@ async function _arSugerirSat() {
     if (arSatChips) arSatChips.appendChild(frag)
   } catch (err) {
     console.error('Error sugiriendo SAT en artículo rápido:', err)
-    if (arSatBadge) arSatBadge.textContent = err.message || 'Error al consultar SAT'
+    if (arSatBadge) arSatBadge.textContent = window.jeshaMensajeSeguro(err.message, 'No fue posible consultar el SAT.')
   } finally {
     btnArSugerirSat.disabled = false
     if (arSatLoading) arSatLoading.style.display = 'none'
@@ -4401,7 +4402,7 @@ async function enviarArticuloRapido(e) {
     )
   } catch (err) {
     console.error('❌ Error artículo rápido:', err)
-    _arMostrarError(err.message || 'Error de red al crear artículo')
+    _arMostrarError(window.jeshaMensajeSeguro(err.message, 'No fue posible crear el artículo.'))
   } finally {
     if (arSubmit) {
       arSubmit.disabled  = false
@@ -4701,7 +4702,7 @@ async function enviarAjusteRapido() {
 
   } catch (err) {
     console.error('Error en ajuste rápido:', err)
-    ajusteRapidoError.textContent   = err.message || 'Error de conexión. Intenta de nuevo.'
+    ajusteRapidoError.textContent   = window.jeshaMensajeSeguro(err.message, 'No fue posible ajustar el inventario. Intenta nuevamente.')
     ajusteRapidoError.style.display = 'block'
   } finally {
     ajusteRapidoConfirmar.disabled      = false

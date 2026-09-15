@@ -42,7 +42,7 @@ const listar = async (req, res) => {
     res.json(trabajadores)
   } catch (err) {
     console.error('❌ listar trabajadores:', err)
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: 'No fue posible cargar los trabajadores. Intenta nuevamente.' })
   }
 }
 
@@ -80,7 +80,7 @@ const crear = async (req, res) => {
   } catch (err) {
     console.error('❌ crear trabajador:', err)
     if (err.code === 'P2002') return res.status(409).json({ error: 'Ya existe un trabajador con ese nombre en esta empresa' })
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: 'No fue posible crear el trabajador. Intenta nuevamente.' })
   }
 }
 
@@ -125,7 +125,7 @@ const editar = async (req, res) => {
   } catch (err) {
     console.error('❌ editar trabajador:', err)
     if (err.code === 'P2002') return res.status(409).json({ error: 'Ya existe un trabajador con ese nombre en esta empresa' })
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: 'No fue posible actualizar el trabajador. Intenta nuevamente.' })
   }
 }
 
@@ -152,7 +152,7 @@ const cambiarEstado = async (req, res) => {
     res.json(trabajador)
   } catch (err) {
     console.error('❌ cambiar estado trabajador:', err)
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: 'No fue posible cambiar el estado del trabajador. Intenta nuevamente.' })
   }
 }
 

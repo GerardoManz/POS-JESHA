@@ -72,7 +72,7 @@ async function cargarProveedores() {
       onNavigate: (pag) => { paginaActual = pag; cargarProveedores() }
     })
   } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="8" class="loading-cell"><p style="color:#f44336">Error: ${ESC(err.message)}</p></td></tr>`
+    tbody.innerHTML = '<tr><td colspan="8" class="loading-cell"><p style="color:#f44336">No fue posible cargar los proveedores. Intenta nuevamente.</p></td></tr>'
   }
 }
 
@@ -83,7 +83,7 @@ async function abrirDetalle(id) {
     renderDetalle()
     document.getElementById('modal-detalle').classList.add('active')
   } catch (err) {
-    jeshaToast('Error: ' + err.message, 'error')
+    jeshaToast(window.jeshaMensajeSeguro(err.message, 'No fue posible guardar el proveedor.'), 'error')
   }
 }
 
@@ -164,7 +164,7 @@ async function renderCompras() {
       </tr>`
     }).join('')
   } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="5" class="loading-cell"><p style="color:#f44336">Error: ${ESC(err.message)}</p></td></tr>`
+    tbody.innerHTML = '<tr><td colspan="5" class="loading-cell"><p style="color:#f44336">No fue posible cargar los productos del proveedor. Intenta nuevamente.</p></td></tr>'
   }
 }
 
@@ -190,7 +190,7 @@ async function toggleActivo() {
     await cargarProveedores()
     jeshaToast(`Proveedor ${accion === 'desactivar' ? 'desactivado' : 'activado'}`, 'success')
   } catch (err) {
-    jeshaToast('Error: ' + err.message, 'error')
+    jeshaToast(window.jeshaMensajeSeguro(err.message, 'No fue posible vincular el producto.'), 'error')
   }
 }
 
@@ -250,7 +250,7 @@ async function guardarProveedor() {
     paginaActual = 1
     await cargarProveedores()
   } catch (err) {
-    mostrarError('prov-error', err.message)
+    mostrarError('prov-error', window.jeshaMensajeSeguro(err.message, 'No fue posible actualizar el proveedor.'))
   } finally {
     btn.disabled = false; btn.textContent = 'Guardar'
   }

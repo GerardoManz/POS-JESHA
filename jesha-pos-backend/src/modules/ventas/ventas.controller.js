@@ -1521,7 +1521,7 @@ exports.desbloquearFactura = async (req, res) => {
 
   } catch (err) {
     console.error('❌ Error en desbloquearFactura:', err)
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: 'No fue posible cargar el historial de ventas. Intenta nuevamente.' })
   }
 }
 
@@ -1822,7 +1822,7 @@ exports.actualizarMetodoPago = async (req, res) => {
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message, codigo: err.codigo })
     console.error('❌ Error en actualizarMetodoPago:', err)
-    res.status(500).json({ error: err.message || 'Error al actualizar método de pago' })
+    res.status(500).json({ error: 'No fue posible actualizar el método de pago. Intenta nuevamente.' })
   }
 }
 
@@ -1981,7 +1981,7 @@ exports.obtenerReporteVentas = async (req, res) => {
 
   } catch (error) {
     console.error('❌ Error en obtenerReporteVentas:', error)
-    res.status(500).json({ error: error.message })
+    res.status(500).json({ error: 'No fue posible cargar el resumen de ventas. Intenta nuevamente.' })
   }
 }
 
@@ -2110,6 +2110,6 @@ exports.obtenerDashboardKpis = async (req, res) => {
 
   } catch (error) {
     console.error('Error en obtenerDashboardKpis:', error)
-    res.status(500).json({ error: error.message })
+    res.status(500).json({ error: 'No fue posible cargar los indicadores de ventas. Intenta nuevamente.' })
   }
 }

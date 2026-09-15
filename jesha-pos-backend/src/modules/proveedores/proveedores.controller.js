@@ -44,7 +44,7 @@ const listar = async (req, res) => {
     res.json({ success: true, data: proveedores, total, page: parseInt(page), limit: parseInt(limit) })
   } catch (err) {
     console.error('Error listar proveedores:', err)
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: 'No fue posible cargar los proveedores. Intenta nuevamente.' })
   }
 }
 
@@ -70,7 +70,7 @@ const obtener = async (req, res) => {
     res.json({ success: true, data: proveedor })
   } catch (err) {
     console.error('Error obtener proveedor:', err)
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: 'No fue posible cargar el proveedor. Intenta nuevamente.' })
   }
 }
 
@@ -89,7 +89,7 @@ const crear = async (req, res) => {
   } catch (err) {
     if (err.code === 'P2002') return res.status(409).json({ success: false, error: 'Ya existe un proveedor con ese nombre o alias en esta empresa' })
     console.error('Error crear proveedor:', err)
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: 'No fue posible crear el proveedor. Intenta nuevamente.' })
   }
 }
 
@@ -120,7 +120,7 @@ const editar = async (req, res) => {
   } catch (err) {
     if (err.code === 'P2002') return res.status(409).json({ success: false, error: 'Ya existe un proveedor con ese nombre o alias en esta empresa' })
     console.error('Error editar proveedor:', err)
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: 'No fue posible actualizar el proveedor. Intenta nuevamente.' })
   }
 }
 
@@ -140,7 +140,7 @@ const toggleActivo = async (req, res) => {
     res.json({ success: true, data: updated })
   } catch (err) {
     console.error('Error toggle proveedor:', err)
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: 'No fue posible cambiar el estado del proveedor. Intenta nuevamente.' })
   }
 }
 
@@ -164,7 +164,7 @@ const historialCompras = async (req, res) => {
     res.json({ success: true, data: ordenes })
   } catch (err) {
     console.error('Error historial compras:', err)
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: 'No fue posible cargar el historial de compras. Intenta nuevamente.' })
   }
 }
 
@@ -213,7 +213,7 @@ const vincularProducto = async (req, res) => {
     res.status(201).json({ success: true, data: pp })
   } catch (err) {
     console.error('Error vincular producto:', err)
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: 'No fue posible vincular el producto con el proveedor. Intenta nuevamente.' })
   }
 }
 
@@ -245,7 +245,7 @@ const desvincularProducto = async (req, res) => {
     res.json({ success: true, message: 'Producto desvinculado' })
   } catch (err) {
     console.error('Error desvincular producto:', err)
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: 'No fue posible desvincular el producto. Intenta nuevamente.' })
   }
 }
 

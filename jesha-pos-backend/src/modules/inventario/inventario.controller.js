@@ -140,7 +140,7 @@ exports.ajusteRapido = async (req, res) => {
     console.error('❌ Error ajuste-rapido:', err)
     const status = err.status || 500
     return res.status(status).json({
-      error: err.message || 'Error interno al ajustar inventario',
+      error: status < 500 ? (err.message || 'No fue posible ajustar el inventario.') : 'No fue posible ajustar el inventario. Intenta nuevamente.',
       codigo: err.codigo || 'INTERNAL_ERROR'
     })
   }

@@ -211,7 +211,7 @@ async function cargarBitacoras(pagina = 1) {
     renderPaginacion(res.total || 0, pagina)
     paginaActual = pagina
   } catch (e) {
-    tbody.innerHTML = `<tr><td colspan="8" class="loading-cell"><p style="color:#ff6b6b;">Error: ${e.message}</p></td></tr>`
+    tbody.innerHTML = '<tr><td colspan="8" class="loading-cell"><p style="color:#ff6b6b;">No fue posible cargar las bitácoras. Intenta nuevamente.</p></td></tr>'
   }
 }
 
@@ -272,7 +272,7 @@ async function abrirDetalle(id) {
     }
     document.getElementById('modal-detalle').classList.add('active')
   } catch (e) {
-    toast('Error al cargar bitácora: ' + e.message, 'error')
+    toast(window.jeshaMensajeSeguro(e.message, 'No fue posible cargar la bitácora.'), 'error')
   }
 }
 
@@ -775,7 +775,7 @@ async function enviarAImpresora(entidadId, tipo, accion, btn) {
     })
     jeshaToast('✅ Comprobante enviado a impresora', 'success')
   } catch (e) {
-    jeshaToast(`❌ ${e.message || 'Error de conexión'}`, 'error')
+    jeshaToast(window.jeshaMensajeSeguro(e.message, 'No fue posible enviar el comprobante a la impresora.'), 'error')
   } finally {
     if (btn) btn.disabled = false
     _imprimiendo.delete(key)
@@ -1202,7 +1202,7 @@ async function guardarNuevaBitacora() {
     await cargarBitacoras(1)
     abrirDetalle(res.data.id)
   } catch (e) {
-    errorDiv.textContent = e.message || 'Error al crear bitácora'
+    errorDiv.textContent = window.jeshaMensajeSeguro(e.message, 'No fue posible crear la bitácora.')
     errorDiv.classList.add('show')
   } finally {
     btn.disabled = false; btn.textContent = 'Crear Bitácora'
@@ -1233,7 +1233,7 @@ async function buscarProductosDet(q) {
       productosCache = res.data || []
       renderListaProductos(productosCache)
     } catch (e) {
-      document.getElementById('lista-prod-det').innerHTML = `<p class="muted-hint" style="color:#ff6b6b;">Error: ${e.message}</p>`
+      document.getElementById('lista-prod-det').innerHTML = '<p class="muted-hint" style="color:#ff6b6b;">No fue posible buscar productos.</p>'
     }
   }, 300)
 }

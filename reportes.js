@@ -1556,7 +1556,7 @@ async function descargarExcelStock() {
     a.remove()
     URL.revokeObjectURL(url)
   } catch (err) {
-    jeshaToast('Error al descargar Excel: ' + err.message, 'error')
+    jeshaToast(window.jeshaMensajeSeguro(err.message, 'No fue posible descargar el reporte Excel.'), 'error')
   }
 }
 
@@ -1588,7 +1588,7 @@ async function descargarPdfStock() {
     a.remove()
     URL.revokeObjectURL(url)
   } catch (err) {
-    jeshaToast('Error al descargar PDF: ' + err.message, 'error')
+    jeshaToast(window.jeshaMensajeSeguro(err.message, 'No fue posible descargar el reporte PDF.'), 'error')
   }
 }
 

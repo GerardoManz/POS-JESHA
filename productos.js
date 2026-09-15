@@ -913,7 +913,7 @@ async function cargarProductos() {
     console.error('❌ Error cargando productos:', error)
     if (productosTbody) {
       productosTbody.innerHTML = `<tr><td colspan="9" style="text-align:center;color:#ff9999;padding:30px;">
-        ❌ Error: ${error.message}<br/><br/>
+        ❌ No fue posible cargar los productos.<br/><br/>
         <button onclick="cargarProductos()" class="btn-secondary">Reintentar</button></td></tr>`
     }
     ocultarPaginacion()
@@ -1643,7 +1643,7 @@ function initSugerirSat() {
       pintarSugerencia(data)
     } catch (err) {
       console.error('Sugerir SAT:', err)
-      mostrarEstadoSat('error', err.message)
+      mostrarEstadoSat('error', window.jeshaMensajeSeguro(err.message, 'No fue posible consultar la sugerencia SAT.'))
     } finally {
       btn.disabled = false
     }
@@ -2043,7 +2043,7 @@ async function enviarDuplicar(e) {
     cerrarModalDuplicar()
     cargarProductos()
   } catch (err) {
-    if (errEl) { errEl.textContent = err.message || 'Error de conexi\u00f3n'; errEl.style.display = '' }
+    if (errEl) { errEl.textContent = window.jeshaMensajeSeguro(err.message, 'No fue posible cargar el producto.'); errEl.style.display = '' }
   }
 }
 
@@ -2603,7 +2603,7 @@ async function guardarPrecios(e) {
     cerrarModalPrecios()
     await cargarProductos()
   } catch (err) {
-    errorDiv.textContent = err.message
+    errorDiv.textContent = window.jeshaMensajeSeguro(err.message, 'No fue posible actualizar los precios.')
     errorDiv.style.display = 'block'
   } finally {
     btn.disabled = false
@@ -2690,7 +2690,7 @@ async function guardarDatosBasicos(e) {
     cerrarModalBasico()
     await cargarProductos()
   } catch (error) {
-    mostrarErrorBasico(error.message)
+    mostrarErrorBasico(window.jeshaMensajeSeguro(error.message, 'No fue posible actualizar los datos básicos del producto.'))
   } finally {
     if (btn) { btn.disabled = false; if (btn.dataset.txt) btn.innerHTML = btn.dataset.txt }
   }
@@ -3376,7 +3376,7 @@ async function validarCSVImport() {
     importValidado = true
 
   } catch (err) {
-    mostrarErrorImport('Error al leer el archivo: ' + err.message)
+    mostrarErrorImport(window.jeshaMensajeSeguro(err.message, 'No fue posible leer el archivo de importación.'))
   } finally {
     btnVal.disabled = false
     btnVal.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Validar CSV'
@@ -3462,7 +3462,7 @@ async function ejecutarImportacion() {
     }, 2000)
 
   } catch (err) {
-    mostrarErrorImport('Error: ' + err.message)
+    mostrarErrorImport(window.jeshaMensajeSeguro(err.message, 'No fue posible importar los productos.'))
     progresoDiv.style.display = 'none'
     btnImp.disabled = false
     btnVal.disabled = false
@@ -3606,7 +3606,7 @@ async function guardarAjuste() {
     await cargarProductos()
 
   } catch (err) {
-    errorDiv.textContent   = err.message
+    errorDiv.textContent   = window.jeshaMensajeSeguro(err.message, 'No fue posible cargar el inventario.')
     errorDiv.style.display = 'block'
   } finally {
     btnConfirm.disabled  = false
@@ -3649,7 +3649,7 @@ function initPlantillaCorreccion() {
       URL.revokeObjectURL(url)
       jeshaToast('✅ Plantilla descargada. Edita la hoja "Corrección" y súbela de vuelta.', 'success')
     } catch (err) {
-      jeshaToast('❌ Error al descargar plantilla: ' + err.message, 'error')
+    jeshaToast(window.jeshaMensajeSeguro(err.message, 'No fue posible descargar la plantilla.'), 'error')
     } finally {
       btnDescargar.disabled = false
       btnDescargar.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Descargar Plantilla Corrección`
@@ -3690,7 +3690,7 @@ function initPlantillaCorreccion() {
       )
       await cargarProductos()
     } catch (err) {
-      jeshaToast('❌ Error: ' + err.message, 'error')
+    jeshaToast(window.jeshaMensajeSeguro(err.message, 'No fue posible importar el archivo.'), 'error')
     } finally {
       btnSubir.disabled = false
       btnSubir.innerHTML = textoOriginal
@@ -3761,7 +3761,7 @@ function initExportarProductos() {
       URL.revokeObjectURL(blobUrl)
       jeshaToast('✅ Excel exportado correctamente', 'success')
     } catch (err) {
-      jeshaToast('❌ Error al exportar: ' + err.message, 'error')
+    jeshaToast(window.jeshaMensajeSeguro(err.message, 'No fue posible exportar los productos.'), 'error')
     } finally {
       btn.disabled = false
       btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Exportar Excel`

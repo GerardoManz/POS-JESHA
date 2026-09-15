@@ -236,7 +236,7 @@ async function cargarCotizaciones() {
       onNavigate: (pag) => { paginaActual = pag; cargarCotizaciones() }
     })
   } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="9" class="loading-cell"><p style="color:#f44336">Error: ${err.message}</p></td></tr>`
+    tbody.innerHTML = '<tr><td colspan="9" class="loading-cell"><p style="color:#f44336">No fue posible cargar las cotizaciones. Intenta nuevamente.</p></td></tr>'
   }
 }
 
@@ -346,7 +346,7 @@ window.verCotizacion = async function(id) {
 
     document.getElementById('modal-ver').classList.add('active')
   } catch (err) {
-    jeshaToast('Error: ' + err.message, 'error')
+    jeshaToast(window.jeshaMensajeSeguro(err.message, 'No fue posible guardar la cotización.'), 'error')
   }
 }
 
@@ -453,7 +453,7 @@ descuentoPct:  Math.round((parseFloat(d.descuento || 0) / (parseFloat(d.precioUn
     setTipoModal(tipoActual)
     renderItems()
     document.getElementById('modal-cotizacion').classList.add('active')
-  } catch (err) { jeshaToast('Error: ' + err.message, 'error') }
+  } catch (err) { jeshaToast(window.jeshaMensajeSeguro(err.message, 'No fue posible actualizar la cotización.'), 'error') }
 }
 
 function setTipoModal(tipo) {
@@ -683,7 +683,7 @@ async function guardarCotizacion() {
     paginaActual = 1
     cargarCotizaciones()
   } catch (err) {
-    mostrarError('modal-error', err.message)
+    mostrarError('modal-error', window.jeshaMensajeSeguro(err.message, 'No fue posible cambiar el estado de la cotización.'))
   } finally {
     btn.disabled = false
     btn.textContent = 'Guardar Cotización'
@@ -828,7 +828,7 @@ async function buscarProductosModal(q) {
   } catch (err) {
     busquedaProductoCargando = false
     if (seq !== busquedaProductoSeq) return
-    lista.innerHTML = `<p class="muted-hint" style="color:#f44336">Error: ${escapeHtml(err.message)}</p>`
+    lista.innerHTML = '<p class="muted-hint" style="color:#f44336">No fue posible cargar los productos de la cotización.</p>'
     abrirDropdownProductosCot()
   }
 }
@@ -843,7 +843,7 @@ async function cargarMasProductosModal() {
     if (!ok) return
   } catch (err) {
     const lista = document.getElementById('lista-productos-modal')
-    if (lista) lista.insertAdjacentHTML('beforeend', `<p class="muted-hint" style="color:#f44336">Error: ${escapeHtml(err.message)}</p>`)
+    if (lista) lista.insertAdjacentHTML('beforeend', '<p class="muted-hint" style="color:#f44336">No fue posible cargar más productos.</p>')
   } finally {
     busquedaProductoCargando = false
     if (seq === busquedaProductoSeq) renderProductosModal({ preserveScroll: true })
@@ -971,7 +971,7 @@ async function cancelarCotizacion(id) {
     await apiFetch(`/cotizaciones/${id}/estado`, { method: 'PATCH', body: JSON.stringify({ estado: 'CANCELADA' }) })
     document.getElementById('modal-ver').classList.remove('active')
     cargarCotizaciones()
-  } catch (err) { jeshaToast('Error: ' + err.message, 'error') }
+  } catch (err) { jeshaToast(window.jeshaMensajeSeguro(err.message, 'No fue posible eliminar la cotización.'), 'error') }
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -1006,7 +1006,7 @@ window.cargarEnPos = async function(id) {
     }
     localStorage.setItem('pos_cotizacion', JSON.stringify(posPayload))
     window.location.href = 'punto-venta.html'
-  } catch (err) { jeshaToast('Error: ' + err.message, 'error') }
+  } catch (err) { jeshaToast(window.jeshaMensajeSeguro(err.message, 'No fue posible convertir la cotización.'), 'error') }
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -1021,7 +1021,7 @@ window.enviarWhatsAppPdf = async function(id) {
       window.open(`https://wa.me/${limpiarTelefono(c.Cliente.telefono)}?text=${encodeURIComponent('Le comparto la cotización')}`, '_blank', 'noopener,noreferrer')
     }
     await descargarPdf(id)
-  } catch (err) { jeshaToast('Error: ' + err.message, 'error') }
+  } catch (err) { jeshaToast(window.jeshaMensajeSeguro(err.message, 'No fue posible cancelar la cotización.'), 'error') }
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -1034,7 +1034,7 @@ window.descargarPdf = async function(id) {
     const cot = d.data
     cotizacionActual = cot
     generarPdf(cot)
-  } catch (err) { jeshaToast('Error: ' + err.message, 'error') }
+  } catch (err) { jeshaToast(window.jeshaMensajeSeguro(err.message, 'No fue posible enviar la cotización.'), 'error') }
 }
 
 const LOGO_URL = window.__JESHA_LOGO_URL__

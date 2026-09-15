@@ -760,7 +760,7 @@ exports.importarCSV = async (req, res) => {
                     erroresInsert.push({
                         fila: numFila,
                         clave: fila['CLAVE'],
-                        error: err.message.substring(0, 500)
+                        error: 'No fue posible importar esta fila. Verifica sus datos y vuelve a intentarlo.'
                     })
                 }
             })
@@ -1042,7 +1042,7 @@ exports.importarSoloNuevos = async (req, res) => {
                     erroresInsert.push({
                         fila: numFila,
                         clave: fila['CLAVE'],
-                        error: err.message.substring(0, 500)
+                        error: 'No fue posible importar esta fila. Verifica sus datos y vuelve a intentarlo.'
                     })
                 }
             })

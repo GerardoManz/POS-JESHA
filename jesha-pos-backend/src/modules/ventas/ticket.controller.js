@@ -86,7 +86,7 @@ const generarTicket = async (req, res) => {
 
   } catch (err) {
     console.error('❌ Error generando ticket:', err)
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: 'No fue posible generar el ticket de venta. Intenta nuevamente.' })
   }
 }
 

@@ -148,7 +148,7 @@ const generarTicketMateriales = async (req, res) => {
     res.send(html)
   } catch (err) {
     console.error('❌ Error ticket materiales:', err)
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: 'No fue posible generar el ticket de materiales. Intenta nuevamente.' })
   }
 }
 
@@ -216,7 +216,7 @@ const generarTicketRetiro = async (req, res) => {
     res.send(html)
   } catch (err) {
     console.error('❌ Error ticket retiro:', err)
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: 'No fue posible generar el ticket de materiales. Intenta nuevamente.' })
   }
 }
 

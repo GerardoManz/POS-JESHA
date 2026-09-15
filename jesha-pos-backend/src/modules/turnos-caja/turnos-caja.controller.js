@@ -84,7 +84,7 @@ const obtenerActivo = async (req, res) => {
     res.json({ success: true, data: turno })
   } catch (err) {
     console.error('❌ Error obteniendo turno activo:', err)
-    res.status(500).json({ error: 'Error interno del servidor' })
+    res.status(500).json({ error: 'No fue posible consultar el turno activo. Intenta nuevamente.' })
   }
 }
 
@@ -157,7 +157,7 @@ const obtenerResumen = async (req, res) => {
     })
   } catch (err) {
     console.error('❌ Error obteniendo resumen:', err)
-    res.status(500).json({ error: 'Error interno del servidor' })
+    res.status(500).json({ error: 'No fue posible cargar el resumen de caja. Intenta nuevamente.' })
   }
 }
 
@@ -217,7 +217,7 @@ const abrirTurno = async (req, res) => {
       return res.status(409).json({ error: err.error, turnoId: err.turnoId })
     }
     console.error('❌ Error abriendo turno:', err)
-    res.status(500).json({ error: 'Error interno del servidor' })
+    res.status(500).json({ error: 'No fue posible abrir el turno. Intenta nuevamente.' })
   }
 }
 
@@ -336,7 +336,7 @@ const cerrarTurno = async (req, res) => {
       return res.status(404).json({ error: err.error, codigo: err.codigo })
     }
     console.error('❌ Error cerrando turno:', err)
-    res.status(500).json({ error: 'Error interno del servidor' })
+    res.status(500).json({ error: 'No fue posible registrar el movimiento de caja. Intenta nuevamente.' })
   }
 }
 
@@ -485,7 +485,7 @@ const obtenerHistorial = async (req, res) => {
     })
   } catch (err) {
     console.error('❌ Error obteniendo historial:', err)
-    res.status(500).json({ error: 'Error interno del servidor' })
+    res.status(500).json({ error: 'No fue posible cerrar el turno. Intenta nuevamente.' })
   }
 }
 
@@ -583,7 +583,7 @@ const obtenerResumenContable = async (req, res) => {
     })
   } catch (err) {
     console.error('❌ Error en resumen contable:', err)
-    res.status(500).json({ error: 'Error interno del servidor' })
+    res.status(500).json({ error: 'No fue posible generar el reporte de caja. Intenta nuevamente.' })
   }
 }
 

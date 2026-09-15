@@ -266,7 +266,7 @@ exports.generarAlertasPorTurno = async (req, res) => {
     res.json({ success: true, data: { alertasCreadas: creadas, turnoId: turno.id } })
   } catch (err) {
     console.error('❌ Error generando alertas:', err)
-    res.status(500).json({ error: err.message || 'Error interno del servidor' })
+    res.status(500).json({ error: 'No fue posible generar las alertas de stock. Intenta nuevamente.' })
   }
 }
 
@@ -323,7 +323,7 @@ exports.obtenerReporteStock = async (req, res) => {
     })
   } catch (err) {
     console.error('❌ Error obteniendo reporte stock:', err)
-    res.status(500).json({ error: err.message || 'Error interno del servidor' })
+    res.status(500).json({ error: 'No se pudo cargar el reporte de stock. Intenta nuevamente.' })
   }
 }
 
@@ -641,7 +641,7 @@ exports.generarExcelReporteStock = async (req, res) => {
     res.end()
   } catch (err) {
     console.error('❌ Error generando Excel stock:', err)
-    res.status(500).json({ error: err.message || 'Error interno del servidor' })
+    res.status(500).json({ error: 'No fue posible generar el archivo Excel. Intenta nuevamente.' })
   }
 }
 
@@ -914,7 +914,7 @@ ${sugerenciasHTML}
     res.send(html)
   } catch (err) {
     console.error('❌ Error generando PDF stock:', err)
-    res.status(500).json({ error: err.message || 'Error interno del servidor' })
+    res.status(500).json({ error: 'No fue posible generar el reporte PDF. Intenta nuevamente.' })
   }
 }
 
@@ -950,7 +950,7 @@ exports.marcarAlerta = async (req, res) => {
     res.json({ success: true, data: { id: parseInt(id), estado } })
   } catch (err) {
     console.error('❌ Error marcando alerta:', err)
-    res.status(500).json({ error: err.message || 'Error interno del servidor' })
+    res.status(500).json({ error: 'No fue posible enviar el reporte. Intenta nuevamente.' })
   }
 }
 
@@ -983,7 +983,7 @@ exports.obtenerAlertas = async (req, res) => {
     res.json({ success: true, data: alertas })
   } catch (err) {
     console.error('❌ Error obteniendo alertas:', err)
-    res.status(500).json({ error: err.message || 'Error interno del servidor' })
+    res.status(500).json({ error: 'No fue posible cargar el reporte de stock. Intenta nuevamente.' })
   }
 }
 
@@ -1056,7 +1056,7 @@ exports.generarPlantillaCorreccion = async (req, res) => {
     res.end()
   } catch (err) {
     console.error('❌ Error generando plantilla corrección:', err)
-    res.status(500).json({ error: err.message || 'Error interno del servidor' })
+    res.status(500).json({ error: 'No fue posible exportar el reporte. Intenta nuevamente.' })
   }
 }
 
@@ -1193,7 +1193,7 @@ exports.corregirPlantilla = async (req, res) => {
     })
   } catch (err) {
     console.error('❌ Error procesando plantilla corrección:', err)
-    res.status(500).json({ error: err.message || 'Error interno del servidor' })
+    res.status(500).json({ error: 'No fue posible procesar la plantilla de corrección. Intenta nuevamente.' })
   }
 }
 

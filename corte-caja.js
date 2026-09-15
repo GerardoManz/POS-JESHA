@@ -216,7 +216,7 @@ async function cerrarTurno() {
     const data = await response.json()
 
     if (!response.ok) {
-      cierreError.textContent  = data.error || 'Error cerrando turno'
+      cierreError.textContent  = window.jeshaMensajeSeguro(data.error, 'No fue posible cerrar el turno.')
       cierreError.style.display = 'block'
       modalConfirmarCierre.style.display = 'none'
       return
@@ -310,7 +310,7 @@ function configurarEventListeners() {
         btnReimprimirCorte.textContent = '✅ Enviado a impresora'
       } else {
         const data = await r.json().catch(() => ({}))
-        btnReimprimirCorte.textContent = '❌ ' + (data.error || 'Error')
+      btnReimprimirCorte.textContent = '❌ ' + window.jeshaMensajeSeguro(data.error, 'No fue posible generar el ticket de corte.')
       }
     } catch (e) {
       btnReimprimirCorte.textContent = '❌ Error de red'
