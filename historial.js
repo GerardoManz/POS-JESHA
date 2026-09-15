@@ -76,7 +76,7 @@ async function cargarCatalogos() {
           sel.appendChild(opt)
         })
       }
-    } else if (USUARIO.rol !== 'PLATFORM_ADMIN') {
+    } else {
       const resV = await fetch(`${API_URL}/usuarios/vendedores`)
       if (window.handle401 && window.handle401(resV.status)) return
       if (resV.ok) {

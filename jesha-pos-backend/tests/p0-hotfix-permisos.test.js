@@ -54,7 +54,7 @@ describe('H: Historial — Access control', () => {
     assert.ok(
       historialJS.includes("USUARIO.rol === 'SUPERADMIN'") &&
       historialJS.includes('/usuarios') &&
-      historialJS.includes('else if'),
+      historialJS.includes('} else {'),
       'SUPERADMIN branch fetches /usuarios, others branch away'
     )
   })
