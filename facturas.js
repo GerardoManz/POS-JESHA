@@ -14,6 +14,11 @@ if (!window.jeshaSession?.isValid()) {
 const fmt = v => `$${parseFloat(v || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 const fmtFecha = iso => iso ? new Date(iso).toLocaleString('es-MX', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'
 const escHtml = value => { const el = document.createElement('div'); el.textContent = value ?? ''; return el.innerHTML }
+const ERROR_TECNICO_RE = /P2002|ECONNRESET|api\.facturapi\.io|JWT malformed|TypeError:|facturapiId=/i
+function mensajeSeguro(valor, fallback) {
+  const mensaje = typeof valor === 'string' ? valor.trim() : ''
+  return mensaje && !ERROR_TECNICO_RE.test(mensaje) ? mensaje : fallback
+}
 
 let paginaActual = 1
 const LIMIT      = 20
@@ -142,7 +147,7 @@ async function cargarFacturas() {
     })
 
   } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="10" class="loading-cell"><p style="color:#f44336">Error: ${err.message}</p></td></tr>`
+    tbody.innerHTML = '<tr><td colspan="10" class="loading-cell"><p style="color:#f44336">No fue posible cargar las facturas. Intenta nuevamente.</p></td></tr>'
   }
 }
 
@@ -259,7 +264,7 @@ window.verDetalle = async function(id) {
             .catch(err => {
               pdfIframe.style.display = 'none'
               btnToggle.textContent = '▼ Mostrar PDF'
-              jeshaToast('Error cargando PDF: ' + err.message, 'error')
+              jeshaToast('No fue posible cargar el PDF. Intenta nuevamente.', 'error')
             })
         } else {
           pdfIframe.style.display = 'none'
@@ -281,7 +286,7 @@ window.verDetalle = async function(id) {
 
     document.getElementById('modal-detalle').classList.add('active')
   } catch (err) {
-    jeshaToast('Error: ' + err.message, 'error')
+    jeshaToast(mensajeSeguro(err.message, 'No fue posible cargar el detalle de la factura.'), 'error')
   }
 }
 
@@ -333,7 +338,7 @@ window.timbrarManual = async function(id) {
     jeshaToast('Factura timbrada — UUID: ' + data.uuid, 'success', 6000)
 
   } catch (err) {
-    jeshaToast('Error al timbrar: ' + err.message, 'error')
+    jeshaToast(mensajeSeguro(err.message, 'No fue posible timbrar la factura. Revisa los datos fiscales e intenta nuevamente.'), 'error')
     if (btn) { btn.disabled = false; btn.textContent = '⚡ Timbrar ahora' }
   }
 }
@@ -440,8 +445,8 @@ async function _ejecutarCancelFactura(id, motivo, substitutionUUID, confirmacion
     // P0-6: handle retryable errors with suggestSync
     if (data.suggestSync) {
       const retryMsg = data.retryable
-        ? `${data.error} Puedes reintentar o usar "Actualizar estado".`
-        : data.error
+         ? `${mensajeSeguro(data.error, 'No fue posible completar la cancelación.')} Puedes reintentar o usar "Actualizar estado".`
+         : mensajeSeguro(data.error, 'No fue posible completar la cancelación.')
       jeshaToast(retryMsg, 'error')
       if (btn) { btn.disabled = false; btn.textContent = '✕ Cancelar factura' }
       return
@@ -453,7 +458,7 @@ async function _ejecutarCancelFactura(id, motivo, substitutionUUID, confirmacion
     jeshaToast(data.warning ? `Factura cancelada. ${data.warning}` : 'Factura cancelada',
                data.warning ? 'warning' : 'success')
   } catch (err) {
-    jeshaToast('Error: ' + err.message, 'error')
+    jeshaToast(mensajeSeguro(err.message, 'No fue posible cancelar la factura. Intenta nuevamente.'), 'error')
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = '✕ Cancelar factura' }
   }
@@ -500,7 +505,7 @@ async function sincronizarCancelar(id) {
     await cargarFacturas()
     await verDetalle(id)
   } catch (err) {
-    jeshaToast('Error sincronizando: ' + err.message, 'error')
+    jeshaToast(mensajeSeguro(err.message, 'No fue posible sincronizar el estado de la factura. Intenta nuevamente.'), 'error')
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = '🔄 Actualizar estado' }
   }
@@ -558,7 +563,7 @@ window.verCandidatos = async function(facturaId) {
     }
 
     if (!res.ok) {
-      error.textContent = data.error || 'Error buscando candidatos'
+      error.textContent = mensajeSeguro(data.error, 'No fue posible buscar candidatos.')
       error.style.display = 'block'
       lista.innerHTML = ''
       return
@@ -604,7 +609,7 @@ window.verCandidatos = async function(facturaId) {
     }).join('')
 
   } catch (err) {
-    error.textContent = 'Error de conexión: ' + err.message
+    error.textContent = 'No fue posible buscar comprobantes. Revisa tu conexión e intenta nuevamente.'
     error.style.display = 'block'
     lista.innerHTML = ''
   }
@@ -626,11 +631,11 @@ window.reconciliarTimbrado = async function(facturaId, facturapiId) {
     const data = await res.json()
 
     if (res.status === 422) {
-      jeshaToast('El CFDI no coincide: ' + (data.detalles?.join('; ') || data.error), 'error')
+      jeshaToast('El CFDI no coincide: ' + mensajeSeguro(data.detalles?.join('; ') || data.error, 'Revisa los datos del comprobante.'), 'error')
       return
     }
     if (res.status === 409) {
-      jeshaToast(data.error || 'La factura cambió de estado; recarga y reintenta.', 'warning')
+      jeshaToast(mensajeSeguro(data.error, 'La factura cambió de estado; recarga y reintenta.'), 'warning')
       return
     }
     if (!res.ok) throw new Error(data.error)
@@ -640,7 +645,7 @@ window.reconciliarTimbrado = async function(facturaId, facturapiId) {
     document.getElementById('modal-detalle').classList.remove('active')
     cargarFacturas()
   } catch (err) {
-    jeshaToast('Error: ' + err.message, 'error')
+    jeshaToast(mensajeSeguro(err.message, 'No fue posible reconciliar la factura. Intenta nuevamente.'), 'error')
   }
 }
 
@@ -670,7 +675,7 @@ window.descartarTimbradoIncierto = async function(facturaId) {
     })
     const data = await res.json()
     if (res.status === 409) {
-      jeshaToast(data.error || 'La factura cambió de estado; recarga y reintenta.', 'warning')
+      jeshaToast(mensajeSeguro(data.error, 'La factura cambió de estado; recarga y reintenta.'), 'warning')
       return
     }
     if (!res.ok) throw new Error(data.error)
@@ -679,7 +684,7 @@ window.descartarTimbradoIncierto = async function(facturaId) {
     document.getElementById('modal-detalle').classList.remove('active')
     cargarFacturas()
   } catch (err) {
-    jeshaToast('Error: ' + err.message, 'error')
+    jeshaToast(mensajeSeguro(err.message, 'No fue posible descartar la incertidumbre. Intenta nuevamente.'), 'error')
   }
 }
 
@@ -703,7 +708,7 @@ window.descargarFactura = async function(facturaId, tipo) {
     document.body.removeChild(a)
     URL.revokeObjectURL(url)
   } catch (err) {
-    jeshaToast('Error al descargar: ' + err.message, 'error')
+    jeshaToast(mensajeSeguro(err.message, 'No fue posible descargar el archivo. Intenta nuevamente.'), 'error')
   }
 }
 
@@ -733,7 +738,7 @@ async function reenviarEmail(facturaId) {
     if (!res.ok) throw new Error(data.error)
     jeshaToast(data.mensaje || 'Email enviado', 'success')
   } catch (err) {
-    jeshaToast('Error: ' + err.message, 'error')
+    jeshaToast(mensajeSeguro(err.message, 'No fue posible enviar el email. Intenta nuevamente.'), 'error')
   }
 }
 
@@ -1124,7 +1129,7 @@ window.previsualizarGlobal = async function() {
     const data = await res.json()
 
     if (!res.ok) {
-      errorDiv.textContent = data.error || 'Error al previsualizar'
+      errorDiv.textContent = mensajeSeguro(data.error, 'No fue posible previsualizar la factura global.')
       errorDiv.style.display = 'block'
       return
     }
@@ -1182,7 +1187,7 @@ window.previsualizarGlobal = async function() {
     globalPreviewData = { desde, hasta, metodoPago, periodicidad: document.getElementById('g-periodicidad').value, resumen: data.resumen }
 
   } catch (err) {
-    errorDiv.textContent = 'Error de conexión: ' + err.message
+    errorDiv.textContent = mensajeSeguro(err.message, 'No fue posible generar la vista previa. Revisa tu conexión e intenta nuevamente.')
     errorDiv.style.display = 'block'
   }
 }
@@ -1232,7 +1237,7 @@ window.timbrarGlobal = async function() {
     }
 
   } catch (err) {
-    jeshaToast('Error: ' + err.message, 'error')
+    jeshaToast(mensajeSeguro(err.message, 'No fue posible procesar la factura global. Intenta nuevamente.'), 'error')
     btn.disabled = false
     btn.textContent = '⚡ Timbrar Factura Global'
   }

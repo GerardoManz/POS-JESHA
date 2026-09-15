@@ -204,7 +204,7 @@ exports.listar = async (req, res) => {
     })
   } catch (err) {
     console.error('❌ Error listando facturas:', err)
-    res.status(err.expose ? (err.status || 500) : 500).json({ error: err.message })
+    res.status(err.expose ? (err.status || 500) : 500).json({ error: 'No fue posible cargar las facturas. Intenta nuevamente.' })
   }
 }
 
@@ -237,7 +237,7 @@ exports.obtener = async (req, res) => {
 
     res.json({ success: true, data })
   } catch (err) {
-    res.status(err.expose ? (err.status || 500) : 500).json({ error: err.message })
+    res.status(err.expose ? (err.status || 500) : 500).json({ error: 'No fue posible cargar el detalle de la factura. Intenta nuevamente.' })
   }
 }
 
@@ -312,7 +312,7 @@ exports.cancelar = async (req, res) => {
       const noEncontrado = fpErr?.status === 404 || /not\s*found|no\s*(se\s*)?encontr/i.test(fpErr?.message || '')
       if (!noEncontrado) {
         const fpCode = fpErr?.code || fpErr?.error?.code
-        const mapped = mapFpError(fpCode, 'No se pudo consultar el CFDI en Facturapi: ' + fpErr.message)
+        const mapped = mapFpError(fpCode, 'No se pudo consultar el CFDI en Facturapi.')
         console.error(`❌ updateStatus() falló (factura ${id}):`, fpErr.message)
         return res.status(502).json({ error: mapped.message, codigo: fpCode || 'FP_ERROR', retryable: mapped.retryable, suggestSync: mapped.suggestSync })
       }
@@ -396,7 +396,7 @@ exports.cancelar = async (req, res) => {
       resultadoCancel = await trackFacturapi('invoices.cancel', { facturaId: id }, () => fp.invoices.cancel(factura.facturapiId, { motive: motivoCancelacion, ...(motivoInfo.requiresSubstitution && substitutionUUID ? { substitution_uuid: substitutionUUID } : {}) }))
     } catch (fpErr) {
       const fpCode = fpErr?.code || fpErr?.error?.code
-      const mapped = mapFpError(fpCode, 'No se pudo cancelar el CFDI en el SAT: ' + fpErr.message)
+      const mapped = mapFpError(fpCode, 'No se pudo cancelar el CFDI en el SAT.')
       console.error(`❌ cancel() falló (factura ${id}):`, fpErr.message)
       return res.status(502).json({ error: mapped.message, codigo: fpCode || 'FP_ERROR', retryable: mapped.retryable, suggestSync: mapped.suggestSync })
     }
@@ -423,7 +423,7 @@ exports.cancelar = async (req, res) => {
 
   } catch (err) {
     console.error('❌ Error cancelando factura:', err)
-    res.status(err.expose ? (err.status || 500) : 500).json({ error: 'No se pudo cancelar la factura: ' + err.message })
+    res.status(err.expose ? (err.status || 500) : 500).json({ error: 'No se pudo cancelar la factura. Intenta nuevamente.' })
   }
 }
 
@@ -461,7 +461,7 @@ exports.sincronizarCancelacion = async (req, res) => {
       invoiceRemoto = await trackFacturapi('invoices.updateStatus', { facturaId: id }, () => fp.invoices.updateStatus(factura.facturapiId))
     } catch (fpErr) {
       const fpCode = fpErr?.code || fpErr?.error?.code
-      const mapped = mapFpError(fpCode, 'No se pudo sincronizar el estado del CFDI: ' + fpErr.message)
+      const mapped = mapFpError(fpCode, 'No se pudo sincronizar el estado del CFDI.')
       console.error(`❌ updateStatus() falló en sync (factura ${id}):`, fpErr.message)
       return res.status(502).json({ error: mapped.message, codigo: fpCode || 'FP_ERROR', retryable: mapped.retryable, suggestSync: mapped.suggestSync })
     }
@@ -494,7 +494,7 @@ exports.sincronizarCancelacion = async (req, res) => {
 
   } catch (err) {
     console.error('❌ Error sincronizando cancelación:', err)
-    res.status(err.expose ? (err.status || 500) : 500).json({ error: 'No se pudo sincronizar: ' + err.message })
+    res.status(err.expose ? (err.status || 500) : 500).json({ error: 'No se pudo sincronizar el estado de la factura. Intenta nuevamente.' })
   }
 }
 
@@ -594,7 +594,7 @@ exports.previewGlobal = async (req, res) => {
     })
   } catch (err) {
     console.error('❌ Error previewGlobal:', err)
-    res.status(err.expose ? (err.status || 500) : 500).json({ error: err.message })
+    res.status(err.expose ? (err.status || 500) : 500).json({ error: 'No fue posible generar la vista previa. Intenta nuevamente.' })
   }
 }
 
@@ -714,7 +714,7 @@ exports.timbrarGlobal = async (req, res) => {
         })
       } catch (err) {
         if (err?.code === 'CONFLICT' || err?.code === 'P2002') {
-          resultados.push({ ...baseResultado, estado: 'CONFLICTO', error: { code: 'GLOBAL_VENTAS_RECLAMADAS', mensaje: err.message } })
+          resultados.push({ ...baseResultado, estado: 'CONFLICTO', error: { code: 'GLOBAL_VENTAS_RECLAMADAS', mensaje: 'Algunas ventas ya fueron tomadas por otro proceso. Actualiza la información e inténtalo nuevamente.' } })
           continue
         }
         throw err
@@ -773,7 +773,7 @@ exports.timbrarGlobal = async (req, res) => {
               data: { facturaEstado: 'DISPONIBLE', procesoFacturaId: null }
             })
           ]).catch(() => {})
-          resultados.push({ ...baseResultado, estado: 'ERROR', facturaId: factura.id, requiereCorreccion: true, error: { code: 'FACTURAPI_VALIDACION', mensaje: fpErr.message } })
+          resultados.push({ ...baseResultado, estado: 'ERROR', facturaId: factura.id, requiereCorreccion: true, error: { code: 'FACTURACION_VALIDACION', mensaje: 'Los datos fiscales no fueron aceptados. Revisa RFC, razón social, régimen fiscal, código postal y uso de CFDI.' } })
         } else {
           await prisma.facturaCfdi.update({
             where: { id: factura.id },
@@ -805,6 +805,6 @@ exports.timbrarGlobal = async (req, res) => {
 
   } catch (err) {
     console.error('❌ Error timbrarGlobal:', err)
-    res.status(err.expose ? (err.status || 500) : 500).json({ error: err.message, ...(err.code ? { code: err.code } : {}) })
+    res.status(err.expose ? (err.status || 500) : 500).json({ error: 'No fue posible procesar el timbrado global. Intenta nuevamente.', ...(err.code ? { code: err.code } : {}) })
   }
 }

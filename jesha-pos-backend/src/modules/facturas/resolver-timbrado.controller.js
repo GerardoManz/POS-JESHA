@@ -170,7 +170,7 @@ exports.timbradoCandidatos = async (req, res) => {
         success: true, categoria: 'EXACT_IDEMPOTENCY',
         procesandoActivo: factura.procesandoTimbrado,
         facturapiIdConocido: factura.facturapiId, candidatos: [],
-        mensaje: 'La factura ya tiene facturapiId local. Ve directo a reconciliar con ese ID.'
+        mensaje: 'La factura ya tiene un comprobante fiscal registrado. Ve directo a reconciliar con ese ID.'
       })
     }
 
@@ -188,9 +188,9 @@ exports.timbradoCandidatos = async (req, res) => {
     return res.json({ success: true, procesandoActivo: factura.procesandoTimbrado, ...clasificar(factura, candidatos) })
   } catch (err) {
     if (err.listFailed) {
-      return res.status(502).json({ error: 'La búsqueda en Facturapi falló: ' + err.message + '. No se pudo determinar si hay candidatos; reintenta.' })
+      return res.status(502).json({ error: 'La búsqueda en Facturapi falló temporalmente. No se pudo determinar si hay candidatos; reintenta.' })
     }
-    res.status(err.expose ? (err.status || 500) : 500).json({ error: err.message })
+    res.status(err.expose ? (err.status || 500) : 500).json({ error: 'No fue posible buscar comprobantes para reconciliar. Intenta nuevamente.' })
   }
 }
 
@@ -203,16 +203,16 @@ exports.reconciliarTimbrado = async (req, res) => {
     const id = parseInt(req.params.id)
     const { facturapiId } = req.body || {}
     if (!facturapiId || typeof facturapiId !== 'string') {
-      return res.status(400).json({ error: 'facturapiId requerido' })
+      return res.status(400).json({ error: 'Se requiere el identificador del comprobante fiscal para vincular.' })
     }
 
     const factura = await prisma.facturaCfdi.findFirst({ where: { id, ...buildFacturaScope(req) } })
     if (!factura) return res.status(404).json({ error: 'Factura no encontrada' })
     if (factura.estado !== 'PENDIENTE_TIMBRADO' || !factura.procesandoTimbrado) {
-      return res.status(409).json({ error: 'La factura no está en estado reconciliable (PENDIENTE_TIMBRADO + proceso activo).' })
+      return res.status(409).json({ error: 'La factura no está en un estado que permita reconciliación.' })
     }
     if (factura.facturapiId && factura.facturapiId !== facturapiId) {
-      return res.status(409).json({ error: 'La factura ya tiene otro facturapiId asociado.' })
+      return res.status(409).json({ error: 'La factura ya tiene otro comprobante fiscal asociado.' })
     }
 
     // El facturapiId no debe pertenecer a otra factura (defensa en app; @unique es el backstop en BD).
@@ -240,7 +240,7 @@ exports.reconciliarTimbrado = async (req, res) => {
     try {
       inv = await fp.invoices.retrieve(facturapiId)
     } catch (e) {
-      return res.status(502).json({ error: 'No se pudo verificar el CFDI en Facturapi: ' + e.message })
+      return res.status(502).json({ error: 'No se pudo verificar el CFDI en Facturapi. Intenta nuevamente.' })
     }
 
     // Coherencia: cualquier mismatch → 422, NUNCA vincula.
@@ -286,7 +286,7 @@ exports.reconciliarTimbrado = async (req, res) => {
     await auditar(req, factura, empresaId, { tipo: 'RECONCILIAR', facturapiId, uuid: inv.uuid, ventaIds })
     return res.json({ success: true, mensaje: 'Factura reconciliada y marcada como TIMBRADA.', facturapiId, uuid: inv.uuid })
   } catch (err) {
-    res.status(err.expose ? (err.status || 500) : 500).json({ error: err.message })
+    res.status(err.expose ? (err.status || 500) : 500).json({ error: 'No fue posible reconciliar la factura. Intenta nuevamente.' })
   }
 }
 
@@ -306,10 +306,10 @@ exports.descartarTimbradoIncierto = async (req, res) => {
     const factura = await prisma.facturaCfdi.findFirst({ where: { id, ...buildFacturaScope(req) } })
     if (!factura) return res.status(404).json({ error: 'Factura no encontrada' })
     if (factura.facturapiId) {
-      return res.status(409).json({ error: 'La factura ya tiene facturapiId; usa reconciliar, no descartar.' })
+      return res.status(409).json({ error: 'La factura ya tiene un comprobante fiscal asociado. Usa reconciliar, no descartar.' })
     }
     if (factura.estado !== 'PENDIENTE_TIMBRADO' || !factura.procesandoTimbrado) {
-      return res.status(409).json({ error: 'La factura no está en estado INCIERTO.' })
+      return res.status(409).json({ error: 'La factura no está en un estado que permita descartar.' })
     }
 
     const upd = await prisma.facturaCfdi.updateMany({
@@ -328,6 +328,6 @@ exports.descartarTimbradoIncierto = async (req, res) => {
       mensaje: 'Estado INCIERTO descartado. La factura queda PENDIENTE_TIMBRADO sin proceso activo; puede reintentarse el timbrado.'
     })
   } catch (err) {
-    res.status(err.expose ? (err.status || 500) : 500).json({ error: err.message })
+    res.status(err.expose ? (err.status || 500) : 500).json({ error: 'No fue posible actualizar el estado de la factura. Intenta nuevamente.' })
   }
 }

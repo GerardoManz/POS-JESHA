@@ -130,7 +130,7 @@ function mapFpError(code, fallbackMessage) {
   if (!code) return { message: fallbackMessage || 'Error desconocido de Facturapi', retryable: false, suggestSync: false }
   const mapped = FP_ERROR_MAP[code]
   if (mapped) return mapped
-  return { message: fallbackMessage || `Error de Facturapi: ${code}`, retryable: false, suggestSync: false }
+  return { message: fallbackMessage || 'No fue posible procesar la cancelación con Facturapi. Intenta nuevamente.', retryable: false, suggestSync: false }
 }
 
 /**

@@ -566,14 +566,14 @@ exports.solicitarFactura = async (req, res) => {
     }
 
     const empresaId = esCanalQr ? venta.empresaId : getEmpresaId(req)
-    if (venta.estado === 'CANCELADA') return res.status(400).json({ error: 'Venta cancelada.' })
+    if (venta.estado === 'CANCELADA') return res.status(400).json({ error: 'Esta venta fue cancelada y no puede facturarse.' })
     if (venta.metodoPago === 'CREDITO_CLIENTE') {
       return res.status(409).json({
-        error: 'La facturación de ventas a crédito estará disponible cuando se implemente PPD y complementos de pago.',
+        error: 'La facturación de ventas a crédito no está disponible en línea. Solicita tu factura directamente en sucursal.',
         codigo: 'VENTA_CREDITO_FACTURACION_NO_DISPONIBLE'
       })
     }
-    if (venta.facturaEstado === 'BLOQUEADA') return res.status(400).json({ error: 'Venta no facturable en línea.' })
+    if (venta.facturaEstado === 'BLOQUEADA') return res.status(400).json({ error: 'Esta venta no puede facturarse en línea. Solicita tu factura directamente en sucursal.' })
     // Gate por canal: QR público = 72h desde la venta; interno (mostrador) = mes fiscal (facturaLimite).
     // Fail-safe: cualquier valor que no sea 'INTERNO' explícito se trata como QR (canal restrictivo).
     if (esCanalQr) {
@@ -582,7 +582,7 @@ exports.solicitarFactura = async (req, res) => {
         return res.status(400).json({ error: 'El plazo de autofacturación en línea (3 días) venció. Solicita tu factura en sucursal.' })
       }
     } else if (new Date() > new Date(venta.facturaLimite)) {
-      return res.status(400).json({ error: 'Plazo de facturación vencido.' })
+      return res.status(400).json({ error: 'El plazo para solicitar factura venció. Contacta a la sucursal si necesitas ayuda.' })
     }
     // Defensa adicional al check de factura viva: solo se factura si está DISPONIBLE.
     if (venta.facturaEstado !== 'DISPONIBLE') {
@@ -759,7 +759,7 @@ exports.solicitarFactura = async (req, res) => {
   } catch (err) {
     console.error('❌ Error solicitarFactura:', err)
     // Portal público: 500 fijo intencional.
-    res.status(500).json({ error: 'Error al procesar la solicitud: ' + err.message })
+    res.status(500).json({ error: 'No fue posible procesar la solicitud de facturación. Intenta nuevamente.' })
   }
 }
 
@@ -774,7 +774,7 @@ exports.timbrarManual = async (req, res) => {
     const factura = await prisma.facturaCfdi.findFirst({ where: { id, ...whereScope } })
 
     if (!factura) return res.status(404).json({ error: 'Factura no encontrada' })
-    if (factura.estado !== 'PENDIENTE_TIMBRADO') return res.status(400).json({ error: `Estado actual: ${factura.estado}. Solo PENDIENTE_TIMBRADO.` })
+    if (factura.estado !== 'PENDIENTE_TIMBRADO') return res.status(400).json({ error: 'Solo se puede timbrar una factura pendiente de emisión.' })
 
     // ── FAIL-CLOSED (P1): cliente de la Organization PROPIA de la empresa ──
     let fp
@@ -795,13 +795,13 @@ exports.timbrarManual = async (req, res) => {
       })
       for (const v of ventasPre) {
         if (v.metodoPago === 'CREDITO_CLIENTE') {
-          return res.status(409).json({ error: 'La facturación de ventas a crédito no está disponible.', codigo: 'VENTA_CREDITO_FACTURACION_NO_DISPONIBLE' })
+          return res.status(409).json({ error: 'La facturación de ventas a crédito no está disponible. Solicita tu factura en sucursal.', codigo: 'VENTA_CREDITO_FACTURACION_NO_DISPONIBLE' })
         }
         if (v.facturaEstado === 'BLOQUEADA') {
-          return res.status(400).json({ error: 'La venta está bloqueada para facturación.' })
+          return res.status(400).json({ error: 'Esta venta está bloqueada para facturación. Solicita tu factura en sucursal.' })
         }
         if (v.metodoPago === 'MIXTO') {
-          return res.status(409).json({ error: 'La facturación individual de ventas MIXTO no está disponible.', codigo: 'METODO_MIXTO_FACTURACION_NO_DISPONIBLE' })
+          return res.status(409).json({ error: 'La facturación individual de ventas con pago mixto no está disponible. Solicita tu factura en sucursal.', codigo: 'METODO_MIXTO_FACTURACION_NO_DISPONIBLE' })
         }
       }
     }
@@ -871,7 +871,7 @@ exports.timbrarManual = async (req, res) => {
       if (ventaIds.length > 1) {
         // Fase 2 = individual. El retimbrado de conjunta llega en Fase 3 (service).
         await prisma.facturaCfdi.update({ where: { id }, data: { procesandoTimbrado: false, procesandoTimbradoEn: null } }).catch(() => {})
-        return res.status(400).json({ error: 'Retimbrado de factura conjunta no disponible en esta fase.' })
+        return res.status(400).json({ error: 'El retimbrado de factura global aún no está disponible.' })
       }
 
       const venta = await prisma.venta.findUnique({
@@ -944,7 +944,7 @@ exports.timbrarManual = async (req, res) => {
           }
         }).catch(() => {})
         return res.status(502).json({
-          error: 'El CFDI se selló pero falló el guardado local. Quedó marcada para revisión; verifícala en Facturapi antes de reintentar.',
+          error: 'El CFDI se selló pero hubo un problema al guardar. Quedó marcada para revisión; verifícala en Facturapi antes de reintentar.',
           requiereRevision: true
         })
       }
@@ -964,7 +964,7 @@ exports.timbrarManual = async (req, res) => {
         const sugerencia = esErrorRazonSocial
           ? '. Verifica que la razón social esté en mayúsculas, sin acentos y coincida exactamente con la Constancia de Situación Fiscal. En muchos casos CFDI 4.0 requiere quitar "S.A. DE C.V." u otro régimen societario.'
           : ''
-        return res.status(422).json({ error: 'Error de validación al timbrar: ' + mensajeFacturapi + sugerencia, codigo: fpErr.codigo, requiereCorreccion: true })
+        return res.status(422).json({ error: 'Los datos fiscales no fueron aceptados. Revisa RFC, razón social, régimen fiscal, código postal y uso de CFDI.' + sugerencia, codigo: fpErr.codigo, requiereCorreccion: true })
       }
 
       // INCIERTO → NO liberar lock (procesandoTimbrado sigue true) → revisión manual.
@@ -980,7 +980,7 @@ exports.timbrarManual = async (req, res) => {
 
   } catch (err) {
     console.error('❌ Error timbrarManual (externo):', err)
-    res.status(err.expose ? (err.status || 500) : 500).json({ error: 'Error al timbrar: ' + err.message })
+    res.status(err.expose ? (err.status || 500) : 500).json({ error: 'No fue posible generar la factura. Intenta nuevamente.' })
   }
 }
 
@@ -995,7 +995,7 @@ exports.descargarPdf = async (req, res) => {
       where: { id: parseInt(req.params.id), ...whereScope }
     })
     if (!factura) return res.status(404).json({ error: 'Factura no encontrada' })
-    if (!factura.facturapiId) return res.status(400).json({ error: 'Factura sin ID de Facturapi — no se puede descargar' })
+    if (!factura.facturapiId) return res.status(400).json({ error: 'La factura aún no tiene comprobante fiscal asociado.' })
 
     // ── FAIL-CLOSED (P1): cliente de la Organization PROPIA de la empresa ──
     let fp
@@ -1012,7 +1012,7 @@ exports.descargarPdf = async (req, res) => {
     stream.pipe(res)
   } catch (err) {
     console.error('❌ Error descargar PDF:', err)
-    res.status(err.expose ? (err.status || 500) : 500).json({ error: 'Error al descargar PDF: ' + err.message })
+    res.status(err.expose ? (err.status || 500) : 500).json({ error: 'No fue posible descargar el PDF. Intenta nuevamente.' })
   }
 }
 
@@ -1027,7 +1027,7 @@ exports.descargarXml = async (req, res) => {
       where: { id: parseInt(req.params.id), ...whereScope }
     })
     if (!factura) return res.status(404).json({ error: 'Factura no encontrada' })
-    if (!factura.facturapiId) return res.status(400).json({ error: 'Factura sin ID de Facturapi' })
+    if (!factura.facturapiId) return res.status(400).json({ error: 'La factura aún no tiene comprobante fiscal asociado.' })
 
     // ── FAIL-CLOSED (P1): cliente de la Organization PROPIA de la empresa ──
     let fp
@@ -1044,7 +1044,7 @@ exports.descargarXml = async (req, res) => {
     stream.pipe(res)
   } catch (err) {
     console.error('❌ Error descargar XML:', err)
-    res.status(err.expose ? (err.status || 500) : 500).json({ error: 'Error al descargar XML: ' + err.message })
+    res.status(err.expose ? (err.status || 500) : 500).json({ error: 'No fue posible descargar el XML. Intenta nuevamente.' })
   }
 }
 
@@ -1059,7 +1059,7 @@ exports.enviarEmail = async (req, res) => {
       where: { id: parseInt(req.params.id), ...whereScope }
     })
     if (!factura) return res.status(404).json({ error: 'Factura no encontrada' })
-    if (!factura.facturapiId) return res.status(400).json({ error: 'Factura sin ID de Facturapi' })
+    if (!factura.facturapiId) return res.status(400).json({ error: 'La factura aún no tiene comprobante fiscal asociado.' })
 
     // ── FAIL-CLOSED (P1): cliente de la Organization PROPIA de la empresa ──
     let fp
@@ -1076,6 +1076,6 @@ exports.enviarEmail = async (req, res) => {
     res.json({ success: true, mensaje: `Email enviado a ${emailsReenvio.join(', ')}` })
   } catch (err) {
     console.error('❌ Error enviar email:', err)
-    res.status(err.expose ? (err.status || 500) : 500).json({ error: 'Error al enviar email: ' + err.message })
+    res.status(err.expose ? (err.status || 500) : 500).json({ error: 'No fue posible enviar el email. Intenta nuevamente.' })
   }
 }
