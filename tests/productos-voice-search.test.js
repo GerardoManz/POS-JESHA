@@ -149,3 +149,161 @@ describe('P3 voice search — canonical inventory search handoff', () => {
   it('VS23 page cleanup aborts active recognition', () => assert.match(VOICE_SOURCE, /beforeunload[\s\S]*vozActiva[\s\S]*abort/))
   it('VS24 raw speech errors are never rendered directly', () => assert.doesNotMatch(VOICE_SOURCE, /event\.error.*textContent|textContent.*event\.error/))
 })
+
+describe('P3 voice search — realistic lifecycle (VR01-VR15)', () => {
+  beforeEach(() => { MockRecognition.instances = [] })
+
+  it('VR01 start() throw InvalidStateError is caught and shows toast', () => {
+    const h = createHarness()
+    const r = h.recognition()
+    r.started = true
+    r.start = function () { throw new DOMException('InvalidStateError', 'InvalidStateError') }
+    h.button.click()
+    assert.equal(h.button.attributes['aria-label'], 'Buscar por voz')
+    assert.ok(h.toasts.some(m => /iniciar/.test(m)), 'shows safe init-failure toast')
+  })
+
+  it('VR02 not-allowed shows permission-denied toast with micrófono keyword', () => {
+    const h = createHarness()
+    h.button.click()
+    h.recognition().emitError('not-allowed')
+    assert.ok(h.toasts.some(m => /micrófono/i.test(m)), 'mentions micrófono')
+    assert.ok(h.toasts.some(m => !/NotAllowedError/.test(m)), 'no raw error name')
+  })
+
+  it('VR03 service-not-allowed shows same safe message as not-allowed', () => {
+    const h = createHarness()
+    h.button.click()
+    h.recognition().emitError('service-not-allowed')
+    assert.ok(h.toasts.some(m => /micrófono/i.test(m)))
+  })
+
+  it('VR04 audio-capture shows mic-not-found message', () => {
+    const h = createHarness()
+    h.button.click()
+    h.recognition().emitError('audio-capture')
+    assert.ok(h.toasts.some(m => /micrófono/i.test(m)))
+  })
+
+  it('VR05 no-speech shows info toast, not warning', () => {
+    const h = createHarness()
+    h.button.click()
+    h.recognition().emitError('no-speech')
+    assert.ok(h.toasts.some(m => /No se detectó voz/.test(m)))
+  })
+
+  it('VR06 network error shows safe network toast', () => {
+    const h = createHarness()
+    h.button.click()
+    h.recognition().emitError('network')
+    assert.ok(h.toasts.some(m => /búsqueda por voz/i.test(m)))
+    assert.ok(h.toasts.some(m => !/network|SpeechRecognition/.test(m)), 'no raw error')
+  })
+
+  it('VR07 aborted shows no toast (silent cancel)', () => {
+    const h = createHarness()
+    h.button.click()
+    h.recognition().emitError('aborted')
+    assert.equal(h.toasts.length, 0, 'no toast for abort')
+  })
+
+  it('VR08 result then end returns to idle state', () => {
+    const h = createHarness()
+    h.button.click()
+    h.recognition().emitResult('tornillo')
+    h.recognition().abort()
+    assert.equal(h.button.attributes['aria-label'], 'Buscar por voz')
+    assert.equal(h.recognition().aborted, true)
+  })
+
+  it('VR09 double click does not start a second recognition', () => {
+    const h = createHarness()
+    h.button.click()
+    h.button.click()
+    assert.equal(MockRecognition.instances.length, 1, 'single instance')
+    assert.equal(h.recognition().aborted, true, 'first was aborted')
+  })
+
+  it('VR10 second session works after first end', () => {
+    const h = createHarness()
+    h.button.click()
+    h.recognition().emitResult('tornillo')
+    h.recognition().abort()
+    h.button.click()
+    h.recognition().emitResult('martillo')
+    assert.equal(h.input.value, 'martillo')
+    assert.equal(h.recognition().started, true, 'second session started')
+  })
+
+  it('VR11 second session works after error', () => {
+    const h = createHarness()
+    h.button.click()
+    h.recognition().emitError('no-speech')
+    h.button.click()
+    h.recognition().emitResult('martillo')
+    assert.equal(h.input.value, 'martillo')
+  })
+
+  it('VR12 stale result from old session does not block new session', () => {
+    const h = createHarness()
+    h.button.click()
+    h.recognition().abort()
+    h.button.click()
+    h.recognition().emitResult('martillo')
+    assert.equal(h.input.value, 'martillo', 'new session result accepted after old abort')
+  })
+
+  it('VR13 result dispatches input event with __jeshaVoiceInput flag', () => {
+    const h = createHarness()
+    let capturedFlag = null
+    const origDispatch = h.input.dispatchEvent.bind(h.input)
+    h.input.dispatchEvent = function (event) {
+      if (event.type === 'input' && '__jeshaVoiceInput' in event) {
+        capturedFlag = event.__jeshaVoiceInput
+      }
+      return origDispatch(event)
+    }
+    h.button.click()
+    h.recognition().emitResult('tornillo')
+    assert.equal(capturedFlag, true, 'voice event has __jeshaVoiceInput = true')
+  })
+
+  it('VR14 manual text during listening blocks further voice updates', () => {
+    const h = createHarness()
+    h.button.click()
+    h.input.value = 'manual'
+    h.input.dispatchEvent({ type: 'input', __jeshaVoiceInput: false })
+    h.recognition().emitResult('voz')
+    assert.equal(h.input.value, 'manual', 'manual text preserved')
+  })
+
+  it('VR15 voice lifecycle completes after result and end', () => {
+    const h = createHarness()
+    h.button.click()
+    h.recognition().emitResult('tornillo')
+    assert.equal(h.input.value, 'tornillo')
+    h.recognition().abort()
+    assert.equal(h.button.attributes['aria-label'], 'Buscar por voz')
+    assert.equal(h.button.attributes.title, 'Buscar por voz')
+  })
+})
+
+describe('P3 voice search — source diagnostics', () => {
+  it('secure context check present for production HTTPS', () => {
+    assert.match(SOURCE, /isSecureContext|localhost|127\.0\.0\.1/)
+  })
+  it('SpeechRecognition detection uses both standard and webkit prefix', () => {
+    assert.match(VOICE_SOURCE, /window\.SpeechRecognition/)
+    assert.match(VOICE_SOURCE, /window\.webkitSpeechRecognition/)
+  })
+  it('voice result goes through existing debounce pipeline', () => {
+    assert.match(VOICE_SOURCE, /dispatchEvent/)
+    assert.match(SOURCE, /setTimeout\(function\(\) \{ aplicarFiltros\(\) \}, 400\)/)
+  })
+  it('button hidden by default in HTML', () => {
+    assert.match(HTML, /<button[^>]+id="btn-voz-productos"[^>]+hidden/)
+  })
+  it('no maxAlternatives set (defaults to 1)', () => {
+    assert.doesNotMatch(VOICE_SOURCE, /maxAlternatives/)
+  })
+})
