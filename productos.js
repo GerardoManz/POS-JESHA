@@ -276,6 +276,220 @@ function etiquetaDesconocida(valor) {
   return String(valor).replace(/_/g, ' ').toLocaleLowerCase('es-MX').replace(/^./, letra => letra.toLocaleUpperCase('es-MX'))
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// HISTORIAL — Gráficas de evolución (SVG nativo, sin dependencias)
+// ═══════════════════════════════════════════════════════════════════
+
+const HISTORIAL_SERIES_CATALOGO = [
+  { campo: 'precioVenta', etiqueta: 'Precio de venta', tipo: 'moneda' },
+  { campo: 'costo', etiqueta: 'Costo', tipo: 'moneda' },
+  { campo: 'costoPromedio', etiqueta: 'Costo promedio', tipo: 'moneda' },
+  { campo: 'precioMayoreo', etiqueta: 'Precio mayoreo', tipo: 'moneda' },
+  { campo: 'margen', etiqueta: 'Margen', tipo: 'porcentaje' }
+]
+
+function reconstruirSerieCatalogo(historial, campo) {
+  if (!Array.isArray(historial) || !historial.length) return []
+  const eventos = historial
+    .slice()
+    .sort((a, b) => new Date(a.ocurridoEn) - new Date(b.ocurridoEn) || a.id - b.id)
+  const puntos = []
+  for (const evento of eventos) {
+    const detalle = Array.isArray(evento.detalles)
+      ? evento.detalles.find(d => d.campo === campo)
+      : null
+    if (!detalle) continue
+    const valor = detalle.valorNuevo !== null && detalle.valorNuevo !== undefined
+      ? Number(detalle.valorNuevo)
+      : null
+    if (valor === null && puntos.length === 0 && evento.origen === 'CREACION_PRODUCTO') continue
+    puntos.push({
+      fecha: evento.ocurridoEn,
+      valor,
+      origen: HISTORIAL_ORIGENES[evento.origen] || etiquetaDesconocida(evento.origen)
+    })
+  }
+  return puntos
+}
+
+function reconstruirSerieObservada(rows, campo) {
+  if (!Array.isArray(rows) || !rows.length) return []
+  return rows
+    .slice()
+    .sort((a, b) => new Date(a.fecha) - new Date(b.fecha) || a.id - b.id)
+    .map(row => ({
+      fecha: row.fecha,
+      valor: row[campo] !== null && row[campo] !== undefined ? Number(row[campo]) : null,
+      origen: row.proveedor?.nombreOficial || row.referencia || null
+    }))
+    .filter(p => p.valor !== null && Number.isFinite(p.valor))
+}
+
+function renderGraficaHistorial(puntos, opciones = {}) {
+  const { tipo = 'moneda', etiqueta = '', height = 120, ariaLabel = '' } = opciones
+  if (!puntos.length) return null
+
+  const svgNS = 'http://www.w3.org/2000/svg'
+  const W = 500
+  const H = height
+  const PAD = { top: 16, right: 20, bottom: 28, left: 55 }
+  const innerW = W - PAD.left - PAD.right
+  const innerH = H - PAD.top - PAD.bottom
+
+  const valores = puntos.map(p => p.valor).filter(v => v !== null && Number.isFinite(v))
+  if (!valores.length) return null
+  const minV = Math.min(...valores)
+  const maxV = Math.max(...valores)
+  const range = maxV - minV || 1
+  const padY = range * 0.1
+  const yMin = minV - padY
+  const yMax = maxV + padY
+  const yRange = yMax - yMin || 1
+
+  const fechaMin = new Date(puntos[0].fecha).getTime()
+  const fechaMax = new Date(puntos[puntos.length - 1].fecha).getTime()
+  const fechaRange = fechaMax - fechaMin || 1
+
+  function x(fecha) {
+    return PAD.left + ((new Date(fecha).getTime() - fechaMin) / fechaRange) * innerW
+  }
+  function y(valor) {
+    return PAD.top + innerH - ((valor - yMin) / yRange) * innerH
+  }
+  function fmtVal(v) {
+    if (tipo === 'porcentaje') return `${v.toFixed(2)}%`
+    return `$${v.toFixed(2)}`
+  }
+  function fmtFecha(f) {
+    return formatoFechaHistorial(f, true)
+  }
+
+  const svg = document.createElementNS(svgNS, 'svg')
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`)
+  svg.setAttribute('class', 'historial-grafica-svg')
+  svg.setAttribute('role', 'img')
+  svg.setAttribute('aria-label', ariaLabel || `Gráfica de evolución de ${etiqueta}`)
+
+  const pathD = puntos
+    .filter(p => p.valor !== null && Number.isFinite(p.valor))
+    .map((p, i) => `${i === 0 ? 'M' : 'L'}${x(p.fecha).toFixed(1)},${y(p.valor).toFixed(1)}`)
+    .join(' ')
+  if (pathD) {
+    const path = document.createElementNS(svgNS, 'path')
+    path.setAttribute('d', pathD)
+    path.setAttribute('class', 'historial-grafica-linea')
+    path.setAttribute('fill', 'none')
+    path.setAttribute('stroke', 'var(--primary, #2563eb)')
+    path.setAttribute('stroke-width', '2')
+    path.setAttribute('stroke-linejoin', 'round')
+    svg.appendChild(path)
+  }
+
+  const yTicks = 4
+  for (let i = 0; i <= yTicks; i++) {
+    const val = yMin + (yRange * i) / yTicks
+    const yPos = y(val)
+    const line = document.createElementNS(svgNS, 'line')
+    line.setAttribute('x1', String(PAD.left))
+    line.setAttribute('y1', yPos.toFixed(1))
+    line.setAttribute('x2', String(W - PAD.right))
+    line.setAttribute('y2', yPos.toFixed(1))
+    line.setAttribute('class', 'historial-grafica-grid')
+    svg.appendChild(line)
+    const label = document.createElementNS(svgNS, 'text')
+    label.setAttribute('x', String(PAD.left - 4))
+    label.setAttribute('y', (yPos + 3).toFixed(1))
+    label.setAttribute('class', 'historial-grafica-eje-label')
+    label.setAttribute('text-anchor', 'end')
+    label.textContent = fmtVal(val)
+    svg.appendChild(label)
+  }
+
+  const xLabelCount = Math.min(puntos.length, 5)
+  const xStep = Math.max(1, Math.floor(puntos.length / xLabelCount))
+  for (let i = 0; i < puntos.length; i += xStep) {
+    const p = puntos[i]
+    const xPos = x(p.fecha)
+    const label = document.createElementNS(svgNS, 'text')
+    label.setAttribute('x', xPos.toFixed(1))
+    label.setAttribute('y', String(H - 4))
+    label.setAttribute('class', 'historial-grafica-eje-label')
+    label.setAttribute('text-anchor', 'middle')
+    label.textContent = fmtFecha(p.fecha)
+    svg.appendChild(label)
+  }
+
+  puntos.forEach((p, idx) => {
+    if (p.valor === null || !Number.isFinite(p.valor)) return
+    const cx = x(p.fecha)
+    const cy = y(p.valor)
+    const circle = document.createElementNS(svgNS, 'circle')
+    circle.setAttribute('cx', cx.toFixed(1))
+    circle.setAttribute('cy', cy.toFixed(1))
+    circle.setAttribute('r', '3')
+    circle.setAttribute('class', 'historial-grafica-punto')
+    circle.setAttribute('data-idx', String(idx))
+    circle.setAttribute('data-valor', fmtVal(p.valor))
+    circle.setAttribute('data-fecha', fmtFecha(p.fecha))
+    circle.setAttribute('data-origen', p.origen || '')
+    svg.appendChild(circle)
+  })
+
+  const tooltip = document.createElement('div')
+  tooltip.className = 'historial-grafica-tooltip'
+  tooltip.hidden = true
+  const wrapper = document.createElement('div')
+  wrapper.className = 'historial-grafica-wrap'
+  wrapper.appendChild(svg)
+  wrapper.appendChild(tooltip)
+
+  wrapper.addEventListener('mouseover', (e) => {
+    const target = e.target.closest('.historial-grafica-punto')
+    if (!target) return
+    const valor = target.getAttribute('data-valor')
+    const fecha = target.getAttribute('data-fecha')
+    const origen = target.getAttribute('data-origen')
+    tooltip.replaceChildren()
+    tooltip.append(
+      document.createElement('strong'),
+      document.createElement('br'),
+      document.createElement('span')
+    )
+    tooltip.children[0].textContent = valor
+    tooltip.children[1].textContent = fecha
+    if (origen) {
+      const origenSpan = document.createElement('span')
+      origenSpan.textContent = origen
+      tooltip.appendChild(document.createElement('br'))
+      tooltip.appendChild(origenSpan)
+    }
+    tooltip.hidden = false
+    const rect = target.getBoundingClientRect()
+    const wrapRect = wrapper.getBoundingClientRect()
+    tooltip.style.left = `${rect.left - wrapRect.left + rect.width / 2}px`
+    tooltip.style.top = `${rect.top - wrapRect.top - 8}px`
+  })
+  wrapper.addEventListener('mouseout', (e) => {
+    if (!e.target.closest('.historial-grafica-punto')) tooltip.hidden = true
+  })
+
+  return wrapper
+}
+
+function renderSelectorSerieCatalogo(selected, onChange) {
+  const select = elemento('select', 'historial-serie-selector')
+  select.setAttribute('aria-label', 'Serie a graficar')
+  HISTORIAL_SERIES_CATALOGO.forEach(s => {
+    const opt = document.createElement('option')
+    opt.value = s.campo
+    opt.textContent = s.etiqueta
+    if (s.campo === selected) opt.selected = true
+    select.appendChild(opt)
+  })
+  select.addEventListener('change', () => onChange(select.value))
+  return select
+}
+
 function elemento(tag, clase, texto) {
   const node = document.createElement(tag)
   if (clase) node.className = clase
@@ -397,6 +611,30 @@ function renderCatalogoHistorial(payload) {
     return
   }
 
+  const sectionGrafica = elemento('section', 'historial-grafica-section')
+  sectionGrafica.setAttribute('aria-label', 'Gráfica de evolución')
+  let serieActual = 'precioVenta'
+  const graficaContainer = elemento('div', 'historial-grafica-container')
+  function actualizarGraficaCatalogo(campo) {
+    serieActual = campo
+    limpiarNodo(graficaContainer)
+    const puntos = reconstruirSerieCatalogo(eventos, campo)
+    if (!puntos.length) {
+      graficaContainer.appendChild(elemento('p', 'historial-grafica-vacio', 'Sin datos suficientes para graficar esta serie.'))
+      return
+    }
+    const serie = HISTORIAL_SERIES_CATALOGO.find(s => s.campo === campo)
+    const chart = renderGraficaHistorial(puntos, {
+      tipo: serie?.tipo || 'moneda',
+      etiqueta: serie?.etiqueta || campo,
+      ariaLabel: `Evolución de ${serie?.etiqueta || campo}`
+    })
+    if (chart) graficaContainer.appendChild(chart)
+  }
+  sectionGrafica.append(renderSelectorSerieCatalogo(serieActual, actualizarGraficaCatalogo), graficaContainer)
+  actualizarGraficaCatalogo(serieActual)
+  panel.appendChild(sectionGrafica)
+
   const lista = elemento('div', 'historial-eventos')
   eventos.forEach(evento => {
     const article = elemento('article', 'historial-evento')
@@ -466,6 +704,20 @@ function renderObservadoHistorial(tipo, payload) {
       : 'Aún no hay ventas observadas para este producto.')
     renderPaginacionHistorial(panel, tipo, payload?.paginacion)
     return
+  }
+
+  const campoGrafica = esCompras ? 'costoUnitario' : 'precioUnitario'
+  const puntos = reconstruirSerieObservada(rows, campoGrafica)
+  if (puntos.length) {
+    const sectionGrafica = elemento('section', 'historial-grafica-section')
+    sectionGrafica.setAttribute('aria-label', `Gráfica de ${esCompras ? 'costos' : 'precios'} observados`)
+    const chart = renderGraficaHistorial(puntos, {
+      tipo: 'moneda',
+      etiqueta: esCompras ? 'Costo observado' : 'Precio observado',
+      ariaLabel: `Evolución de ${esCompras ? 'costos' : 'precios'} observados`
+    })
+    if (chart) sectionGrafica.appendChild(chart)
+    panel.appendChild(sectionGrafica)
   }
 
   const lista = elemento('div', 'historial-observaciones')

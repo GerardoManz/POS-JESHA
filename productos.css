@@ -2496,3 +2496,93 @@ mark.highlight {
     font-size: 1.45rem;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   HISTORIAL — Gráficas de evolución
+   ═══════════════════════════════════════════════════════════════════ */
+
+.historial-grafica-section {
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border, #e2e8f0);
+}
+
+.historial-serie-selector {
+  display: block;
+  width: 100%;
+  max-width: 260px;
+  margin-bottom: 10px;
+  padding: 6px 8px;
+  border: 1px solid var(--border, #d1d5db);
+  border-radius: 6px;
+  background: var(--bg-primary, #fff);
+  color: var(--text, #1f2937);
+  font-size: 0.85rem;
+}
+
+.historial-grafica-wrap {
+  position: relative;
+  width: 100%;
+}
+
+.historial-grafica-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.historial-grafica-linea {
+  vector-effect: non-scaling-stroke;
+}
+
+.historial-grafica-grid {
+  stroke: var(--border, #e5e7eb);
+  stroke-width: 0.5;
+  stroke-dasharray: 3 3;
+}
+
+.historial-grafica-eje-label {
+  fill: var(--muted, #6b7280);
+  font-size: 9px;
+  font-family: inherit;
+}
+
+.historial-grafica-punto {
+  fill: var(--primary, #2563eb);
+  stroke: var(--bg-primary, #fff);
+  stroke-width: 1.5;
+  cursor: pointer;
+  transition: r 0.15s;
+}
+
+.historial-grafica-punto:hover {
+  r: 5;
+}
+
+.historial-grafica-tooltip {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  background: var(--surface, #1f2937);
+  color: var(--text-primary, #f9fafb);
+  border: 1px solid var(--border, #374151);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 10;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+}
+
+.historial-grafica-tooltip:empty {
+  display: none;
+}
+
+.historial-grafica-vacio {
+  color: var(--muted, #9ca3af);
+  font-size: 0.85rem;
+  font-style: italic;
+  text-align: center;
+  padding: 12px 0;
+}
