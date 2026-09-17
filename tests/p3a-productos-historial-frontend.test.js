@@ -208,6 +208,137 @@ test('F43 payload parcial no rompe el drawer', () => {
   assert.match(feature, /payload \|\| \{\}/)
 })
 
+test('F44 cerrar drawer no recarga productos', () => {
+  assert.match(feature, /function cerrarHistorialProducto/)
+  assert.match(feature, /historialOverlay\.classList\.remove\('active'\)/)
+  assert.doesNotMatch(feature, /cerrarHistorialProducto[\s\S]*?cargarProductos/)
+})
+
+test('F45 compras lazy: state.pages.has(page) cache', () => {
+  assert.match(feature, /if \(state\.pages\.has\(page\)\)/)
+  assert.match(feature, /state\.pages\.set\(page, payload/)
+})
+
+test('F46 ventas usan misma función lazy que compras', () => {
+  assert.match(feature, /function cargarTabHistorial\(tab/)
+  assert.match(feature, /renderObservadoHistorial\(tab, payload\)/)
+})
+
+test('F47 catálogo→compras→catálogo usa cache', () => {
+  assert.match(feature, /state\.pages\.has\(page\)/)
+  assert.match(feature, /const cached = state\.pages\.get\(page\)/)
+})
+
+test('F48 ventas→compras no duplica sin cambio de params', () => {
+  assert.match(feature, /state\.requestId/)
+  assert.match(feature, /if \(openingVersion !== historialAperturaVersion \|\| requestId !== state\.requestId/)
+})
+
+test('F49 catálogo no se presenta como venta', () => {
+  assert.match(feature, /tab === 'catalogo' \? 'historial-economico'/)
+  assert.match(feature, /if \(tab === 'catalogo'\)[\s\S]*?renderCatalogoHistorial\(payload\)/)
+})
+
+test('F50 compra no se presenta como catálogo', () => {
+  assert.match(feature, /if \(tab === 'catalogo'\) renderActualHistorial\(null\)/)
+  assert.match(feature, /else \{[\s\S]*?renderObservadoHistorial\(tab, payload\)/)
+})
+
+test('F51 venta no se presenta como catálogo', () => {
+  assert.match(feature, /const endpoint = tab === 'catalogo' \? 'historial-economico' : `historial-\$\{tab\}`/)
+})
+
+test('F52 costo observado no se etiqueta como costo actual', () => {
+  assert.match(feature, /'Costo observado de compra'/)
+  assert.doesNotMatch(feature, /'Costo actual'/)
+  assert.doesNotMatch(feature, /'Costo de catálogo'/)
+})
+
+test('F53 precio observado no se etiqueta como precio configurado', () => {
+  assert.match(feature, /'Precio observado de venta'/)
+  assert.doesNotMatch(feature, /'Precio de catálogo'/)
+  assert.doesNotMatch(feature, /'Precio configurado'/)
+})
+
+test('F54 network error usa mensaje seguro', () => {
+  assert.match(feature, /No fue posible cargar el historial/)
+  assert.doesNotMatch(feature, /error\.stack|error\.message|JSON\.stringify/)
+})
+
+test('F55 cerrar no deja listeners duplicados', () => {
+  assert.match(feature, /historialAbortControllers\.forEach\(controller => controller\.abort\(\)\)/)
+  assert.match(feature, /historialAbortControllers\.clear\(\)/)
+})
+
+test('F56 A→B: openingVersion invalida request anterior', () => {
+  assert.match(feature, /historialAperturaVersion \+= 1/)
+  assert.match(feature, /openingVersion !== historialAperturaVersion/)
+})
+
+test('F57 cerrar durante request: AbortController', () => {
+  assert.match(feature, /function cerrarHistorialProducto/)
+  assert.match(feature, /historialAbortControllers\.forEach\(controller => controller\.abort\(\)\)/)
+})
+
+test('F58 voice search sigue usando #search-input', () => {
+  assert.match(js, /getElementById\('search-input'\)/)
+  assert.match(js, /searchInput\s*=\s*document\.getElementById\('search-input'\)/)
+})
+
+test('F59 voice result dispara input event pipeline', () => {
+  assert.match(js, /inputEvent\.__jeshaVoiceInput = true/)
+  assert.match(js, /searchInput\.dispatchEvent\(inputEvent\)/)
+})
+
+test('F60 debounce sigue 400ms', () => {
+  assert.match(js, /setTimeout\(function\(\) \{ aplicarFiltros\(\) \}, 400\)/)
+})
+
+test('F61 abrir historial no cambia search input', () => {
+  assert.match(feature, /function abrirHistorialProducto/)
+  assert.doesNotMatch(feature, /abrirHistorialProducto[\s\S]*?searchInput\.value/)
+})
+
+test('F62 abrir historial no dispara nueva búsqueda', () => {
+  assert.match(feature, /function abrirHistorialProducto/)
+  assert.doesNotMatch(feature, /abrirHistorialProducto[\s\S]*?cargarProductos\(\)/)
+})
+
+test('F63 voz unsupported oculta mic sin afectar historial', () => {
+  assert.match(js, /if \(!SpeechRecognition\)/)
+  assert.match(js, /btnVozProductos\.hidden = true/)
+  const voiceSection = js.slice(js.indexOf('configurarBusquedaVoz'), js.indexOf('configurarBusquedaVoz') + 600)
+  assert.doesNotMatch(voiceSection, /historial/)
+})
+
+test('F64 PUEDE_VER_HISTORIAL no incluye EMPLEADO', () => {
+  const histLine = js.split('\n').find(l => l.includes('PUEDE_VER_HISTORIAL') && l.includes('['))
+  assert.ok(histLine, 'PUEDE_VER_HISTORIAL declaration found')
+  assert.doesNotMatch(histLine, /EMPLEADO/)
+})
+
+test('F65 btn-historial usa aria-label con escapado', () => {
+  assert.match(js, /aria-label="Ver historial económico de \$\{escaparHtml\(p\.nombre/)
+})
+
+test('F66 drawer usa textContent no innerHTML para datos backend', () => {
+  assert.match(feature, /\.textContent\s*=/)
+  assert.doesNotMatch(feature, /\.innerHTML\s*=.*evento/)
+  assert.doesNotMatch(feature, /\.innerHTML\s*=.*row/)
+})
+
+test('F67 tabs usan role aria', () => {
+  assert.match(html, /role="tablist"/)
+  assert.match(html, /role="tab"/)
+  assert.match(html, /role="tabpanel"/)
+  assert.match(html, /aria-selected/)
+  assert.match(html, /aria-controls/)
+})
+
+test('F68 drawer tiene responsive mobile', () => {
+  assert.match(css, /@media \(max-width: 700px\)[\s\S]*?\.historial-drawer\s*\{[\s\S]*?width: 100%/)
+})
+
 test('drawer mantiene seguridad, accesibilidad y responsive básico', () => {
   assert.match(html, /role="dialog" aria-modal="true" aria-labelledby="historial-producto-titulo"/)
   assert.match(html, /role="tablist"/)
