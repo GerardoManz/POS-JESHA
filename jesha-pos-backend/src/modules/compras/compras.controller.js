@@ -623,8 +623,7 @@ const recibir = async (req, res) => {
           select: { id: true, cantidadPedida: true, cantidadRecibida: true, subtotalPedido: true }
         })
         const todoCompleto = detallesConLock.every(d => {
-          const nuevaRec = totalRecibMap[d.id] || 0
-          return (parseFloat(d.cantidadRecibida) + nuevaRec) >= parseFloat(d.cantidadPedida)
+          return parseFloat(d.cantidadRecibida) >= parseFloat(d.cantidadPedida)
         })
         const nuevoEstado = todoCompleto ? 'RECIBIDO' : 'RECIBIDO_PARCIAL'
 

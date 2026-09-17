@@ -525,4 +525,204 @@ describe('Purchase Receipt — Concurrency Critical', { concurrency: 1, timeout:
     assert.ok(receipt.fingerprintHash, 'Receipt must have fingerprintHash')
     assert.ok(receipt.respuesta, 'Receipt must have respuesta snapshot')
   })
+
+  // ════════════════════════════════════════════════════════════════
+  //  COMPLETION STATE TESTS (C01-C08)
+  // ════════════════════════════════════════════════════════════════
+
+  async function crearOCEstado(cantidadPedida) {
+    const oc = await prisma.ordenCompra.create({
+      data: {
+        Empresa: { connect: { id: empresa.id } },
+        Sucursal: { connect: { id: sucursal.id } },
+        Proveedor: { connect: { id: proveedor.id } },
+        Usuario: { connect: { id: usuario.id } },
+        folio: `OC-ESTADO-${Date.now()}-${randomBytes(4).toString('hex')}`, estado: 'ENVIADO',
+        totalEstimado: cantidadPedida * 50, totalRecibido: 0, totalPagado: 0,
+        DetalleOrdenCompra: {
+          create: [{ Producto: { connect: { id: producto.id } }, cantidadPedida, cantidadRecibida: 0, precioCosto: 50, subtotalPedido: cantidadPedida * 50, subtotalRecibido: 0 }]
+        }
+      },
+      select: { id: true, folio: true }
+    })
+    const det = await prisma.detalleOrdenCompra.findFirst({ where: { ordenCompraId: oc.id } })
+    return { oc, det }
+  }
+
+  async function getOCState(ocId) {
+    const oc = await prisma.ordenCompra.findUnique({ where: { id: ocId }, select: { estado: true, totalRecibido: true } })
+    return oc
+  }
+
+  async function crearOCMultiLine(detallesSpec) {
+    const oc = await prisma.ordenCompra.create({
+      data: {
+        Empresa: { connect: { id: empresa.id } },
+        Sucursal: { connect: { id: sucursal.id } },
+        Proveedor: { connect: { id: proveedor.id } },
+        Usuario: { connect: { id: usuario.id } },
+        folio: `OC-ESTADO-${Date.now()}-${randomBytes(4).toString('hex')}`, estado: 'ENVIADO',
+        totalEstimado: detallesSpec.reduce((s, d) => s + d.cantidadPedida * 50, 0), totalRecibido: 0, totalPagado: 0,
+        DetalleOrdenCompra: {
+          create: detallesSpec.map(d => ({
+            Producto: { connect: { id: d.productoId || producto.id } },
+            cantidadPedida: d.cantidadPedida, cantidadRecibida: 0, precioCosto: 50,
+            subtotalPedido: d.cantidadPedida * 50, subtotalRecibido: 0
+          }))
+        }
+      },
+      select: { id: true, folio: true }
+    })
+    const dets = await prisma.detalleOrdenCompra.findMany({ where: { ordenCompraId: oc.id }, orderBy: { id: 'asc' } })
+    return { oc, dets }
+  }
+
+  it('C01: partial receipt → RECIBIDO_PARCIAL', async () => {
+    const { oc, det } = await crearOCEstado(10)
+    const r = await recibir(oc.id, [{ detalleId: det.id, cantidadRecibida: 4, precioCosto: 50 }], randomUUID())
+    assert.equal(r.status, 200)
+    const state = await getOCState(oc.id)
+    assert.equal(state.estado, 'RECIBIDO_PARCIAL', `Expected RECIBIDO_PARCIAL, got ${state.estado}`)
+    const detAfter = await prisma.detalleOrdenCompra.findUnique({ where: { id: det.id }, select: { cantidadRecibida: true } })
+    assert.equal(Number(detAfter.cantidadRecibida), 4)
+  })
+
+  it('C02: receipt completes exactly → RECIBIDO', async () => {
+    const { oc, det } = await crearOCEstado(10)
+    await recibir(oc.id, [{ detalleId: det.id, cantidadRecibida: 4, precioCosto: 50 }], randomUUID())
+    const r = await recibir(oc.id, [{ detalleId: det.id, cantidadRecibida: 6, precioCosto: 50 }], randomUUID())
+    assert.equal(r.status, 200)
+    const state = await getOCState(oc.id)
+    assert.equal(state.estado, 'RECIBIDO', `Expected RECIBIDO, got ${state.estado}`)
+  })
+
+  it('C03: receipt still partial → RECIBIDO_PARCIAL', async () => {
+    const { oc, det } = await crearOCEstado(10)
+    await recibir(oc.id, [{ detalleId: det.id, cantidadRecibida: 4, precioCosto: 50 }], randomUUID())
+    const r = await recibir(oc.id, [{ detalleId: det.id, cantidadRecibida: 3, precioCosto: 50 }], randomUUID())
+    assert.equal(r.status, 200)
+    const state = await getOCState(oc.id)
+    assert.equal(state.estado, 'RECIBIDO_PARCIAL', `Expected RECIBIDO_PARCIAL, got ${state.estado}`)
+  })
+
+  it('C04: multi-line — one complete, one partial → RECIBIDO_PARCIAL', async () => {
+    const { oc, dets } = await crearOCMultiLine([
+      { cantidadPedida: 5, productoId: producto.id },
+      { cantidadPedida: 10, productoId: producto2.id }
+    ])
+    const d5 = dets.find(d => d.productoId === producto.id)
+    const d10 = dets.find(d => d.productoId === producto2.id)
+    await recibir(oc.id, [{ detalleId: d5.id, cantidadRecibida: 5, precioCosto: 50 }], randomUUID())
+    const r = await recibir(oc.id, [{ detalleId: d10.id, cantidadRecibida: 3, precioCosto: 50 }], randomUUID())
+    assert.equal(r.status, 200)
+    const state = await getOCState(oc.id)
+    assert.equal(state.estado, 'RECIBIDO_PARCIAL', `Expected RECIBIDO_PARCIAL, got ${state.estado}`)
+  })
+
+  it('C05: multi-line — all complete → RECIBIDO', async () => {
+    const { oc, dets } = await crearOCMultiLine([
+      { cantidadPedida: 5, productoId: producto.id },
+      { cantidadPedida: 10, productoId: producto2.id }
+    ])
+    const d5 = dets.find(d => d.productoId === producto.id)
+    const d10 = dets.find(d => d.productoId === producto2.id)
+    await recibir(oc.id, [{ detalleId: d5.id, cantidadRecibida: 5, precioCosto: 50 }], randomUUID())
+    const r = await recibir(oc.id, [{ detalleId: d10.id, cantidadRecibida: 10, precioCosto: 50 }], randomUUID())
+    assert.equal(r.status, 200, `C05 second receipt must succeed, got ${r.status}: ${JSON.stringify(r.body)}`)
+    const state = await getOCState(oc.id)
+    assert.equal(state.estado, 'RECIBIDO', `Expected RECIBIDO, got ${state.estado}`)
+  })
+
+  it('C06: idempotent replay of final receipt — status stays RECIBIDO', async () => {
+    const { oc, det } = await crearOCEstado(10)
+    const key = randomUUID()
+    await recibir(oc.id, [{ detalleId: det.id, cantidadRecibida: 10, precioCosto: 50 }], key)
+    const stateAfter = await getOCState(oc.id)
+    assert.equal(stateAfter.estado, 'RECIBIDO')
+
+    const r = await recibir(oc.id, [{ detalleId: det.id, cantidadRecibida: 10, precioCosto: 50 }], key)
+    assert.equal(r.status, 200)
+    assert.equal(r.body?.idempotentReplay, true)
+    const stateReplay = await getOCState(oc.id)
+    assert.equal(stateReplay.estado, 'RECIBIDO', `Replay must not change status from RECIBIDO, got ${stateReplay.estado}`)
+    assert.equal(Number(stateReplay.totalRecibido), Number(stateAfter.totalRecibido), 'totalRecibido must not change on replay')
+  })
+
+  it('C07: concurrent different keys — correct final status exactly once', async () => {
+    const { oc, det } = await crearOCEstado(10)
+    const [rA, rB] = await Promise.all([
+      recibir(oc.id, [{ detalleId: det.id, cantidadRecibida: 5, precioCosto: 50 }], randomUUID()),
+      recibir(oc.id, [{ detalleId: det.id, cantidadRecibida: 5, precioCosto: 50 }], randomUUID())
+    ])
+    assert.equal(rA.status, 200)
+    assert.equal(rB.status, 200)
+    const state = await getOCState(oc.id)
+    const detAfter = await prisma.detalleOrdenCompra.findUnique({ where: { id: det.id }, select: { cantidadRecibida: true } })
+    const finalRecv = Number(detAfter.cantidadRecibida)
+    assert.ok(finalRecv <= 10 + 0.001, `finalRecv (${finalRecv}) must not exceed ordered (10)`)
+    assert.ok(state.estado === 'RECIBIDO' || state.estado === 'RECIBIDO_PARCIAL',
+      `estado must be RECIBIDO or RECIBIDO_PARCIAL, got ${state.estado}`)
+    if (finalRecv >= 10 - 0.001) {
+      assert.equal(state.estado, 'RECIBIDO', 'If fully received, estado must be RECIBIDO')
+    }
+  })
+
+  it('C08: over-receipt rejected — must NOT mark RECIBIDO', async () => {
+    const { oc, det } = await crearOCEstado(5)
+    const r = await recibir(oc.id, [{ detalleId: det.id, cantidadRecibida: 20, precioCosto: 50 }], randomUUID())
+    assert.equal(r.status, 400)
+    const state = await getOCState(oc.id)
+    assert.equal(state.estado, 'ENVIADO', `Rejected over-receipt must keep estado=ENVIADO, got ${state.estado}`)
+    const detAfter = await prisma.detalleOrdenCompra.findUnique({ where: { id: det.id }, select: { cantidadRecibida: true } })
+    assert.equal(Number(detAfter.cantidadRecibida), 0, 'cantidadRecibida must remain 0')
+  })
+
+  // ════════════════════════════════════════════════════════════════
+  //  TOTALRECIBIDO VERIFICATION
+  // ════════════════════════════════════════════════════════════════
+
+  it('totalRecibido: accumulated correctly across receipts', async () => {
+    const { oc, det } = await crearOCEstado(10)
+    const precio = 50
+    const r1 = await recibir(oc.id, [{ detalleId: det.id, cantidadRecibida: 3, precioCosto: precio }], randomUUID())
+    assert.equal(r1.status, 200)
+    const s1 = await getOCState(oc.id)
+    assert.equal(Number(s1.totalRecibido), 3 * precio, `After 1st: expected ${3 * precio}, got ${s1.totalRecibido}`)
+
+    const r2 = await recibir(oc.id, [{ detalleId: det.id, cantidadRecibida: 4, precioCosto: precio }], randomUUID())
+    assert.equal(r2.status, 200)
+    const s2 = await getOCState(oc.id)
+    assert.equal(Number(s2.totalRecibido), 7 * precio, `After 2nd: expected ${7 * precio}, got ${s2.totalRecibido}`)
+  })
+
+  it('totalRecibido: replay does not increase', async () => {
+    const { oc, det } = await crearOCEstado(10)
+    const key = randomUUID()
+    const precio = 50
+    await recibir(oc.id, [{ detalleId: det.id, cantidadRecibida: 3, precioCosto: precio }], key)
+    const s1 = await getOCState(oc.id)
+
+    await recibir(oc.id, [{ detalleId: det.id, cantidadRecibida: 3, precioCosto: precio }], key)
+    const s2 = await getOCState(oc.id)
+    assert.equal(Number(s2.totalRecibido), Number(s1.totalRecibido), 'Replay must not increase totalRecibido')
+  })
+
+  it('totalRecibido: concurrent different keys — sum of committed receipts', async () => {
+    const { oc, det } = await crearOCEstado(10)
+    const precio = 50
+    const before = await getOCState(oc.id)
+    const beforeTotal = Number(before.totalRecibido)
+
+    await Promise.all([
+      recibir(oc.id, [{ detalleId: det.id, cantidadRecibida: 2, precioCosto: precio }], randomUUID()),
+      recibir(oc.id, [{ detalleId: det.id, cantidadRecibida: 3, precioCosto: precio }], randomUUID())
+    ])
+
+    const after = await getOCState(oc.id)
+    const detAfter = await prisma.detalleOrdenCompra.findUnique({ where: { id: det.id }, select: { cantidadRecibida: true } })
+    const actualRecv = Number(detAfter.cantidadRecibida)
+    const expectedTotal = beforeTotal + actualRecv * precio
+    assert.equal(Number(after.totalRecibido), expectedTotal,
+      `totalRecibido (${after.totalRecibido}) must match accumulated (${expectedTotal})`)
+  })
 })
