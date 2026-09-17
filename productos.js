@@ -294,20 +294,37 @@ function reconstruirSerieCatalogo(historial, campo) {
     .slice()
     .sort((a, b) => new Date(a.ocurridoEn) - new Date(b.ocurridoEn) || a.id - b.id)
   const puntos = []
+  let baselineAdded = false
   for (const evento of eventos) {
     const detalle = Array.isArray(evento.detalles)
       ? evento.detalles.find(d => d.campo === campo)
       : null
     if (!detalle) continue
-    const valor = detalle.valorNuevo !== null && detalle.valorNuevo !== undefined
+    const esCreacion = evento.origen === 'CREACION_PRODUCTO'
+    const valorNuevo = detalle.valorNuevo !== null && detalle.valorNuevo !== undefined
       ? Number(detalle.valorNuevo)
       : null
-    if (valor === null && puntos.length === 0 && evento.origen === 'CREACION_PRODUCTO') continue
+    const valorAnterior = detalle.valorAnterior !== null && detalle.valorAnterior !== undefined
+      ? Number(detalle.valorAnterior)
+      : null
+    if (!baselineAdded && valorAnterior !== null && Number.isFinite(valorAnterior) && !esCreacion) {
+      puntos.push({
+        fecha: evento.ocurridoEn,
+        valor: valorAnterior,
+        origen: 'Baseline',
+        esBaseline: true
+      })
+      baselineAdded = true
+    }
+    if (valorNuevo === null && puntos.length === 0 && esCreacion) continue
     puntos.push({
       fecha: evento.ocurridoEn,
-      valor,
+      valor: valorNuevo,
       origen: HISTORIAL_ORIGENES[evento.origen] || etiquetaDesconocida(evento.origen)
     })
+    if (!baselineAdded && valorAnterior !== null && Number.isFinite(valorAnterior)) {
+      baselineAdded = true
+    }
   }
   return puntos
 }
@@ -615,6 +632,15 @@ function renderCatalogoHistorial(payload) {
   sectionGrafica.setAttribute('aria-label', 'Gráfica de evolución')
   let serieActual = 'precioVenta'
   const graficaContainer = elemento('div', 'historial-grafica-container')
+  const scopeLabel = elemento('p', 'historial-grafica-scope')
+  const totalEventos = eventos.length
+  const totalPaginas = Number(payload?.paginacion?.totalPages) || 1
+  const paginaActual = Number(payload?.paginacion?.page) || 1
+  if (totalPaginas > 1) {
+    scopeLabel.textContent = `Mostrando evolución de ${totalEventos} registros de la página ${paginaActual} de ${totalPaginas}`
+  } else {
+    scopeLabel.textContent = `Evolución de ${totalEventos} registros`
+  }
   function actualizarGraficaCatalogo(campo) {
     serieActual = campo
     limpiarNodo(graficaContainer)
@@ -631,7 +657,7 @@ function renderCatalogoHistorial(payload) {
     })
     if (chart) graficaContainer.appendChild(chart)
   }
-  sectionGrafica.append(renderSelectorSerieCatalogo(serieActual, actualizarGraficaCatalogo), graficaContainer)
+  sectionGrafica.append(renderSelectorSerieCatalogo(serieActual, actualizarGraficaCatalogo), graficaContainer, scopeLabel)
   actualizarGraficaCatalogo(serieActual)
   panel.appendChild(sectionGrafica)
 
@@ -717,6 +743,13 @@ function renderObservadoHistorial(tipo, payload) {
       ariaLabel: `Evolución de ${esCompras ? 'costos' : 'precios'} observados`
     })
     if (chart) sectionGrafica.appendChild(chart)
+    const totalPaginas = Number(payload?.paginacion?.totalPages) || 1
+    const paginaActual = Number(payload?.paginacion?.page) || 1
+    if (totalPaginas > 1) {
+      const scopeLabel = elemento('p', 'historial-grafica-scope')
+      scopeLabel.textContent = `Mostrando ${puntos.length} registros de la página ${paginaActual} de ${totalPaginas}`
+      sectionGrafica.appendChild(scopeLabel)
+    }
     panel.appendChild(sectionGrafica)
   }
 

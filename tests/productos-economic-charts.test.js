@@ -90,9 +90,11 @@ describe('G — Catalog chart: reconstruirSerieCatalogo', () => {
       { id: 2, ocurridoEn: '2026-09-10T10:00:00Z', origen: 'EDICION_PRECIOS', detalles: [{ campo: 'precioVenta', valorAnterior: '150.0000', valorNuevo: '170.0000' }] }
     ]
     const puntos = ctx.reconstruirSerieCatalogo(historial, 'precioVenta')
-    assert.equal(puntos.length, 2)
-    assert.equal(puntos[0].valor, 150)
-    assert.equal(puntos[1].valor, 170)
+    assert.ok(puntos.length >= 3, 'has baseline + 2 value points')
+    assert.equal(puntos[0].valor, 100, 'first is baseline from first valorAnterior')
+    assert.equal(puntos[0].esBaseline, true)
+    assert.equal(puntos[1].valor, 150)
+    assert.equal(puntos[2].valor, 170)
   })
 
   it('G02 null baseline: creación no genera punto falso', () => {
@@ -120,8 +122,9 @@ describe('G — Catalog chart: reconstruirSerieCatalogo', () => {
       { id: 1, ocurridoEn: '2026-09-01T10:00:00Z', origen: 'COMPRA', detalles: [{ campo: 'costo', valorAnterior: '50.0000', valorNuevo: '55.0000' }] }
     ]
     const puntos = ctx.reconstruirSerieCatalogo(historial, 'costo')
-    assert.equal(puntos.length, 1)
-    assert.equal(puntos[0].valor, 55)
+    assert.equal(puntos.length, 2, 'baseline + valorNuevo')
+    assert.equal(puntos[0].valor, 50, 'baseline')
+    assert.equal(puntos[1].valor, 55, 'valorNuevo')
   })
 
   it('G05 costoPromedio reconstruido', () => {
@@ -140,8 +143,9 @@ describe('G — Catalog chart: reconstruirSerieCatalogo', () => {
       { id: 1, ocurridoEn: '2026-09-01T10:00:00Z', origen: 'EDICION_PRECIOS', detalles: [{ campo: 'precioMayoreo', valorAnterior: '80.0000', valorNuevo: '85.0000' }] }
     ]
     const puntos = ctx.reconstruirSerieCatalogo(historial, 'precioMayoreo')
-    assert.equal(puntos.length, 1)
-    assert.equal(puntos[0].valor, 85)
+    assert.equal(puntos.length, 2, 'baseline + valorNuevo')
+    assert.equal(puntos[0].valor, 80, 'baseline')
+    assert.equal(puntos[1].valor, 85, 'valorNuevo')
   })
 
   it('G07 margen reconstruido', () => {
@@ -150,8 +154,10 @@ describe('G — Catalog chart: reconstruirSerieCatalogo', () => {
       { id: 1, ocurridoEn: '2026-09-01T10:00:00Z', origen: 'EDICION_PRECIOS', detalles: [{ campo: 'margen', valorAnterior: '30.0000', valorNuevo: '35.0000' }] }
     ]
     const puntos = ctx.reconstruirSerieCatalogo(historial, 'margen')
-    assert.equal(puntos.length, 1)
-    assert.equal(puntos[0].valor, 35)
+    assert.equal(puntos.length, 2, 'baseline + valorNuevo')
+    assert.equal(puntos[0].valor, 30, 'baseline')
+    assert.equal(puntos[0].esBaseline, true)
+    assert.equal(puntos[1].valor, 35, 'valorNuevo')
   })
 
   it('G08 orden cronológico ASC', () => {
@@ -161,8 +167,11 @@ describe('G — Catalog chart: reconstruirSerieCatalogo', () => {
       { id: 1, ocurridoEn: '2026-09-01T10:00:00Z', origen: 'EDICION_PRECIOS', detalles: [{ campo: 'precioVenta', valorAnterior: '100.0000', valorNuevo: '150.0000' }] }
     ]
     const puntos = ctx.reconstruirSerieCatalogo(historial, 'precioVenta')
-    assert.equal(puntos[0].valor, 150)
-    assert.equal(puntos[1].valor, 170)
+    assert.equal(puntos.length, 3, 'baseline + 2 valorNuevo')
+    assert.equal(puntos[0].valor, 100, 'baseline from first event')
+    assert.equal(puntos[0].esBaseline, true)
+    assert.equal(puntos[1].valor, 150)
+    assert.equal(puntos[2].valor, 170)
   })
 
   it('G09 mismo timestamp: ordena por id', () => {
@@ -172,8 +181,10 @@ describe('G — Catalog chart: reconstruirSerieCatalogo', () => {
       { id: 1, ocurridoEn: '2026-09-01T10:00:00Z', origen: 'EDICION_PRECIOS', detalles: [{ campo: 'precioVenta', valorAnterior: '100.0000', valorNuevo: '150.0000' }] }
     ]
     const puntos = ctx.reconstruirSerieCatalogo(historial, 'precioVenta')
-    assert.equal(puntos[0].valor, 150)
-    assert.equal(puntos[1].valor, 170)
+    assert.equal(puntos[0].valor, 100, 'baseline from id=1')
+    assert.equal(puntos[0].esBaseline, true)
+    assert.equal(puntos[1].valor, 150)
+    assert.equal(puntos[2].valor, 170)
   })
 
   it('G10 historial vacío devuelve []', () => {
@@ -189,8 +200,10 @@ describe('G — Catalog chart: reconstruirSerieCatalogo', () => {
       { id: 1, ocurridoEn: '2026-09-01T10:00:00Z', origen: 'EDICION_PRECIOS', detalles: [{ campo: 'precioVenta', valorAnterior: '100.0000', valorNuevo: null }] }
     ]
     const puntos = ctx.reconstruirSerieCatalogo(historial, 'precioVenta')
-    assert.equal(puntos.length, 1)
-    assert.equal(puntos[0].valor, null)
+    assert.equal(puntos.length, 2, 'baseline + null point')
+    assert.equal(puntos[0].valor, 100, 'baseline')
+    assert.equal(puntos[0].esBaseline, true)
+    assert.equal(puntos[1].valor, null, 'null valorNuevo')
   })
 })
 
@@ -397,5 +410,67 @@ describe('G — Regression: existing features unchanged', () => {
   it('G40 voice search sin cambios', () => {
     assert.match(SOURCE, /configurarBusquedaVoz/)
     assert.match(SOURCE, / SpeechRecognition/)
+  })
+})
+
+describe('G — Baseline reconstruction: first event previous value', () => {
+  it('G41 first non-creation event includes valorAnterior baseline', () => {
+    const { ctx } = makeCtx()
+    const historial = [
+      { id: 1, ocurridoEn: '2026-09-01T10:00:00Z', origen: 'EDICION_PRECIOS', detalles: [{ campo: 'precioVenta', valorAnterior: '150.0000', valorNuevo: '160.0000' }] },
+      { id: 2, ocurridoEn: '2026-09-10T10:00:00Z', origen: 'EDICION_PRECIOS', detalles: [{ campo: 'precioVenta', valorAnterior: '160.0000', valorNuevo: '170.0000' }] }
+    ]
+    const puntos = ctx.reconstruirSerieCatalogo(historial, 'precioVenta')
+    assert.ok(puntos.length >= 3, 'has baseline + 2 value points')
+    assert.equal(puntos[0].valor, 150, 'first point is valorAnterior baseline')
+    assert.equal(puntos[0].esBaseline, true, 'marked as baseline')
+    assert.equal(puntos[1].valor, 160, 'second point is first valorNuevo')
+    assert.equal(puntos[2].valor, 170, 'third point is second valorNuevo')
+  })
+
+  it('G42 creation null baseline does not create false previous point', () => {
+    const { ctx } = makeCtx()
+    const historial = [
+      { id: 1, ocurridoEn: '2026-09-01T10:00:00Z', origen: 'CREACION_PRODUCTO', detalles: [{ campo: 'precioVenta', valorAnterior: null, valorNuevo: '150.0000' }] }
+    ]
+    const puntos = ctx.reconstruirSerieCatalogo(historial, 'precioVenta')
+    assert.equal(puntos.length, 1, 'only valorNuevo point')
+    assert.equal(puntos[0].valor, 150)
+    assert.ok(!puntos[0].esBaseline, 'no baseline marker')
+  })
+
+  it('G43 zero valorAnterior preserved as real baseline', () => {
+    const { ctx } = makeCtx()
+    const historial = [
+      { id: 1, ocurridoEn: '2026-09-01T10:00:00Z', origen: 'EDICION_PRECIOS', detalles: [{ campo: 'precioVenta', valorAnterior: '0.0000', valorNuevo: '10.0000' }] }
+    ]
+    const puntos = ctx.reconstruirSerieCatalogo(historial, 'precioVenta')
+    assert.equal(puntos[0].valor, 0, 'zero baseline preserved')
+    assert.equal(puntos[0].esBaseline, true)
+    assert.equal(puntos[1].valor, 10)
+  })
+
+  it('G44 same timestamp preserves deterministic economic sequence', () => {
+    const { ctx } = makeCtx()
+    const historial = [
+      { id: 2, ocurridoEn: '2026-09-01T10:00:00Z', origen: 'EDICION_PRECIOS', detalles: [{ campo: 'precioVenta', valorAnterior: '160.0000', valorNuevo: '170.0000' }] },
+      { id: 1, ocurridoEn: '2026-09-01T10:00:00Z', origen: 'EDICION_PRECIOS', detalles: [{ campo: 'precioVenta', valorAnterior: '150.0000', valorNuevo: '160.0000' }] }
+    ]
+    const puntos = ctx.reconstruirSerieCatalogo(historial, 'precioVenta')
+    assert.equal(puntos[0].valor, 150, 'first by id ASC')
+    assert.equal(puntos[1].valor, 160)
+    assert.equal(puntos[2].valor, 170)
+  })
+})
+
+describe('G — Dataset scope and pagination', () => {
+  it('G45 catalog chart shows scope label for paginated data', () => {
+    assert.match(SOURCE, /historial-grafica-scope/)
+    assert.match(SOURCE, /Mostrando evolución de/)
+  })
+
+  it('G46 observed charts show scope label when paginated', () => {
+    assert.match(SOURCE, /historial-grafica-scope/)
+    assert.match(SOURCE, /Mostrando.*registros de la página/)
   })
 })
