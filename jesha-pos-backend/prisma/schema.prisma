@@ -49,6 +49,7 @@ model Empresa {
   MovimientoCaja          MovimientoCaja[]
   MovimientoInventario    MovimientoInventario[]
   OrdenCompra             OrdenCompra[]
+  RecepcionOrdenCompra    RecepcionOrdenCompra[]
   Pedido                  Pedido[]
   Producto                Producto[]
   Promocion               Promocion[]
@@ -390,6 +391,7 @@ model OrdenCompra {
   Empresa                 Empresa                   @relation(fields: [empresaId], references: [id])
   AbonoCompra             AbonoCompra[]
   DetalleOrdenCompra      DetalleOrdenCompra[]
+  RecepcionOrdenCompra    RecepcionOrdenCompra[]
   Proveedor               Proveedor                 @relation(fields: [proveedorId], references: [id])
   Sucursal                Sucursal                  @relation(fields: [sucursalId], references: [id])
   Usuario                 Usuario                   @relation(fields: [usuarioId], references: [id])
@@ -518,6 +520,7 @@ model Proveedor {
   creadoEn                DateTime                  @default(now())
   Empresa                 Empresa                   @relation(fields: [empresaId], references: [id])
   OrdenCompra             OrdenCompra[]
+  RecepcionOrdenCompra    RecepcionOrdenCompra[]
   ProveedorProducto       ProveedorProducto[]
   HistorialPrecioProducto HistorialPrecioProducto[]
 
@@ -545,6 +548,7 @@ model Sucursal {
   InventarioSucursal      InventarioSucursal[]
   MovimientoInventario    MovimientoInventario[]
   OrdenCompra             OrdenCompra[]
+  RecepcionOrdenCompra    RecepcionOrdenCompra[]
   Pedido                  Pedido[]
   Promocion               Promocion[]
   TurnoCaja               TurnoCaja[]
@@ -752,8 +756,9 @@ model Usuario {
   DetalleBitacoraResponsable DetalleBitacora[]         @relation("DetalleBitacoraResponsable")
   Devolucion                 Devolucion[]
   MovimientoInventario       MovimientoInventario[]
-  OrdenCompra                OrdenCompra[]
-  Pedido                     Pedido[]
+  OrdenCompra             OrdenCompra[]
+  RecepcionOrdenCompra    RecepcionOrdenCompra[]
+  Pedido                  Pedido[]
   RetiroBitacoraUsuario      RetiroBitacora[]          @relation("RetiroBitacoraUsuario")
   RetiroBitacoraResponsable  RetiroBitacora[]          @relation("RetiroBitacoraResponsable")
   TurnoCaja                  TurnoCaja[]
@@ -868,6 +873,28 @@ model DetalleOrdenCompra {
   costoUnitarioVenta       Decimal?    @db.Decimal(10, 2)
   OrdenCompra              OrdenCompra @relation(fields: [ordenCompraId], references: [id], onDelete: Cascade)
   Producto                 Producto    @relation(fields: [productoId], references: [id])
+}
+
+model RecepcionOrdenCompra {
+  id                Int      @id @default(autoincrement())
+  empresaId         Int
+  ordenCompraId     Int
+  sucursalId        Int
+  proveedorId       Int
+  usuarioId         Int?
+  claveIdempotencia String?  @db.VarChar(64)
+  fingerprintHash   String?  @db.VarChar(64)
+  respuesta         Json?
+  creadoEn          DateTime @default(now())
+
+  Empresa      Empresa      @relation(fields: [empresaId], references: [id])
+  OrdenCompra  OrdenCompra  @relation(fields: [ordenCompraId], references: [id])
+  Sucursal     Sucursal     @relation(fields: [sucursalId], references: [id])
+  Proveedor    Proveedor    @relation(fields: [proveedorId], references: [id])
+  Usuario      Usuario?     @relation(fields: [usuarioId], references: [id])
+
+  @@unique([empresaId, claveIdempotencia])
+  @@index([ordenCompraId, creadoEn])
 }
 
 model DetallePedido {

@@ -497,6 +497,7 @@ window.cancelarRecepcion = function() {
   ocActual._recibiendo = false
   _preciosCache = {}
   _spDetalleActivo = null
+  sessionStorage.removeItem(`jesha_idem_${ocActual.id}`)
   renderDetalle()
 }
 window.confirmarRecepcion = async function() {
@@ -529,8 +530,22 @@ window.confirmarRecepcion = async function() {
   const btn = document.querySelector('#det-botones-superiores .btn-success')
   if (btn) { btn.disabled = true; btn.textContent = '⟳ Procesando...' }
 
+  const idempotencyKey = (() => {
+    const idKey = `jesha_idem_${ocActual.id}`
+    const existing = sessionStorage.getItem(idKey)
+    if (existing) return existing
+    const k = crypto.randomUUID ? crypto.randomUUID() : ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c => (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16))
+    sessionStorage.setItem(idKey, k)
+    return k
+  })()
+
   try {
-    const data = await apiFetch(`/compras/${ocActual.id}/recibir`, { method:'POST', body: JSON.stringify({ detalles }) })
+    const data = await apiFetch(`/compras/${ocActual.id}/recibir`, {
+      method: 'POST',
+      body: JSON.stringify({ detalles }),
+      headers: { 'Idempotency-Key': idempotencyKey }
+    })
+    sessionStorage.removeItem(`jesha_idem_${ocActual.id}`)
     ocActual = data.data
     ocActual._recibiendo = false
     renderDetalle()

@@ -10,6 +10,7 @@ const construirWhereScopeTenant = require('../../helpers/construirWhereScopeTena
 const { FACTOR_IVA } = require('../../utils/constantes')
 const { verificarStockPostOperacion } = require('../../helpers/verificarStock')
 const { registrarHistorialEconomico } = require('../../helpers/historial-precio-producto')
+const crypto = require('crypto')
 
 async function generarFolio() {
   const d   = new Date()
@@ -22,6 +23,46 @@ async function generarFolio() {
 async function audit(usuarioId, sucursalId, accion, ref) {
   try { await prisma.auditoria.create({ data: { accion, modulo: 'compras', referencia: ref, usuarioId, sucursalId } }) }
   catch(e) { console.error('Audit:', e.message) }
+}
+
+// ── Idempotency: fingerprint computation ──────────────────────────
+function computeReceiptFingerprint(empresaId, ordenCompraId, sucursalId, detalles) {
+  const canonical = {
+    empresaId,
+    ordenCompraId,
+    sucursalId,
+    items: (detalles || [])
+      .filter(d => parseFloat(d.cantidadRecibida) > 0)
+      .map(d => ({
+        detalleId: parseInt(d.detalleId),
+        cantidadRecibida: parseFloat(d.cantidadRecibida).toFixed(3),
+        precioCosto: d.precioCosto != null ? parseFloat(d.precioCosto).toFixed(2) : null,
+        precioVenta: d.precioVenta != null ? parseFloat(d.precioVenta).toFixed(2) : null,
+        tipoFacturaProv: d.tipoFacturaProv || null,
+        costoSinIvaProveedor: d.costoSinIvaProveedor != null ? parseFloat(d.costoSinIvaProveedor).toFixed(2) : null,
+        claveSat: d.claveSat || null,
+        unidadSat: d.unidadSat || null
+      }))
+      .sort((a, b) => a.detalleId - b.detalleId)
+  }
+  return crypto.createHash('sha256').update(JSON.stringify(canonical)).digest('hex')
+}
+
+// ── Idempotency: validate and check existing receipt ──────────────
+const UUID_V4_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+function validateIdempotencyKey(key) {
+  if (!key || typeof key !== 'string') return null
+  const trimmed = key.trim()
+  if (trimmed.length > 64 || !UUID_V4_RE.test(trimmed)) return null
+  return trimmed
+}
+
+async function checkExistingReceipt(empresaId, idempotencyKey) {
+  return prisma.recepcionOrdenCompra.findUnique({
+    where: { empresaId_claveIdempotencia: { empresaId, claveIdempotencia: idempotencyKey } },
+    select: { id: true, fingerprintHash: true, respuesta: true, creadoEn: true }
+  })
 }
 
 const OC_SELECT = {
@@ -303,6 +344,11 @@ const recibir = async (req, res) => {
     if (!detalles || detalles.length === 0)
       return res.status(400).json({ success: false, error: 'Detalles de recepción requeridos' })
 
+    // ── Idempotency key validation ──
+    const rawKey = req.headers['idempotency-key']
+    const idempotencyKey = validateIdempotencyKey(rawKey)
+
+    // ── Pre-flight: fetch OC + details (outside lock, for validation) ──
     const oc = await prisma.ordenCompra.findFirst({
       where:  { id: parseInt(id), empresaId, sucursalId },
       select: {
@@ -317,243 +363,334 @@ const recibir = async (req, res) => {
       }
     })
     if (!oc)                         return res.status(404).json({ success: false, error: 'Orden no encontrada' })
+
+    // ── Idempotency: check BEFORE status validation (replay must work even if OC is RECIBIDO) ──
+    const fingerprintHash = idempotencyKey
+      ? computeReceiptFingerprint(empresaId, parseInt(id), sucursalId, detalles)
+      : null
+
+    if (idempotencyKey) {
+      const existing = await checkExistingReceipt(empresaId, idempotencyKey)
+      if (existing) {
+        if (existing.fingerprintHash && existing.fingerprintHash !== fingerprintHash) {
+          return res.status(409).json({
+            success: false,
+            error: 'Idempotency-Key ya utilizada con payload diferente',
+            codigo: 'KEY_PAYLOAD_DIFERENTE'
+          })
+        }
+        const replayResponse = existing.respuesta || { success: true, message: 'Recepción ya procesada (idempotent replay)' }
+        return res.status(200).json({ ...replayResponse, idempotentReplay: true })
+      }
+    }
+
     if (oc.estado === 'CANCELADO')   return res.status(400).json({ success: false, error: 'Orden cancelada' })
     if (oc.estado === 'RECIBIDO')    return res.status(400).json({ success: false, error: 'Orden ya recibida completamente' })
 
-    // ── Validación cross-company: proveedor pertenece a la empresa ──
     const proveedor = await prisma.proveedor.findFirst({ where: { id: oc.proveedorId, empresaId }, select: { id: true } })
     if (!proveedor) {
       return res.status(400).json({ success: false, error: 'Proveedor no pertenece a esta empresa' })
     }
 
     let totalRecibidoNuevo = 0
+    let resultadoTransaction
 
-    await prisma.$transaction(async tx => {
-      for (const item of detalles) {
-        const detalle = oc.DetalleOrdenCompra.find(d => d.id === parseInt(item.detalleId))
-        if (!detalle) continue
+    try {
+      resultadoTransaction = await prisma.$transaction(async tx => {
+        // ── LOCK: SELECT ... FOR UPDATE on OC ──
+        const [ocLocked] = await tx.$queryRaw`
+          SELECT id, folio, estado, "sucursalId", "proveedorId", "totalRecibido", "totalEstimado"
+          FROM "OrdenCompra"
+          WHERE id = ${parseInt(id)} AND "empresaId" = ${empresaId} AND "sucursalId" = ${sucursalId}
+          FOR UPDATE`
 
-        const cantNueva = parseFloat(item.cantidadRecibida) || 0   // en cajas (unidad de COMPRA)
-        if (cantNueva <= 0) continue
+        if (!ocLocked) throw Object.assign(new Error('Orden no encontrada'), { status: 404 })
+        if (ocLocked.estado === 'CANCELADO') throw Object.assign(new Error('Orden cancelada'), { status: 400 })
+        if (ocLocked.estado === 'RECIBIDO') throw Object.assign(new Error('Orden ya recibida completamente'), { status: 400 })
 
-        // ── Validación cross-company: producto pertenece a la empresa ──
-        if (detalle.Producto && detalle.Producto.empresaId !== empresaId) {
-          throw new Error(`Producto ${detalle.productoId} no pertenece a esta empresa`)
+        // ── RE-READ details after lock ──
+        const detallesLocked = await tx.detalleOrdenCompra.findMany({
+          where: { ordenCompraId: parseInt(id) },
+          select: {
+            id: true, productoId: true, cantidadPedida: true, cantidadRecibida: true, precioCosto: true,
+            factorConversionSnapshot: true, unidadCompraSnapshot: true, unidadVentaSnapshot: true,
+            Producto: { select: { empresaId: true, factorConversion: true, unidadVenta: true, claveSat: true, unidadSat: true } }
+          }
+        })
+
+        // ── Insert idempotency record (P2002 = concurrent winner) ──
+        if (idempotencyKey) {
+          await tx.recepcionOrdenCompra.create({
+            data: {
+              empresaId,
+              ordenCompraId: parseInt(id),
+              sucursalId,
+              proveedorId: ocLocked.proveedorId,
+              usuarioId,
+              claveIdempotencia: idempotencyKey,
+              fingerprintHash
+            }
+          })
         }
 
-        // SAT fields (opcional en recepción)
-        const claveSatRecibido  = item.claveSat ? String(item.claveSat).trim() || null : undefined
-        const unidadSatRecibido = item.unidadSat ? String(item.unidadSat).trim() || null : undefined
+        // ── Per-detail business effects ──
+        const totalRecibMap = {}
+        for (const item of detalles) {
+          const detalle = detallesLocked.find(d => d.id === parseInt(item.detalleId))
+          if (!detalle) continue
 
-        // Factor: snapshot de la OC ?? producto vivo (OC legacy) ?? 1
-        const factorRaw =
-          detalle.factorConversionSnapshot != null ? parseFloat(detalle.factorConversionSnapshot) :
-          detalle.Producto?.factorConversion != null ? parseFloat(detalle.Producto.factorConversion) : 1
-        const safeFactor = (Number.isFinite(factorRaw) && factorRaw > 0) ? factorRaw : 1
+          const cantNueva = parseFloat(item.cantidadRecibida) || 0
+          if (cantNueva <= 0) continue
 
-        const cantYaRecibida    = parseFloat(detalle.cantidadRecibida)
-        const cantTotalRecibida = parseFloat((cantYaRecibida + cantNueva).toFixed(3))   // cajas
-
-        // Costo por CAJA, del payload (gana el payload)
-        const precioCostoCaja = (item.precioCosto != null && parseFloat(item.precioCosto) > 0)
-          ? parseFloat(item.precioCosto)
-          : parseFloat(detalle.precioCosto)
-
-        // Base económica: DESGLOSE usa sin IVA; ambos por CAJA
-        const esDesglose  = item.tipoFacturaProv === 'DESGLOSE'
-        const costoSinIva = item.costoSinIvaProveedor != null ? parseFloat(item.costoSinIvaProveedor) : null
-        const baseCaja    = (esDesglose && costoSinIva && costoSinIva > 0) ? costoSinIva : precioCostoCaja
-
-        // Costo por PIEZA = base / factor
-        const costoUnitarioVenta = parseFloat((baseCaja / safeFactor).toFixed(2))
-
-        // Valor de compra recibido (cajas × precio-caja), para totalRecibido de la OC
-        const subtotalNuevo = parseFloat((precioCostoCaja * cantNueva).toFixed(2))
-        totalRecibidoNuevo += subtotalNuevo
-
-        // Foto del producto ANTES (auditoría + base del costo promedio + historial económico)
-        const prodAntes = await tx.producto.findUnique({
-          where: { id: detalle.productoId },
-          select: {
-            costo: true, costoPromedio: true, precioVenta: true, precioBase: true,
-            precioMayoreo: true, margen: true, costoSinIvaProveedor: true, factorConversion: true
+          if (detalle.Producto && detalle.Producto.empresaId !== empresaId) {
+            throw Object.assign(new Error(`Producto ${detalle.productoId} no pertenece a esta empresa`), { status: 400 })
           }
-        })
-        const costoAnterior       = prodAntes?.costo != null ? parseFloat(prodAntes.costo) : null
-        const precioVentaAnterior = prodAntes?.precioVenta != null ? parseFloat(prodAntes.precioVenta) : null
-        const precioVentaNuevo    = (item.precioVenta != null && parseFloat(item.precioVenta) > 0)
-          ? parseFloat(item.precioVenta) : null
 
-        // Actualizar detalle — cantidades, costo y snapshot de conversión
-        await tx.detalleOrdenCompra.update({
-          where: { id: detalle.id },
-          data:  {
-            precioCosto:         precioCostoCaja,                      // por CAJA
-            cantidadRecibida:    cantTotalRecibida,                    // cajas
-            subtotalPedido:      parseFloat((precioCostoCaja * parseFloat(detalle.cantidadPedida)).toFixed(2)),
-            subtotalRecibido:    parseFloat((precioCostoCaja * cantTotalRecibida).toFixed(2)),
-            costoAnterior,
-            precioVentaAnterior,
-            precioVentaNuevo,
-            facturaDesglosada:   esDesglose,
-            costoUnitarioVenta                                      // snapshot costo por PIEZA de esta recepción
+          const cantYaRecibida = parseFloat(detalle.cantidadRecibida)
+          const cantTotalRecibida = parseFloat((cantYaRecibida + cantNueva).toFixed(3))
+
+          // ── Upper-bound guard ──
+          const cantidadPedida = parseFloat(detalle.cantidadPedida)
+          if (cantTotalRecibida > cantidadPedida + 0.001) {
+            throw Object.assign(new Error(
+              `Cannot receive ${cantTotalRecibida} — ordered ${cantidadPedida} (detail ${detalle.id})`
+            ), { status: 400, codigo: 'OVER_RECEIPT' })
           }
-        })
 
-        // Upsert inventario — crea registro si no existe
-        const inv = await tx.inventarioSucursal.upsert({
-          where: { productoId_sucursalId: { productoId: detalle.productoId, sucursalId: oc.sucursalId } },
-          update: {},
-          create: { productoId: detalle.productoId, sucursalId: oc.sucursalId, stockActual: 0 }
-        })
+          const claveSatRecibido  = item.claveSat ? String(item.claveSat).trim() || null : undefined
+          const unidadSatRecibido = item.unidadSat ? String(item.unidadSat).trim() || null : undefined
 
-        const stockAntes   = parseFloat(inv.stockActual)
-        const stockEntrada = parseFloat((cantNueva * safeFactor).toFixed(3))   // cajas → PIEZAS
-        const stockDespues = parseFloat((stockAntes + stockEntrada).toFixed(3))
+          const factorRaw =
+            detalle.factorConversionSnapshot != null ? parseFloat(detalle.factorConversionSnapshot) :
+            detalle.Producto?.factorConversion != null ? parseFloat(detalle.Producto.factorConversion) : 1
+          const safeFactor = (Number.isFinite(factorRaw) && factorRaw > 0) ? factorRaw : 1
 
-        // Costo promedio ponderado en PIEZAS y costo por PIEZA
-        const costoPromAnterior  = parseFloat(prodAntes?.costoPromedio ?? costoUnitarioVenta)
-        const nuevoCostoPromedio = (stockAntes + stockEntrada) > 0
-          ? parseFloat(((stockAntes * costoPromAnterior + stockEntrada * costoUnitarioVenta) / (stockAntes + stockEntrada)).toFixed(4))
-          : costoUnitarioVenta
+          const precioCostoCaja = (item.precioCosto != null && parseFloat(item.precioCosto) > 0)
+            ? parseFloat(item.precioCosto)
+            : parseFloat(detalle.precioCosto)
 
-        await tx.inventarioSucursal.update({
-          where: { productoId_sucursalId: { productoId: detalle.productoId, sucursalId: oc.sucursalId } },
-          data:  { stockActual: stockDespues }
-        })
+          const esDesglose  = item.tipoFacturaProv === 'DESGLOSE'
+          const costoSinIva = item.costoSinIvaProveedor != null ? parseFloat(item.costoSinIvaProveedor) : null
+          const baseCaja    = (esDesglose && costoSinIva && costoSinIva > 0) ? costoSinIva : precioCostoCaja
+          const costoUnitarioVenta = parseFloat((baseCaja / safeFactor).toFixed(2))
 
-        const tipoMapeado = esDesglose ? 'DESGLOSE' : 'NETO'
+          const subtotalNuevo = parseFloat((precioCostoCaja * cantNueva).toFixed(2))
+          totalRecibidoNuevo += subtotalNuevo
 
-        // Margen: SIEMPRE que cambie el costo (fuera del spread de precioVenta),
-        // con fallback al precioVenta anterior y tope DECIMAL(5,2).
-        const pvParaMargen =
-          (precioVentaNuevo && precioVentaNuevo > 0) ? precioVentaNuevo :
-          (precioVentaAnterior && precioVentaAnterior > 0) ? precioVentaAnterior : null
-        const margenRecalc = (pvParaMargen && costoUnitarioVenta > 0)
-          ? parseFloat(Math.min(((pvParaMargen / costoUnitarioVenta - 1) * 100), 999.99).toFixed(2))
-          : null
+          // ── Snapshot BEFORE ──
+          const prodAntes = await tx.producto.findUnique({
+            where: { id: detalle.productoId },
+            select: {
+              costo: true, costoPromedio: true, precioVenta: true, precioBase: true,
+              precioMayoreo: true, margen: true, costoSinIvaProveedor: true, factorConversion: true
+            }
+          })
+          const costoAnterior       = prodAntes?.costo != null ? parseFloat(prodAntes.costo) : null
+          const precioVentaAnterior = prodAntes?.precioVenta != null ? parseFloat(prodAntes.precioVenta) : null
+          const precioVentaNuevo    = (item.precioVenta != null && parseFloat(item.precioVenta) > 0)
+            ? parseFloat(item.precioVenta) : null
 
-        await tx.producto.update({
-          where: { id: detalle.productoId },
-          data:  {
-            costo:           costoUnitarioVenta,                    // por PIEZA
-            costoPromedio:   nuevoCostoPromedio,                    // por PIEZA
-            margen:          margenRecalc,                          // SIEMPRE
-            tipoFacturaProv: tipoMapeado,
-            ...(tipoMapeado === 'DESGLOSE' && costoSinIva && costoSinIva > 0 ? { costoSinIvaProveedor: costoSinIva } : {}),
-            ...(tipoMapeado === 'NETO' ? { costoSinIvaProveedor: null } : {}),
-            ...(precioVentaNuevo && precioVentaNuevo > 0 ? {
-              precioVenta: precioVentaNuevo,
-              precioBase:  parseFloat((precioVentaNuevo / FACTOR_IVA).toFixed(2))
-            } : {}),
-            ...(claveSatRecibido !== undefined ? { claveSat: claveSatRecibido } : {}),
-            ...(unidadSatRecibido !== undefined ? { unidadSat: unidadSatRecibido } : {})
-          }
-        })
+          // ── Update detail ──
+          await tx.detalleOrdenCompra.update({
+            where: { id: detalle.id },
+            data:  {
+              precioCosto:         precioCostoCaja,
+              cantidadRecibida:    cantTotalRecibida,
+              subtotalPedido:      parseFloat((precioCostoCaja * parseFloat(detalle.cantidadPedida)).toFixed(2)),
+              subtotalRecibido:    parseFloat((precioCostoCaja * cantTotalRecibida).toFixed(2)),
+              costoAnterior,
+              precioVentaAnterior,
+              precioVentaNuevo,
+              facturaDesglosada:   esDesglose,
+              costoUnitarioVenta
+            }
+          })
 
-        // ── Historial económico de producto (P2-3 Fase 1B) ──
-        // Refetch para obtener estado real post-update (maneja condicionales correctamente)
-        const prodDespues = await tx.producto.findUnique({
-          where: { id: detalle.productoId },
-          select: {
-            costo: true, costoPromedio: true, precioVenta: true, precioBase: true,
-            precioMayoreo: true, margen: true, costoSinIvaProveedor: true, factorConversion: true
-          }
-        })
+          // ── Inventory ──
+          const inv = await tx.inventarioSucursal.upsert({
+            where: { productoId_sucursalId: { productoId: detalle.productoId, sucursalId: ocLocked.sucursalId } },
+            update: {},
+            create: { productoId: detalle.productoId, sucursalId: ocLocked.sucursalId, stockActual: 0 }
+          })
 
-        await registrarHistorialEconomico(tx, {
-          empresaId,
-          productoId:    detalle.productoId,
-          origen:        'COMPRA',
-          accion:        'RECEPCION_COMPRA',
-          referencia:    `OC:${oc.id}`,
-          ordenCompraId: oc.id,
-          proveedorId:   oc.proveedorId,
-          usuarioId,
-          sucursalId:    oc.sucursalId,
-          antes: {
-            costo:              prodAntes?.costo,
-            costoPromedio:      prodAntes?.costoPromedio,
-            precioVenta:        prodAntes?.precioVenta,
-            precioBase:         prodAntes?.precioBase,
-            precioMayoreo:      prodAntes?.precioMayoreo,
-            margen:             prodAntes?.margen,
-            costoSinIvaProveedor: prodAntes?.costoSinIvaProveedor,
-            factorConversion:   prodAntes?.factorConversion
-          },
-          despues: {
-            costo:              prodDespues?.costo,
-            costoPromedio:      prodDespues?.costoPromedio,
-            precioVenta:        prodDespues?.precioVenta,
-            precioBase:         prodDespues?.precioBase,
-            precioMayoreo:      prodDespues?.precioMayoreo,
-            margen:             prodDespues?.margen,
-            costoSinIvaProveedor: prodDespues?.costoSinIvaProveedor,
-            factorConversion:   prodDespues?.factorConversion
-          }
-        })
-        // ── Fin historial económico ──
+          const stockAntes   = parseFloat(inv.stockActual)
+          const stockEntrada = parseFloat((cantNueva * safeFactor).toFixed(3))
+          const stockDespues = parseFloat((stockAntes + stockEntrada).toFixed(3))
 
-        // ProveedorProducto NO tiene empresaId
-        await tx.proveedorProducto.upsert({
-          where: { proveedorId_productoId: { proveedorId: oc.proveedorId, productoId: detalle.productoId } },
-          update: { precioCosto: precioCostoCaja, activo: true },   // por CAJA
-          create: { proveedorId: oc.proveedorId, productoId: detalle.productoId, precioCosto: precioCostoCaja, activo: true }
-        })
+          const costoPromAnterior  = parseFloat(prodAntes?.costoPromedio ?? costoUnitarioVenta)
+          const nuevoCostoPromedio = (stockAntes + stockEntrada) > 0
+            ? parseFloat(((stockAntes * costoPromAnterior + stockEntrada * costoUnitarioVenta) / (stockAntes + stockEntrada)).toFixed(4))
+            : costoUnitarioVenta
 
-        await tx.movimientoInventario.create({
-          data: {
+          await tx.inventarioSucursal.update({
+            where: { productoId_sucursalId: { productoId: detalle.productoId, sucursalId: ocLocked.sucursalId } },
+            data:  { stockActual: stockDespues }
+          })
+
+          const tipoMapeado = esDesglose ? 'DESGLOSE' : 'NETO'
+          const pvParaMargen =
+            (precioVentaNuevo && precioVentaNuevo > 0) ? precioVentaNuevo :
+            (precioVentaAnterior && precioVentaAnterior > 0) ? precioVentaAnterior : null
+          const margenRecalc = (pvParaMargen && costoUnitarioVenta > 0)
+            ? parseFloat(Math.min(((pvParaMargen / costoUnitarioVenta - 1) * 100), 999.99).toFixed(2))
+            : null
+
+          await tx.producto.update({
+            where: { id: detalle.productoId },
+            data:  {
+              costo:           costoUnitarioVenta,
+              costoPromedio:   nuevoCostoPromedio,
+              margen:          margenRecalc,
+              tipoFacturaProv: tipoMapeado,
+              ...(tipoMapeado === 'DESGLOSE' && costoSinIva && costoSinIva > 0 ? { costoSinIvaProveedor: costoSinIva } : {}),
+              ...(tipoMapeado === 'NETO' ? { costoSinIvaProveedor: null } : {}),
+              ...(precioVentaNuevo && precioVentaNuevo > 0 ? {
+                precioVenta: precioVentaNuevo,
+                precioBase:  parseFloat((precioVentaNuevo / FACTOR_IVA).toFixed(2))
+              } : {}),
+              ...(claveSatRecibido !== undefined ? { claveSat: claveSatRecibido } : {}),
+              ...(unidadSatRecibido !== undefined ? { unidadSat: unidadSatRecibido } : {})
+            }
+          })
+
+          const prodDespues = await tx.producto.findUnique({
+            where: { id: detalle.productoId },
+            select: {
+              costo: true, costoPromedio: true, precioVenta: true, precioBase: true,
+              precioMayoreo: true, margen: true, costoSinIvaProveedor: true, factorConversion: true
+            }
+          })
+
+          await registrarHistorialEconomico(tx, {
             empresaId,
             productoId:    detalle.productoId,
-            sucursalId:    oc.sucursalId,
+            origen:        'COMPRA',
+            accion:        'RECEPCION_COMPRA',
+            referencia:    `OC:${ocLocked.id}`,
+            ordenCompraId: ocLocked.id,
+            proveedorId:   ocLocked.proveedorId,
             usuarioId,
-            tipo:          'ENTRADA_COMPRA',
-            cantidad:      stockEntrada,                            // PIEZAS
-            stockAntes,
-            stockDespues,
-            costoUnitario: costoUnitarioVenta,                      // por PIEZA
-            referencia:    oc.folio
+            sucursalId:    ocLocked.sucursalId,
+            antes: {
+              costo:              prodAntes?.costo,
+              costoPromedio:      prodAntes?.costoPromedio,
+              precioVenta:        prodAntes?.precioVenta,
+              precioBase:         prodAntes?.precioBase,
+              precioMayoreo:      prodAntes?.precioMayoreo,
+              margen:             prodAntes?.margen,
+              costoSinIvaProveedor: prodAntes?.costoSinIvaProveedor,
+              factorConversion:   prodAntes?.factorConversion
+            },
+            despues: {
+              costo:              prodDespues?.costo,
+              costoPromedio:      prodDespues?.costoPromedio,
+              precioVenta:        prodDespues?.precioVenta,
+              precioBase:         prodDespues?.precioBase,
+              precioMayoreo:      prodDespues?.precioMayoreo,
+              margen:             prodDespues?.margen,
+              costoSinIvaProveedor: prodDespues?.costoSinIvaProveedor,
+              factorConversion:   prodDespues?.factorConversion
+            }
+          })
+
+          await tx.proveedorProducto.upsert({
+            where: { proveedorId_productoId: { proveedorId: ocLocked.proveedorId, productoId: detalle.productoId } },
+            update: { precioCosto: precioCostoCaja, activo: true },
+            create: { proveedorId: ocLocked.proveedorId, productoId: detalle.productoId, precioCosto: precioCostoCaja, activo: true }
+          })
+
+          await tx.movimientoInventario.create({
+            data: {
+              empresaId,
+              productoId:    detalle.productoId,
+              sucursalId:    ocLocked.sucursalId,
+              usuarioId,
+              tipo:          'ENTRADA_COMPRA',
+              cantidad:      stockEntrada,
+              stockAntes,
+              stockDespues,
+              costoUnitario: costoUnitarioVenta,
+              referencia:    ocLocked.folio
+            }
+          })
+
+          totalRecibMap[detalle.id] = cantNueva
+        }
+
+        // ── OC state update ──
+        const detallesConLock = await tx.detalleOrdenCompra.findMany({
+          where: { ordenCompraId: parseInt(id) },
+          select: { id: true, cantidadPedida: true, cantidadRecibida: true, subtotalPedido: true }
+        })
+        const todoCompleto = detallesConLock.every(d => {
+          const nuevaRec = totalRecibMap[d.id] || 0
+          return (parseFloat(d.cantidadRecibida) + nuevaRec) >= parseFloat(d.cantidadPedida)
+        })
+        const nuevoEstado = todoCompleto ? 'RECIBIDO' : 'RECIBIDO_PARCIAL'
+
+        const totalRecibidoAcumulado = parseFloat((parseFloat(ocLocked.totalRecibido || 0) + totalRecibidoNuevo).toFixed(2))
+        const totalEstimadoNuevo = parseFloat(
+          detallesConLock.reduce((s, d) => s + parseFloat(d.subtotalPedido), 0).toFixed(2)
+        )
+
+        await tx.ordenCompra.update({
+          where: { id: parseInt(id) },
+          data:  {
+            estado:        nuevoEstado,
+            totalRecibido: totalRecibidoAcumulado,
+            totalEstimado: totalEstimadoNuevo,
+            recibidaEn:    new Date()
           }
         })
-      }
 
-      // Determinar nuevo estado
-      const totalRecibMap = Object.fromEntries(
-        detalles.map(d => [d.detalleId, parseFloat(d.cantidadRecibida) || 0])
-      )
-      const todoCompleto = oc.DetalleOrdenCompra.every(d => {
-        const yaRecibido = parseFloat(d.cantidadRecibida)
-        const nuevaRec   = totalRecibMap[d.id] || 0
-        return (yaRecibido + nuevaRec) >= parseFloat(d.cantidadPedida)
-      })
-      const nuevoEstado = todoCompleto ? 'RECIBIDO' : 'RECIBIDO_PARCIAL'
+        // ── Build response snapshot ──
+        const ocFinal = await tx.ordenCompra.findUnique({ where: { id: parseInt(id) }, select: OC_SELECT })
+        const responseSnapshot = { success: true, data: ocFinal }
 
-      const ocConTotal = await tx.ordenCompra.findUnique({ where: { id: parseInt(id) }, select: { totalRecibido: true } })
-      const totalRecibidoAcumulado = parseFloat((parseFloat(ocConTotal.totalRecibido || 0) + totalRecibidoNuevo).toFixed(2))
-
-      const detallesActuales = await tx.detalleOrdenCompra.findMany({
-        where: { ordenCompraId: parseInt(id) },
-        select: { subtotalPedido: true }
-      })
-      const totalEstimadoNuevo = parseFloat(
-        detallesActuales.reduce((s, d) => s + parseFloat(d.subtotalPedido), 0).toFixed(2)
-      )
-
-      await tx.ordenCompra.update({
-        where: { id: parseInt(id) },
-        data:  {
-          estado:        nuevoEstado,
-          totalRecibido: totalRecibidoAcumulado,
-          totalEstimado: totalEstimadoNuevo,
-          recibidaEn:    new Date()
+        // ── Update receipt record with response ──
+        if (idempotencyKey) {
+          try {
+            await tx.recepcionOrdenCompra.update({
+              where: { empresaId_claveIdempotencia: { empresaId, claveIdempotencia: idempotencyKey } },
+              data: { respuesta: responseSnapshot }
+            })
+          } catch (_) { /* best effort — receipt already exists */ }
         }
+
+        return responseSnapshot
       })
-    })
+    } catch (txErr) {
+      // ── P2002: concurrent insert of same idempotency key ──
+      if (txErr.code === 'P2002' && idempotencyKey) {
+        const isRecepcionConflict =
+          txErr.meta?.modelName === 'RecepcionOrdenCompra' ||
+          (Array.isArray(txErr.meta?.target) && txErr.meta.target.some(t => t.includes('claveIdempotencia')))
+        if (isRecepcionConflict) {
+          const existing = await checkExistingReceipt(empresaId, idempotencyKey)
+          if (existing) {
+            if (existing.fingerprintHash && existing.fingerprintHash !== fingerprintHash) {
+              return res.status(409).json({
+                success: false,
+                error: 'Idempotency-Key ya utilizada con payload diferente',
+                codigo: 'KEY_PAYLOAD_DIFERENTE'
+              })
+            }
+            const replayResponse = existing.respuesta || { success: true, message: 'Recepción ya procesada (idempotent replay)' }
+            return res.status(200).json({ ...replayResponse, idempotentReplay: true })
+          }
+        }
+      }
+      // ── Business errors from tx (re-thrown with status) ──
+      if (txErr.status) {
+        return res.status(txErr.status).json({ success: false, error: txErr.message, codigo: txErr.codigo || null })
+      }
+      throw txErr
+    }
 
+    // ── Post-transaction: audit (non-blocking) ──
     await audit(usuarioId, sucursalId, 'RECIBIR_COMPRA', oc.folio)
-    const ocActualizada = await prisma.ordenCompra.findUnique({ where: { id: parseInt(id) }, select: OC_SELECT })
 
-    // Verificar stock post-operación (no bloqueante)
+    // ── Stock alerts (non-blocking) ──
     const productoIdsRecibidos = (detalles || [])
       .map(d => oc.DetalleOrdenCompra.find(doc => doc.id === parseInt(d.detalleId))?.productoId)
       .filter(Boolean)
@@ -566,7 +703,7 @@ const recibir = async (req, res) => {
       }
     }
 
-    res.json({ success: true, data: ocActualizada, stockAlerts })
+    res.json({ ...resultadoTransaction, stockAlerts })
   } catch (err) {
     console.error('❌ recibir compra:', err)
     res.status(500).json({ success: false, error: 'No fue posible registrar la recepción. Intenta nuevamente.' })
