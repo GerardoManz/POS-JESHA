@@ -50,6 +50,7 @@ model Empresa {
   MovimientoInventario    MovimientoInventario[]
   OrdenCompra             OrdenCompra[]
   RecepcionOrdenCompra    RecepcionOrdenCompra[]
+  ImportacionProductos    ImportacionProductos[]
   Pedido                  Pedido[]
   Producto                Producto[]
   Promocion               Promocion[]
@@ -549,6 +550,7 @@ model Sucursal {
   MovimientoInventario    MovimientoInventario[]
   OrdenCompra             OrdenCompra[]
   RecepcionOrdenCompra    RecepcionOrdenCompra[]
+  ImportacionProductos    ImportacionProductos[]
   Pedido                  Pedido[]
   Promocion               Promocion[]
   TurnoCaja               TurnoCaja[]
@@ -758,6 +760,7 @@ model Usuario {
   MovimientoInventario       MovimientoInventario[]
   OrdenCompra             OrdenCompra[]
   RecepcionOrdenCompra    RecepcionOrdenCompra[]
+  ImportacionProductos    ImportacionProductos[]
   Pedido                  Pedido[]
   RetiroBitacoraUsuario      RetiroBitacora[]          @relation("RetiroBitacoraUsuario")
   RetiroBitacoraResponsable  RetiroBitacora[]          @relation("RetiroBitacoraResponsable")
@@ -895,6 +898,58 @@ model RecepcionOrdenCompra {
 
   @@unique([empresaId, claveIdempotencia])
   @@index([ordenCompraId, creadoEn])
+}
+
+model ImportacionProductos {
+  id                Int      @id @default(autoincrement())
+  empresaId         Int
+  usuarioId         Int?
+  sucursalId        Int?
+  claveIdempotencia String   @db.VarChar(64)
+  fingerprintHash   String   @db.VarChar(64)
+  tipo              String   // 'upsert' | 'solo_nuevos'
+  estado            String   @default("PROCESANDO") // 'PROCESANDO' | 'COMPLETADA' | 'FALLIDA'
+  totalFilas        Int
+  filasProcesadas   Int      @default(0)
+  creados           Int      @default(0)
+  actualizados      Int      @default(0)
+  vinculaciones     Int      @default(0)
+  omitidos          Int      @default(0)
+  errores           Int      @default(0)
+  advertencias      Int      @default(0)
+  respuesta         Json?
+  leaseToken        String?  @db.VarChar(64)
+  leaseExpiresAt    DateTime?
+  creadoEn          DateTime @default(now())
+  actualizarEn      DateTime @updatedAt
+
+  Empresa  Empresa   @relation(fields: [empresaId], references: [id])
+  Usuario  Usuario?  @relation(fields: [usuarioId], references: [id])
+  Sucursal Sucursal? @relation(fields: [sucursalId], references: [id])
+
+  Detalle ImportacionProductosDetalle[]
+
+  @@unique([empresaId, claveIdempotencia])
+  @@index([empresaId, creadoEn])
+}
+
+model ImportacionProductosDetalle {
+  id              Int    @id @default(autoincrement())
+  importacionId   Int
+  fila            Int
+  codigoInterno   String
+  estado          String // 'COMPLETADA' | 'ERROR_VALIDACION' | 'ERROR_SISTEMA'
+  accion          String // 'CREADO' | 'ACTUALIZADO' | 'OMITIDO' | 'ERROR'
+  productoId      Int?
+  vinculaciones   Int    @default(0)
+  error           String?
+  advertencia     String?
+  mensaje         String?
+
+  ImportacionProductos ImportacionProductos @relation(fields: [importacionId], references: [id], onDelete: Cascade)
+
+  @@unique([importacionId, fila])
+  @@index([importacionId])
 }
 
 model DetallePedido {

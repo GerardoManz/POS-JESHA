@@ -12,6 +12,19 @@ const {
     normalizarCodigoBarras,
     parsearErrorPrismaProducto
 } = require('./productos.helpers')
+const {
+    validateIdempotencyKey,
+    computeImportFingerprint,
+    beginImportCommand,
+    renewLease,
+    aggregateFromDetails,
+    finalizeImport,
+    failImport,
+    BEGIN_RESULT,
+    LEASE_DURATION_MS,
+} = require('./importacion.idempotency')
+
+const crypto = require('crypto')
 
 const {
     normalizarUnidadVenta,
@@ -56,7 +69,7 @@ function parseCSVLine(line) {
 /**
  * Parsea buffer CSV completo → array de objetos {header: valor}
  */
-function parsearCSVBuffer(buffer) {
+function parsearCSVBuffer(buffer, { conservarInvalidas = false } = {}) {
     const texto = buffer.toString('utf-8').replace(/\r\n/g, '\n').replace(/\r/g, '\n')
 
     // ── Tokenizar carácter a carácter (RFC 4180) ──────────────────────────
@@ -109,10 +122,8 @@ function parsearCSVBuffer(buffer) {
             obj[h] = val
         })
 
-        // Solo incluir filas que tengan CLAVE
-        if (obj['CLAVE']) {
-            filas.push(obj)
-        }
+        obj._filaOrigen = i + 1
+        if (conservarInvalidas || obj['CLAVE']) filas.push(obj)
     }
 
     return { headers, filas }
@@ -418,7 +429,7 @@ async function preSeedProveedores(filas, empresaId) {
 
     // 2. Cargar todos los proveedores existentes en BD
     const todosEnBD = await prisma.proveedor.findMany({
-        where: { activo: true },
+        where: { empresaId, activo: true },
         select: { id: true, nombreOficial: true, alias: true }
     })
 
@@ -471,9 +482,20 @@ async function preSeedProveedores(filas, empresaId) {
 /**
  * Busca categoriaId en el cache ya poblado (sin queries, sin race condition)
  */
-async function obtenerCategoriaFallback() {
-    const primera = await prisma.categoria.findFirst({ orderBy: { id: 'asc' }, select: { id: true } })
-    return primera ? primera.id : null
+async function obtenerCategoriaFallback(empresaId) {
+    const tenant = await prisma.categoria.findFirst({
+        where: { empresaId },
+        orderBy: { id: 'asc' },
+        select: { id: true }
+    })
+    if (tenant) return tenant.id
+
+    const global = await prisma.categoria.findFirst({
+        where: { empresaId: null, esGlobal: true },
+        orderBy: { id: 'asc' },
+        select: { id: true }
+    })
+    return global ? global.id : null
 }
 
 function obtenerCategoriaIdDelCache(cacheCats, nombreDepto, nombreCat, fallbackId) {
@@ -545,7 +567,7 @@ exports.importarCSV = async (req, res) => {
         const cacheProveedores = await preSeedProveedores(filasValidas, empresaId)
 
         // ── Obtener categoría fallback (primera existente en BD) ──
-        const categoriaFallbackId = await obtenerCategoriaFallback()
+        const categoriaFallbackId = await obtenerCategoriaFallback(empresaId)
         if (!categoriaFallbackId) {
             return res.status(400).json({
                 error: 'No hay categorías en la base de datos. Crea al menos una categoría primero.',
@@ -665,6 +687,7 @@ exports.importarCSV = async (req, res) => {
                                     vinculaciones++
                                 }
                             }
+
                         })
                         actualizados++
                     } else {
@@ -749,6 +772,7 @@ exports.importarCSV = async (req, res) => {
                                         vinculaciones++
                                     }
                                 }
+
                             })
                         } catch (txErr) {
                             throw txErr
@@ -762,6 +786,7 @@ exports.importarCSV = async (req, res) => {
                         clave: fila['CLAVE'],
                         error: 'No fue posible importar esta fila. Verifica sus datos y vuelve a intentarlo.'
                     })
+
                 }
             })
 
@@ -868,7 +893,7 @@ exports.importarSoloNuevos = async (req, res) => {
         const cacheProveedores = await preSeedProveedores(filasValidas, empresaId)
 
         // ── Obtener categoría fallback ──
-        const categoriaFallbackId = await obtenerCategoriaFallback()
+        const categoriaFallbackId = await obtenerCategoriaFallback(empresaId)
         if (!categoriaFallbackId) {
             return res.status(400).json({
                 error: 'No hay categorías en la base de datos. Crea al menos una categoría primero.',
@@ -1031,6 +1056,7 @@ exports.importarSoloNuevos = async (req, res) => {
                                     vinculaciones++
                                 }
                             }
+
                         })
                     } catch (txErr) {
                         throw txErr
@@ -1044,6 +1070,7 @@ exports.importarSoloNuevos = async (req, res) => {
                         clave: fila['CLAVE'],
                         error: 'No fue posible importar esta fila. Verifica sus datos y vuelve a intentarlo.'
                     })
+
                 }
             })
 
@@ -1083,3 +1110,556 @@ exports.importarSoloNuevos = async (req, res) => {
         })
     }
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPORTACIÓN IDEMPOTENTE — una fila, una transacción, un detalle
+// ═══════════════════════════════════════════════════════════════════
+
+const importarCSVLegacy = exports.importarCSV
+const importarSoloNuevosLegacy = exports.importarSoloNuevos
+
+function normalizarTextoFingerprint(value, upper = false) {
+    const text = value == null ? null : String(value).trim()
+    if (!text) return null
+    return upper ? text.toUpperCase() : text
+}
+
+function construirFilaFingerprint(fila) {
+    let data = {}
+    if (fila['CLAVE']) {
+        try { data = mapearProducto(fila) } catch (_) { data = {} }
+    }
+
+    return {
+        fila: fila._filaOrigen,
+        codigoInterno: data.codigoInterno ?? normalizarTextoFingerprint(fila['CLAVE']),
+        codigoBarras: data.codigoBarras ?? normalizarCodigoBarras(fila['CLAVE ALTERNA']),
+        nombre: data.nombre ?? normalizarTextoFingerprint(fila['DESCRIPCION']),
+        descripcion: data.descripcion ?? normalizarTextoFingerprint(fila['CARACTERISTICAS']),
+        precioBase: fila['PRECIO 1'],
+        precioVenta: fila['PRECIO_VENTA'],
+        costo: fila['PRECIO COMPRA'],
+        claveSat: normalizarTextoFingerprint(fila['CLAVE SAT']),
+        unidadSat: normalizarTextoFingerprint(fila['UNIDAD SAT'], true),
+        tipo: normalizarTextoFingerprint(fila['TIPO'] || fila['TIPO DE PRODUCTO'], true) || 'PRODUCTO',
+        esGranel: normalizarTextoFingerprint(fila['GRANEL (S/N)'], true) === 'S',
+        unidadVenta: data.unidadVenta ?? normalizarTextoFingerprint(fila['UNIDAD'] || fila['UNIDAD VENTA'], true),
+        unidadCompra: normalizarTextoFingerprint(fila['UNIDAD COMPRA'], true),
+        factorConversion: fila['FACTOR CONVERSIÓN'] || fila['FACTOR_CONVERSION'] || null,
+        imagenUrl: normalizarTextoFingerprint(fila['IMAGEN_URL']),
+        stockInicial: fila['EXIST.'],
+        stockMinimo: fila['INV_MIN'],
+        stockMaximo: fila['INV_MAX'],
+        departamento: normalizarTextoFingerprint(fila['DEPARTAMENTO'], true),
+        categoria: normalizarTextoFingerprint(fila['CATEGORIA']),
+        proveedorNombre: normalizarNombreProveedor(fila['PROVEEDOR']),
+        proveedorApodo: normalizarTextoFingerprint(fila['APODO_PROVEEDOR']),
+        errorMapeo: data._error || null,
+    }
+}
+
+async function buscarOCrearDepartamentoTx(tx, empresaId, nombre) {
+    let departamento = await tx.departamento.findFirst({
+        where: { empresaId, nombre: { equals: nombre, mode: 'insensitive' } },
+        select: { id: true }
+    })
+    if (departamento) return departamento.id
+
+    departamento = await tx.departamento.upsert({
+        where: { empresaId_nombre: { empresaId, nombre } },
+        update: { activo: true },
+        create: { empresaId, nombre, activo: true, esGlobal: false },
+        select: { id: true }
+    })
+    if (!departamento) throw new Error(`No fue posible resolver el departamento "${nombre}".`)
+    return departamento.id
+}
+
+async function resolverCategoriaFilaTx(tx, fila, empresaId) {
+    const departamentoNombre = (fila['DEPARTAMENTO'] || '').toUpperCase().trim()
+    const categoriaNombre = (fila['CATEGORIA'] || '').trim()
+
+    if (!departamentoNombre || !categoriaNombre) {
+        const tenant = await tx.categoria.findFirst({
+            where: { empresaId },
+            orderBy: { id: 'asc' },
+            select: { id: true }
+        })
+        if (tenant) return tenant.id
+
+        const global = await tx.categoria.findFirst({
+            where: { empresaId: null, esGlobal: true },
+            orderBy: { id: 'asc' },
+            select: { id: true }
+        })
+        if (global) return global.id
+        throw new Error('No hay una categoría disponible para esta empresa.')
+    }
+
+    const departamentoId = await buscarOCrearDepartamentoTx(tx, empresaId, departamentoNombre)
+    let categoria = await tx.categoria.findFirst({
+        where: {
+            empresaId,
+            departamentoId,
+            nombre: { equals: categoriaNombre, mode: 'insensitive' }
+        },
+        select: { id: true }
+    })
+    if (categoria) return categoria.id
+
+    categoria = await tx.categoria.upsert({
+        where: {
+            empresaId_departamentoId_nombre: { empresaId, departamentoId, nombre: categoriaNombre }
+        },
+        update: {},
+        create: { empresaId, departamentoId, nombre: categoriaNombre, esGlobal: false },
+        select: { id: true }
+    })
+    if (!categoria) throw new Error(`No fue posible resolver la categoría "${categoriaNombre}".`)
+    return categoria.id
+}
+
+async function resolverProveedorFilaTx(tx, data, empresaId) {
+    if (!data._proveedorNombre) return null
+
+    let proveedor = await tx.proveedor.findFirst({
+        where: {
+            empresaId,
+            activo: true,
+            OR: [
+                { nombreOficial: { equals: data._proveedorNombre, mode: 'insensitive' } },
+                { alias: { equals: data._proveedorNombre, mode: 'insensitive' } }
+            ]
+        },
+        select: { id: true }
+    })
+    if (proveedor) return proveedor.id
+
+    proveedor = await tx.proveedor.upsert({
+        where: {
+            empresaId_nombreOficial: { empresaId, nombreOficial: data._proveedorNombre }
+        },
+        update: { activo: true },
+        create: {
+            empresaId,
+            nombreOficial: data._proveedorNombre,
+            alias: data._proveedorApodo || data._proveedorNombre,
+            activo: true
+        },
+        select: { id: true }
+    })
+    if (!proveedor) throw new Error(`No fue posible resolver el proveedor "${data._proveedorNombre}".`)
+    return proveedor.id
+}
+
+function dataProductoImportado(data, categoriaId, codigoBarras) {
+    return {
+        nombre: data.nombre,
+        codigoBarras,
+        descripcion: data.descripcion,
+        precioBase: data.precioBase,
+        precioVenta: data.precioVenta,
+        costo: data.costo,
+        claveSat: data.claveSat,
+        unidadSat: data.unidadSat,
+        esGranel: data.esGranel,
+        unidadVenta: data.unidadVenta,
+        tipo: data.tipo,
+        imagenUrl: data.imagenUrl,
+        categoriaId,
+        activo: true,
+    }
+}
+
+async function registrarInventarioFilaTx(tx, data, productoId, sucursalId, crearSiempre) {
+    if (sucursalId === null || sucursalId === undefined) return
+    if (!crearSiempre && !(data._stockInicial > 0 || data._stockMinimo > 0)) return
+
+    const inventario = {
+        stockActual: data._stockInicial,
+        stockMinimoAlerta: data._stockMinimo,
+        ...(data._stockMaximo !== null ? { stockMaximo: data._stockMaximo } : {})
+    }
+    await tx.inventarioSucursal.upsert({
+        where: { productoId_sucursalId: { productoId, sucursalId } },
+        update: inventario,
+        create: { productoId, sucursalId, ...inventario }
+    })
+}
+
+async function crearDetalleTerminalTx(tx, data) {
+    return tx.importacionProductosDetalle.create({ data })
+}
+
+async function bloquearYValidarLeaseTx(tx, importacionId, leaseToken) {
+    const rows = await tx.$queryRawUnsafe(
+        `SELECT "leaseToken", "leaseExpiresAt", "estado"
+         FROM "ImportacionProductos"
+         WHERE "id" = $1
+         FOR UPDATE`,
+        importacionId
+    )
+    const header = rows[0]
+    const vigente = header &&
+        header.leaseToken === leaseToken &&
+        header.estado === 'PROCESANDO' &&
+        header.leaseExpiresAt &&
+        new Date(header.leaseExpiresAt) > new Date()
+    if (!vigente) {
+        const error = new Error('La importación perdió su lease de ejecución.')
+        error.code = 'IMPORT_LEASE_LOST'
+        throw error
+    }
+}
+
+async function procesarFilaIdempotente({
+    importacionId,
+    fila,
+    tipo,
+    empresaId,
+    sucursalId,
+    usuarioId,
+    leaseToken,
+}) {
+    const filaNumero = fila._filaOrigen
+    const codigoFallback = fila['CLAVE'] || `FILA_${filaNumero}`
+    const existenteDetalle = await prisma.importacionProductosDetalle.findUnique({
+        where: { importacionId_fila: { importacionId, fila: filaNumero } },
+        select: { id: true }
+    })
+    if (existenteDetalle) return
+
+    const errores = validarFila(fila, filaNumero)
+    let data = null
+    if (errores.length === 0) {
+        data = mapearProducto(fila)
+        const invariante = validarUnidadVentaInvariante(data, filaNumero)
+        if (!invariante.valido) errores.push({ fila: filaNumero, clave: fila['CLAVE'], error: invariante.error })
+    }
+
+    if (errores.length > 0) {
+        await prisma.$transaction(async (tx) => {
+            await bloquearYValidarLeaseTx(tx, importacionId, leaseToken)
+            const yaExiste = await tx.importacionProductosDetalle.findUnique({
+                where: { importacionId_fila: { importacionId, fila: filaNumero } },
+                select: { id: true }
+            })
+            if (yaExiste) return
+            await crearDetalleTerminalTx(tx, {
+                importacionId,
+                fila: filaNumero,
+                codigoInterno: codigoFallback,
+                estado: 'ERROR_VALIDACION',
+                accion: 'ERROR',
+                error: errores.map((item) => item.error).join(' | '),
+            })
+        })
+        return
+    }
+
+    try {
+        await prisma.$transaction(async (tx) => {
+            await bloquearYValidarLeaseTx(tx, importacionId, leaseToken)
+            const yaExiste = await tx.importacionProductosDetalle.findUnique({
+                where: { importacionId_fila: { importacionId, fila: filaNumero } },
+                select: { id: true }
+            })
+            if (yaExiste) return
+
+            const categoriaId = await resolverCategoriaFilaTx(tx, fila, empresaId)
+            const proveedorId = await resolverProveedorFilaTx(tx, data, empresaId)
+            const productoPorCodigo = await tx.producto.findUnique({
+                where: { empresaId_codigoInterno: { empresaId, codigoInterno: data.codigoInterno } }
+            })
+            const codigoBarrasNormalizado = normalizarCodigoBarras(data.codigoBarras)
+            const productoPorBarras = codigoBarrasNormalizado
+                ? await tx.producto.findFirst({
+                    where: { empresaId, codigoBarras: codigoBarrasNormalizado },
+                    select: { id: true }
+                })
+                : null
+
+            if (tipo === 'solo_nuevos' && (productoPorCodigo || productoPorBarras)) {
+                const razon = productoPorCodigo
+                    ? 'Ya existe por codigoInterno'
+                    : `Ya existe por codigoBarras (${codigoBarrasNormalizado})`
+                await crearDetalleTerminalTx(tx, {
+                    importacionId,
+                    fila: filaNumero,
+                    codigoInterno: data.codigoInterno,
+                    estado: 'COMPLETADA',
+                    accion: 'OMITIDO',
+                    productoId: productoPorCodigo?.id || productoPorBarras?.id || null,
+                    mensaje: razon,
+                })
+                return
+            }
+
+            let producto
+            let accion
+            let advertencia = null
+            let codigoBarras = codigoBarrasNormalizado
+            if (productoPorBarras && productoPorBarras.id !== productoPorCodigo?.id) {
+                advertencia = `El código de barras "${codigoBarrasNormalizado}" ya existía. Se procesó sin código de barras.`
+                codigoBarras = null
+            }
+
+            if (productoPorCodigo) {
+                const antes = await tx.producto.findUnique({
+                    where: { id: productoPorCodigo.id },
+                    select: { precioVenta: true, precioBase: true, costo: true, costoPromedio: true, margen: true, costoSinIvaProveedor: true, factorConversion: true }
+                })
+                producto = await tx.producto.update({
+                    where: { empresaId_codigoInterno: { empresaId, codigoInterno: data.codigoInterno } },
+                    data: dataProductoImportado(data, categoriaId, codigoBarras)
+                })
+                const despues = await tx.producto.findUnique({
+                    where: { id: producto.id },
+                    select: { precioVenta: true, precioBase: true, costo: true, costoPromedio: true, margen: true, costoSinIvaProveedor: true, factorConversion: true }
+                })
+                await registrarHistorialEconomico(tx, {
+                    empresaId,
+                    productoId: producto.id,
+                    usuarioId,
+                    sucursalId,
+                    origen: 'IMPORTACION',
+                    accion: 'IMPORTAR_ACTUALIZACION_PRODUCTO',
+                    referencia: `PRODUCTO:${producto.id}`,
+                    contexto: { fila: filaNumero },
+                    antes: antes || {},
+                    despues: despues || {}
+                })
+                await registrarInventarioFilaTx(tx, data, producto.id, sucursalId, false)
+                accion = 'ACTUALIZADO'
+            } else {
+                producto = await tx.producto.create({
+                    data: {
+                        empresaId,
+                        codigoInterno: data.codigoInterno,
+                        ...dataProductoImportado(data, categoriaId, codigoBarras)
+                    }
+                })
+                await registrarHistorialEconomico(tx, {
+                    empresaId,
+                    productoId: producto.id,
+                    usuarioId,
+                    sucursalId,
+                    origen: 'IMPORTACION',
+                    accion: 'IMPORTAR_CREACION_PRODUCTO',
+                    referencia: `PRODUCTO:${producto.id}`,
+                    contexto: { fila: filaNumero },
+                    antes: {},
+                    despues: {
+                        precioVenta: producto.precioVenta,
+                        precioBase: producto.precioBase,
+                        costo: producto.costo,
+                        costoPromedio: producto.costoPromedio,
+                        margen: producto.margen,
+                        costoSinIvaProveedor: producto.costoSinIvaProveedor,
+                        factorConversion: producto.factorConversion
+                    }
+                })
+                await registrarInventarioFilaTx(tx, data, producto.id, sucursalId, true)
+                accion = 'CREADO'
+            }
+
+            let vinculaciones = 0
+            if (proveedorId) {
+                await tx.proveedorProducto.upsert({
+                    where: { proveedorId_productoId: { proveedorId, productoId: producto.id } },
+                    update: { precioCosto: data.costo || 0, activo: true },
+                    create: { proveedorId, productoId: producto.id, precioCosto: data.costo || 0, activo: true }
+                })
+                vinculaciones = 1
+            }
+
+            await crearDetalleTerminalTx(tx, {
+                importacionId,
+                fila: filaNumero,
+                codigoInterno: data.codigoInterno,
+                estado: 'COMPLETADA',
+                accion,
+                productoId: producto.id,
+                vinculaciones,
+                advertencia,
+            })
+        })
+    } catch (error) {
+        if (error.code === 'IMPORT_LEASE_LOST') throw error
+        await prisma.$transaction(async (tx) => {
+            await bloquearYValidarLeaseTx(tx, importacionId, leaseToken)
+            const yaExiste = await tx.importacionProductosDetalle.findUnique({
+                where: { importacionId_fila: { importacionId, fila: filaNumero } },
+                select: { id: true }
+            })
+            if (yaExiste) return
+            await crearDetalleTerminalTx(tx, {
+                importacionId,
+                fila: filaNumero,
+                codigoInterno: data?.codigoInterno || codigoFallback,
+                estado: 'ERROR_SISTEMA',
+                accion: 'ERROR',
+                error: error.message || 'Error de sistema al procesar la fila.',
+            })
+        })
+    }
+}
+
+async function construirRespuestaIdempotente(importacionId, total, tipo) {
+    const [counts, detalles] = await Promise.all([
+        aggregateFromDetails(prisma, importacionId),
+        prisma.importacionProductosDetalle.findMany({
+            where: { importacionId },
+            orderBy: { fila: 'asc' }
+        })
+    ])
+    const detalleErrores = detalles
+        .filter((detalle) => detalle.accion === 'ERROR')
+        .slice(0, 30)
+        .map((detalle) => ({ fila: detalle.fila, clave: detalle.codigoInterno, error: detalle.error }))
+    const detalleOmitidos = detalles
+        .filter((detalle) => detalle.accion === 'OMITIDO')
+        .slice(0, 50)
+        .map((detalle) => ({ fila: detalle.fila, clave: detalle.codigoInterno, razon: detalle.mensaje }))
+    const detalleAdvertencias = detalles
+        .filter((detalle) => detalle.advertencia)
+        .slice(0, 30)
+        .map((detalle) => ({ fila: detalle.fila, clave: detalle.codigoInterno, advertencia: detalle.advertencia }))
+
+    const respuesta = {
+        mensaje: tipo === 'solo_nuevos' ? 'Importación Solo Nuevos completada' : 'Importación completada',
+        total,
+        creados: counts.creados,
+        ...(tipo === 'upsert' ? { actualizados: counts.actualizados } : {}),
+        vinculaciones: counts.vinculaciones,
+        omitidos: counts.omitidos,
+        errores: counts.errores,
+        detalleErrores,
+        ...(tipo === 'solo_nuevos' ? { detalleOmitidos } : {}),
+        advertencias: counts.advertencias,
+        detalleAdvertencias,
+    }
+    return { counts, respuesta }
+}
+
+function enviarResultadoInicio(res, inicio) {
+    if (inicio.kind === BEGIN_RESULT.CONFLICT) {
+        return res.status(409).json({
+            code: 'IDEMPOTENCY_KEY_REUSED',
+            error: 'La misma clave de idempotencia ya fue usada con un archivo o modo diferente.'
+        })
+    }
+    if (inicio.kind === BEGIN_RESULT.IN_PROGRESS) {
+        return res.status(409).json({
+            code: 'IMPORTACION_EN_PROCESO',
+            error: 'La importación todavía está en proceso.',
+            importacionId: inicio.importacionId
+        })
+    }
+    if (inicio.kind === BEGIN_RESULT.REPLAY) {
+        return res.status(inicio.estado === 'FALLIDA' ? 500 : 200).json(inicio.respuesta)
+    }
+    return null
+}
+
+function crearHandlerImportacionIdempotente(tipo, legacyHandler) {
+    return async (req, res) => {
+        const validacionKey = validateIdempotencyKey(req.headers['idempotency-key'])
+        if (validacionKey.missing) return legacyHandler(req, res)
+        if (!validacionKey.valid) return res.status(400).json({ code: 'IDEMPOTENCY_KEY_INVALID', error: validacionKey.error })
+        if (!req.file) {
+            return res.status(400).json({ error: 'Archivo CSV requerido. Envía el archivo con campo "archivo".' })
+        }
+
+        let importacionId = null
+        let leaseToken = null
+        let totalFilas = 0
+        try {
+            const empresaId = getEmpresaId(req)
+            const sucursalId = resolverSucursalId(req)
+            const usuarioId = req.usuario?.id ? parseInt(req.usuario.id) : null
+            const { filas } = parsearCSVBuffer(req.file.buffer, { conservarInvalidas: true })
+            if (filas.length === 0) {
+                return res.status(400).json({ error: 'CSV vacío o sin datos válidos' })
+            }
+            totalFilas = filas.length
+
+            const { fingerprintHash } = computeImportFingerprint({
+                empresaId,
+                sucursalId,
+                tipo,
+                filas: filas.map(construirFilaFingerprint)
+            })
+            leaseToken = crypto.randomUUID()
+            const inicio = await beginImportCommand(prisma, {
+                empresaId,
+                usuarioId,
+                sucursalId,
+                claveIdempotencia: validacionKey.key,
+                fingerprintHash,
+                tipo,
+                totalFilas,
+                leaseToken,
+            })
+            const respuestaInicio = enviarResultadoInicio(res, inicio)
+            if (respuestaInicio) return respuestaInicio
+
+            importacionId = inicio.importacionId
+            leaseToken = inicio.leaseToken
+            for (const fila of filas) {
+                const leaseVigente = await renewLease(prisma, importacionId, leaseToken, LEASE_DURATION_MS)
+                if (!leaseVigente) {
+                    const error = new Error('La importación perdió su lease de ejecución.')
+                    error.code = 'IMPORT_LEASE_LOST'
+                    throw error
+                }
+                await procesarFilaIdempotente({
+                    importacionId,
+                    fila,
+                    tipo,
+                    empresaId,
+                    sucursalId,
+                    usuarioId,
+                    leaseToken,
+                })
+            }
+
+            const { counts, respuesta } = await construirRespuestaIdempotente(importacionId, totalFilas, tipo)
+            await finalizeImport(prisma, { importacionId, leaseToken, counts, respuesta })
+            return res.json(respuesta)
+        } catch (error) {
+            console.error('Error en importación idempotente:', error)
+            if (error.code === 'IMPORT_LEASE_LOST') {
+                return res.status(409).json({ code: 'IMPORT_LEASE_LOST', error: 'La importación fue retomada por otra ejecución.' })
+            }
+
+            const respuesta = {
+                code: 'IMPORTACION_FALLIDA',
+                error: 'Error en la importación. Revisa el archivo e intenta de nuevo.',
+                total: totalFilas,
+                creados: 0,
+                actualizados: 0,
+                omitidos: 0,
+                errores: 0,
+                vinculaciones: 0,
+                advertencias: 0,
+            }
+            if (importacionId && leaseToken) {
+                try {
+                    const counts = await aggregateFromDetails(prisma, importacionId)
+                    Object.assign(respuesta, counts)
+                    await failImport(prisma, { importacionId, leaseToken, counts, respuesta })
+                } catch (finalizeError) {
+                    if (finalizeError.code === 'IMPORT_LEASE_LOST') {
+                        return res.status(409).json({ code: 'IMPORT_LEASE_LOST', error: 'La importación fue retomada por otra ejecución.' })
+                    }
+                    console.error('No se pudo persistir el fallo de importación:', finalizeError)
+                }
+            }
+            return res.status(500).json(respuesta)
+        }
+    }
+}
+
+exports.importarCSV = crearHandlerImportacionIdempotente('upsert', importarCSVLegacy)
+exports.importarSoloNuevos = crearHandlerImportacionIdempotente('solo_nuevos', importarSoloNuevosLegacy)

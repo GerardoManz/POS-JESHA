@@ -3534,6 +3534,73 @@ function importEsCientifica(val) {
   return val && /^[\d.]+[eE]\+\d+$/.test(val.trim())
 }
 
+function importPendingStorageKey(modo) {
+  return `jesha_import_pending_${modo}`
+}
+
+function importContextoActual() {
+  let empresaId = ''
+  try {
+    empresaId = JSON.parse(localStorage.getItem('jesha_usuario') || 'null')?.empresaId || ''
+  } catch (_) {}
+  const sucursalId = window.jeshaSession?.getSelectedSucursalId?.() || ''
+  return `${empresaId}:${sucursalId}`
+}
+
+function importLeerPendiente(modo) {
+  try {
+    const pendiente = JSON.parse(sessionStorage.getItem(importPendingStorageKey(modo)))
+    if (
+      typeof pendiente?.fileHash === 'string' &&
+      typeof pendiente?.key === 'string' &&
+      pendiente.key.length >= 36 &&
+      typeof pendiente?.fileName === 'string' &&
+      typeof pendiente?.fileSize === 'number' &&
+      typeof pendiente?.contexto === 'string'
+    ) return pendiente
+  } catch (_) { /* sessionStorage puede no estar disponible */ }
+  return null
+}
+
+function importGuardarPendiente(modo, pendiente) {
+  try {
+    sessionStorage.setItem(importPendingStorageKey(modo), JSON.stringify(pendiente))
+  } catch (_) { /* La importación puede continuar sin recuperación de sesión */ }
+}
+
+function importBorrarPendiente(modo) {
+  try { sessionStorage.removeItem(importPendingStorageKey(modo)) } catch (_) {}
+}
+
+function importGenerarKey() {
+  if (typeof crypto?.randomUUID === 'function') return crypto.randomUUID()
+  if (typeof crypto?.getRandomValues !== 'function') {
+    throw new Error('El navegador no permite generar una clave segura para la importación.')
+  }
+
+  const bytes = crypto.getRandomValues(new Uint8Array(16))
+  bytes[6] = (bytes[6] & 0x0f) | 0x40
+  bytes[8] = (bytes[8] & 0x3f) | 0x80
+  const hex = Array.from(bytes, byte => byte.toString(16).padStart(2, '0'))
+  return `${hex.slice(0, 4).join('')}-${hex.slice(4, 6).join('')}-${hex.slice(6, 8).join('')}-${hex.slice(8, 10).join('')}-${hex.slice(10).join('')}`
+}
+
+async function importCalcularFileHash(file, pendiente) {
+  try {
+    if (typeof crypto?.subtle?.digest !== 'function') throw new Error('SHA-256 no disponible')
+    const digest = await crypto.subtle.digest('SHA-256', await file.arrayBuffer())
+    return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('')
+  } catch (_) {
+    if (
+      pendiente?.fileHash?.startsWith('fallback:') &&
+      pendiente.fileName === file.name &&
+      pendiente.fileSize === file.size
+    ) return pendiente.fileHash
+
+    return `fallback:${file.name}:${file.size}:${file.lastModified || 0}:${importGenerarKey()}`
+  }
+}
+
 // ════════════════════════════════════════════════════════════════════
 //  CONFIGURAR MODAL SEGÚN MODO
 // ════════════════════════════════════════════════════════════════════
@@ -3760,6 +3827,9 @@ async function validarCSVImport() {
 async function ejecutarImportacion() {
   if (!importArchivoSeleccionado) return
 
+  const archivoIntento = importArchivoSeleccionado
+  const modoIntento = modoImportacion
+
   const btnImp     = document.getElementById('import-confirm-btn')
   const btnVal     = document.getElementById('import-validate-btn')
   const progresoDiv = document.getElementById('import-progreso')
@@ -3774,22 +3844,57 @@ async function ejecutarImportacion() {
 
   try {
     const formData = new FormData()
-    formData.append('archivo', importArchivoSeleccionado)
+    formData.append('archivo', archivoIntento)
 
     progresoFill.style.width = '60%'
-    progresoText.textContent = modoImportacion === 'solo_nuevos'
+    progresoText.textContent = modoIntento === 'solo_nuevos'
       ? 'Creando solo productos nuevos...'
       : 'Procesando productos...'
 
+    const pendienteAnterior = importLeerPendiente(modoIntento)
+    const fileHash = await importCalcularFileHash(archivoIntento, pendienteAnterior)
+    const contexto = importContextoActual()
+    const mismoIntento = pendienteAnterior?.fileHash === fileHash &&
+      pendienteAnterior.fileName === archivoIntento.name &&
+      pendienteAnterior.fileSize === archivoIntento.size &&
+      pendienteAnterior.contexto === contexto
+    const importKey = mismoIntento ? pendienteAnterior.key : importGenerarKey()
+
+    importGuardarPendiente(modoIntento, {
+      fileHash,
+      key: importKey,
+      fileName: archivoIntento.name,
+      fileSize: archivoIntento.size,
+      contexto
+    })
+
     // FIX: usar API_URL en lugar de API_URL_IMPORT
-    const endpoint = modoImportacion === 'solo_nuevos'
+    const endpoint = modoIntento === 'solo_nuevos'
       ? '/productos/importar/solo-nuevos'
       : '/productos/importar/csv'
 
-    const resultado = await apiFetch(endpoint, {
-      method: 'POST',
-      body: formData
-    })
+    let resultado
+    try {
+      resultado = await apiFetch(endpoint, {
+        method: 'POST',
+        body: formData,
+        headers: { 'Idempotency-Key': importKey }
+      })
+    } catch (fetchErr) {
+      if (fetchErr.status === 409 && fetchErr.code === 'IMPORTACION_EN_PROCESO') {
+        mostrarErrorImport('Ya hay una importación en curso con estos datos. Espera a que termine e intenta de nuevo.')
+        progresoDiv.style.display = 'none'
+        btnImp.disabled = false
+        btnVal.disabled = false
+        return
+      }
+      if (fetchErr.code === 'IMPORTACION_FALLIDA' || fetchErr.code === 'IDEMPOTENCY_KEY_REUSED') {
+        importBorrarPendiente(modoIntento)
+      }
+      throw fetchErr
+    }
+
+    importBorrarPendiente(modoIntento)
 
     progresoFill.style.width = '100%'
     progresoFill.style.background = '#60d080'
@@ -3799,7 +3904,7 @@ async function ejecutarImportacion() {
     const valDiv = document.getElementById('import-validacion')
     valDiv.style.display = 'block'
 
-    if (modoImportacion === 'solo_nuevos') {
+    if (modoIntento === 'solo_nuevos') {
       valDiv.innerHTML = `
         <div class="import-stat"><span class="import-stat-label">Total en archivo</span><span class="import-stat-val">${resultado.total}</span></div>
         <div class="import-stat"><span class="import-stat-label">Creados (nuevos)</span><span class="import-stat-val ok">+${resultado.creados}</span></div>
