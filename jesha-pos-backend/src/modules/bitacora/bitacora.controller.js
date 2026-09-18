@@ -155,12 +155,22 @@ const listar = async (req, res) => {
         } catch { /* fallback a contains */ }
       }
 
+      const productoFilter = {
+        empresaId,
+        OR: [
+          { nombre: { contains: termLimpio, mode: 'insensitive' } },
+          { codigoInterno: { contains: termLimpio, mode: 'insensitive' } },
+          { codigoBarras: { contains: termLimpio, mode: 'insensitive' } }
+        ]
+      }
+
       where.OR = [
         ...(ids.length > 0 ? [{ id: { in: ids } }] : [
           { titulo: { contains: termLimpio, mode: 'insensitive' } }
         ]),
         { folio:   { contains: termLimpio, mode: 'insensitive' } },
-        { Cliente: { nombre: { contains: termLimpio, mode: 'insensitive' } } }
+        { Cliente: { nombre: { contains: termLimpio, mode: 'insensitive' } } },
+        { DetalleBitacora: { some: { Producto: productoFilter } } }
       ]
     }
 

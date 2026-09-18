@@ -292,6 +292,16 @@ describe('P1-5 — Backend: codigoBarras expuesto (sin cambio de schema)', () =>
     assert.ok(ctrl.includes('codigoBarras: true'), 'el select debe exponer codigoBarras')
   })
 
+  it('T31a búsqueda general de bitácoras filtra por nombre, código interno y barras', () => {
+    assert.match(ctrl, /DetalleBitacora:\s*\{\s*some:\s*\{\s*Producto:\s*productoFilter/s)
+    assert.match(ctrl, /const productoFilter = \{[\s\S]*empresaId,[\s\S]*nombre:\s*\{ contains: termLimpio,[\s\S]*codigoInterno:[\s\S]*codigoBarras:/)
+  })
+
+  it('T31b placeholder de búsqueda general menciona productos', () => {
+    const html = read('bitacora.html')
+    assert.ok(html.includes('placeholder="Folio, título, cliente o producto..."'))
+  })
+
   it('T32 no se agregó ningún endpoint nuevo para P1-5', () => {
     const routes = read(path.join('jesha-pos-backend', 'src', 'modules', 'bitacora', 'bitacora.routes.js'))
     assert.ok(!routes.includes('search'), 'no debe existir ruta de búsqueda nueva')
