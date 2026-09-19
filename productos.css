@@ -1928,7 +1928,7 @@ mark.highlight {
 .producto-card:hover {
   transform: translateY(-2px);
   border-color: rgba(107,157,232,0.35);
-  box-shadow: 0 14px 34px rgba(0,0,0,0.28);
+  box-shadow: 0 14px 34px rgba(0,0,0,0.28), var(--stock-glow, 0 0 0 transparent);
 }
 
 /* ── TARJETAS: LIGHT MODE ── */
@@ -1943,11 +1943,27 @@ mark.highlight {
 }
 
 .producto-card.bajo-stock {
-  border-color: rgba(245,158,11,0.32);
+  --stock-glow: 0 0 0 1px rgba(255,209,102,0.10), 0 0 12px rgba(255,209,102,0.07);
+  border: 2px solid #ffd166;
+  box-shadow: var(--stock-glow);
 }
 
 .producto-card.sin-stock {
-  border-color: rgba(244,67,54,0.32);
+  --stock-glow: 0 0 0 1px rgba(255,138,128,0.10), 0 0 12px rgba(255,138,128,0.08);
+  border: 2px solid #ff8a80;
+  box-shadow: var(--stock-glow);
+}
+
+.producto-card.con-stock {
+  --stock-glow: 0 0 0 1px rgba(126,226,143,0.10), 0 0 12px rgba(126,226,143,0.07);
+  border: 2px solid #7ee28f;
+  box-shadow: var(--stock-glow);
+}
+
+.producto-card.bajo-stock:hover,
+.producto-card.sin-stock:hover,
+.producto-card.con-stock:hover {
+  box-shadow: 0 14px 34px rgba(0,0,0,0.28), var(--stock-glow);
 }
 
 /* ── Image Wrap (dominant visual) ── */
