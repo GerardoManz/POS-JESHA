@@ -271,6 +271,8 @@ function buildInvoicePayload({ rfc, razonSocial, regimenFiscal, codigoPostal, us
 }
 
 exports.buildInvoicePayload = buildInvoicePayload
+exports.clasificarErrorTimbrado = clasificarErrorTimbrado
+exports.esRespuestaPendienteFacturapi = esRespuestaPendienteFacturapi
 
 function buildGlobalInvoicePayload({ ventas, metodoPago, periodicidad, mes, anio, datosEmisor, lugarExpedicion }) {
   const paymentForm = FORMA_PAGO_SAT[metodoPago]
@@ -349,13 +351,64 @@ async function obtenerVentaIdsDeFactura(facturaId, ventaIdLegacy) {
   return ventaIdLegacy != null ? [ventaIdLegacy] : []
 }
 
+// Una validación definitiva no produjo CFDI. Cierra la solicitud local fallida
+// y libera sus ventas para que la corrección cree una nueva solicitud, evitando
+// que una FacturaCfdi pendiente viva compita con el siguiente timbrado.
+async function cerrarSolicitudFallida(facturaId, ventaIds, mensaje) {
+  await prisma.$transaction([
+    prisma.facturaCfdi.update({
+      where: { id: facturaId, estado: 'PENDIENTE_TIMBRADO' },
+      data: {
+        estado: 'CANCELADA',
+        procesandoTimbrado: false,
+        procesandoTimbradoEn: null,
+        ultimoErrorTimbrado: mensaje.slice(0, 500)
+      }
+    }),
+    prisma.venta.updateMany({
+      where: { id: { in: ventaIds }, procesoFacturaId: facturaId },
+      data: { facturaEstado: 'DISPONIBLE', procesoFacturaId: null }
+    })
+  ])
+}
+
+const ERRORES_VALIDACION_FACTURAPI = new Set([
+  'tax_id_not_found',
+  'legal_name_mismatch',
+  'tax_address_zip_mismatch',
+  'tax_system_not_allowed_for_tax_id'
+])
+
+function obtenerStatusFacturapi(err) {
+  return err?.status
+    ?? err?.statusCode
+    ?? err?.response?.status
+    ?? err?.response?.statusCode
+    ?? err?.error?.status
+    ?? err?.error?.statusCode
+    ?? err?.body?.status
+    ?? err?.response?.data?.status
+}
+
+function obtenerCodigoFacturapi(err) {
+  const code = err?.code
+    ?? err?.error?.code
+    ?? err?.body?.code
+    ?? err?.response?.data?.code
+    ?? err?.response?.data?.error?.code
+  return typeof code === 'string' ? code.toLowerCase() : null
+}
+
 // Clasifica un error de Facturapi para decidir si es seguro reintentar.
-//  - VALIDACION: 4xx claro (payload rechazado, NO se selló) → reintentable corrigiendo.
-//  - INCIERTO:   timeout / 5xx / 409 / sin status → pudo sellarse → revisión manual.
-// Conservador a propósito: ante la duda, INCIERTO (nunca re-timbra a ciegas).
+//  - VALIDACION: 4xx claro o código fiscal definitivo (NO se selló).
+//  - INCIERTO: timeout / 5xx / 409 / sin status → pudo sellarse.
+// Se inspeccionan las formas conocidas del SDK para no perder un 400
+// cuando el status o código vienen anidados en response/error/body.
 function clasificarErrorTimbrado(err) {
-  const status = err?.status ?? err?.statusCode ?? err?.response?.status
+  const status = obtenerStatusFacturapi(err)
+  const codigo = obtenerCodigoFacturapi(err)
   const reintentables = [408, 409, 425, 429] // timeout/conflicto/rate-limit → inciertos
+  if (ERRORES_VALIDACION_FACTURAPI.has(codigo)) return 'VALIDACION'
   if (typeof status === 'number' && status >= 400 && status < 500 && !reintentables.includes(status)) {
     return 'VALIDACION'
   }
@@ -366,6 +419,10 @@ function clasificarErrorTimbrado(err) {
     return 'VALIDACION'
   }
   return 'INCIERTO'
+}
+
+function esRespuestaPendienteFacturapi(invoice) {
+  return invoice?.status === 'pending' || invoice?.status === 'processing'
 }
 
 // Calcula la idempotency_key a usar:
@@ -683,6 +740,24 @@ exports.solicitarFactura = async (req, res) => {
       // ── P0: Guard livemode — FACTURAPI_TEST_MODE_BLOCKED ──
       assertLivemodeConsistente(invoice, { facturaId: factura.id })
 
+      // Facturapi puede aceptar la creación y dejarla pendiente. No es un
+      // CFDI válido todavía: conserva el lock y persiste la identidad remota.
+      if (esRespuestaPendienteFacturapi(invoice)) {
+        await prisma.facturaCfdi.update({
+          where: { id: factura.id },
+          data: {
+            folioFiscal: invoice.uuid ?? undefined,
+            facturapiId: invoice.id ?? undefined,
+            ultimoErrorTimbrado: 'Facturapi respondió status pendiente; requiere reconciliación.'
+          }
+        })
+        return res.status(202).json({
+          success: true, timbrado: false, requiereRevision: true,
+          mensaje: 'Facturapi dejó el CFDI pendiente. Se conservará bloqueado hasta reconciliarlo.',
+          facturaId: factura.id, facturapiId: invoice.id ?? null
+        })
+      }
+
       // ── 3) Éxito → TIMBRADA + venta FACTURADA ──
       await prisma.$transaction([
         prisma.facturaCfdi.update({
@@ -731,15 +806,13 @@ exports.solicitarFactura = async (req, res) => {
 
       const tipo = clasificarErrorTimbrado(fpErr)
       if (tipo === 'VALIDACION') {
-        // No se selló → queda PENDIENTE, se libera el flag; la venta sigue bloqueada
-        // (PENDIENTE_TIMBRADO + procesoFacturaId) para corrección/reintento manual.
-        await prisma.facturaCfdi.update({
-          where: { id: factura.id },
-          data: { procesandoTimbrado: false, procesandoTimbradoEn: null, ultimoErrorTimbrado: (fpErr.message || '').slice(0, 500) }
-        }).catch(() => {})
-        return res.status(202).json({
-          success: true, timbrado: false,
-          mensaje: `Solicitud recibida. Hubo un problema al timbrar — procesaremos tu factura manualmente y te la enviaremos a ${emailTrimmed} a la brevedad.`,
+        // No se selló: cerrar la solicitud local y liberar la venta. La
+        // corrección debe crear una nueva solicitud.
+        await cerrarSolicitudFallida(factura.id, [venta.id], fpErr.message || 'Validación fiscal rechazada')
+        return res.status(422).json({
+          success: false, timbrado: false, requiereCorreccion: true,
+          requiereNuevaSolicitud: true,
+          mensaje: 'Los datos fiscales fueron rechazados. Corrígelos y genera una nueva solicitud.',
           error_tecnico: fpErr.message, facturaId: factura.id
         })
       }
@@ -908,6 +981,24 @@ exports.timbrarManual = async (req, res) => {
       // ── P0: Guard livemode — FACTURAPI_TEST_MODE_BLOCKED ──
       assertLivemodeConsistente(invoice, { facturaId: id })
 
+      // Un status pending es una respuesta remota válida pero inconclusa.
+      // Nunca debe pasar por la rama de éxito que marca TIMBRADA.
+      if (esRespuestaPendienteFacturapi(invoice)) {
+        await prisma.facturaCfdi.update({
+          where: { id },
+          data: {
+            folioFiscal: invoice.uuid ?? undefined,
+            facturapiId: invoice.id ?? undefined,
+            ultimoErrorTimbrado: 'Facturapi respondió status pendiente; requiere reconciliación.'
+          }
+        })
+        return res.status(202).json({
+          success: true, timbrado: false, requiereRevision: true,
+          mensaje: 'Facturapi dejó el CFDI pendiente. Reconcílialo antes de reintentar.',
+          facturaId: id, facturapiId: invoice.id ?? null
+        })
+      }
+
       // ── Éxito ──
       const [actualizada] = await prisma.$transaction([
         prisma.facturaCfdi.update({
@@ -951,11 +1042,9 @@ exports.timbrarManual = async (req, res) => {
 
       const tipo = clasificarErrorTimbrado(fpErr)
       if (tipo === 'VALIDACION') {
-        // No se selló → liberar lock; queda PENDIENTE para corregir y reintentar.
-        await prisma.facturaCfdi.update({
-          where: { id },
-          data: { procesandoTimbrado: false, procesandoTimbradoEn: null, ultimoErrorTimbrado: (fpErr.message || '').slice(0, 500) }
-        }).catch(() => {})
+        // No se selló: cerrar la solicitud local y liberar la venta.
+        const ventaIdsError = await obtenerVentaIdsDeFactura(id, factura.ventaId)
+        await cerrarSolicitudFallida(id, ventaIdsError, fpErr.message || 'Validación fiscal rechazada')
         const mensajeFacturapi = fpErr.message || ''
         if (process.env.DEBUG_FACTURACION === 'true') {
           console.error(`❌ Error timbrado — RFC: ${factura.rfcReceptor}, Nombre: "${factura.nombreReceptor}", Error: ${mensajeFacturapi}`)
@@ -964,7 +1053,7 @@ exports.timbrarManual = async (req, res) => {
         const sugerencia = esErrorRazonSocial
           ? '. Verifica que la razón social esté en mayúsculas, sin acentos y coincida exactamente con la Constancia de Situación Fiscal. En muchos casos CFDI 4.0 requiere quitar "S.A. DE C.V." u otro régimen societario.'
           : ''
-        return res.status(422).json({ error: 'Los datos fiscales no fueron aceptados. Revisa RFC, razón social, régimen fiscal, código postal y uso de CFDI.' + sugerencia, codigo: fpErr.codigo, requiereCorreccion: true })
+        return res.status(422).json({ error: 'Los datos fiscales no fueron aceptados. Revisa RFC, razón social, régimen fiscal, código postal y uso de CFDI.' + sugerencia, codigo: fpErr.codigo, requiereCorreccion: true, requiereNuevaSolicitud: true })
       }
 
       // INCIERTO → NO liberar lock (procesandoTimbrado sigue true) → revisión manual.

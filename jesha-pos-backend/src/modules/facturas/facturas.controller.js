@@ -176,13 +176,21 @@ exports.listar = async (req, res) => {
       const ventasCount = (_count?.FacturaVenta || 0) || (f.ventaId != null ? 1 : 0)
       const metodoPagoCalculado = f.Venta?.metodoPago || fv?.[0]?.Venta?.metodoPago || null
       const sucursal = fv?.[0]?.Venta?.Sucursal || f.Venta?.Sucursal || null
-      return { ...rest, ventasCount, metodoPago: metodoPagoCalculado, sucursal }
+      return {
+        ...rest,
+        ventasCount,
+        metodoPago: metodoPagoCalculado,
+        sucursal,
+        esSolicitudFallida: f.estado === 'CANCELADA' && !f.folioFiscal
+      }
     })
 
     const [pendientes, timbradas, canceladas, inciertas] = await Promise.all([
       prisma.facturaCfdi.count({ where: { ...whereScope, estado: 'PENDIENTE_TIMBRADO', procesandoTimbrado: false } }),
       prisma.facturaCfdi.count({ where: { ...whereScope, estado: { in: ['TIMBRADA', 'FACTURADA'] } } }),
-      prisma.facturaCfdi.count({ where: { ...whereScope, estado: 'CANCELADA' } }),
+      // Solo un UUID confirma que existió un CFDI fiscal. Un facturapiId sin
+      // UUID puede ser únicamente un objeto remoto pending/processing.
+      prisma.facturaCfdi.count({ where: { ...whereScope, estado: 'CANCELADA', folioFiscal: { not: null } } }),
       prisma.facturaCfdi.count({ where: { ...whereScope, estado: 'PENDIENTE_TIMBRADO', procesandoTimbrado: true } }),
     ])
 

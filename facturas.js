@@ -43,7 +43,7 @@ function llenarCatalogosDetalle() {
 // ════════════════════════════════════════════════════════════════════
 //  ESTADO BADGES
 // ════════════════════════════════════════════════════════════════════
-function estadoBadge(estado, cancellationDetail) {
+function estadoBadge(estado, cancellationDetail, esSolicitudFallida = false) {
   // P0-6: if backend provides cancellationDetail, use it for badge override
   if (cancellationDetail?.badge && cancellationDetail?.label) {
     return `<span class="fact-badge ${cancellationDetail.badge}" title="${escHtml(cancellationDetail.tooltip || '')}">${cancellationDetail.label}</span>`
@@ -52,7 +52,9 @@ function estadoBadge(estado, cancellationDetail) {
     PENDIENTE_TIMBRADO: ['badge-pendiente',  '⏳ Pendiente'],
     TIMBRADA:           ['badge-timbrada',   '✓ Timbrada'],
     FACTURADA:          ['badge-timbrada',   '✓ Facturada'],
-    CANCELADA:          ['badge-cancelada',  '✕ Cancelada'],
+    CANCELADA:          esSolicitudFallida
+      ? ['badge-failed', '⚠ Rechazada sin CFDI']
+      : ['badge-cancelada', '✕ Cancelada'],
     VENCIDA:            ['badge-vencida',    '⚠ Vencida'],
     BLOQUEADA:          ['badge-bloqueada',  '🔒 Bloqueada'],
     FAILED:             ['badge-failed',     '⚠ Timbrado falló'],
@@ -110,7 +112,7 @@ async function cargarFacturas() {
       const rolFiscal = ['ADMIN_SUCURSAL','SUPERADMIN'].includes(USUARIO.rol)
       const badgeEstado = incierto
         ? '<span class="fact-badge badge-incierto">⚠ INCIERTO</span>'
-        : estadoBadge(f.estado)
+        : estadoBadge(f.estado, null, f.esSolicitudFallida)
       return `
       <tr onclick="verDetalle(${f.id})">
         <td><strong style="font-size:0.82rem">${f.Venta?.folio || '—'}</strong></td>
@@ -130,7 +132,7 @@ async function cargarFacturas() {
             <button class="btn-icon" onclick="verDetalle(${f.id})" title="Ver detalle">👁</button>
             ${f.facturapiId ? `<button class="btn-icon" onclick="descargarFactura(${f.id},'pdf')" title="Descargar PDF">🖨️</button>` : ''}
             ${f.facturapiId ? `<button class="btn-icon" onclick="descargarFactura(${f.id},'xml')" title="Descargar XML">📄</button>` : ''}
-            ${esPendiente && !f.facturapiId ? `<button class="btn-icon btn-timbrar" onclick="timbrarManual(${f.id})" title="Timbrar ahora">⚡</button>` : ''}
+            ${esPendiente && !f.facturapiId && !f.procesandoTimbrado ? `<button class="btn-icon btn-timbrar" onclick="timbrarManual(${f.id})" title="Timbrar ahora">⚡</button>` : ''}
             ${esPendiente && rolFiscal ? `<button class="btn-icon" onclick="event.stopPropagation();verCandidatos(${f.id})" title="Buscar CFDIs en Facturapi">🔍</button>` : ''}
           </div>
         </td>
@@ -166,10 +168,11 @@ window.verDetalle = async function(id) {
     llenarCatalogosDetalle()
 
     const esPendiente = f.estado === 'PENDIENTE_TIMBRADO'
+    const incierto = esPendiente && f.procesandoTimbrado
     ;['det-rfc','det-nombre','det-regimen','det-cp','det-uso','det-email','det-email-sec1','det-email-sec2'].forEach(id => {
       const el = document.getElementById(id)
       if (!el) return
-      if (esPendiente) {
+      if (esPendiente && !incierto) {
         el.disabled = false
         el.classList.add('editable')
       } else {
@@ -194,7 +197,11 @@ window.verDetalle = async function(id) {
     document.getElementById('det-subtotal').textContent = fmt(f.subtotal)
     document.getElementById('det-iva').textContent      = fmt(f.iva)
     document.getElementById('det-total').textContent    = fmt(f.total)
-    document.getElementById('det-estado').innerHTML = estadoBadge(f.estado, f.cancellationDetail)
+    document.getElementById('det-estado').innerHTML = estadoBadge(
+      f.estado,
+      f.cancellationDetail,
+      f.estado === 'CANCELADA' && !f.folioFiscal
+    )
     document.getElementById('det-uuid').textContent     = f.folioFiscal || 'Pendiente de timbrado'
     document.getElementById('det-timbrado').textContent = f.timbradaEn ? fmtFecha(f.timbradaEn) : '—'
 
@@ -207,12 +214,10 @@ window.verDetalle = async function(id) {
     const btnDescartar   = document.getElementById('det-btn-descartar')
     const btnSyncCancel  = document.getElementById('det-btn-sync-cancel')
     const rolFiscal = ['ADMIN_SUCURSAL','SUPERADMIN'].includes(USUARIO.rol)
-    const incierto = esPendiente && f.procesandoTimbrado
-
     const esCfdiActivo = ['TIMBRADA','FACTURADA','PENDIENTE_TIMBRADO'].includes(f.estado)
 
-    btnTimbrar.style.display   = esPendiente && !f.facturapiId ? 'flex' : 'none'
-    btnCancelar.style.display  = esCfdiActivo ? 'flex' : 'none'
+    btnTimbrar.style.display   = esPendiente && !f.facturapiId && !incierto ? 'flex' : 'none'
+    btnCancelar.style.display  = esCfdiActivo && !incierto ? 'flex' : 'none'
     btnXml.style.display       = f.facturapiId ? 'flex' : 'none'
     btnPdf.style.display       = f.facturapiId ? 'flex' : 'none'
     btnCandidatos.style.display = esPendiente && rolFiscal ? 'flex' : 'none'
@@ -329,7 +334,14 @@ window.timbrarManual = async function(id) {
       body:    JSON.stringify(body)
     })
     const data = await res.json()
-    if (!res.ok) throw new Error(data.error)
+    if (!res.ok) {
+      if (data.requiereNuevaSolicitud) {
+        document.getElementById('modal-detalle').classList.remove('active')
+        limpiarPdfPreview()
+        await cargarFacturas()
+      }
+      throw new Error(data.error || data.mensaje)
+    }
 
     document.getElementById('modal-detalle').classList.remove('active')
     limpiarPdfPreview()
