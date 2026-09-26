@@ -17,6 +17,7 @@
 // ════════════════════════════════════════════════════════════════════
 
 const prisma = require('../../lib/prisma')
+const debug = require('../../lib/debug')
 const getEmpresaId = require('../../helpers/getEmpresaId')
 const { buildFacturaScope } = require('./factura-scope.helper')
 const { getFacturapiForEmpresa, verificarFacturacionEmpresa, FiscalError, modoActivo } = require('../../lib/facturapi')
@@ -26,6 +27,18 @@ const MIN_CONFIRMACION = 10
 const MAX_CONFIRMACION = 500
 const MAX_PAGINAS = 10
 const PAGE_SIZE = 50
+
+function registrarError(req, err, status) {
+  debug.logJSON({
+    event: 'resolver_timbrado_error',
+    requestId: req.requestId,
+    route: req.route?.path || req.path,
+    status,
+    code: err.code || null,
+    error: debug.safeError(err),
+    ...debug.buildBase()
+  })
+}
 
 // ── Scope estricto desde contexto tenant: empresaId obligatorio, sucursalId opcional. ──
 function scopeEstricto(req) {
@@ -286,7 +299,9 @@ exports.reconciliarTimbrado = async (req, res) => {
     await auditar(req, factura, empresaId, { tipo: 'RECONCILIAR', facturapiId, uuid: inv.uuid, ventaIds })
     return res.json({ success: true, mensaje: 'Factura reconciliada y marcada como TIMBRADA.', facturapiId, uuid: inv.uuid })
   } catch (err) {
-    res.status(err.expose ? (err.status || 500) : 500).json({ error: 'No fue posible reconciliar la factura. Intenta nuevamente.' })
+    const status = err.expose ? (err.status || 500) : 500
+    registrarError(req, err, status)
+    res.status(status).json({ error: 'No fue posible reconciliar la factura. Intenta nuevamente.' })
   }
 }
 
@@ -328,6 +343,8 @@ exports.descartarTimbradoIncierto = async (req, res) => {
       mensaje: 'Estado INCIERTO descartado. La factura queda PENDIENTE_TIMBRADO sin proceso activo; puede reintentarse el timbrado.'
     })
   } catch (err) {
-    res.status(err.expose ? (err.status || 500) : 500).json({ error: 'No fue posible actualizar el estado de la factura. Intenta nuevamente.' })
+    const status = err.expose ? (err.status || 500) : 500
+    registrarError(req, err, status)
+    res.status(status).json({ error: 'No fue posible actualizar el estado de la factura. Intenta nuevamente.' })
   }
 }
