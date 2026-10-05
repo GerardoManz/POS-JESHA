@@ -149,6 +149,41 @@ let montoReembolso = 0
 
     // ── Transacción atómica ─────────────────────────────────────
     const devolucion = await prisma.$transaction(async (tx) => {
+      const ventaRows = await tx.$queryRaw`
+        SELECT id, estado, "sucursalId", "metodoPago", "clienteId"
+        FROM "Venta"
+        WHERE id = ${parseInt(ventaId)} AND "empresaId" = ${empresaId}
+        FOR UPDATE`
+      const ventaLocked = ventaRows[0]
+      if (!ventaLocked) throw Object.assign(new Error('Venta no encontrada'), { status: 404 })
+      if (ventaLocked.estado === 'CANCELADA') {
+        throw Object.assign(new Error('No se puede devolver una venta cancelada'), { status: 409 })
+      }
+
+      const devolucionesPrevias = await tx.devolucion.findMany({
+        where: { ventaId: parseInt(ventaId), empresaId },
+        select: { DetalleDevolucion: { select: { productoId: true, cantidad: true } } }
+      })
+      const devueltoPorProducto = new Map()
+      for (const dev of devolucionesPrevias) {
+        for (const detalle of dev.DetalleDevolucion) {
+          devueltoPorProducto.set(
+            detalle.productoId,
+            (devueltoPorProducto.get(detalle.productoId) || 0) + parseFloat(detalle.cantidad)
+          )
+        }
+      }
+      for (const detalle of detallesValidados) {
+        const original = venta.DetalleVenta.find(d => d.productoId === detalle.productoId)
+        const yaDevueltoLocked = devueltoPorProducto.get(detalle.productoId) || 0
+        const disponibleLocked = parseFloat(original?.cantidad || 0) - yaDevueltoLocked
+        if (!original || detalle.cantidad > disponibleLocked + 0.0005) {
+          throw Object.assign(new Error('La cantidad solicitada ya no está disponible para devolución'), {
+            status: 409,
+            codigo: 'DEVOLUCION_CONCURRENTE'
+          })
+        }
+      }
 
       const devCreada = await tx.devolucion.create({
         data: {
@@ -178,9 +213,12 @@ let montoReembolso = 0
 
       // Reingresar inventario
       for (const det of detallesValidados) {
-        const inv = await tx.inventarioSucursal.findUnique({
-          where: { productoId_sucursalId: { productoId: det.productoId, sucursalId: det.sucursalId } }
-        })
+        const invRows = await tx.$queryRaw`
+          SELECT "stockActual"
+          FROM "InventarioSucursal"
+          WHERE "productoId" = ${det.productoId} AND "sucursalId" = ${det.sucursalId}
+          FOR UPDATE`
+        const inv = invRows[0] || null
         if (inv) {
           const stockAntes   = parseFloat(inv.stockActual)
           const stockDespues = parseFloat((stockAntes + det.cantidad).toFixed(3))

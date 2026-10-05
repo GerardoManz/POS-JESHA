@@ -704,14 +704,19 @@ window.apiFetch = async function(path, opts = {}) {
   // Permisos insuficientes — toast y lanzar error
   if (res.status === 403) {
     const msg = (data && data.error) || 'No tienes permisos para realizar esta acción'
-    throw new Error(msg)
+    const error = new Error(msg)
+    error.status = 403
+    error.code = data?.code || data?.codigo || null
+    error.requestId = data?.requestId || res.headers.get('X-Request-Id') || null
+    throw error
   }
 
   if (!res.ok) {
     const msg = (data && data.error) || `Error ${res.status}: ${res.statusText}`
     const error = new Error(msg)
     error.status = res.status
-    error.code = data?.code || null
+    error.code = data?.code || data?.codigo || null
+    error.requestId = data?.requestId || res.headers.get('X-Request-Id') || null
     if (data && typeof data === 'object') {
       for (const [k, v] of Object.entries(data)) {
         if (!['error', 'status', 'code'].includes(k)) error[k] = v

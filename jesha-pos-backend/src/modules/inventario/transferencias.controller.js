@@ -161,22 +161,36 @@ exports.crear = async (req, res) => {
         return { status: 200, transferencia: existing, idempotent: true }
       }
 
-      // ── Lock stocks in deterministic order (productoId ASC) ──
-      const lockedProducts = await Promise.all(
-        productIds.sort((a, b) => a - b).map(pid =>
-          tx.$queryRaw`
-            SELECT inv.id, inv."productoId", inv."sucursalId", inv."stockActual"
-            FROM "InventarioSucursal" inv
-            WHERE inv."productoId" = ${pid} AND inv."sucursalId" = ${sucursalOrigenId}
-            FOR UPDATE
-          `
-        )
-      )
-
-      // Build map of locked stocks
+      // Lock every origin and destination row in the same deterministic order.
+      // Destination rows are created first when absent, then locked before any
+      // stock calculation so concurrent inbound operations cannot overwrite it.
       const stockMap = {}
-      for (const row of lockedProducts.flat()) {
-        stockMap[row.productoId] = parseFloat(row.stockActual)
+      const destinationStockMap = {}
+      const sucursalesTransferencia = [sucursalOrigenId, destinoId].sort((a, b) => a - b)
+      await tx.$queryRaw`
+        SELECT id
+        FROM "Sucursal"
+        WHERE id IN (${sucursalesTransferencia[0]}, ${sucursalesTransferencia[1]})
+        ORDER BY id
+        FOR UPDATE`
+      for (const pid of [...new Set(productIds)].sort((a, b) => a - b)) {
+        await tx.inventarioSucursal.upsert({
+          where: { productoId_sucursalId: { productoId: pid, sucursalId: destinoId } },
+          create: { productoId: pid, sucursalId: destinoId, stockActual: 0 },
+          update: {}
+        })
+
+        for (const sucursalId of sucursalesTransferencia) {
+          const rows = await tx.$queryRaw`
+            SELECT "productoId", "sucursalId", "stockActual"
+            FROM "InventarioSucursal"
+            WHERE "productoId" = ${pid} AND "sucursalId" = ${sucursalId}
+            FOR UPDATE`
+          if (rows.length === 0) continue
+          const stock = parseFloat(rows[0].stockActual)
+          if (sucursalId === sucursalOrigenId) stockMap[pid] = stock
+          else destinationStockMap[pid] = stock
+        }
       }
 
       // ── Verify stock sufficiency ─────────────────────────────
@@ -230,11 +244,7 @@ exports.crear = async (req, res) => {
         const stockOrigenDespues = parseFloat((stockOrigenAntes - qty).toFixed(3))
         const costo = productos.find(p => p.id === pid)?.costo
 
-        // Get or create destination inventory
-        const invDestino = await tx.inventarioSucursal.findUnique({
-          where: { productoId_sucursalId: { productoId: pid, sucursalId: destinoId } }
-        })
-        const stockDestinoAntes = invDestino ? parseFloat(invDestino.stockActual) : 0
+        const stockDestinoAntes = destinationStockMap[pid] ?? 0
         const stockDestinoDespues = parseFloat((stockDestinoAntes + qty).toFixed(3))
 
         // Create detail
@@ -296,12 +306,12 @@ exports.crear = async (req, res) => {
           data: { stockActual: stockOrigenDespues }
         })
 
-        // Upsert destination stock
-        await tx.inventarioSucursal.upsert({
+        // Destination row was created and locked above; update the locked value.
+        await tx.inventarioSucursal.update({
           where: { productoId_sucursalId: { productoId: pid, sucursalId: destinoId } },
-          create: { productoId: pid, sucursalId: destinoId, stockActual: stockDestinoDespues },
-          update: { stockActual: stockDestinoDespues }
+          data: { stockActual: stockDestinoDespues }
         })
+        destinationStockMap[pid] = stockDestinoDespues
       }
 
       return {

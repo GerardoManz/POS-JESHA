@@ -507,11 +507,17 @@ const recibir = async (req, res) => {
           })
 
           // ── Inventory ──
-          const inv = await tx.inventarioSucursal.upsert({
+          await tx.inventarioSucursal.upsert({
             where: { productoId_sucursalId: { productoId: detalle.productoId, sucursalId: ocLocked.sucursalId } },
             update: {},
             create: { productoId: detalle.productoId, sucursalId: ocLocked.sucursalId, stockActual: 0 }
           })
+          const invRows = await tx.$queryRaw`
+            SELECT "stockActual"
+            FROM "InventarioSucursal"
+            WHERE "productoId" = ${detalle.productoId} AND "sucursalId" = ${ocLocked.sucursalId}
+            FOR UPDATE`
+          const inv = invRows[0]
 
           const stockAntes   = parseFloat(inv.stockActual)
           const stockEntrada = parseFloat((cantNueva * safeFactor).toFixed(3))

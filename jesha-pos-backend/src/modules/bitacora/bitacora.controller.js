@@ -14,6 +14,80 @@ const { encolarImpresion } = require('../impresion/impresion.service')
 const { normalizarUnidadVenta } = require('../../helpers/unidades.helper')
 const { validarMontoDecimal, Decimal } = require('../../helpers/validarMontoDecimal')
 
+function errorNegocio(status, codigo, mensaje) {
+  return Object.assign(new Error(mensaje), { status, codigo })
+}
+
+function responderError(req, res, err, mensajeGenerico) {
+  if (Number.isInteger(err.status) && err.status >= 400 && err.status < 500) {
+    return res.status(err.status).json({
+      success: false,
+      error: err.message,
+      codigo: err.codigo || null,
+      requestId: req.requestId || null
+    })
+  }
+
+  console.error(`[${req.requestId || 'sin-request-id'}]`, mensajeGenerico, err)
+  return res.status(500).json({
+    success: false,
+    error: mensajeGenerico,
+    codigo: 'ERROR_INTERNO',
+    requestId: req.requestId || null
+  })
+}
+
+async function bloquearBitacora(tx, bitacoraId, empresaId) {
+  const rows = await tx.$queryRaw`
+    SELECT id, "empresaId", "sucursalId", folio, estado, origen,
+           "totalMateriales", "totalAbonado", "saldoPendiente", "saldoAlCerrar",
+           "descuentoMonto", "clienteId", notas
+    FROM "Bitacora"
+    WHERE id = ${bitacoraId} AND "empresaId" = ${empresaId}
+    FOR UPDATE`
+  return rows[0] || null
+}
+
+function validarAlcanceSucursal(bitacora, sucursalOperativa) {
+  if (!sucursalOperativa) {
+    throw errorNegocio(400, 'BRANCH_CONTEXT_REQUIRED', 'Selecciona una sucursal para realizar esta operación')
+  }
+  if (bitacora.sucursalId !== sucursalOperativa) {
+    throw errorNegocio(404, 'BITACORA_NO_ENCONTRADA', 'Bitácora no encontrada')
+  }
+}
+
+function validarBitacoraManualEditable(bitacora, sucursalOperativa) {
+  validarAlcanceSucursal(bitacora, sucursalOperativa)
+  if (bitacora.origen !== 'MANUAL') {
+    throw errorNegocio(403, 'ORIGEN_INCORRECTO', 'Solo se pueden modificar materiales de bitácoras MANUAL')
+  }
+  if (bitacora.estado !== 'ABIERTA') {
+    throw errorNegocio(409, 'ESTADO_INVALIDO', `No se pueden modificar materiales en estado ${bitacora.estado}`)
+  }
+}
+
+async function bloquearInventarioOpcional(tx, sucursalId, productoId) {
+  const rows = await tx.$queryRaw`
+    SELECT "productoId", "sucursalId", "stockActual"
+    FROM "InventarioSucursal"
+    WHERE "productoId" = ${productoId} AND "sucursalId" = ${sucursalId}
+    FOR UPDATE`
+  return rows[0] || null
+}
+
+async function bloquearInventarios(tx, sucursalId, productoIds) {
+  const inventarios = new Map()
+  for (const productoId of [...new Set(productoIds)].sort((a, b) => a - b)) {
+    const inventario = await bloquearInventarioOpcional(tx, sucursalId, productoId)
+    if (!inventario) {
+      throw errorNegocio(409, 'INVENTARIO_FALTANTE', `No existe inventario para el producto ${productoId} en la sucursal de la bitácora`)
+    }
+    inventarios.set(productoId, inventario)
+  }
+  return inventarios
+}
+
 // ── Auditoría ──
 async function audit(usuarioId, sucursalId, accion, ref, empresaId, valorDespues = null) {
   try {
@@ -463,9 +537,15 @@ const aplicarDescuento = async (req, res) => {
 const cambiarEstado = async (req, res) => {
   try {
     const { id } = req.params
-    const { estado, motivo } = req.body
-    const { id: usuarioId, sucursalId, rol } = req.usuario
+    const { estado, motivo } = req.body || {}
+    const { id: usuarioId, rol } = req.usuario
     const empresaId = getEmpresaId(req)
+    const sucursalId = resolverSucursalId(req)
+    const bitacoraId = Number(id)
+
+    if (!/^[1-9]\d*$/.test(id) || !Number.isSafeInteger(bitacoraId)) {
+      return res.status(400).json({ success: false, error: 'ID de bitácora inválido', codigo: 'BITACORA_ID_INVALIDO' })
+    }
 
     const validos = ['ABIERTA', 'CERRADA_INTERNA', 'CANCELADA']
     if (!validos.includes(estado)) {
@@ -475,8 +555,173 @@ const cambiarEstado = async (req, res) => {
       })
     }
 
+    if (estado === 'CANCELADA') {
+      if (!motivo?.trim()) {
+        return res.status(400).json({ success: false, error: 'Debe indicar un motivo para cancelar la bitácora', codigo: 'MOTIVO_REQUERIDO' })
+      }
+
+      const sucursalOperativa = sucursalId
+      const resultado = await prisma.$transaction(async tx => {
+        const locked = await bloquearBitacora(tx, bitacoraId, empresaId)
+        if (!locked) throw errorNegocio(404, 'BITACORA_NO_ENCONTRADA', 'Bitácora no encontrada')
+
+        validarAlcanceSucursal(locked, sucursalOperativa)
+
+        if (locked.origen !== 'MANUAL') {
+          throw errorNegocio(
+            409,
+            'CANCELACION_VENTA_REQUIERE_MODULO_VENTAS',
+            'Las bitácoras originadas por una venta deben cancelarse desde el historial de ventas'
+          )
+        }
+        if (locked.estado === 'CANCELADA') {
+          throw errorNegocio(409, 'BITACORA_YA_CANCELADA', 'La bitácora ya está cancelada')
+        }
+        if (locked.estado !== 'ABIERTA' && locked.estado !== 'PAUSADA') {
+          throw errorNegocio(409, 'ESTADO_NO_CANCELABLE', `Solo se pueden cancelar bitácoras en estado ABIERTA o PAUSADA (actual: ${locked.estado})`)
+        }
+
+        const abonos = await tx.abonoBitacora.findMany({
+          where: { bitacoraId, empresaId },
+          select: { id: true, monto: true, MovimientoCaja: { select: { id: true } } }
+        })
+        const movimientosCaja = await tx.movimientoCaja.count({
+          where: { empresaId, referencia: locked.folio, tipo: 'ABONO_BITACORA' }
+        })
+        const totalAbonado = new Decimal(locked.totalAbonado || 0)
+        const sumaAbonos = abonos.reduce((total, abono) => total.plus(abono.monto), new Decimal(0))
+        const abonosSinCaja = abonos.some(abono => !abono.MovimientoCaja)
+        if (!totalAbonado.equals(0) || abonos.length > 0 || movimientosCaja > 0) {
+          const inconsistente = !totalAbonado.equals(sumaAbonos) || abonosSinCaja || movimientosCaja !== abonos.length
+          throw errorNegocio(
+            409,
+            inconsistente ? 'PAGOS_INCONSISTENTES' : 'BITACORA_CON_ABONOS',
+            inconsistente
+              ? 'La bitácora tiene registros de pago inconsistentes y no puede cancelarse automáticamente'
+              : 'No se puede cancelar una bitácora con abonos registrados'
+          )
+        }
+
+        const detalles = await tx.detalleBitacora.findMany({
+          where: { bitacoraId },
+          select: { productoId: true, cantidad: true, inventarioDescontado: true }
+        })
+        const cantidades = new Map()
+        for (const detalle of detalles) {
+          if (!detalle.productoId) continue
+          const actual = cantidades.get(detalle.productoId) || { total: new Decimal(0), marcado: new Decimal(0) }
+          actual.total = actual.total.plus(detalle.cantidad)
+          if (detalle.inventarioDescontado) actual.marcado = actual.marcado.plus(detalle.cantidad)
+          cantidades.set(detalle.productoId, actual)
+        }
+
+        const movimientos = await tx.movimientoInventario.findMany({
+          where: {
+            empresaId,
+            sucursalId: locked.sucursalId,
+            referencia: locked.folio,
+            tipo: { in: ['SALIDA_BITACORA', 'DEVOLUCION_ENTRADA'] }
+          },
+          select: { productoId: true, tipo: true, cantidad: true }
+        })
+        const netos = new Map()
+        for (const movimiento of movimientos) {
+          const signo = movimiento.tipo === 'SALIDA_BITACORA' ? 1 : -1
+          const actual = netos.get(movimiento.productoId) || new Decimal(0)
+          netos.set(movimiento.productoId, actual.plus(new Decimal(movimiento.cantidad).times(signo)))
+        }
+
+        const reintegros = new Map()
+        for (const [productoId, cantidad] of cantidades) {
+          const neto = netos.get(productoId) || new Decimal(0)
+          if (neto.isNegative() || neto.greaterThan(cantidad.total) || neto.lessThan(cantidad.marcado)) {
+            throw errorNegocio(
+              409,
+              'INVENTARIO_DEVOLUCION_AMBIGUA',
+              `El historial no permite determinar con certeza el inventario a reintegrar para el producto ${productoId}`
+            )
+          }
+          if (neto.greaterThan(0)) reintegros.set(productoId, neto)
+          netos.delete(productoId)
+        }
+        if ([...netos.values()].some(neto => !neto.equals(0))) {
+          throw errorNegocio(409, 'INVENTARIO_DEVOLUCION_AMBIGUA', 'Existen movimientos de inventario sin detalle vigente en la bitácora')
+        }
+
+        const inventarios = await bloquearInventarios(tx, locked.sucursalId, [...reintegros.keys()])
+        for (const [productoId, cantidad] of reintegros) {
+          const stockAntes = new Decimal(inventarios.get(productoId).stockActual)
+          const stockDespues = stockAntes.plus(cantidad)
+          await tx.inventarioSucursal.update({
+            where: { productoId_sucursalId: { productoId, sucursalId: locked.sucursalId } },
+            data: { stockActual: stockDespues }
+          })
+          await tx.movimientoInventario.create({
+            data: {
+              empresaId,
+              productoId,
+              sucursalId: locked.sucursalId,
+              usuarioId,
+              tipo: 'DEVOLUCION_ENTRADA',
+              cantidad,
+              stockAntes,
+              stockDespues,
+              referencia: locked.folio,
+              notas: `Cancelación bitácora ${locked.folio}`
+            }
+          })
+        }
+
+        const saldo = new Decimal(locked.saldoPendiente || 0)
+        if (saldo.isNegative()) {
+          throw errorNegocio(409, 'INCONSISTENCIA_SALDO_BITACORA', 'La bitácora tiene un saldo pendiente inválido')
+        }
+        if (saldo.greaterThan(0) && locked.clienteId) {
+          const actualizado = await tx.cliente.updateMany({
+            where: { id: locked.clienteId, empresaId, saldoPendiente: { gte: saldo } },
+            data: { saldoPendiente: { decrement: saldo } }
+          })
+          if (actualizado.count !== 1) {
+            throw errorNegocio(409, 'INCONSISTENCIA_SALDO_CLIENTE', 'El saldo del cliente no permite liberar esta deuda de forma segura')
+          }
+        }
+
+        await tx.bitacora.update({
+          where: { id: bitacoraId },
+          data: {
+            estado: 'CANCELADA',
+            cerradaEn: new Date(),
+            saldoPendiente: 0,
+            notas: `[CANCELADA ${new Date().toISOString().split('T')[0]}] ${motivo.trim()}\n${locked.notas || ''}`.trim()
+          }
+        })
+        await tx.auditoria.create({
+          data: {
+            empresaId,
+            usuarioId,
+            sucursalId: locked.sucursalId,
+            accion: 'CANCELAR_BITACORA',
+            modulo: 'BITACORA',
+            referencia: `${locked.folio} - ${motivo.trim()}`,
+            valorAntes: { estado: locked.estado, saldoPendiente: saldo.toFixed(2) },
+            valorDespues: { estado: 'CANCELADA', saldoPendiente: '0.00', productosReintegrados: reintegros.size }
+          }
+        })
+
+        const data = await tx.bitacora.findFirst({ where: { id: bitacoraId, empresaId }, select: BITACORA_SELECT })
+        return { data, folio: locked.folio }
+      })
+
+      return res.json({
+        success: true,
+        data: resultado.data,
+        mensaje: 'Bitácora cancelada. Stock y deuda reintegrados de forma atómica.',
+        requestId: req.requestId || null
+      })
+    }
+
     const existente = await prisma.bitacora.findFirst({
-      where: { id: parseInt(id), empresaId },
+      where: { id: bitacoraId, empresaId },
       select: {
         id: true, folio: true, estado: true, saldoPendiente: true,
         descuentoTipo: true, descuentoValor: true, descuentoMonto: true,
@@ -498,7 +743,13 @@ const cambiarEstado = async (req, res) => {
       }
 
       await prisma.$transaction(async tx => {
-        const saldo = parseFloat(existente.saldoPendiente)
+        const locked = await bloquearBitacora(tx, bitacoraId, empresaId)
+        if (!locked) throw errorNegocio(404, 'BITACORA_NO_ENCONTRADA', 'Bitácora no encontrada')
+        validarAlcanceSucursal(locked, sucursalId)
+        if (locked.estado !== 'ABIERTA' && locked.estado !== 'PAUSADA') {
+          throw errorNegocio(409, 'ESTADO_INVALIDO', `Solo se pueden cerrar bitácoras en estado ABIERTA o PAUSADA (actual: ${locked.estado})`)
+        }
+        const saldo = parseFloat(locked.saldoPendiente)
         const updateData = {
           estado:         'CERRADA_INTERNA',
           cerradaEn:      new Date(),
@@ -507,107 +758,19 @@ const cambiarEstado = async (req, res) => {
           notas:          motivo.trim()
         }
         // Al cerrar con saldo > 0, liberar el saldo del cliente (si tiene)
-        if (saldo > 0 && existente.clienteId) {
-          await tx.cliente.update({
-            where: { id: existente.clienteId },
+        if (saldo > 0 && locked.clienteId) {
+          const actualizado = await tx.cliente.updateMany({
+            where: { id: locked.clienteId, empresaId, saldoPendiente: { gte: saldo } },
             data:  { saldoPendiente: { decrement: saldo } }
           })
+          if (actualizado.count !== 1) throw errorNegocio(409, 'INCONSISTENCIA_SALDO_CLIENTE', 'El saldo del cliente no permite cerrar la bitácora')
         }
-        await tx.bitacora.update({ where: { id: parseInt(id) }, data: updateData })
+        await tx.bitacora.update({ where: { id: bitacoraId }, data: updateData })
       })
 
       await audit(usuarioId, sucursalId, 'CERRAR_BITACORA_INTERNA', `${existente.folio} - saldo:$${parseFloat(existente.saldoPendiente).toFixed(2)} - ${motivo}`, empresaId)
       const b = await prisma.bitacora.findFirst({ where: { id: parseInt(id), empresaId }, select: BITACORA_SELECT })
       return res.json({ success: true, data: b, mensaje: 'Bitácora cerrada manualmente' })
-    }
-
-    // ──────────────────────────────────────────────────────────
-    // CASO 3: CANCELAR (CANCELADA)
-    // Solo ABIERTA/PAUSADA sin abonos. Reintegra stock.
-    // ──────────────────────────────────────────────────────────
-    if (estado === 'CANCELADA') {
-      if (!motivo?.trim()) {
-        return res.status(400).json({ success: false, error: 'Debe indicar un motivo para cancelar la bitácora', codigo: 'MOTIVO_REQUERIDO' })
-      }
-
-      await prisma.$transaction(async tx => {
-        // Lock para evitar carrera con pagos concurrentes
-        const rows = await tx.$queryRaw`
-          SELECT id, estado, "totalAbonado", "saldoPendiente", folio, notas, "clienteId"
-          FROM "Bitacora"
-          WHERE id = ${parseInt(id)} AND "empresaId" = ${empresaId}
-          FOR UPDATE`
-        if (rows.length === 0) {
-          throw Object.assign(new Error('Bitácora no encontrada'), { status: 404 })
-        }
-        const locked = rows[0]
-        if (locked.estado !== 'ABIERTA' && locked.estado !== 'PAUSADA') {
-          throw Object.assign(new Error(`Solo se pueden cancelar bitácoras en estado ABIERTA o PAUSADA (actual: ${locked.estado})`), { status: 400 })
-        }
-        const totalAbonadoLocked = parseFloat(locked.totalAbonado)
-        if (totalAbonadoLocked > 0) {
-          throw Object.assign(new Error(`No se puede cancelar: la bitácora tiene abonos por $${totalAbonadoLocked.toFixed(2)}. Debe quedar en $0 antes de cancelar.`), { status: 400, codigo: 'TIENE_ABONOS' })
-        }
-        const detalles = await tx.detalleBitacora.findMany({
-          where: { bitacoraId: parseInt(id), inventarioDescontado: true },
-          select: { id: true, productoId: true, cantidad: true, RecibeTrabajador: { select: { nombre: true } } }
-        })
-        for (const det of detalles) {
-          if (det.productoId) {
-            const inv = await tx.inventarioSucursal.findUnique({
-              where: { productoId_sucursalId: { productoId: det.productoId, sucursalId } },
-              select: { stockActual: true }
-            })
-            if (inv) {
-              const stockAntes = parseFloat(inv.stockActual)
-              const cant = parseFloat(det.cantidad)
-              const stockDespues = parseFloat((stockAntes + cant).toFixed(3))
-              await tx.inventarioSucursal.update({
-                where: { productoId_sucursalId: { productoId: det.productoId, sucursalId } },
-                data: { stockActual: stockDespues }
-              })
-              await tx.movimientoInventario.create({
-                data: {
-                  empresaId,
-                  productoId: det.productoId,
-                  sucursalId,
-                  usuarioId,
-                  tipo: 'DEVOLUCION_ENTRADA',
-                  cantidad: cant,
-                  stockAntes,
-                  stockDespues,
-                  referencia: locked.folio,
-                  notas: `Cancelación bitácora ${locked.folio}`
-                }
-              })
-            }
-          }
-        }
-
-        // 2. Cancelar bitácora
-        await tx.bitacora.update({
-          where: { id: parseInt(id) },
-          data: {
-            estado:         'CANCELADA',
-            cerradaEn:      new Date(),
-            saldoPendiente: 0,
-            notas:          `[CANCELADA ${new Date().toISOString().split('T')[0]}] ${motivo.trim()}\n${locked.notas || ''}`.trim()
-          }
-        })
-
-        // 3. Liberar saldo del cliente si tenía
-        const saldo = parseFloat(locked.saldoPendiente)
-        if (saldo > 0 && locked.clienteId) {
-          await tx.cliente.update({
-            where: { id: locked.clienteId },
-            data: { saldoPendiente: { decrement: saldo } }
-          })
-        }
-      })
-
-      await audit(usuarioId, sucursalId, 'CANCELAR_BITACORA', `${existente.folio} - ${motivo}`, empresaId)
-      const b = await prisma.bitacora.findFirst({ where: { id: parseInt(id), empresaId }, select: BITACORA_SELECT })
-      return res.json({ success: true, data: b, mensaje: 'Bitácora cancelada. Stock reintegrado.' })
     }
 
     // ──────────────────────────────────────────────────────────
@@ -652,14 +815,21 @@ const cambiarEstado = async (req, res) => {
       }
 
       await prisma.$transaction(async tx => {
+        const locked = await bloquearBitacora(tx, bitacoraId, empresaId)
+        if (!locked) throw errorNegocio(404, 'BITACORA_NO_ENCONTRADA', 'Bitácora no encontrada')
+        validarAlcanceSucursal(locked, sucursalId)
+        if (!['CERRADA_VENTA', 'CERRADA_INTERNA'].includes(locked.estado)) {
+          throw errorNegocio(409, 'NO_ESTA_CERRADA', `La bitácora no está cerrada (estado actual: ${locked.estado})`)
+        }
         // 1. Re-sumar al cliente el saldo que se le había liberado al cerrar
         //    (solo aplica si era CERRADA_INTERNA — en CERRADA_VENTA el saldo era 0)
-        const saldoRecuperar = parseFloat(existente.saldoAlCerrar || 0)
-        if (saldoRecuperar > 0 && existente.clienteId && existente.estado === 'CERRADA_INTERNA') {
-          await tx.cliente.update({
-            where: { id: existente.clienteId },
-            data:  { saldoPendiente: { increment: saldoRecuperar } }
+        const saldoRecuperar = parseFloat(locked.saldoAlCerrar || 0)
+        if (saldoRecuperar > 0 && locked.clienteId && locked.estado === 'CERRADA_INTERNA') {
+          const actualizado = await tx.cliente.updateMany({
+            where: { id: locked.clienteId, empresaId },
+            data: { saldoPendiente: { increment: saldoRecuperar } }
           })
+          if (actualizado.count !== 1) throw errorNegocio(409, 'INCONSISTENCIA_SALDO_CLIENTE', 'No fue posible restaurar el saldo del cliente')
         }
 
         // 2. Restaurar estado y limpiar campos de cierre
@@ -669,8 +839,8 @@ const cambiarEstado = async (req, res) => {
             estado:         'ABIERTA',
             cerradaEn:      null,
             saldoAlCerrar:  null,
-            saldoPendiente: saldoRecuperar || parseFloat(existente.saldoPendiente),
-            notas:          `[REAPERTURA ${new Date().toISOString().split('T')[0]}] ${motivo.trim()}\n${existente.notas || ''}`.trim()
+            saldoPendiente: saldoRecuperar || parseFloat(locked.saldoPendiente),
+            notas:          `[REAPERTURA ${new Date().toISOString().split('T')[0]}] ${motivo.trim()}\n${locked.notas || ''}`.trim()
           }
         })
       })
@@ -681,8 +851,7 @@ const cambiarEstado = async (req, res) => {
       return res.json({ success: true, data: b, mensaje: 'Bitácora reabierta. El saldo del cliente fue restaurado.' })
     }
   } catch (err) {
-    console.error('❌ cambiar estado bitacora:', err)
-    res.status(500).json({ success: false, error: 'No fue posible cambiar el estado de la bitácora. Intenta nuevamente.' })
+    return responderError(req, res, err, 'No fue posible cambiar el estado de la bitácora. Intenta nuevamente.')
   }
 }
 
@@ -764,7 +933,7 @@ const agregarProducto = async (req, res) => {
     }
     const responsable = await prisma.usuario.findFirst({
       where: { id: respId, empresaId, activo: true },
-      select: { id: true, nombre: true, apodo: true }
+      select: { id: true, nombre: true }
     })
     if (!responsable) {
       return res.status(400).json({ success: false, error: 'Responsable inválido o de otra empresa', codigo: 'RESPONSABLE_INVALIDO' })
@@ -810,16 +979,19 @@ const agregarProducto = async (req, res) => {
     })
     if (!producto)                    return res.status(404).json({ success: false, error: 'Producto no encontrado' })
 
-    const inv = await prisma.inventarioSucursal.findUnique({
-      where: { productoId_sucursalId: { productoId: producto.id, sucursalId } },
-      select: { stockActual: true }
-    })
-    const stockActual       = parseFloat(inv?.stockActual || 0)
-    const stockInsuficiente = cant > stockActual
     const subtotal          = parseFloat((cant * precio).toFixed(2))
 
     // ── Transacción ──
     const resultado = await prisma.$transaction(async tx => {
+      const locked = await bloquearBitacora(tx, parseInt(id), empresaId)
+      if (!locked) throw errorNegocio(404, 'BITACORA_NO_ENCONTRADA', 'Bitácora no encontrada')
+      validarBitacoraManualEditable(locked, sucursalId)
+
+      const inv = await bloquearInventarioOpcional(tx, sucursalId, producto.id)
+      const stockActual = new Decimal(inv?.stockActual || 0)
+      const cantidadDecimal = new Decimal(cant)
+      const stockInsuficiente = !inv || stockActual.lessThan(cantidadDecimal)
+
       // 1. Crear detalle de bitácora
       const detalle = await tx.detalleBitacora.create({
         data: {
@@ -844,56 +1016,52 @@ const agregarProducto = async (req, res) => {
         }
       })
 
-      // 2. Descontar inventario (aunque sea parcial si no hay stock)
-      if (inv) {
-        const nuevoStock = Math.max(0, stockActual - cant)
+      // 2. El inventario se descuenta completo o no se toca.
+      if (!stockInsuficiente) {
+        const nuevoStock = stockActual.minus(cantidadDecimal)
         await tx.inventarioSucursal.update({
           where: { productoId_sucursalId: { productoId: producto.id, sucursalId } },
           data:  { stockActual: nuevoStock }
         })
-        if (stockActual > 0) {
-          const cantDescontada = Math.min(cant, stockActual)
-          await tx.movimientoInventario.create({
-            data: {
-              empresaId,
-              productoId:   producto.id,
-              sucursalId,
-              usuarioId,
-              tipo:         'SALIDA_BITACORA',
-              cantidad:     cantDescontada,
-              stockAntes:   stockActual,
-              stockDespues: nuevoStock,
-              referencia:   bitacora.folio,
-              notas:        `Bitácora ${bitacora.folio} — ${producto.nombre}`
-            }
-          })
-        }
+        await tx.movimientoInventario.create({
+          data: {
+            empresaId,
+            productoId: producto.id,
+            sucursalId,
+            usuarioId,
+            tipo: 'SALIDA_BITACORA',
+            cantidad: cantidadDecimal,
+            stockAntes: stockActual,
+            stockDespues: nuevoStock,
+            referencia: locked.folio,
+            notas: `Bitácora ${locked.folio} — ${producto.nombre}`
+          }
+        })
       }
 
       // 3. Actualizar totales de bitácora
-      const nuevoTotal = parseFloat((parseFloat(bitacora.totalMateriales) + subtotal).toFixed(2))
-      const nuevoSaldo = parseFloat((parseFloat(bitacora.saldoPendiente) + subtotal).toFixed(2))
       await tx.bitacora.update({
         where: { id: parseInt(id) },
         data: {
-          totalMateriales: nuevoTotal,
-          saldoPendiente:  nuevoSaldo
+          totalMateriales: { increment: subtotal },
+          saldoPendiente: { increment: subtotal }
         }
       })
 
       // 4. Actualizar saldo del cliente SOLO si la bitácora tiene cliente
-      if (bitacora.clienteId) {
-        await tx.cliente.update({
-          where: { id: bitacora.clienteId },
+      if (locked.clienteId) {
+        const actualizado = await tx.cliente.updateMany({
+          where: { id: locked.clienteId, empresaId },
           data:  { saldoPendiente: { increment: subtotal } }
         })
+        if (actualizado.count !== 1) throw errorNegocio(409, 'CLIENTE_INCONSISTENTE', 'No fue posible actualizar el saldo del cliente')
       }
 
-      return detalle
+      return { detalle, stockInsuficiente, stockActual: stockActual.toNumber() }
     })
 
     await audit(usuarioId, sucursalId, 'AGREGAR_PRODUCTO_BITACORA', `${bitacora.folio} — ${producto.nombre} x${cant}`, empresaId, {
-      detalleId:          resultado.id,
+      detalleId:          resultado.detalle.id,
       productoId:         producto.id,
       cantidad:           cant,
       precioUnitario:     precio,
@@ -908,16 +1076,15 @@ const agregarProducto = async (req, res) => {
     res.json({
       success:  true,
       data:     bitacoraActualizada,
-      detalleId: resultado.id,
-      stockInsuficiente,
-      stockActual,
-      mensaje: stockInsuficiente
-        ? `⚠️ Producto agregado pero el stock era insuficiente (había ${stockActual}, se pidieron ${cant})`
+      detalleId: resultado.detalle.id,
+      stockInsuficiente: resultado.stockInsuficiente,
+      stockActual: resultado.stockActual,
+      mensaje: resultado.stockInsuficiente
+        ? `⚠️ Producto agregado sin descontar inventario: stock insuficiente (había ${resultado.stockActual}, se pidieron ${cant})`
         : 'Producto agregado correctamente'
     })
   } catch (err) {
-    console.error('❌ agregar producto bitacora:', err)
-    res.status(500).json({ success: false, error: 'No fue posible agregar el producto a la bitácora. Intenta nuevamente.' })
+    return responderError(req, res, err, 'No fue posible agregar el producto a la bitácora. Intenta nuevamente.')
   }
 }
 
@@ -1049,6 +1216,11 @@ const agregarProductosBatch = async (req, res) => {
 
     // ── Transacción única: todo el lote es atómico ──
     const resultado = await prisma.$transaction(async tx => {
+      const locked = await bloquearBitacora(tx, parseInt(id), empresaId)
+      if (!locked) throw errorNegocio(404, 'BITACORA_NO_ENCONTRADA', 'Bitácora no encontrada')
+      validarBitacoraManualEditable(locked, sucursalId)
+
+      const saldoLocked = parseFloat(locked.saldoPendiente || 0)
       const retiro = await tx.retiroBitacora.create({
         data: {
           empresaId,
@@ -1059,18 +1231,15 @@ const agregarProductosBatch = async (req, res) => {
           recibeNombre: recibeNombreRetiro,
           fechaManual: fechaManualRetiro,
           total: totalLotePrevisto,
-          saldoAnterior: saldoActual,
-          saldoDespues: saldoPrevisto
+          saldoAnterior: saldoLocked,
+          saldoDespues: parseFloat((saldoLocked + totalLotePrevisto).toFixed(2))
         }
       })
 
       // Stock vigente por producto, en memoria, para descuento secuencial
       const stockMap = new Map()
-      for (const pid of prodIds) {
-        const inv = await tx.inventarioSucursal.findUnique({
-          where: { productoId_sucursalId: { productoId: pid, sucursalId } },
-          select: { stockActual: true }
-        })
+      for (const pid of [...prodIds].sort((a, b) => a - b)) {
+        const inv = await bloquearInventarioOpcional(tx, sucursalId, pid)
         stockMap.set(pid, { existe: !!inv, stock: parseFloat(inv?.stockActual || 0) })
       }
 
@@ -1102,31 +1271,27 @@ const agregarProductosBatch = async (req, res) => {
           }
         })
 
-        // 2. Descontar inventario si existe registro
-        if (st.existe) {
-          const nuevoStock = Math.max(0, stockActual - it.cant)
+        // 2. El inventario se descuenta completo o no se toca.
+        if (!stockInsuficiente && st.existe) {
+          const nuevoStock = parseFloat((stockActual - it.cant).toFixed(3))
           await tx.inventarioSucursal.update({
             where: { productoId_sucursalId: { productoId: prod.id, sucursalId } },
             data:  { stockActual: nuevoStock }
           })
-          // 3. Movimiento solo si había stock positivo (descuenta lo disponible)
-          if (stockActual > 0) {
-            const cantDescontada = Math.min(it.cant, stockActual)
-            await tx.movimientoInventario.create({
-              data: {
-                empresaId,
-                productoId:   prod.id,
-                sucursalId,
-                usuarioId,
-                tipo:         'SALIDA_BITACORA',
-                cantidad:     cantDescontada,
-                stockAntes:   stockActual,
-                stockDespues: nuevoStock,
-                referencia:   bitacora.folio,
-                notas:        `Bitácora ${bitacora.folio} — ${prod.nombre}`
-              }
-            })
-          }
+          await tx.movimientoInventario.create({
+            data: {
+              empresaId,
+              productoId: prod.id,
+              sucursalId,
+              usuarioId,
+              tipo: 'SALIDA_BITACORA',
+              cantidad: it.cant,
+              stockAntes: stockActual,
+              stockDespues: nuevoStock,
+              referencia: locked.folio,
+              notas: `Bitácora ${locked.folio} — ${prod.nombre}`
+            }
+          })
           st.stock = nuevoStock   // actualizar memoria para el próximo item del mismo producto
         }
 
@@ -1135,19 +1300,18 @@ const agregarProductosBatch = async (req, res) => {
       }
 
       // 4. Totales de bitácora — una sola vez
-      const nuevoTotal = parseFloat((parseFloat(bitacora.totalMateriales) + totalLote).toFixed(2))
-      const nuevoSaldo = parseFloat((parseFloat(bitacora.saldoPendiente) + totalLote).toFixed(2))
       await tx.bitacora.update({
         where: { id: parseInt(id) },
-        data:  { totalMateriales: nuevoTotal, saldoPendiente: nuevoSaldo }
+        data:  { totalMateriales: { increment: totalLote }, saldoPendiente: { increment: totalLote } }
       })
 
       // 5. Saldo del cliente — una sola vez, solo si hay cliente
-      if (bitacora.clienteId) {
-        await tx.cliente.update({
-          where: { id: bitacora.clienteId },
+      if (locked.clienteId) {
+        const actualizado = await tx.cliente.updateMany({
+          where: { id: locked.clienteId, empresaId },
           data:  { saldoPendiente: { increment: totalLote } }
         })
+        if (actualizado.count !== 1) throw errorNegocio(409, 'CLIENTE_INCONSISTENTE', 'No fue posible actualizar el saldo del cliente')
       }
 
       return { resumen, totalLote, retiroId: retiro.id }
@@ -1175,8 +1339,7 @@ const agregarProductosBatch = async (req, res) => {
         : `${resultado.resumen.length} productos agregados correctamente`
     })
   } catch (err) {
-    console.error('❌ agregar productos batch bitacora:', err)
-    res.status(500).json({ success: false, error: 'No fue posible agregar los productos a la bitácora. Intenta nuevamente.' })
+    return responderError(req, res, err, 'No fue posible agregar los productos a la bitácora. Intenta nuevamente.')
   }
 }
 
@@ -1280,88 +1443,110 @@ const editarDetalle = async (req, res) => {
       }
     }
 
-    await prisma.$transaction(async tx => {
-      // 1. Ajustar inventario si cambió la cantidad
-      if (cantidad !== undefined && detalle.productoId) {
-        const cantidadOrig = parseFloat(detalle.cantidad)
-        const deltaCant    = cantidadNueva - cantidadOrig
+    const resultadoEdicion = await prisma.$transaction(async tx => {
+      const locked = await bloquearBitacora(tx, parseInt(id), empresaId)
+      if (!locked) throw errorNegocio(404, 'BITACORA_NO_ENCONTRADA', 'Bitácora no encontrada')
+      validarBitacoraManualEditable(locked, sucursalId)
 
-        if (deltaCant !== 0) {
-          const inv = await tx.inventarioSucursal.findUnique({
-            where: { productoId_sucursalId: { productoId: detalle.productoId, sucursalId } }
+      const detalleLocked = await tx.detalleBitacora.findFirst({
+        where: { id: parseInt(detalleId), bitacoraId: parseInt(id) },
+        select: { id: true, productoId: true, cantidad: true, precioUnitario: true, subtotal: true, inventarioDescontado: true }
+      })
+      if (!detalleLocked) throw errorNegocio(404, 'DETALLE_NO_ENCONTRADO', 'Detalle no encontrado en esta bitácora')
+
+      const cantNueva = cantidad !== undefined ? parseFloat(cantidad) : parseFloat(detalleLocked.cantidad)
+      const precioNuevoLocked = precioUnitario !== undefined ? parseFloat(precioUnitario) : parseFloat(detalleLocked.precioUnitario)
+      const subtotalNuevoLocked = parseFloat((cantNueva * precioNuevoLocked).toFixed(2))
+      const diferenciaLocked = parseFloat((subtotalNuevoLocked - parseFloat(detalleLocked.subtotal)).toFixed(2))
+      const nuevoTotalLocked = parseFloat((parseFloat(locked.totalMateriales) + diferenciaLocked).toFixed(2))
+      const nuevoSaldoLocked = parseFloat((parseFloat(locked.saldoPendiente) + diferenciaLocked).toFixed(2))
+      if (nuevoTotalLocked - parseFloat(locked.descuentoMonto || 0) < parseFloat(locked.totalAbonado) - 0.005) {
+        throw errorNegocio(409, 'ABONO_EXCEDE', 'El cambio dejaría el total por debajo de los abonos registrados')
+      }
+
+      let insuficiente = false
+      let stockActual = 0
+      let inventarioDescontado = detalleLocked.inventarioDescontado
+      if (cantidad !== undefined && detalleLocked.productoId) {
+        const inv = await bloquearInventarioOpcional(tx, sucursalId, detalleLocked.productoId)
+        const deduccionAnterior = detalleLocked.inventarioDescontado ? new Decimal(detalleLocked.cantidad) : new Decimal(0)
+        if (!inv && deduccionAnterior.greaterThan(0)) {
+          throw errorNegocio(409, 'INVENTARIO_FALTANTE', 'Falta el inventario previamente descontado para este detalle')
+        }
+        const stockAntes = new Decimal(inv?.stockActual || 0)
+        const disponible = stockAntes.plus(deduccionAnterior)
+        const deduccionNueva = inv && disponible.greaterThanOrEqualTo(cantNueva) ? new Decimal(cantNueva) : new Decimal(0)
+        const deltaDeduccion = deduccionNueva.minus(deduccionAnterior)
+        const stockDespues = stockAntes.minus(deltaDeduccion)
+        insuficiente = deduccionNueva.lessThan(cantNueva)
+        inventarioDescontado = !insuficiente
+        stockActual = stockAntes.toNumber()
+
+        if (!deltaDeduccion.equals(0)) {
+          await tx.inventarioSucursal.update({
+            where: { productoId_sucursalId: { productoId: detalleLocked.productoId, sucursalId } },
+            data: { stockActual: stockDespues }
           })
-          if (inv) {
-            const stockAntes = parseFloat(inv.stockActual)
-            // Si aumenta cantidad → resta stock; si disminuye → suma stock
-            const stockDespues = Math.max(0, stockAntes - deltaCant)
-            await tx.inventarioSucursal.update({
-              where: { productoId_sucursalId: { productoId: detalle.productoId, sucursalId } },
-              data:  { stockActual: stockDespues }
-            })
-            await tx.movimientoInventario.create({
-              data: {
-                empresaId,
-                productoId:   detalle.productoId,
-                sucursalId,
-                usuarioId,
-                tipo:         deltaCant > 0 ? 'SALIDA_BITACORA' : 'DEVOLUCION_ENTRADA',
-                cantidad:     Math.abs(deltaCant),
-                stockAntes,
-                stockDespues,
-                referencia:   bitacora.folio,
-                notas:        `Edición de detalle bitácora ${bitacora.folio}`
-              }
-            })
-          }
+          await tx.movimientoInventario.create({
+            data: {
+              empresaId,
+              productoId: detalleLocked.productoId,
+              sucursalId,
+              usuarioId,
+              tipo: deltaDeduccion.greaterThan(0) ? 'SALIDA_BITACORA' : 'DEVOLUCION_ENTRADA',
+              cantidad: deltaDeduccion.abs(),
+              stockAntes,
+              stockDespues,
+              referencia: locked.folio,
+              notas: `Edición de detalle bitácora ${locked.folio}`
+            }
+          })
         }
       }
 
-      // 2. Actualizar el detalle
       await tx.detalleBitacora.update({
-        where: { id: parseInt(detalleId) },
+        where: { id: detalleLocked.id },
         data: {
-          cantidad:             cantidadNueva,
-          precioUnitario:       precioNuevo,
-          subtotal:             subtotalNuevo,
-          inventarioDescontado: !stockInsuficiente,
+          cantidad: cantNueva,
+          precioUnitario: precioNuevoLocked,
+          subtotal: subtotalNuevoLocked,
+          inventarioDescontado,
           ...trabData
         }
       })
-
-      // 3. Actualizar totales de bitácora
-      const nuevoSaldo = parseFloat((parseFloat(bitacora.saldoPendiente) + diferencia).toFixed(2))
       await tx.bitacora.update({
         where: { id: parseInt(id) },
         data: {
-          totalMateriales: Math.max(0, nuevoTotalMat),
-          saldoPendiente:  Math.max(0, nuevoSaldo)
+          totalMateriales: { increment: diferenciaLocked },
+          saldoPendiente: { increment: diferenciaLocked }
         }
       })
-
-      // 4. Actualizar saldo del cliente si aplica
-      if (bitacora.clienteId) {
-        await tx.cliente.update({
-          where: { id: bitacora.clienteId },
-          data:  { saldoPendiente: { increment: diferencia } }
+      if (locked.clienteId && diferenciaLocked !== 0) {
+        const whereCliente = { id: locked.clienteId, empresaId }
+        if (diferenciaLocked < 0) whereCliente.saldoPendiente = { gte: Math.abs(diferenciaLocked) }
+        const actualizado = await tx.cliente.updateMany({
+          where: whereCliente,
+          data: { saldoPendiente: { increment: diferenciaLocked } }
         })
+        if (actualizado.count !== 1) throw errorNegocio(409, 'INCONSISTENCIA_SALDO_CLIENTE', 'El saldo del cliente no permite aplicar el cambio')
       }
+      return { diferencia: diferenciaLocked, stockInsuficiente: insuficiente, stockActual }
     })
 
-    await audit(usuarioId, sucursalId, 'EDITAR_DETALLE_BITACORA', `${bitacora.folio} — ${detalle.producto?.nombre || 'Sin nombre'} (Δ$${diferencia.toFixed(2)})`, empresaId)
+    await audit(usuarioId, sucursalId, 'EDITAR_DETALLE_BITACORA', `${bitacora.folio} — ${detalle.Producto?.nombre || 'Sin nombre'} (Δ$${resultadoEdicion.diferencia.toFixed(2)})`, empresaId)
 
     const bitacoraActualizada = await prisma.bitacora.findUnique({ where: { id: parseInt(id) }, select: BITACORA_SELECT })
     res.json({
       success: true,
       data:    bitacoraActualizada,
-      stockInsuficiente,
-      stockActual: stockActualSucursal,
-      mensaje: stockInsuficiente
-        ? `⚠️ Cambio aplicado pero el stock no alcanza (disponible: ${stockActualSucursal})`
+      stockInsuficiente: resultadoEdicion.stockInsuficiente,
+      stockActual: resultadoEdicion.stockActual,
+      mensaje: resultadoEdicion.stockInsuficiente
+        ? `⚠️ Cambio aplicado sin descontar inventario: stock insuficiente (disponible: ${resultadoEdicion.stockActual})`
         : 'Cambio guardado correctamente'
     })
   } catch (err) {
-    console.error('❌ editar detalle bitacora:', err)
-    res.status(500).json({ success: false, error: 'No fue posible editar el detalle de la bitácora. Intenta nuevamente.' })
+    return responderError(req, res, err, 'No fue posible editar el detalle de la bitácora. Intenta nuevamente.')
   }
 }
 
@@ -1410,66 +1595,102 @@ const quitarProducto = async (req, res) => {
       })
     }
 
-    await prisma.$transaction(async tx => {
-      // 1. Reintegrar inventario si se había descontado
-      if (detalle.productoId && detalle.inventarioDescontado) {
-        const inv = await tx.inventarioSucursal.findUnique({
-          where: { productoId_sucursalId: { productoId: detalle.productoId, sucursalId } }
-        })
-        if (inv) {
-          const stockAntes     = parseFloat(inv.stockActual)
-          const cantReintegrar = parseFloat(detalle.cantidad)
-          const stockDespues   = parseFloat((stockAntes + cantReintegrar).toFixed(3))
+    const resultadoQuitar = await prisma.$transaction(async tx => {
+      const locked = await bloquearBitacora(tx, parseInt(id), empresaId)
+      if (!locked) throw errorNegocio(404, 'BITACORA_NO_ENCONTRADA', 'Bitácora no encontrada')
+      validarBitacoraManualEditable(locked, sucursalId)
+
+      const detalleLocked = await tx.detalleBitacora.findFirst({
+        where: { id: parseInt(detalleId), bitacoraId: parseInt(id) },
+        select: { id: true, productoId: true, cantidad: true, subtotal: true, inventarioDescontado: true }
+      })
+      if (!detalleLocked) throw errorNegocio(404, 'DETALLE_NO_ENCONTRADO', 'Detalle no encontrado en esta bitácora')
+
+      const subtotal = new Decimal(detalleLocked.subtotal)
+      const nuevoTotalLocked = new Decimal(locked.totalMateriales).minus(subtotal)
+      const nuevoSaldoLocked = new Decimal(locked.saldoPendiente).minus(subtotal)
+      if (nuevoTotalLocked.minus(locked.descuentoMonto || 0).lessThan(new Decimal(locked.totalAbonado).minus('0.005'))) {
+        throw errorNegocio(409, 'ABONO_EXCEDE', 'No se puede quitar el detalle porque dejaría los abonos por encima del total')
+      }
+      if (nuevoSaldoLocked.isNegative()) {
+        throw errorNegocio(409, 'INCONSISTENCIA_SALDO_BITACORA', 'El saldo de la bitácora no permite quitar este detalle')
+      }
+
+      if (detalleLocked.productoId) {
+        if (!detalleLocked.inventarioDescontado) {
+          const detallesProducto = await tx.detalleBitacora.findMany({
+            where: { bitacoraId: parseInt(id), productoId: detalleLocked.productoId },
+            select: { cantidad: true, inventarioDescontado: true }
+          })
+          const marcado = detallesProducto.reduce(
+            (total, item) => item.inventarioDescontado ? total.plus(item.cantidad) : total,
+            new Decimal(0)
+          )
+          const movimientos = await tx.movimientoInventario.findMany({
+            where: {
+              empresaId,
+              sucursalId,
+              productoId: detalleLocked.productoId,
+              referencia: locked.folio,
+              tipo: { in: ['SALIDA_BITACORA', 'DEVOLUCION_ENTRADA'] }
+            },
+            select: { tipo: true, cantidad: true }
+          })
+          const neto = movimientos.reduce(
+            (total, mov) => total.plus(new Decimal(mov.cantidad).times(mov.tipo === 'SALIDA_BITACORA' ? 1 : -1)),
+            new Decimal(0)
+          )
+          if (!neto.equals(marcado)) {
+            throw errorNegocio(409, 'INVENTARIO_DEVOLUCION_AMBIGUA', 'El historial no permite determinar cuánto inventario corresponde a este detalle')
+          }
+        } else {
+          const inv = await bloquearInventarioOpcional(tx, sucursalId, detalleLocked.productoId)
+          if (!inv) throw errorNegocio(409, 'INVENTARIO_FALTANTE', 'Falta el inventario que debe recibir el reintegro')
+          const stockAntes = new Decimal(inv.stockActual)
+          const cantReintegrar = new Decimal(detalleLocked.cantidad)
+          const stockDespues = stockAntes.plus(cantReintegrar)
           await tx.inventarioSucursal.update({
-            where: { productoId_sucursalId: { productoId: detalle.productoId, sucursalId } },
-            data:  { stockActual: stockDespues }
+            where: { productoId_sucursalId: { productoId: detalleLocked.productoId, sucursalId } },
+            data: { stockActual: stockDespues }
           })
           await tx.movimientoInventario.create({
             data: {
               empresaId,
-              productoId:   detalle.productoId,
+              productoId: detalleLocked.productoId,
               sucursalId,
               usuarioId,
-              tipo:         'DEVOLUCION_ENTRADA',
-              cantidad:     cantReintegrar,
+              tipo: 'DEVOLUCION_ENTRADA',
+              cantidad: cantReintegrar,
               stockAntes,
               stockDespues,
-              referencia:   bitacora.folio,
-              notas:        `Reintegro por quitar producto de bitácora ${bitacora.folio}`
+              referencia: locked.folio,
+              notas: `Reintegro por quitar producto de bitácora ${locked.folio}`
             }
           })
         }
       }
 
-      // 2. Eliminar detalle
-      await tx.detalleBitacora.delete({ where: { id: parseInt(detalleId) } })
-
-      // 3. Actualizar totales de bitácora
-      const nuevoSaldo = parseFloat(bitacora.saldoPendiente) - subtotalDetalle
+      await tx.detalleBitacora.delete({ where: { id: detalleLocked.id } })
       await tx.bitacora.update({
         where: { id: parseInt(id) },
-        data: {
-          totalMateriales: nuevoTotal,
-          saldoPendiente:  Math.max(0, nuevoSaldo)
-        }
+        data: { totalMateriales: { decrement: subtotal }, saldoPendiente: { decrement: subtotal } }
       })
-
-      // 4. Actualizar saldo del cliente si aplica
-      if (bitacora.clienteId) {
-        await tx.cliente.update({
-          where: { id: bitacora.clienteId },
-          data:  { saldoPendiente: { decrement: subtotalDetalle } }
+      if (locked.clienteId && subtotal.greaterThan(0)) {
+        const actualizado = await tx.cliente.updateMany({
+          where: { id: locked.clienteId, empresaId, saldoPendiente: { gte: subtotal } },
+          data: { saldoPendiente: { decrement: subtotal } }
         })
+        if (actualizado.count !== 1) throw errorNegocio(409, 'INCONSISTENCIA_SALDO_CLIENTE', 'El saldo del cliente no permite quitar el detalle')
       }
+      return { subtotal: subtotal.toNumber() }
     })
 
-    await audit(usuarioId, sucursalId, 'QUITAR_PRODUCTO_BITACORA', `${bitacora.folio} — ${detalle.producto?.nombre || 'Sin nombre'}`, empresaId)
+    await audit(usuarioId, sucursalId, 'QUITAR_PRODUCTO_BITACORA', `${bitacora.folio} — ${detalle.Producto?.nombre || 'Sin nombre'} - $${resultadoQuitar.subtotal.toFixed(2)}`, empresaId)
 
     const bitacoraActualizada = await prisma.bitacora.findUnique({ where: { id: parseInt(id) }, select: BITACORA_SELECT })
     res.json({ success: true, data: bitacoraActualizada, mensaje: 'Producto eliminado y stock reintegrado' })
   } catch (err) {
-    console.error('❌ quitar producto bitacora:', err)
-    res.status(500).json({ success: false, error: 'No fue posible eliminar el detalle de la bitácora. Intenta nuevamente.' })
+    return responderError(req, res, err, 'No fue posible eliminar el detalle de la bitácora. Intenta nuevamente.')
   }
 }
 

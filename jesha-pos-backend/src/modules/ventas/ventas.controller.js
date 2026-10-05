@@ -1274,9 +1274,12 @@ exports.cancelarVenta = async (req, res) => {
       })
 
       for (const detalle of venta.DetalleVenta) {
-        const inv = await tx.inventarioSucursal.findUnique({
-          where: { productoId_sucursalId: { productoId: detalle.productoId, sucursalId: venta.sucursalId } }
-        })
+        const invRows = await tx.$queryRaw`
+          SELECT "stockActual"
+          FROM "InventarioSucursal"
+          WHERE "productoId" = ${detalle.productoId} AND "sucursalId" = ${venta.sucursalId}
+          FOR UPDATE`
+        const inv = invRows[0] || null
         if (inv) {
           const stockAntes   = parseFloat(inv.stockActual)
           const stockDespues = parseFloat((stockAntes + parseFloat(detalle.cantidad)).toFixed(3))

@@ -53,7 +53,7 @@ exports.ajusteRapido = async (req, res) => {
     // ── Validar que el producto pertenezca a la empresa del contexto ──
     const producto = await prisma.producto.findFirst({
       where: { id: productoId, empresaId },
-      select: { id: true }
+      select: { id: true, nombre: true }
     })
     if (!producto) {
       return res.status(404).json({ error: `Producto ${productoId} no encontrado en esta empresa`, codigo: 'PRODUCTO_NO_ENCONTRADO' })
@@ -61,10 +61,12 @@ exports.ajusteRapido = async (req, res) => {
 
     // ── Transacción ACID ───────────────────────────────────────────
     const resultado = await prisma.$transaction(async (tx) => {
-      const inventario = await tx.inventarioSucursal.findUnique({
-        where:   { productoId_sucursalId: { productoId, sucursalId } },
-        include: { Producto: { select: { nombre: true, esGranel: true, unidadVenta: true } } }
-      })
+      const rows = await tx.$queryRaw`
+        SELECT "stockActual"
+        FROM "InventarioSucursal"
+        WHERE "productoId" = ${productoId} AND "sucursalId" = ${sucursalId}
+        FOR UPDATE`
+      const inventario = rows[0] || null
 
       if (!inventario) {
         throw Object.assign(
@@ -113,7 +115,7 @@ exports.ajusteRapido = async (req, res) => {
       return {
         productoId,
         sucursalId,
-        nombreProducto: inventario.Producto.nombre,
+        nombreProducto: producto.nombre,
         stockAntes,
         stockDespues,
         diferencia,

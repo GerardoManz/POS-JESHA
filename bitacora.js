@@ -1058,9 +1058,14 @@ function renderAcciones() {
     acciones.push(`<button class="btn-danger" id="btn-abrir-cierre">🔒 Cerrar manualmente</button>`)
   }
 
-  // ABIERTA o PAUSADA sin abonos → botón "Cancelar bitácora"
-  if ((b.estado === 'ABIERTA' || b.estado === 'PAUSADA') && parseFloat(b.totalAbonado || 0) <= 0) {
+  const puedeCancelarRol = ['SUPERADMIN', 'ADMIN_SUCURSAL', 'EMPLEADO'].includes(usuario.rol)
+  // La cancelación directa es exclusiva de bitácoras MANUAL; VENTA se revierte desde su venta.
+  if (b.origen === 'MANUAL' && puedeCancelarRol &&
+      (b.estado === 'ABIERTA' || b.estado === 'PAUSADA') && parseFloat(b.totalAbonado || 0) <= 0) {
     acciones.push(`<button class="btn-warning" id="btn-cancelar-bitacora">🚫 Cancelar bitácora</button>`)
+  }
+  if (b.origen === 'VENTA' && (b.estado === 'ABIERTA' || b.estado === 'PAUSADA')) {
+    acciones.push('<span class="muted-hint">Para revertir esta cuenta, cancela la venta desde Historial de ventas.</span>')
   }
 
   // CANCELADA → botón "Borrar permanentemente" (solo SUPERADMIN)
@@ -1136,9 +1141,27 @@ async function confirmarCancelacion() {
     cerrarModalCancelar()
     bitacoraActual = res.data
     renderDetalle()
-    cargarBitacoras(paginaActual)
+    await Promise.all([cargarBitacoras(paginaActual), cargarClientes()])
   } catch (e) {
-    errorDiv.textContent = e.message
+    // Un timeout o 5xx puede ocurrir después del commit: consultar antes de permitir reintento.
+    if (!e.status || e.status >= 500) {
+      try {
+        const verificacion = await apiFetch(`/bitacoras/${bitacoraActual.id}`, { method: 'GET' })
+        if (verificacion?.data?.estado === 'CANCELADA') {
+          bitacoraActual = verificacion.data
+          cerrarModalCancelar()
+          renderDetalle()
+          await Promise.all([cargarBitacoras(paginaActual), cargarClientes()])
+          toast('La cancelación sí quedó confirmada.', 'success')
+          return
+        }
+      } catch (_) {
+        // Se conserva el error original y se marca el resultado como incierto.
+      }
+    }
+    const referencia = e.requestId ? ` (referencia: ${e.requestId})` : ''
+    const incierto = (!e.status || e.status >= 500) ? ' Verifica el estado antes de volver a intentar.' : ''
+    errorDiv.textContent = `${e.message}${referencia}${incierto}`
     errorDiv.classList.add('show')
   } finally {
     btn.disabled = false; btn.textContent = 'Confirmar cancelación'
