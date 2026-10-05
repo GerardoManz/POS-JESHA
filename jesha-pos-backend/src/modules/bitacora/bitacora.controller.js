@@ -76,18 +76,6 @@ async function bloquearInventarioOpcional(tx, sucursalId, productoId) {
   return rows[0] || null
 }
 
-async function bloquearInventarios(tx, sucursalId, productoIds) {
-  const inventarios = new Map()
-  for (const productoId of [...new Set(productoIds)].sort((a, b) => a - b)) {
-    const inventario = await bloquearInventarioOpcional(tx, sucursalId, productoId)
-    if (!inventario) {
-      throw errorNegocio(409, 'INVENTARIO_FALTANTE', `No existe inventario para el producto ${productoId} en la sucursal de la bitácora`)
-    }
-    inventarios.set(productoId, inventario)
-  }
-  return inventarios
-}
-
 // ── Auditoría ──
 async function audit(usuarioId, sucursalId, accion, ref, empresaId, valorDespues = null) {
   try {
@@ -632,6 +620,7 @@ const cambiarEstado = async (req, res) => {
         }
 
         const reintegros = new Map()
+        const netosPorProducto = new Map()
         for (const [productoId, cantidad] of cantidades) {
           const neto = netos.get(productoId) || new Decimal(0)
           if (neto.isNegative() || neto.greaterThan(cantidad.total) || neto.lessThan(cantidad.marcado)) {
@@ -641,6 +630,7 @@ const cambiarEstado = async (req, res) => {
               `El historial no permite determinar con certeza el inventario a reintegrar para el producto ${productoId}`
             )
           }
+          netosPorProducto.set(productoId, neto)
           if (neto.greaterThan(0)) reintegros.set(productoId, neto)
           netos.delete(productoId)
         }
@@ -648,7 +638,40 @@ const cambiarEstado = async (req, res) => {
           throw errorNegocio(409, 'INVENTARIO_DEVOLUCION_AMBIGUA', 'Existen movimientos de inventario sin detalle vigente en la bitácora')
         }
 
-        const inventarios = await bloquearInventarios(tx, locked.sucursalId, [...reintegros.keys()])
+        // Detalles que nunca descontaron inventario (inventarioDescontado=false).
+        // Si el stock de la sucursal está en negativo, el material sí salió físicamente
+        // y se reintegra la cantidad completa del detalle; con stock en 0 o positivo
+        // no se toca nada (nunca se descontó, no hay nada que devolver).
+        const sinDescontar = [...cantidades.keys()].filter(productoId => {
+          const cantidadesProducto = cantidades.get(productoId)
+          return cantidadesProducto.total.minus(cantidadesProducto.marcado).greaterThan(0)
+        })
+
+        const inventarios = new Map()
+        const productoIds = [...new Set([...reintegros.keys(), ...sinDescontar])].sort((a, b) => a - b)
+        for (const productoId of productoIds) {
+          const inventario = await bloquearInventarioOpcional(tx, locked.sucursalId, productoId)
+          if (!inventario) {
+            if (reintegros.has(productoId)) {
+              throw errorNegocio(409, 'INVENTARIO_FALTANTE', `No existe inventario para el producto ${productoId} en la sucursal de la bitácora`)
+            }
+            continue
+          }
+          inventarios.set(productoId, inventario)
+        }
+
+        const productosConExtra = new Set()
+        for (const productoId of sinDescontar) {
+          const inventario = inventarios.get(productoId)
+          if (!inventario || !new Decimal(inventario.stockActual).isNegative()) continue
+          const neto = netosPorProducto.get(productoId) || new Decimal(0)
+          const extra = cantidades.get(productoId).total.minus(neto)
+          if (extra.greaterThan(0)) {
+            reintegros.set(productoId, neto.plus(extra))
+            productosConExtra.add(productoId)
+          }
+        }
+
         for (const [productoId, cantidad] of reintegros) {
           const stockAntes = new Decimal(inventarios.get(productoId).stockActual)
           const stockDespues = stockAntes.plus(cantidad)
@@ -667,7 +690,9 @@ const cambiarEstado = async (req, res) => {
               stockAntes,
               stockDespues,
               referencia: locked.folio,
-              notas: `Cancelación bitácora ${locked.folio}`
+              notas: productosConExtra.has(productoId)
+                ? `Cancelación bitácora ${locked.folio} — incluye material no descontado (stock negativo)`
+                : `Cancelación bitácora ${locked.folio}`
             }
           })
         }
@@ -704,7 +729,7 @@ const cambiarEstado = async (req, res) => {
             modulo: 'BITACORA',
             referencia: `${locked.folio} - ${motivo.trim()}`,
             valorAntes: { estado: locked.estado, saldoPendiente: saldo.toFixed(2) },
-            valorDespues: { estado: 'CANCELADA', saldoPendiente: '0.00', productosReintegrados: reintegros.size }
+            valorDespues: { estado: 'CANCELADA', saldoPendiente: '0.00', productosReintegrados: reintegros.size, productosNoDescontadosReintegrados: productosConExtra.size }
           }
         })
 

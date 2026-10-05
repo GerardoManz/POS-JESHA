@@ -419,6 +419,48 @@ describe('Cancelación de bitácoras PostgreSQL + HTTP real', { concurrency: 1, 
     assert.equal(Number(despues.movimientos.at(-1).cantidad), 1)
   })
 
+  it('reintegra detalle no descontado con cantidad completa cuando el stock está en negativo', async () => {
+    const caso = await crearCaso({ inventarioDescontado: false, cantidad: 10, cantidadDescontada: 0, stockActual: -6 })
+    const response = await cancelar(caso)
+    assert.equal(response.status, 200)
+    const despues = await snapshot(caso)
+    assert.equal(despues.bitacora.estado, 'CANCELADA')
+    assert.equal(Number(despues.inventario.stockActual), 4)
+    const devoluciones = despues.movimientos.filter(m => m.tipo === 'DEVOLUCION_ENTRADA')
+    assert.equal(devoluciones.length, 1)
+    assert.equal(Number(devoluciones[0].cantidad), 10)
+    assert.equal(Number(devoluciones[0].stockAntes), -6)
+    assert.equal(Number(devoluciones[0].stockDespues), 4)
+    assert.match(devoluciones[0].notas, /stock negativo/)
+  })
+
+  it('no reintegra detalle no descontado cuando el stock está en cero o positivo', async () => {
+    const enCero = await crearCaso({ inventarioDescontado: false, cantidad: 30, cantidadDescontada: 0, stockActual: 0 })
+    assert.equal((await cancelar(enCero)).status, 200)
+    const despuesCero = await snapshot(enCero)
+    assert.equal(despuesCero.bitacora.estado, 'CANCELADA')
+    assert.equal(Number(despuesCero.inventario.stockActual), 0)
+    assert.equal(despuesCero.movimientos.filter(m => m.tipo === 'DEVOLUCION_ENTRADA').length, 0)
+
+    const positivo = await crearCaso({ inventarioDescontado: false, cantidad: 30, cantidadDescontada: 0, stockActual: 10 })
+    assert.equal((await cancelar(positivo)).status, 200)
+    const despuesPositivo = await snapshot(positivo)
+    assert.equal(despuesPositivo.bitacora.estado, 'CANCELADA')
+    assert.equal(Number(despuesPositivo.inventario.stockActual), 10)
+    assert.equal(despuesPositivo.movimientos.filter(m => m.tipo === 'DEVOLUCION_ENTRADA').length, 0)
+  })
+
+  it('kardex parcial + detalle no descontado + stock negativo reintegra hasta la cantidad total del detalle', async () => {
+    const caso = await crearCaso({ inventarioDescontado: false, cantidad: 25, cantidadDescontada: 19, stockActual: -6 })
+    const response = await cancelar(caso)
+    assert.equal(response.status, 200)
+    const despues = await snapshot(caso)
+    assert.equal(Number(despues.inventario.stockActual), 19)
+    const devoluciones = despues.movimientos.filter(m => m.tipo === 'DEVOLUCION_ENTRADA')
+    assert.equal(devoluciones.length, 1)
+    assert.equal(Number(devoluciones[0].cantidad), 25)
+  })
+
   it('inventario faltante o devolución ambigua rechazan y revierten todo', async () => {
     const faltante = await crearCaso({ conInventario: false, cantidadDescontada: 2 })
     const missing = await cancelar(faltante)
