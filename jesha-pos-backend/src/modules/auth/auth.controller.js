@@ -161,7 +161,7 @@ function signTenantToken(principal) {
       sucursalId: identidad.sucursalId,
       empresaId: identidad.empresaId,
       tema: usuario.tema || 'dark',
-      Empresa: empresa ? { id: empresa.id, slug: empresa.slug, nombreComercial: empresa.nombreComercial, logoUrl: empresa.logoUrl, colorPrimario: empresa.colorPrimario, colorSecundario: empresa.colorSecundario, colorAcento: empresa.colorAcento } : null,
+      Empresa: empresa ? { id: empresa.id, slug: empresa.slug, nombreComercial: empresa.nombreComercial, logoUrl: empresa.logoUrl, logoDocumentalUrl: empresa.logoDocumentalUrl, colorPrimario: empresa.colorPrimario, colorSecundario: empresa.colorSecundario, colorAcento: empresa.colorAcento } : null,
       Sucursal: sucursal ? { id: sucursal.id, nombre: sucursal.nombre } : null
     }
   }
@@ -219,7 +219,7 @@ async function me(req, res) {
     if (req.delegation && req.delegation.active) {
       const empresa = await prisma.empresa.findUnique({
         where: { id: req.delegation.targetEmpresaId },
-        select: { id: true, slug: true, nombreComercial: true, logoUrl: true, colorPrimario: true, colorSecundario: true, colorAcento: true, rfc: true, whatsapp: true, razonSocial: true }
+        select: { id: true, slug: true, nombreComercial: true, logoUrl: true, logoDocumentalUrl: true, colorPrimario: true, colorSecundario: true, colorAcento: true, rfc: true, whatsapp: true, razonSocial: true }
       })
       const usuarioDelegado = {
           id: req.usuario.id,
@@ -263,7 +263,7 @@ async function me(req, res) {
     const empresa = identidad.empresaId
       ? await prisma.empresa.findUnique({
           where: { id: identidad.empresaId },
-          select: { id: true, slug: true, nombreComercial: true, logoUrl: true, colorPrimario: true, colorSecundario: true, colorAcento: true }
+          select: { id: true, slug: true, nombreComercial: true, logoUrl: true, logoDocumentalUrl: true, colorPrimario: true, colorSecundario: true, colorAcento: true }
         })
       : null
     const sucursal = identidad.sucursalId
@@ -297,7 +297,7 @@ async function actualizarPreferencias(req, res) {
     const empresa = identidad.empresaId
       ? await prisma.empresa.findUnique({
           where: { id: identidad.empresaId },
-          select: { id: true, slug: true, nombreComercial: true, logoUrl: true, colorPrimario: true, colorSecundario: true, colorAcento: true }
+          select: { id: true, slug: true, nombreComercial: true, logoUrl: true, logoDocumentalUrl: true, colorPrimario: true, colorSecundario: true, colorAcento: true }
         })
       : null
     const sucursal = identidad.sucursalId

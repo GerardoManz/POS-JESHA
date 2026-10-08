@@ -377,8 +377,10 @@
   const DEFAULT_COLORS = { colorPrimario: '#1e3a5f', colorSecundario: '#3b82f6', colorAcento: '#10b981' }
   let brandingData = null
   let brandingLogoFile = null
+  let brandingLogoDocumentalFile = null
 
   const brandingLogoInput = $('#branding-logo-input')
+  const brandingLogoDocumentalInput = $('#branding-logo-documental-input')
   const brandingLogoPreview = $('#branding-logo-preview')
   const brandingLogoImg = $('#branding-logo-img')
   const brandingLogoInitials = $('#branding-logo-initials')
@@ -446,6 +448,7 @@
 
       brandingData = {
         logoUrl: empresa.logoUrl || null,
+        logoDocumentalUrl: empresa.logoDocumentalUrl || null,
         colorPrimario: empresa.colorPrimario || DEFAULT_COLORS.colorPrimario,
         colorSecundario: empresa.colorSecundario || DEFAULT_COLORS.colorSecundario,
         colorAcento: empresa.colorAcento || DEFAULT_COLORS.colorAcento
@@ -490,6 +493,11 @@
         formData.append('logo', brandingLogoFile)
         await window.apiFetch('/branding/logo', { method: 'POST', body: formData, isFormData: true })
       }
+      if (brandingLogoDocumentalFile) {
+        const formData = new FormData()
+        formData.append('logo', brandingLogoDocumentalFile)
+        await window.apiFetch('/branding/logo-documental', { method: 'POST', body: formData, isFormData: true })
+      }
 
       await window.apiFetch('/branding', {
         method: 'PATCH',
@@ -500,7 +508,10 @@
         })
       })
 
+      window.jeshaSession?.invalidateEmpresaBranding()
       brandingLogoFile = null
+      brandingLogoDocumentalFile = null
+      brandingLogoDocumentalInput.value = ''
       notificar('Identidad visual guardada', 'success')
       await cargarBranding()
     } catch (error) {
@@ -516,7 +527,10 @@
 
     try {
       await window.apiFetch('/branding/restaurar', { method: 'POST' })
+      window.jeshaSession?.invalidateEmpresaBranding()
       brandingLogoFile = null
+      brandingLogoDocumentalFile = null
+      brandingLogoDocumentalInput.value = ''
       brandingLogoImg.hidden = true
       brandingLogoInitials.hidden = false
       btnQuitarLogo.hidden = true
@@ -551,6 +565,22 @@
       btnQuitarLogo.hidden = false
     }
     reader.readAsDataURL(file)
+  })
+
+  brandingLogoDocumentalInput.addEventListener('change', (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+    if (file.size > 2 * 1024 * 1024) {
+      notificar('El archivo excede 2 MB')
+      brandingLogoDocumentalInput.value = ''
+      return
+    }
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+      notificar('Formato no soportado. Use PNG, JPG o WEBP')
+      brandingLogoDocumentalInput.value = ''
+      return
+    }
+    brandingLogoDocumentalFile = file
   })
 
   btnQuitarLogo.addEventListener('click', () => {

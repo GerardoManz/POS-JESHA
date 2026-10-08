@@ -151,6 +151,99 @@ const escapeHtml = value => String(value ?? '')
   .replace(/"/g, '&quot;')
   .replace(/'/g, '&#39;')
 
+function urlHttpSegura(value) {
+  if (!value) return ''
+  try {
+    const url = new URL(String(value))
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : ''
+  } catch (_) {
+    return ''
+  }
+}
+
+function abrirVentanaImpresion() {
+  const ventana = window.open('', '_blank')
+  if (!ventana || ventana.closed) return null
+  ventana.document.write('<!doctype html><html lang="es"><head><meta charset="UTF-8"><title>Preparando cotización</title></head><body style="font-family:Arial,sans-serif;padding:24px">Preparando cotización...</body></html>')
+  ventana.document.close()
+  return ventana
+}
+
+function esperarEventoImagen(img, timeoutMs) {
+  if (img.complete) return Promise.resolve(img.naturalWidth > 0)
+  return new Promise(resolve => {
+    let terminado = false
+    const finalizar = ok => {
+      if (terminado) return
+      terminado = true
+      clearTimeout(timer)
+      img.removeEventListener('load', onLoad)
+      img.removeEventListener('error', onError)
+      resolve(ok && img.naturalWidth > 0)
+    }
+    const onLoad = () => finalizar(true)
+    const onError = () => finalizar(false)
+    const timer = setTimeout(() => finalizar(false), timeoutMs)
+    img.addEventListener('load', onLoad, { once: true })
+    img.addEventListener('error', onError, { once: true })
+  })
+}
+
+async function esperarImagen(img, timeoutMs) {
+  timeoutMs = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 5000
+  const inicio = Date.now()
+  const cargada = await esperarEventoImagen(img, timeoutMs)
+  if (!cargada || img.naturalWidth <= 0) return false
+  if (typeof img.decode !== 'function') return true
+
+  const restante = Math.max(1, timeoutMs - (Date.now() - inicio))
+  return new Promise(resolve => {
+    let terminado = false
+    const finalizar = resultado => {
+      if (terminado) return
+      terminado = true
+      clearTimeout(timer)
+      resolve(resultado)
+    }
+    const timer = setTimeout(() => finalizar(false), restante)
+    img.decode()
+      .then(() => finalizar(img.naturalWidth > 0))
+      .catch(() => finalizar(false))
+  })
+}
+
+async function esperarImagenesImpresion(doc, timeoutMs = 5000) {
+  timeoutMs = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 5000
+  const imagenes = Array.from(doc.images || [])
+  const resultados = await Promise.all(imagenes.map(async img => {
+    let ok = await esperarImagen(img, timeoutMs)
+    const fallbackSrc = img.dataset?.fallbackSrc
+    if (!ok && fallbackSrc) {
+      delete img.dataset.fallbackSrc
+      img.src = fallbackSrc
+      ok = await esperarImagen(img, timeoutMs)
+    }
+    if (!ok) {
+      img.hidden = true
+      const fallbackId = img.dataset?.fallbackId
+      if (fallbackId) {
+        const fallback = doc.getElementById(fallbackId)
+        if (fallback) fallback.hidden = false
+      }
+    }
+    return ok
+  }))
+  return resultados
+}
+
+window.jeshaCotizacionesPrint = Object.freeze({
+  escapeHtml,
+  urlHttpSegura,
+  esperarImagen,
+  esperarImagenesImpresion,
+  generarPdf
+})
+
 function estadoBadge(estado) {
   const m = { PENDIENTE:['pendiente','Pendiente'], CONVERTIDA:['convertida','Convertida'], VENCIDA:['vencida','Vencida'], CANCELADA:['cancelada','Cancelada'] }
   const [cls, label] = m[estado] || ['pendiente', estado]
@@ -1014,14 +1107,36 @@ window.cargarEnPos = async function(id) {
 // ════════════════════════════════════════════════════════════════════
 
 window.enviarWhatsAppPdf = async function(id) {
+  const ventanaPdf = abrirVentanaImpresion()
+  if (!ventanaPdf) {
+    jeshaToast('El navegador bloqueó la ventana del PDF. Permite ventanas emergentes e intenta nuevamente.', 'error')
+    return false
+  }
+  const ventanaWhatsApp = window.open('', '_blank')
+  if (!ventanaWhatsApp) {
+    jeshaToast('El navegador bloqueó la ventana de WhatsApp. El PDF se generará de todos modos.', 'warning')
+  } else {
+    ventanaWhatsApp.opener = null
+  }
   try {
     const r = await apiFetch(`/cotizaciones/${id}`)
     const c = r.data
-    if (c.Cliente?.telefono) {
-      window.open(`https://wa.me/${limpiarTelefono(c.Cliente.telefono)}?text=${encodeURIComponent('Le comparto la cotización')}`, '_blank', 'noopener,noreferrer')
+    if (ventanaWhatsApp) {
+      if (c.Cliente?.telefono) {
+        ventanaWhatsApp.location.href = `https://wa.me/${limpiarTelefono(c.Cliente.telefono)}?text=${encodeURIComponent('Le comparto la cotización')}`
+      } else {
+        ventanaWhatsApp.close()
+      }
     }
-    await descargarPdf(id)
-  } catch (err) { jeshaToast(window.jeshaMensajeSeguro(err.message, 'No fue posible cancelar la cotización.'), 'error') }
+    cotizacionActual = c
+    await generarPdf(c, ventanaPdf)
+    return true
+  } catch (err) {
+    ventanaPdf.close()
+    ventanaWhatsApp?.close()
+    jeshaToast(window.jeshaMensajeSeguro(err.message, 'No fue posible enviar la cotización por WhatsApp.'), 'error')
+    return false
+  }
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -1029,33 +1144,47 @@ window.enviarWhatsAppPdf = async function(id) {
 // ════════════════════════════════════════════════════════════════════
 
 window.descargarPdf = async function(id) {
+  const ventana = abrirVentanaImpresion()
+  if (!ventana) {
+    jeshaToast('El navegador bloqueó la ventana del PDF. Permite ventanas emergentes e intenta nuevamente.', 'error')
+    return false
+  }
   try {
     const d = await apiFetch(`/cotizaciones/${id}`)
     const cot = d.data
     cotizacionActual = cot
-    generarPdf(cot)
-  } catch (err) { jeshaToast(window.jeshaMensajeSeguro(err.message, 'No fue posible enviar la cotización.'), 'error') }
+    await generarPdf(cot, ventana)
+    return true
+  } catch (err) {
+    ventana.close()
+    jeshaToast(window.jeshaMensajeSeguro(err.message, 'No fue posible generar el PDF de la cotización.'), 'error')
+    return false
+  }
 }
-
-const LOGO_URL = window.__JESHA_LOGO_URL__
 
 function logoPdfUrl(url) {
-  if (!url) return ''
-  return url.replace('/image/upload/', '/image/upload/e_trim/c_fit,w_840,h_300,q_100,f_png/')
+  const segura = urlHttpSegura(url)
+  if (!segura) return ''
+  return segura.replace('/image/upload/', '/image/upload/e_trim/c_fit,w_840,h_300,q_100,f_png/')
 }
 
-async function generarPdf(c) {
+async function generarPdf(c, ventana) {
+  if (!ventana || ventana.closed) throw new Error('La ventana de impresión ya no está disponible')
   const emp = await window.jeshaSession?.fetchEmpresaBranding() || {}
-  const empName = emp.nombre || 'Empresa'
+  const empName = emp.nombre || window.jeshaSession?.getEmpresaNombre?.() || 'Empresa'
   const empDireccion = emp.direccion || ''
   const empTelefono = emp.telefono || emp.whatsapp || ''
   const empEmail = emp.email || ''
-  const empLogo = emp.logoUrl || LOGO_URL
-  const logoUrl = logoPdfUrl(empLogo)
+  const logoDocumentalUrl = logoPdfUrl(emp.logoDocumentalUrl)
+  const logoPantallaUrl = logoPdfUrl(emp.logoUrl)
+  const logoUrl = logoDocumentalUrl || logoPantallaUrl
+  const logoFallbackUrl = logoDocumentalUrl && logoPantallaUrl && logoDocumentalUrl !== logoPantallaUrl
+    ? logoPantallaUrl
+    : ''
 
   const esProductos = c.tipo !== 'SERVICIOS'
-  const vigencia    = c.venceEn ? `<p><strong>Vigencia:</strong> ${fmtFecha(c.venceEn)}</p>` : ''
-  const notas       = c.notas  ? `<p style="margin-top:16px;font-size:12px;color:#555"><strong>Notas:</strong> ${c.notas}</p>` : ''
+  const vigencia    = c.venceEn ? `<p><strong>Vigencia:</strong> ${escapeHtml(fmtFecha(c.venceEn))}</p>` : ''
+  const notas       = c.notas  ? `<p style="margin-top:16px;font-size:12px;color:#555"><strong>Notas:</strong> ${escapeHtml(c.notas)}</p>` : ''
   const totalNumerico = parseFloat(c.total || 0)
   const totalLetras = montoEnLetras(totalNumerico)
 
@@ -1064,20 +1193,23 @@ async function generarPdf(c) {
 
   if (esProductos) {
     // Tabla con imagen + clave + descuento + IVA desglosado
-    const lineas = (c.DetalleCotizacion || []).map(d => {
+    const lineas = (c.DetalleCotizacion || []).map((d, index) => {
       const dg = desgloseLineaCotizacion(d)
-      const imgHtml  = d.Producto?.imagenUrl
-        ? `<img src="${d.Producto.imagenUrl}" style="width:48px;height:48px;object-fit:contain;display:block;margin:0 auto" />`
+      const imagenUrl = urlHttpSegura(d.Producto?.imagenUrl)
+      const fallbackId = `producto-imagen-fallback-${d.id ?? index}`
+      const imgHtml  = imagenUrl
+        ? `<img src="${escapeHtml(imagenUrl)}" alt="" data-fallback-id="${fallbackId}" style="width:48px;height:48px;object-fit:contain;display:block;margin:0 auto" />` +
+          `<div id="${fallbackId}" hidden style="width:48px;height:48px;background:#f5f5f5;border:1px solid #ddd;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:18px;margin:0 auto">📦</div>`
         : `<div style="width:48px;height:48px;background:#f5f5f5;border:1px solid #ddd;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:18px;margin:0 auto">📦</div>`
       const clave    = d.Producto?.codigoInterno || '—'
       const unidad   = d.unidad || d.Producto?.unidadVenta || 'PZA'
       return `
         <tr>
-          <td style="text-align:center;padding:8px">${imgHtml}<div style="font-size:10px;color:#888;margin-top:2px">${clave}</div></td>
-          <td style="text-align:center">${fechaTabla(d.fechaManual)}</td>
+          <td style="text-align:center;padding:8px">${imgHtml}<div style="font-size:10px;color:#888;margin-top:2px">${escapeHtml(clave)}</div></td>
+          <td style="text-align:center">${escapeHtml(fechaTabla(d.fechaManual))}</td>
           <td style="text-align:center">${dg.cantidad}</td>
-          <td style="text-align:center">${unidad}</td>
-          <td>${d.Producto?.nombre || d.concepto || '—'}</td>
+          <td style="text-align:center">${escapeHtml(unidad)}</td>
+          <td>${escapeHtml(d.Producto?.nombre || d.concepto || '—')}</td>
           <td style="text-align:right">$${dg.precioSinIva.toFixed(2)}</td>
           <td style="text-align:right">$${dg.ivaUnitario.toFixed(2)}</td>
           <td style="text-align:right">$${dg.precioConIva.toFixed(2)}</td>
@@ -1127,10 +1259,10 @@ async function generarPdf(c) {
     // SERVICIOS — tabla simple
     const lineas = (c.DetalleCotizacion || []).map(d => `
       <tr>
-        <td style="text-align:center">${fechaTabla(d.fechaManual)}</td>
-        <td>${d.concepto || '—'}</td>
-        <td style="text-align:center">${d.unidad || '—'}</td>
-        <td style="text-align:center">${d.cantidad}</td>
+        <td style="text-align:center">${escapeHtml(fechaTabla(d.fechaManual))}</td>
+        <td>${escapeHtml(d.concepto || '—')}</td>
+        <td style="text-align:center">${escapeHtml(d.unidad || '—')}</td>
+        <td style="text-align:center">${escapeHtml(d.cantidad)}</td>
         <td style="text-align:right">$${parseFloat(d.precioUnitario).toFixed(2)}</td>
         <td style="text-align:right"><strong>$${parseFloat(d.subtotal).toFixed(2)}</strong></td>
       </tr>`
@@ -1169,13 +1301,13 @@ async function generarPdf(c) {
 <html lang="es">
 <head>
 <meta charset="UTF-8"/>
-<title>Cotización ${c.folio}</title>
+<title>Cotización ${escapeHtml(c.folio)}</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
   body { font-family:Arial,sans-serif; font-size:12px; color:#222; padding:28px; }
   .header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:24px; border-bottom:2px solid #1f3a66; padding-bottom:14px; }
   .empresa { min-width:${esProductos ? 'auto' : '320px'}; }
-  .logo-jesha { width:${esProductos ? '170px' : '280px'}; height:${esProductos ? '70px' : '100px'}; object-fit:contain; object-position:left center; display:block; margin-bottom:8px; filter:brightness(0) contrast(2); }
+  .empresa-logo { width:${esProductos ? '170px' : '280px'}; height:${esProductos ? '70px' : '100px'}; object-fit:contain; object-position:left center; display:block; margin-bottom:8px; }
   .empresa p { color:#555; font-size:11px; margin-top:4px; }
   .folio-box { text-align:right; }
   .folio-box .folio { font-size:18px; font-weight:700; color:#1f3a66; }
@@ -1197,23 +1329,23 @@ async function generarPdf(c) {
 <body>
   <div class="header">
     <div class="empresa">
-      ${logoUrl ? `<img src="${logoUrl}" alt="${empName}" class="logo-jesha" />` : `<div style="font-size:18px;font-weight:700;color:#1f3a66;margin-bottom:8px;">${empName.toUpperCase()}</div>`}
-      ${empDireccion ? `<p>${empDireccion}</p>` : ''}
-      ${(empTelefono || empEmail) ? `<p>${[empTelefono ? `Tel: ${empTelefono}` : '', empEmail].filter(Boolean).join(' · ')}</p>` : ''}
+      ${logoUrl ? `<img src="${escapeHtml(logoUrl)}" alt="${escapeHtml(empName)}" class="empresa-logo" data-fallback-id="empresa-nombre-fallback"${logoFallbackUrl ? ` data-fallback-src="${escapeHtml(logoFallbackUrl)}"` : ''} /><div id="empresa-nombre-fallback" hidden style="font-size:18px;font-weight:700;color:#1f3a66;margin-bottom:8px;">${escapeHtml(empName.toUpperCase())}</div>` : `<div id="empresa-nombre-fallback" style="font-size:18px;font-weight:700;color:#1f3a66;margin-bottom:8px;">${escapeHtml(empName.toUpperCase())}</div>`}
+      ${empDireccion ? `<p>${escapeHtml(empDireccion)}</p>` : ''}
+      ${(empTelefono || empEmail) ? `<p>${escapeHtml([empTelefono ? `Tel: ${empTelefono}` : '', empEmail].filter(Boolean).join(' · '))}</p>` : ''}
     </div>
     <div class="folio-box">
-      <div class="folio">${c.folio}</div>
-      <p>Fecha: ${fmtFecha(c.creadaEn)}</p>
+      <div class="folio">${escapeHtml(c.folio)}</div>
+      <p>Fecha: ${escapeHtml(fmtFecha(c.creadaEn))}</p>
       ${vigencia}
       <p style="margin-top:4px;font-size:11px;color:#888">${esProductos ? 'Cotización de Productos' : 'Cotización de Servicios'}</p>
     </div>
   </div>
 
   <div class="meta">
-    <p><strong>Cliente:</strong> ${c.Cliente?.nombre || 'Público General'}</p>
-    <p><strong>RFC:</strong> ${c.Cliente?.rfc || '—'}</p>
-    <p><strong>Elaboró:</strong> ${c.Usuario?.nombre || '—'}</p>
-    <p><strong>Sucursal:</strong> ${c.Sucursal?.nombre || '—'}</p>
+    <p><strong>Cliente:</strong> ${escapeHtml(c.Cliente?.nombre || 'Público General')}</p>
+    <p><strong>RFC:</strong> ${escapeHtml(c.Cliente?.rfc || '—')}</p>
+    <p><strong>Elaboró:</strong> ${escapeHtml(c.Usuario?.nombre || '—')}</p>
+    <p><strong>Sucursal:</strong> ${escapeHtml(c.Sucursal?.nombre || '—')}</p>
   </div>
 
   ${tablaHtml}
@@ -1221,15 +1353,17 @@ async function generarPdf(c) {
   ${notas}
 
   <div class="footer">
-    <p>${esProductos ? 'Los precios incluyen IVA · ' : ''}Cotización válida por los días indicados · ${empName}</p>
+    <p>${esProductos ? 'Los precios incluyen IVA · ' : ''}Cotización válida por los días indicados · ${escapeHtml(empName)}</p>
   </div>
 </body>
 </html>`
 
-  const ventana = window.open('', '_blank')
   ventana.document.write(html)
   ventana.document.close()
-  ventana.onload = () => ventana.print()
+  await esperarImagenesImpresion(ventana.document)
+  if (ventana.closed) throw new Error('La ventana de impresión se cerró antes de completar el PDF')
+  ventana.focus()
+  ventana.print()
 }
 
 // ════════════════════════════════════════════════════════════════════

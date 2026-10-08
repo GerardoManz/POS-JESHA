@@ -330,11 +330,21 @@
   let _empresaBrandingCache = null
   let _empresaBrandingPromise = null
 
-  async function fetchEmpresaBranding() {
-    if (_empresaBrandingCache) return _empresaBrandingCache
-    if (_empresaBrandingPromise) return _empresaBrandingPromise
+  function empresaBrandingContextKey() {
+    const token = getEffectiveToken()
+    const empresaId = isDelegated()
+      ? positiveInt(getDelegatedEmpresa()?.id)
+      : positiveInt(readUser()?.empresaId)
+    return token && empresaId ? `${empresaId}:${token}` : null
+  }
 
-    _empresaBrandingPromise = (async () => {
+  async function fetchEmpresaBranding() {
+    const contextKey = empresaBrandingContextKey()
+    if (!contextKey) return null
+    if (_empresaBrandingCache?.contextKey === contextKey) return _empresaBrandingCache.value
+    if (_empresaBrandingPromise?.contextKey === contextKey) return _empresaBrandingPromise.promise
+
+    const promise = (async () => {
       try {
         const token = getEffectiveToken()
         if (!token) return null
@@ -346,10 +356,11 @@
         const data = await res.json()
         const emp = data?.usuario?.Empresa || data?.empresa
         if (!emp) return null
-        _empresaBrandingCache = {
+        const branding = {
           nombre: emp.nombreComercial || 'Empresa',
           slug: emp.slug || '',
           logoUrl: emp.logoUrl || null,
+          logoDocumentalUrl: emp.logoDocumentalUrl || null,
           colorPrimario: emp.colorPrimario || '#1e3a5f',
           colorSecundario: emp.colorSecundario || '#3b82f6',
           colorAcento: emp.colorAcento || '#10b981',
@@ -361,18 +372,25 @@
           telefono: emp.whatsapp || null,
           email: emp.email || null
         }
-        return _empresaBrandingCache
+        if (empresaBrandingContextKey() === contextKey) {
+          _empresaBrandingCache = { contextKey, value: branding }
+        }
+        return branding
       } catch (_) {
         return null
       } finally {
-        _empresaBrandingPromise = null
+        if (_empresaBrandingPromise?.contextKey === contextKey) {
+          _empresaBrandingPromise = null
+        }
       }
     })()
-    return _empresaBrandingPromise
+    _empresaBrandingPromise = { contextKey, promise }
+    return promise
   }
 
   function invalidateEmpresaBranding() {
     _empresaBrandingCache = null
+    _empresaBrandingPromise = null
   }
 
   window.jeshaSession = Object.freeze({

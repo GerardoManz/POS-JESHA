@@ -1,7 +1,7 @@
 'use strict'
 
 const prisma = require('../../lib/prisma')
-const { subirLogoEmpresa } = require('../../lib/cloudinary')
+const { subirLogoEmpresa, subirLogoDocumentalEmpresa } = require('../../lib/cloudinary')
 
 const COLOR_RE = /^#[0-9A-Fa-f]{6}$/
 const ALLOWED_MIMES = ['image/png', 'image/jpeg', 'image/webp']
@@ -9,6 +9,7 @@ const MAX_SIZE_BYTES = 2 * 1024 * 1024
 
 const DEFAULT_BRANDING = Object.freeze({
   logoUrl: null,
+  logoDocumentalUrl: null,
   colorPrimario: '#1e3a5f',
   colorSecundario: '#3b82f6',
   colorAcento: '#10b981'
@@ -47,7 +48,7 @@ async function obtenerBranding(req, res) {
     if (slug && typeof slug === 'string' && slug.trim()) {
       const empresa = await prisma.empresa.findUnique({
         where: { slug: slug.trim().toLowerCase() },
-        select: { nombreComercial: true, logoUrl: true, colorPrimario: true, colorSecundario: true, colorAcento: true }
+        select: { nombreComercial: true, logoUrl: true, logoDocumentalUrl: true, colorPrimario: true, colorSecundario: true, colorAcento: true }
       })
       if (empresa && empresa.nombreComercial) {
         return res.json({ branding: empresa })
@@ -81,7 +82,7 @@ async function actualizarBrandingTenant(req, res) {
     const empresa = await prisma.empresa.update({
       where: { id: empresaId },
       data: updates,
-      select: { id: true, nombreComercial: true, logoUrl: true, colorPrimario: true, colorSecundario: true, colorAcento: true }
+      select: { id: true, nombreComercial: true, logoUrl: true, logoDocumentalUrl: true, colorPrimario: true, colorSecundario: true, colorAcento: true }
     })
 
     return res.json({ success: true, branding: empresa })
@@ -116,7 +117,7 @@ async function actualizarBrandingPlatform(req, res) {
     const updated = await prisma.empresa.update({
       where: { id: empresaId },
       data: updates,
-      select: { id: true, nombreComercial: true, logoUrl: true, colorPrimario: true, colorSecundario: true, colorAcento: true }
+      select: { id: true, nombreComercial: true, logoUrl: true, logoDocumentalUrl: true, colorPrimario: true, colorSecundario: true, colorAcento: true }
     })
 
     return res.json({ success: true, branding: updated })
@@ -126,7 +127,7 @@ async function actualizarBrandingPlatform(req, res) {
   }
 }
 
-async function subirLogo(req, res) {
+async function subirLogo(req, res, campo = 'logoUrl', subir = subirLogoEmpresa) {
   try {
     const empresaId = req.usuario.empresaId
     if (!empresaId) {
@@ -145,16 +146,16 @@ async function subirLogo(req, res) {
       return res.status(400).json({ error: 'El archivo excede 2 MB' })
     }
 
-    const result = await subirLogoEmpresa(req.file.buffer, empresaId)
+    const result = await subir(req.file.buffer, empresaId)
 
     await prisma.empresa.update({
       where: { id: empresaId },
-      data: { logoUrl: result.url }
+      data: { [campo]: result.url }
     })
 
     const empresa = await prisma.empresa.findUnique({
       where: { id: empresaId },
-      select: { id: true, nombreComercial: true, logoUrl: true, colorPrimario: true, colorSecundario: true, colorAcento: true }
+      select: { id: true, nombreComercial: true, logoUrl: true, logoDocumentalUrl: true, colorPrimario: true, colorSecundario: true, colorAcento: true }
     })
 
     return res.json({ success: true, branding: empresa })
@@ -162,6 +163,10 @@ async function subirLogo(req, res) {
     console.error('Error subiendo logo:', err.message)
     return res.status(500).json({ error: 'Error al subir logo' })
   }
+}
+
+function subirLogoDocumental(req, res) {
+  return subirLogo(req, res, 'logoDocumentalUrl', subirLogoDocumentalEmpresa)
 }
 
 async function restaurarBranding(req, res) {
@@ -175,6 +180,7 @@ async function restaurarBranding(req, res) {
       where: { id: empresaId },
       data: {
         logoUrl: null,
+        logoDocumentalUrl: null,
         colorPrimario: DEFAULT_BRANDING.colorPrimario,
         colorSecundario: DEFAULT_BRANDING.colorSecundario,
         colorAcento: DEFAULT_BRANDING.colorAcento
@@ -183,7 +189,7 @@ async function restaurarBranding(req, res) {
 
     const empresa = await prisma.empresa.findUnique({
       where: { id: empresaId },
-      select: { id: true, nombreComercial: true, logoUrl: true, colorPrimario: true, colorSecundario: true, colorAcento: true }
+      select: { id: true, nombreComercial: true, logoUrl: true, logoDocumentalUrl: true, colorPrimario: true, colorSecundario: true, colorAcento: true }
     })
 
     return res.json({ success: true, branding: empresa })
@@ -198,6 +204,7 @@ module.exports = {
   actualizarBrandingTenant,
   actualizarBrandingPlatform,
   subirLogo,
+  subirLogoDocumental,
   restaurarBranding,
   DEFAULT_BRANDING
 }

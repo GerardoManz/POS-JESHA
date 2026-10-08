@@ -51,17 +51,21 @@ function subirImagenProducto(buffer, productoId) {
 }
 
 function subirLogoEmpresa(buffer, empresaId) {
+    return subirLogoBranding(buffer, empresaId, 'logo', 400, 400)
+}
+
+function subirLogoBranding(buffer, empresaId, tipo, width, height) {
     return new Promise((resolve, reject) => {
         const stream = cloudinary.uploader.upload_stream(
             {
                 folder:    'jesha/branding',
-                public_id: `empresa_${empresaId}_logo`,
+                public_id: `empresa_${empresaId}_${tipo}`,
                 overwrite: true,
                 invalidate: true,
                 resource_type: 'image',
                 format: 'webp',
                 transformation: [
-                    { width: 400, height: 400, crop: 'limit' },
+                    { width, height, crop: 'limit' },
                     { quality: 'auto:good' }
                 ]
             },
@@ -75,6 +79,10 @@ function subirLogoEmpresa(buffer, empresaId) {
         )
         stream.end(buffer)
     })
+}
+
+function subirLogoDocumentalEmpresa(buffer, empresaId) {
+    return subirLogoBranding(buffer, empresaId, 'logo_documental', 840, 300)
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -97,5 +105,6 @@ module.exports = {
     cloudinary,
     subirImagenProducto,
     eliminarImagenProducto,
-    subirLogoEmpresa
+    subirLogoEmpresa,
+    subirLogoDocumentalEmpresa
 }

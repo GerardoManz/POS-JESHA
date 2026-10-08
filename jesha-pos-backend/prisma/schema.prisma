@@ -31,6 +31,7 @@ model Empresa {
   notas           String?
   activa          Boolean  @default(true)
   logoUrl         String?
+  logoDocumentalUrl String?
   colorPrimario   String?  @default("#1e3a5f")
   colorSecundario String?  @default("#3b82f6")
   colorAcento     String?  @default("#10b981")

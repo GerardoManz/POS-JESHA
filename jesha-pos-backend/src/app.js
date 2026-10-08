@@ -124,7 +124,7 @@ app.get('/facturar', (req, res) => {
 app.use('/platform/auth', require('./modules/platform-auth/platform-auth.routes'))
 const { autenticarPlataforma } = require('./middlewares/platform-auth.middleware')
 app.use('/platform/empresas', autenticarPlataforma, require('./modules/empresas/empresas.routes'))
-app.use('/platform/empresas', requireAuth, require('./modules/empresas/platform-branding.routes'))
+app.use('/platform/empresas', autenticarPlataforma, require('./modules/empresas/platform-branding.routes'))
 app.use('/auth',          require('./modules/auth/auth.routes'))
 app.use('/facturar/api',  require('./modules/facturacion/facturacion.routes'))
 app.use('/branding',     require('./modules/empresas/branding.routes'))

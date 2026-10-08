@@ -7,6 +7,7 @@ const {
   obtenerBranding,
   actualizarBrandingTenant,
   subirLogo,
+  subirLogoDocumental,
   restaurarBranding
 } = require('./branding.controller')
 
@@ -30,6 +31,14 @@ router.post('/logo', requireTenantOrDelegated, (req, res, next) => {
   }
   next()
 }, upload.single('logo'), subirLogo)
+
+router.post('/logo-documental', requireTenantOrDelegated, (req, res, next) => {
+  const rol = req.usuario?.rol
+  if (rol !== 'SUPERADMIN' && rol !== 'PLATFORM_ADMIN') {
+    return res.status(403).json({ error: 'Solo SUPERADMIN puede modificar identidad visual' })
+  }
+  next()
+}, upload.single('logo'), subirLogoDocumental)
 
 router.post('/restaurar', requireTenantOrDelegated, (req, res, next) => {
   const rol = req.usuario?.rol

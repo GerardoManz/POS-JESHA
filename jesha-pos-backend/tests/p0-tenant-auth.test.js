@@ -41,6 +41,7 @@ function empresa(overrides = {}) {
     nombreComercial: 'Empresa A',
     activa: true,
     logoUrl: null,
+    logoDocumentalUrl: null,
     colorPrimario: '#1e3a5f',
     colorSecundario: '#3b82f6',
     colorAcento: '#10b981',
@@ -255,7 +256,7 @@ describe('P0-TENANT-AUTH login', { concurrency: 1 }, () => {
       sucursalId: 20,
       empresaId: 10,
       tema: 'dark',
-      Empresa: { id: 10, slug: 'empresa-a', nombreComercial: 'Empresa A', logoUrl: null, colorPrimario: '#1e3a5f', colorSecundario: '#3b82f6', colorAcento: '#10b981' },
+      Empresa: { id: 10, slug: 'empresa-a', nombreComercial: 'Empresa A', logoUrl: null, logoDocumentalUrl: null, colorPrimario: '#1e3a5f', colorSecundario: '#3b82f6', colorAcento: '#10b981' },
       Sucursal: { id: 20, nombre: 'Matriz' }
     })
   })
