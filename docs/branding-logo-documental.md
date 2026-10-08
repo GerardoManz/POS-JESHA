@@ -12,7 +12,7 @@ La versión blanca actual de `Imagenes/logo-jesha.png` se conserva intacta porqu
 
 El campo separado es necesario porque una variante blanca para fondos oscuros y una variante oscura para documentos blancos no pueden compartir el mismo recurso sin afectar una de las superficies.
 
-El SQL `jesha-pos-backend/prisma/manual-sql/20261005_add_logo_documental_url.sql` fue validado en la base local. No se aplicó a producción.
+El SQL `jesha-pos-backend/prisma/manual-sql/20261005_add_logo_documental_url.sql` se aplica manualmente, primero en local y despues en produccion, antes de desplegar el backend.
 
 ## Orden De Compatibilidad
 
