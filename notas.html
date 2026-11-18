@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <script>
+    if (!localStorage.getItem('jesha_token') && !localStorage.getItem('jesha_delegated_token')) {
+      window.location.replace('login.html')
+    }
+  </script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>JESHA POS - Notas</title>
+  <link rel="icon" type="image/x-icon" href="favicon.ico" />
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png" />
+  <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png" />
+  <script src="theme.js"></script>
+  <link rel="stylesheet" href="dashboard.css" />
+  <link rel="stylesheet" href="pedidos.css" />
+  <link rel="stylesheet" href="pagination.css" />
+  <link rel="stylesheet" href="notas.css" />
+</head>
+<body data-page="notas">
+<div class="app-shell">
+  <div id="sidebar-container"></div>
+
+  <main class="content">
+    <header class="content-header">
+      <h2>Notas</h2>
+      <p id="fecha-actual"></p>
+    </header>
+
+    <section class="toolbar notas-toolbar" aria-label="Filtros de notas">
+      <div class="notas-vistas" role="group" aria-label="Vista de notas">
+        <button id="vista-recibidas" class="btn-secondary active" type="button" data-vista="recibidas">Recibidas</button>
+        <button id="vista-enviadas" class="btn-secondary" type="button" data-vista="enviadas">Enviadas</button>
+      </div>
+      <div class="search-group notas-search">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input type="search" id="search-input" placeholder="Título o contenido..." class="search-input" />
+      </div>
+      <select id="filtro-lectura" class="filter-select" aria-label="Filtrar por lectura">
+        <option value="">Todas</option>
+        <option value="no_leidas">No leídas</option>
+        <option value="leidas">Leídas</option>
+      </select>
+      <select id="filtro-alcance" class="filter-select" aria-label="Filtrar por alcance">
+        <option value="">Todos los alcances</option>
+        <option value="EMPRESA">Empresa</option>
+        <option value="SUCURSAL">Sucursal</option>
+        <option value="USUARIO">Usuario</option>
+      </select>
+      <button id="btn-leer-todas" class="btn-secondary" type="button">Marcar todas leídas</button>
+      <button id="btn-publicar" class="btn-primary" type="button" hidden>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Publicar nota
+      </button>
+    </section>
+
+    <section class="panel notas-panel">
+      <div class="table-wrapper notas-tabla-wrap">
+        <table class="ped-table">
+          <thead>
+            <tr>
+              <th style="width:90px">Estado</th>
+              <th style="width:155px">Fecha</th>
+              <th>Título</th>
+              <th>Alcance / Destino</th>
+              <th>Autor</th>
+              <th id="th-lecturas" style="width:110px">Destinatarios</th>
+              <th style="width:70px"></th>
+            </tr>
+          </thead>
+          <tbody id="notas-tbody">
+            <tr><td colspan="7" class="loading-cell"><div class="spinner"></div><p>Cargando notas...</p></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div id="notas-cards" class="notas-cards" aria-live="polite"></div>
+      <div class="pagination" id="pagination" style="display:none;">
+        <button id="btn-prev" class="btn-pag" type="button" disabled aria-label="Página anterior">&#8592; Anterior</button>
+        <div id="pag-numeros" class="pag-numeros" role="navigation" aria-label="Páginas"></div>
+        <span id="pag-info" class="pag-info pag-info-clickable" role="button" tabindex="0">Página 1 de 1</span>
+        <input type="number" id="pag-info-input" class="pag-input" min="1" style="display:none;" aria-label="Ir a página" />
+        <button id="btn-next" class="btn-pag" type="button" disabled aria-label="Página siguiente">Siguiente &#8594;</button>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div id="modal-editor" class="modal" role="dialog" aria-modal="true" aria-labelledby="editor-titulo-modal" aria-hidden="true" inert>
+  <div class="modal-content modal-large">
+    <div class="modal-header">
+      <h3 id="editor-titulo-modal">Publicar nota</h3>
+      <button class="modal-close" id="editor-close" type="button" aria-label="Cerrar">&times;</button>
+    </div>
+    <form id="nota-form" class="nota-form" novalidate>
+      <div class="form-group">
+        <label for="nota-titulo">Título *</label>
+        <input id="nota-titulo" type="text" maxlength="160" required autocomplete="off" />
+      </div>
+      <div class="form-group">
+        <label for="nota-contenido">Contenido *</label>
+        <textarea id="nota-contenido" rows="8" maxlength="20000" required></textarea>
+      </div>
+      <div id="editor-destino-campos" class="nota-destino-grid">
+        <div class="form-group">
+          <label for="nota-alcance">Destino *</label>
+          <select id="nota-alcance" class="filter-select" required>
+            <option value="">Selecciona un destino</option>
+            <option value="EMPRESA">Toda la empresa</option>
+            <option value="SUCURSAL">Una sucursal</option>
+            <option value="USUARIO">Un usuario</option>
+          </select>
+        </div>
+        <div class="form-group" id="grupo-sucursal" hidden>
+          <label for="nota-sucursal">Sucursal *</label>
+          <select id="nota-sucursal" class="filter-select" disabled></select>
+        </div>
+        <div class="form-group" id="grupo-usuario" hidden>
+          <label for="nota-usuario">Usuario *</label>
+          <select id="nota-usuario" class="filter-select" disabled></select>
+        </div>
+      </div>
+      <div id="editor-destino-resumen" class="meta-notas" hidden></div>
+      <div id="editor-error" class="error-message" role="alert"></div>
+      <div class="form-actions">
+        <button id="editor-cancelar" type="button" class="btn-secondary">Cancelar</button>
+        <button id="editor-guardar" type="submit" class="btn-primary">Publicar nota</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div id="modal-detalle" class="modal" role="dialog" aria-modal="true" aria-labelledby="detalle-titulo" aria-hidden="true" inert>
+  <div class="modal-content modal-large">
+    <div class="modal-header">
+      <div>
+        <h3 id="detalle-titulo">Nota</h3>
+        <span id="detalle-estado" class="ped-estado-badge borrador">Cargando</span>
+      </div>
+      <button class="modal-close" id="detalle-close" type="button" aria-label="Cerrar">&times;</button>
+    </div>
+    <div class="ver-body">
+      <div class="ver-meta nota-meta">
+        <div class="meta-item"><span class="meta-label">Autor</span><span class="meta-valor" id="detalle-autor">—</span></div>
+        <div class="meta-item"><span class="meta-label">Fecha</span><span class="meta-valor" id="detalle-fecha">—</span></div>
+        <div class="meta-item"><span class="meta-label">Destino</span><span class="meta-valor" id="detalle-destino">—</span></div>
+      </div>
+      <div id="detalle-contenido" class="nota-contenido"></div>
+      <div id="detalle-retiro" class="nota-retiro" hidden></div>
+      <section id="detalle-lecturas-seccion" class="nota-lecturas" hidden>
+        <div class="nota-section-header">
+          <h4>Confirmaciones de lectura</h4>
+          <span id="detalle-lecturas-total" class="ped-estado-badge activo">0</span>
+        </div>
+        <div id="detalle-lecturas-lista" class="nota-lecturas-lista"></div>
+      </section>
+      <div class="ver-acciones" id="detalle-acciones"></div>
+    </div>
+  </div>
+</div>
+
+<script src="config.js"></script>
+<script src="sonidos.js"></script>
+<script src="session.js"></script>
+<script src="sidebar.js"></script>
+<script src="pagination.js"></script>
+<script src="notas.js"></script>
+</body>
+</html>

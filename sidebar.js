@@ -142,6 +142,7 @@ async function cargarSidebar(paginaActual) {
     await configurarTopbarGlobal(paginaActual)
     if (window.jeshaSession?.isDelegated()) inyectarBannerPlataforma()
     configurarLogoutConReintentos(10)
+    iniciarNotasPoller()
   } catch (error) {
     console.error('❌ Error cargando sidebar.html:', error)
   }
@@ -630,6 +631,147 @@ async function configurarTopbarGlobal(paginaActual) {
   }
 }
 
+// ════════════════════════════════════════════════════════════════════
+//  NOTAS — badge y sondeo singleton de no leídas
+// ════════════════════════════════════════════════════════════════════
+let notasPoller = null
+
+function iniciarNotasPoller() {
+  const badge = document.getElementById('notas-unread-badge')
+  const menu = document.getElementById('menu-notas')
+  if (!badge || !menu) return null
+  if (notasPoller) {
+    notasPoller.attach(badge, menu)
+    return notasPoller
+  }
+
+  const usuario = window.jeshaSession?.getUsuario() || {}
+  const sucursal = window.jeshaSession?.getSelectedSucursalId?.() || 'all'
+  const scope = `${usuario.empresaId || 'tenant'}:${usuario.id || 'user'}:${sucursal}`
+  const storageKey = `jesha_notas_cursor:${scope}`
+  let cursor = null
+  try { cursor = sessionStorage.getItem(storageKey) || null } catch (_) {}
+
+  let badgeEl = badge
+  let menuEl = menu
+  let total = 0
+  let timer = null
+  let inFlight = false
+  let stopped = false
+  let initialized = false
+  let failures = 0
+  let lastCheck = 0
+
+  function attach(nextBadge, nextMenu) {
+    badgeEl = nextBadge || badgeEl
+    menuEl = nextMenu || menuEl
+    paint()
+  }
+
+  function paint() {
+    if (!badgeEl || !menuEl) return
+    const safeTotal = Math.max(0, Number(total) || 0)
+    badgeEl.textContent = safeTotal > 99 ? '99+' : String(safeTotal)
+    badgeEl.hidden = safeTotal === 0
+    badgeEl.setAttribute('aria-hidden', safeTotal === 0 ? 'true' : 'false')
+    menuEl.setAttribute('aria-label', safeTotal > 0
+      ? `Notas, ${safeTotal} ${safeTotal === 1 ? 'nota no leída' : 'notas no leídas'}`
+      : 'Notas, sin notas no leídas')
+  }
+
+  function update(value) {
+    const parsed = Number(value)
+    if (!Number.isFinite(parsed)) return total
+    total = Math.max(0, Math.trunc(parsed))
+    paint()
+    return total
+  }
+
+  function decrement(amount = 1) {
+    return update(total - Math.max(1, Number(amount) || 1))
+  }
+
+  function persist(nextCursor) {
+    if (nextCursor === null || nextCursor === undefined || nextCursor === '') return
+    cursor = String(nextCursor)
+    try { sessionStorage.setItem(storageKey, cursor) } catch (_) {}
+  }
+
+  function schedule(delay) {
+    if (stopped) return
+    clearTimeout(timer)
+    timer = setTimeout(run, delay)
+  }
+
+  function parseResumen(envelope) {
+    const data = envelope?.data || envelope || {}
+    return {
+      enabled: data.enabled !== false,
+      total: data.unreadCount ?? data.noLeidas ?? data.totalNoLeidas ?? data.count ?? 0,
+      cursor: data.cursor ?? data.nextCursor ?? null,
+      nuevas: Number(data.newSinceCursor?.count ?? 0) || 0
+    }
+  }
+
+  async function run() {
+    if (stopped || inFlight) return
+    if (document.visibilityState === 'hidden') {
+      return
+    }
+    inFlight = true
+    lastCheck = Date.now()
+    try {
+      const query = cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''
+      const resumen = parseResumen(await window.apiFetch(`/notas/resumen-no-leidas${query}`))
+      if (!resumen.enabled) {
+        update(0)
+        stopped = true
+        clearTimeout(timer)
+        return
+      }
+      update(resumen.total)
+      if (initialized && resumen.nuevas > 0 && window.jeshaToast) {
+        window.jeshaToast(resumen.nuevas === 1 ? 'Recibiste una nota nueva' : `Recibiste ${resumen.nuevas} notas nuevas`, 'info')
+      }
+      initialized = true
+      persist(resumen.cursor)
+      failures = 0
+      schedule(30000)
+    } catch (error) {
+      if ([401, 403, 404].includes(error?.status)) {
+        stopped = true
+        clearTimeout(timer)
+      } else {
+        failures += 1
+        schedule(Math.min(300000, 30000 * (2 ** Math.min(failures, 4))))
+      }
+    } finally {
+      inFlight = false
+    }
+  }
+
+  function refresh() {
+    if (stopped || inFlight) return
+    clearTimeout(timer)
+    run()
+  }
+
+  function refreshIfStale() {
+    if (document.visibilityState === 'hidden' || stopped) return
+    const elapsed = Date.now() - lastCheck
+    if (elapsed >= 30000) refresh()
+    else schedule(30000 - elapsed)
+  }
+
+  document.addEventListener('visibilitychange', refreshIfStale)
+  window.addEventListener('focus', refreshIfStale)
+  notasPoller = { attach, update, decrement, refresh, stop() { stopped = true; clearTimeout(timer) } }
+  window.jeshaNotas = notasPoller
+  paint()
+  run()
+  return notasPoller
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   if (!verificarAutenticacion()) return
   const paginaActual = document.body.getAttribute('data-page') || ''
@@ -698,7 +840,9 @@ window.apiFetch = async function(path, opts = {}) {
   if (res.status === 401) {
     window.jeshaSession?.clear()
     window.location.href = 'login.html'
-    throw new Error('Sesión expirada')
+    const error = new Error('Sesión expirada')
+    error.status = 401
+    throw error
   }
 
   // Permisos insuficientes — toast y lanzar error

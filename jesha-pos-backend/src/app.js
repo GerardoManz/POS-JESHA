@@ -147,6 +147,7 @@ app.use('/devoluciones', requireTenantOrDelegated, require('./modules/devolucion
 app.use('/reportes', requireTenantOrDelegated, require('./modules/reportes/reporte-stock.routes'))
 app.use('/sucursales', requireTenantOrDelegated, require('./modules/sucursal/sucursal.routes'))
 app.use('/trabajadores', requireTenantOrDelegated, require('./modules/trabajadores/trabajadores.routes'))
+app.use('/notas',        requireTenantOrDelegated, require('./modules/notas/notas.routes'))
 app.use('/impresion',    require('./modules/impresion/impresion.routes')) // rutas de agente + frontend, auth interna
 app.use('/precios',     requireTenantOrDelegated, requireRole('SUPERADMIN', 'ADMIN_SUCURSAL', 'PRECIOS'), require('./modules/precios/precios.routes'))
 

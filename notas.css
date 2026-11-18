@@ -1,0 +1,56 @@
+/* NOTAS: extensión visual del módulo Pedidos. */
+.nota-form [hidden], #modal-detalle [hidden] { display: none !important; }
+.notas-toolbar .notas-search { flex: 1 1 260px; }
+.notas-vistas { display: flex; gap: 6px; }
+.notas-vistas .btn-secondary.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.notas-panel { overflow: hidden; }
+.notas-row.no-leida td { background: rgba(74,144,226,0.045); }
+.notas-row.no-leida .nota-titulo-tabla { color: var(--text); font-weight: 700; }
+.nota-titulo-tabla { display: block; max-width: 380px; overflow: hidden; color: var(--text); text-overflow: ellipsis; white-space: nowrap; }
+.nota-destino { display: flex; flex-direction: column; gap: 2px; }
+.nota-destino strong { font-size: .84rem; }
+.nota-destino small, .nota-fecha { color: var(--muted); font-size: .78rem; }
+.nota-lecturas-btn { padding: 4px 9px; }
+.nota-form { display: flex; flex-direction: column; gap: 16px; padding: 20px 22px; }
+.nota-form input, .nota-form textarea, .nota-form select {
+  width: 100%; box-sizing: border-box; padding: 9px 12px; background: rgba(255,255,255,.04);
+  border: 1px solid var(--panel-border); border-radius: 8px; color: var(--text);
+  font: .9rem 'Barlow', sans-serif; outline: none; resize: vertical;
+}
+.nota-form input:focus, .nota-form textarea:focus, .nota-form select:focus { border-color: var(--accent); }
+.nota-destino-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 14px; }
+.nota-contenido { min-height: 140px; padding: 18px; border: 1px solid var(--panel-border); border-radius: 9px; color: var(--text); line-height: 1.65; overflow-wrap: anywhere; white-space: pre-wrap; }
+.nota-retiro { margin-top: 14px; padding: 11px 14px; border-left: 3px solid var(--danger,#ff6b6b); border-radius: 4px; background: rgba(255,107,107,.08); color: #ff9999; font-size: .84rem; white-space: pre-wrap; }
+.nota-lecturas { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--panel-border); }
+.nota-section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.nota-section-header h4 { color: var(--text); font-size: .82rem; letter-spacing: .05em; text-transform: uppercase; }
+.nota-lecturas-lista { display: flex; flex-direction: column; gap: 6px; max-height: 230px; overflow-y: auto; }
+.nota-lectura-item { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 9px 11px; border: 1px solid var(--panel-border); border-radius: 7px; background: rgba(255,255,255,.02); }
+.nota-lectura-item span { color: var(--text); font-size: .86rem; }
+.nota-lectura-item time { color: var(--muted); font-size: .78rem; white-space: nowrap; }
+.nota-lectura-item .nota-lectura-pendiente { color: var(--warning,#e8710a); }
+.notas-cards { display: none; }
+.nota-card { padding: 14px; border-bottom: 1px solid var(--panel-border); cursor: pointer; }
+.nota-card.no-leida { background: rgba(74,144,226,.045); border-left: 3px solid var(--info,#4a90e2); }
+.nota-card-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.nota-card-title { color: var(--text); font-size: .95rem; font-weight: 700; overflow-wrap: anywhere; }
+.nota-card-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; }
+.nota-card-meta .meta-item { min-width: 0; }
+.nota-card-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 12px; }
+.nota-retry { margin-top: 12px; }
+.ped-estado-badge.no-leida { background: rgba(74,144,226,.15); color: var(--info,#4a90e2); }
+.ped-estado-badge.leida { background: rgba(96,208,128,.15); color: var(--success,#60d080); }
+.ped-estado-badge.retirada { background: rgba(255,107,107,.15); color: var(--danger,#ff6b6b); }
+
+@media (max-width: 900px) {
+  .notas-toolbar { align-items: stretch; }
+  .notas-vistas button { flex: 1; }
+  .notas-toolbar select, .notas-toolbar > button { width: 100%; }
+}
+@media (max-width: 640px) {
+  .notas-tabla-wrap { display: none; }
+  .notas-cards { display: block; }
+  .nota-destino-grid, .nota-meta { grid-template-columns: 1fr; }
+  .nota-card-meta { grid-template-columns: 1fr; }
+  .nota-lectura-item { align-items: flex-start; flex-direction: column; gap: 3px; }
+}

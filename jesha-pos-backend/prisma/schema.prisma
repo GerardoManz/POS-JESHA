@@ -66,6 +66,8 @@ model Empresa {
   ConfiguracionFiscal     ConfiguracionFiscal?
   TransferenciaInventario TransferenciaInventario[]
   HistorialPrecioProducto HistorialPrecioProducto[]
+  Nota                    Nota[]
+  NotaDestinatario        NotaDestinatario[]
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -560,7 +562,9 @@ model Sucursal {
   TransferenciaOrigen     TransferenciaInventario[] @relation("SucursalOrigenTransferencia")
   TransferenciaDestino    TransferenciaInventario[] @relation("SucursalDestinoTransferencia")
   HistorialPrecioProducto HistorialPrecioProducto[]
+  Nota                    Nota[]                    @relation("NotaSucursal")
 
+  @@unique([id, empresaId])
   @@index([empresaId])
 }
 
@@ -770,9 +774,63 @@ model Usuario {
   Venta                      Venta[]
   TransferenciaCreada        TransferenciaInventario[]
   HistorialPrecioProducto    HistorialPrecioProducto[]
+  NotaAutor                  Nota[]                    @relation("NotaAutor")
+  NotaDestinatarioDirecto    Nota[]                    @relation("NotaUsuarioDestinatario")
+  NotaRetirada               Nota[]                    @relation("NotaRetiradaPor")
+  NotaDestinatario           NotaDestinatario[]        @relation("NotaDestinatarioUsuario")
 
   @@unique([empresaId, username])
+  @@unique([id, empresaId])
   @@index([empresaId])
+}
+
+model Nota {
+  id                     Int             @id @default(autoincrement())
+  empresaId              Int
+  autorId                Int
+  alcance                AlcanceNota
+  sucursalId             Int?
+  usuarioDestinatarioId  Int?
+  titulo                 String          @db.VarChar(160)
+  contenido              String
+  creadaEn               DateTime        @default(now())
+  retiradaEn             DateTime?
+  retiradaPorId          Int?
+  motivoRetiro           String?
+  reemplazaNotaId        Int?
+
+  Empresa                Empresa         @relation(fields: [empresaId], references: [id], onDelete: Restrict)
+  Autor                  Usuario         @relation("NotaAutor", fields: [autorId], references: [id], onDelete: Restrict)
+  Sucursal               Sucursal?       @relation("NotaSucursal", fields: [sucursalId, empresaId], references: [id, empresaId], onDelete: Restrict)
+  UsuarioDestinatario    Usuario?        @relation("NotaUsuarioDestinatario", fields: [usuarioDestinatarioId, empresaId], references: [id, empresaId], onDelete: Restrict)
+  RetiradaPor            Usuario?        @relation("NotaRetiradaPor", fields: [retiradaPorId], references: [id], onDelete: Restrict)
+  ReemplazaNota          Nota?           @relation("ReemplazoNota", fields: [reemplazaNotaId, empresaId], references: [id, empresaId], onDelete: Restrict)
+  ReemplazadaPor         Nota?           @relation("ReemplazoNota")
+  NotaDestinatario       NotaDestinatario[]
+
+  @@unique([id, empresaId])
+  @@unique([reemplazaNotaId, empresaId])
+  @@index([empresaId, creadaEn, id])
+  @@index([autorId, creadaEn, id])
+  @@index([sucursalId])
+  @@index([usuarioDestinatarioId])
+  @@index([retiradaEn])
+}
+
+model NotaDestinatario {
+  id        Int       @id @default(autoincrement())
+  empresaId Int
+  notaId    Int
+  usuarioId Int
+  leidaEn   DateTime?
+
+  Empresa   Empresa   @relation(fields: [empresaId], references: [id], onDelete: Restrict)
+  Nota      Nota      @relation(fields: [notaId, empresaId], references: [id, empresaId], onDelete: Restrict)
+  Usuario   Usuario   @relation("NotaDestinatarioUsuario", fields: [usuarioId, empresaId], references: [id, empresaId], onDelete: Restrict)
+
+  @@unique([notaId, usuarioId])
+  @@index([empresaId, usuarioId, leidaEn])
+  @@index([notaId])
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -1183,6 +1241,12 @@ enum AlcancePromocion {
   PRODUCTO
   CATEGORIA
   SUCURSAL
+}
+
+enum AlcanceNota {
+  EMPRESA
+  SUCURSAL
+  USUARIO
 }
 
 enum EstadoAlerta {

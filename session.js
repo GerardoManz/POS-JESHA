@@ -274,7 +274,7 @@
     '/auth', '/facturas', '/usuarios', '/clientes', '/productos',
     '/inventario', '/ventas', '/turnos-caja', '/cotizaciones', '/pedidos',
     '/proveedores', '/bitacoras', '/compras', '/devoluciones', '/reportes',
-    '/sucursales', '/trabajadores', '/impresion', '/precios', '/abonos'
+    '/sucursales', '/trabajadores', '/impresion', '/precios', '/abonos', '/notas'
   ]
 
   function isApiRequest(input) {

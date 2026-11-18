@@ -5,20 +5,20 @@ set -euo pipefail
 ROOT_ASSETS=(
   bitacora.html clientes.html compras.html configuracion.html corte-caja.html
   cotizaciones.html dashboard.html facturar.html facturas.html historial-cortes.html
-  historial.html importacion.html index.html kardex.html login.html pedidos.html
+  historial.html importacion.html index.html kardex.html login.html notas.html pedidos.html
   platform-empresas.html platform-login.html platform-sidebar.html productos.html
   proveedores.html punto-venta.html reportes.html sidebar.html sucursales.html
   transferencias.html usuarios.html
 
   bitacora.css clientes.css compras.css configuracion.css corte-caja.css
   cotizaciones.css dashboard.css facturas.css historial-cortes.css historial.css
-  kardex.css login.css pagination.css pedidos.css platform.css productos.css
+  kardex.css login.css notas.css pagination.css pedidos.css platform.css productos.css
   proveedores.css punto-venta.css reportes.css sucursales.css transferencias.css
   view-transitions.css
 
   bitacora.js catalogos-sat.js clientes.js compras.js config.js configuracion.js
   corte-caja.js cotizaciones.js dashboard.js facturas.js historial-cortes.js
-  historial.js importacion.js kardex.js login.js pagination.js pedidos.js platform-empresas.js
+  historial.js importacion.js kardex.js login.js notas.js pagination.js pedidos.js platform-empresas.js
   platform-login.js platform-session.js platform-sidebar.js productos.js
   proveedores.js punto-venta.js reportes.js session.js sidebar.js sonidos.js
   sucursales.js fiscal-state.js theme.js transferencias.js usuarios.js
